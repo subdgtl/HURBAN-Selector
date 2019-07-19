@@ -4,7 +4,7 @@ rust:
 cache: cargo
 matrix:
   include:
-    - os: macos
+    - os: osx
       script:
         - cargo check --verbose --features metal
         - cargo test --verbose --features metal
