@@ -2,6 +2,8 @@ language: rust
 rust:
   - stable
 cache: cargo
+before_script:
+  - rustup component add clippy
 matrix:
   include:
     - os: osx
@@ -20,3 +22,6 @@ matrix:
         - cargo test --verbose --features vulkan
   allow_failures:
     - os: linux
+script:
+  - cargo fmt -- --check
+  - cargo clippy -- -D warnings
