@@ -2,6 +2,10 @@ language: rust
 rust:
   - stable
 cache: cargo
+os:
+  - linux
+  - osx
+  - windows
 script:
   - cargo check --verbose
   - cargo test --verbose
