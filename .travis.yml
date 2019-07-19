@@ -6,6 +6,21 @@ os:
   - linux
   - osx
   - windows
-script:
-  - cargo check --verbose
-  - cargo test --verbose
+matrix:
+  include:
+    - os: macos
+      script:
+        - cargo check --verbose --features metal
+        - cargo test --verbose --features metal
+    - os: windows
+      before_install:
+        - choco install -y ninja python cmake
+      script:
+        - cargo check --verbose --features vulkan
+        - cargo test --verbose --features vulkan
+    - os: linux
+      script:
+        - cargo check --verbose --features vulkan
+        - cargo test --verbose --features vulkan
+  allow_failures:
+    - os: linux
