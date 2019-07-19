@@ -1,0 +1,7 @@
+[package]
+name = "hurban_selector"
+version = "0.1.0"
+authors = ["Ondrej Slinták <ondrowan@gmail.com>", "Ján Tóth <yanchi.toth@gmail.com>", "Ján Pernecký <info@sub.digital>"]
+edition = "2018"
+
+[dependencies]
