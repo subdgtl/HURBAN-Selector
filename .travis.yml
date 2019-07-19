@@ -13,6 +13,7 @@ matrix:
     - os: windows
       before_install:
         - choco install -y ninja python cmake
+      env: PATH=/c/Python37:/c/Python37/Scripts:$PATH
       script:
         - cargo check --verbose --features vulkan
         - cargo test --verbose --features vulkan
