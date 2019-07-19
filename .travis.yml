@@ -8,7 +8,7 @@ matrix:
   include:
     - os: osx
       script:
-        - cargo clippy --features vulkan -- -D warnings
+        - cargo clippy --features metal -- -D warnings
         - cargo fmt -- --check
         - cargo test --verbose --features metal
     - os: windows
