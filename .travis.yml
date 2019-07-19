@@ -8,21 +8,21 @@ matrix:
   include:
     - os: osx
       script:
-        - cargo check --verbose --features metal
+        - cargo clippy --features vulkan -- -D warnings
+        - cargo fmt -- --check
         - cargo test --verbose --features metal
     - os: windows
       before_install:
         - choco install -y ninja python cmake
       env: PATH=/c/Python37:/c/Python37/Scripts:$PATH
       script:
-        - cargo check --verbose --features vulkan
+        - cargo clippy --features vulkan -- -D warnings
+        - cargo fmt -- --check
         - cargo test --verbose --features vulkan
     - os: linux
       script:
-        - cargo check --verbose --features vulkan
+        - cargo clippy --features vulkan -- -D warnings
+        - cargo fmt -- --check
         - cargo test --verbose --features vulkan
   allow_failures:
     - os: linux
-script:
-  - cargo fmt -- --check
-  - cargo clippy -- -D warnings
