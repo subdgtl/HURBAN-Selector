@@ -11,12 +11,22 @@ edition = "2018"
 # This has to be done using features since target dependent compilation is
 # currently broken in Cargo: https://github.com/rust-lang/cargo/issues/2524
 [features]
+d3d11 = ["wgpu/dx11"]
+d3d12 = ["wgpu/dx12"]
 metal = ["wgpu/metal"]
 vulkan = ["wgpu/vulkan"]
 
+# Currently disabled. Not very stable yet and requires an explicit
+# init code path, might want to enable later.
+# opengl = ["wgpu/gl"]
+
 [dependencies]
-wgpu = "0.2.3"
+wgpu = { git = "https://github.com/gfx-rs/wgpu-rs", rev = "5dd361fc639e71af328504f9e27a08daf83d7633" }
 imgui = "0.1.0"
 imgui-winit-support = "0.1.0"
-shaderc = "0.6.0"
+log = "0.4.7"
+nalgebra = "0.18.0"
+env_logger = "0.6.2"
 
+[build-dependencies]
+shaderc = "0.6.0"
