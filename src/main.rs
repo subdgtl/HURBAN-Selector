@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use tinyfiledialogs;
 use wgpu::winit;
 
@@ -10,7 +8,7 @@ fn main() {
     let mut event_loop = winit::EventsLoop::new();
     let _window = winit::Window::new(&event_loop).expect("Failed to create window.");
     let mut running = true;
-    let mut loaded_models = HashMap::new();
+    let mut loaded_models = obj::LoadedModels::new();
 
     while running {
         event_loop.poll_events(|event| {
@@ -39,11 +37,7 @@ fn main() {
                                     Ok((tobj_models, _)) => {
                                         let models = obj::tobj_to_internal(tobj_models);
 
-                                        for model in models {
-                                            let key =
-                                                format!("{}-{}", file_path, model.name.clone());
-                                            loaded_models.insert(key, model);
-                                        }
+                                        loaded_models.insert(file_path, models);
 
                                         dbg!(&loaded_models);
                                     }

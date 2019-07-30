@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use tobj;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -13,6 +15,8 @@ pub struct Vertex {
 }
 
 pub type Index = u32;
+
+pub type LoadedModels = HashMap<String, Vec<Model>>;
 
 /// Converts `tobj::Model` vector into vector of internal `Model` representations.
 /// It expects valid `tobj::Model` representation, eg. number of positions
