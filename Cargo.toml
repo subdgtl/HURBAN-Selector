@@ -1,12 +1,14 @@
 [package]
 name = "hurban_selector"
 version = "0.1.0"
+edition = "2018"
+
 authors = [
     "Ondrej Slinták <ondrowan@gmail.com>",
     "Ján Tóth <yanchi.toth@gmail.com>",
     "Ján Pernecký <info@sub.digital>",
 ]
-edition = "2018"
+license = "GPL-3.0-only"
 
 # This has to be done using features since target dependent compilation is
 # currently broken in Cargo: https://github.com/rust-lang/cargo/issues/2524
