@@ -11,7 +11,10 @@
 
 Use `cargo run` with one of the following feature flags, depending on the platform:
 
-* `vulkan` on Windows
+* `vulkan` or `d3d12` on Windows
 * `metal` on macOS
 
-Eg. `cargo run --features vulkan`
+E.g. `cargo run --features vulkan`
+
+Other rendering backends (d3d11, OpenGL) may become supported once
+they are stable enough in `wgpu` and `gfx-hal`.
