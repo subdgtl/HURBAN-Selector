@@ -3,12 +3,13 @@ use wgpu::winit;
 
 mod file;
 mod obj;
+mod scene;
 
 fn main() {
     let mut event_loop = winit::EventsLoop::new();
     let _window = winit::Window::new(&event_loop).expect("Failed to create window.");
     let mut running = true;
-    let mut loaded_models = obj::LoadedModels::new();
+    let mut scene = scene::Scene::new();
 
     while running {
         event_loop.poll_events(|event| {
@@ -28,24 +29,19 @@ fn main() {
                         ..
                     } => match code {
                         winit::VirtualKeyCode::O => {
-                            if let Some(file_path) = tinyfiledialogs::open_file_dialog(
+                            if let Some(path) = tinyfiledialogs::open_file_dialog(
                                 "Open",
                                 "",
                                 Some((&["*.obj"], "Wavefront (.obj)")),
                             ) {
-                                match file::load_obj(&file_path) {
-                                    Ok((tobj_models, _)) => {
-                                        let models = obj::tobj_to_internal(tobj_models);
+                                let checksum = file::calculate_checksum(&path);
 
-                                        loaded_models.insert(file_path, models);
-
-                                        dbg!(&loaded_models);
-                                    }
-                                    Err(_) => tinyfiledialogs::message_box_ok(
+                                if scene.add_obj_contents(path, checksum).is_err() {
+                                    tinyfiledialogs::message_box_ok(
                                         "Error",
                                         "The obj file is not valid.",
                                         tinyfiledialogs::MessageBoxIcon::Error,
-                                    ),
+                                    )
                                 }
                             }
                         }
