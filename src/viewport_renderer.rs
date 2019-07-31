@@ -16,8 +16,8 @@ pub struct Vertex {
     pub position: [f32; 3],
 }
 
-// FIXME(yanchith): @Optimization Determine u16/u32 dynamically per
-// geometry to save memory
+// FIXME: @Optimization Determine u16/u32 dynamically per geometry to
+// save memory
 pub type Index = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,23 +25,25 @@ pub struct GeometryId(u64);
 
 #[derive(Debug)]
 pub enum ViewportRendererAddGeometryError {
-    TooManyVertices(u32, usize),
-    TooManyIndices(u32, usize),
+    TooManyVertices(usize),
+    TooManyIndices(usize),
 }
 
 impl fmt::Display for ViewportRendererAddGeometryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use ViewportRendererAddGeometryError::*;
         match self {
-            TooManyVertices(max, given) => write!(
+            TooManyVertices(given) => write!(
                 f,
                 "Geometry contains too many vertices {}. (max allowed is {})",
-                given, max,
+                given,
+                u32::max_value(),
             ),
-            TooManyIndices(max, given) => write!(
+            TooManyIndices(given) => write!(
                 f,
                 "Geometry contains too many indices: {}. (max allowed is {})",
-                given, max,
+                given,
+                u32::max_value(),
             ),
         }
     }
@@ -61,10 +63,16 @@ pub struct ViewportRenderer {
 }
 
 impl ViewportRenderer {
+    /// Create a new viewport renderer.
+    ///
+    /// Initializes GPU resources and the rendering pipeline to draw
+    /// to a texture of `output_format`. `screen_size` and
+    /// `view_matrix` are the initial states of the screen and camera,
+    /// and can be updated with setters later.
     pub fn new(
         device: &mut wgpu::Device,
-        screen_size: PhysicalSize,
         output_format: wgpu::TextureFormat,
+        screen_size: PhysicalSize,
         view_matrix: Matrix4<f32>,
     ) -> Self {
         let vs_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/shaders/shaded.vert.spv"));
@@ -169,6 +177,9 @@ impl ViewportRenderer {
         }
     }
 
+    /// Update the view matrix.
+    ///
+    /// Recomputes the scene's transformation matrix as necessary.
     pub fn set_view_matrix(&mut self, device: &mut wgpu::Device, view_matrix: Matrix4<f32>) {
         self.view_matrix = view_matrix;
 
@@ -176,6 +187,10 @@ impl ViewportRenderer {
         Self::upload_uniform_matrix_buffer(device, &self.uniform_matrix_buffer, &matrix);
     }
 
+    /// Update the screen size.
+    ///
+    /// Recreates depth texture and recomputes the scene's
+    /// transformation matrix as necessary.
     pub fn set_screen_size(&mut self, device: &mut wgpu::Device, screen_size: PhysicalSize) {
         let PhysicalSize { width, height } = screen_size;
         let (tex_width, tex_height) = (width as u32, height as u32);
@@ -188,15 +203,18 @@ impl ViewportRenderer {
         self.depth_texture = depth_texture.create_default_view();
     }
 
+    /// Upload geometry to the GPU.
+    ///
+    /// The list of vertices is in the "triangle list" format. The
+    /// returned id can be used to draw the geometry, or remove it.
     pub fn add_geometry(
         &mut self,
         device: &wgpu::Device,
         vertices: &[Vertex],
     ) -> Result<GeometryId, ViewportRendererAddGeometryError> {
         let id = GeometryId(self.geometries_next_id);
-        let vertex_count = u32::try_from(vertices.len()).map_err(|_| {
-            ViewportRendererAddGeometryError::TooManyVertices(u32::max_value(), vertices.len())
-        })?;
+        let vertex_count = u32::try_from(vertices.len())
+            .map_err(|_| ViewportRendererAddGeometryError::TooManyVertices(vertices.len()))?;
 
         log::debug!("Adding geometry {} with {} vertices", id.0, vertex_count);
 
@@ -216,6 +234,11 @@ impl ViewportRenderer {
         Ok(id)
     }
 
+    /// Upload indexed geometry to the GPU.
+    ///
+    /// The indices are in the "triangle list" format, and must refer
+    /// to the provided vertex list. The returned id can be used to
+    /// draw the geometry, or remove it.
     pub fn add_geometry_indexed(
         &mut self,
         device: &wgpu::Device,
@@ -223,12 +246,10 @@ impl ViewportRenderer {
         indices: &[Index],
     ) -> Result<GeometryId, ViewportRendererAddGeometryError> {
         let id = GeometryId(self.geometries_next_id);
-        let vertex_count = u32::try_from(vertices.len()).map_err(|_| {
-            ViewportRendererAddGeometryError::TooManyVertices(u32::max_value(), vertices.len())
-        })?;
-        let index_count = u32::try_from(indices.len()).map_err(|_| {
-            ViewportRendererAddGeometryError::TooManyIndices(u32::max_value(), indices.len())
-        })?;
+        let vertex_count = u32::try_from(vertices.len())
+            .map_err(|_| ViewportRendererAddGeometryError::TooManyVertices(vertices.len()))?;
+        let index_count = u32::try_from(indices.len())
+            .map_err(|_| ViewportRendererAddGeometryError::TooManyIndices(indices.len()))?;
 
         log::debug!(
             "Adding indexed geometry {} with {} vertices and {} indices",
@@ -257,41 +278,22 @@ impl ViewportRenderer {
         Ok(id)
     }
 
+    /// Remove a previously uploaded geometry from the GPU.
     pub fn remove_geometry(&mut self, id: GeometryId) {
         log::debug!("Removing geometry with {}", id.0);
         // Dropping the geometry descriptor here unstreams the buffers from device memory
         self.geometries.remove(&id.0);
     }
 
+    /// Draw previously uploaded geometries as one of the commands
+    /// executed with the `command_encoder` to the
+    /// `target_attachment`.
     pub fn draw_geometry(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         target_attachment: &wgpu::TextureView,
         ids: &[GeometryId],
     ) {
-        // FIXME(yanchith): Try a more high level renderer API that
-        // would wrap both the viewport and gui renderers so that we
-        // don't have to pass &Device and &mut Encoder
-        // everywhere. This main renderer could delegeta to the
-        // various subrenderers as it sees fit.
-        /*
-
-        let mut renderer = ...;
-
-        loop {
-            let mut render_pass = renderer.begin_render_pass();
-
-            render_pass.draw_grid(...);
-            render_pass.draw_geometry(...);
-            render_pass.draw_geometry_wireframe(...);
-            render_pass.draw_geometry_highlight(...);
-            render_pass_draw_ui(...);
-
-            render_pass.finish()?; // Consumes. Drop panicks unless this is explicitely called.
-        }
-
-        */
-
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: target_attachment,
@@ -335,6 +337,10 @@ impl ViewportRenderer {
         }
     }
 
+    /// Create the global matrix for the scene and camera given an
+    /// aspect ratio and a view matrix. Applies vulkan/wgpu correction
+    /// matrix to the perspective projection matrix which assumes
+    /// OpenGL clip-space coordinates.
     fn create_matrix(aspect_ratio: f32, view_matrix: &Matrix4<f32>) -> Matrix4<f32> {
         const FOVY: f32 = std::f32::consts::FRAC_PI_3;
         const ZNEAR: f32 = 0.01;
@@ -346,8 +352,7 @@ impl ViewportRenderer {
         // as before and use all the libraries that assume OpenGL is
         // to apply a correction to the projection matrix which
         // normally changes the right-handed OpenGL world-space to
-        // left-handed OpenGL clip-space (apart from actually
-        // performing the projection).
+        // left-handed OpenGL clip-space.
         // https://matthewwellings.com/blog/the-new-vulkan-coordinate-system/
         #[rustfmt::skip]
         let wgpu_correction_matrix = Matrix4::new(

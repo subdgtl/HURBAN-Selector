@@ -25,9 +25,9 @@ fn main() {
         .expect("Failed to get window inner size")
         .to_physical(window.get_hidpi_factor());
 
-    let instance = wgpu::Instance::new();
-    let surface = instance.create_surface(&window);
-    let adapter = instance.get_adapter(&wgpu::AdapterDescriptor {
+    let wgpu_instance = wgpu::Instance::new();
+    let surface = wgpu_instance.create_surface(&window);
+    let adapter = wgpu_instance.get_adapter(&wgpu::AdapterDescriptor {
         power_preference: wgpu::PowerPreference::HighPerformance,
     });
 
@@ -44,8 +44,8 @@ fn main() {
 
     let mut viewport_renderer = ViewportRenderer::new(
         &mut device,
-        window_size,
         SWAP_CHAIN_FORMAT,
+        window_size,
         Matrix4::look_at_rh(
             &camera_position_initial,
             &Point3::new(0f32, 0.0, 0.0),
