@@ -1,18 +1,13 @@
 use tobj;
 
+use crate::viewport_renderer::{Index, Vertex};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Model {
     pub name: String,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<Index>,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Vertex {
-    pub position: [f32; 3],
-}
-
-pub type Index = u32;
 
 /// Converts `tobj::Model` vector into vector of internal `Model` representations.
 /// It expects valid `tobj::Model` representation, eg. number of positions
