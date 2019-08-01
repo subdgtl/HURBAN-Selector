@@ -7,9 +7,9 @@ use crate::file;
 use crate::obj;
 
 pub struct Scene {
-    path_checksums: HashMap<String, u32>,
-    checksum_paths: HashMap<u32, Vec<String>>,
-    loaded_models: HashMap<String, Vec<obj::Model>>,
+    pub path_checksums: HashMap<String, u32>,
+    pub checksum_paths: HashMap<u32, Vec<String>>,
+    pub loaded_models: HashMap<String, Vec<obj::Model>>,
 }
 
 impl Scene {
