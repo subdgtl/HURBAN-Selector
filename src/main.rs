@@ -100,19 +100,6 @@ fn main() {
         event_loop.poll_events(|event| {
             if let winit::Event::WindowEvent { event, .. } = event {
                 match event {
-                    winit::WindowEvent::KeyboardInput {
-                        input:
-                            winit::KeyboardInput {
-                                virtual_keycode: Some(code),
-                                state: winit::ElementState::Pressed,
-                                ..
-                            },
-                        ..
-                    } => {
-                        if let winit::VirtualKeyCode::Q = code {
-                            running = false;
-                        }
-                    }
                     winit::WindowEvent::CloseRequested => running = false,
                     winit::WindowEvent::Resized(logical_size) => {
                         let physical_size = logical_size.to_physical(window.get_hidpi_factor());
