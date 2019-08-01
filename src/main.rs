@@ -8,15 +8,10 @@ use wgpu;
 use wgpu::winit;
 use wgpu::winit::dpi::PhysicalSize;
 
-use crate::viewport_renderer::ViewportRenderer;
+use hurban_selector::viewport_renderer::ViewportRenderer;
+use hurban_selector::{file, primitives, scene};
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
-
-mod file;
-mod obj;
-mod primitives;
-mod scene;
-mod viewport_renderer;
 
 fn main() {
     #[cfg(debug_assertions)]

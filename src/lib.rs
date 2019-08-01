@@ -1,4 +1,5 @@
 pub mod file;
-mod obj;
+pub mod obj;
+pub mod primitives;
 pub mod scene;
-mod viewport_renderer;
+pub mod viewport_renderer;
