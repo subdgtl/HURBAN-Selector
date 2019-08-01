@@ -6,6 +6,7 @@ use tobj;
 use crate::file;
 use crate::obj;
 
+#[derive(Default)]
 pub struct Scene {
     pub path_checksums: HashMap<String, u32>,
     pub checksum_paths: HashMap<u32, Vec<String>>,
@@ -14,11 +15,7 @@ pub struct Scene {
 
 impl Scene {
     pub fn new() -> Self {
-        Self {
-            path_checksums: HashMap::new(),
-            checksum_paths: HashMap::new(),
-            loaded_models: HashMap::new(),
-        }
+        Default::default()
     }
 
     pub fn add_obj_contents(&mut self, path: String, checksum: u32) -> Result<(), tobj::LoadError> {
