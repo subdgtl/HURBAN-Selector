@@ -1,14 +1,14 @@
+use std::f32;
 use std::time::Instant;
 
-#[cfg(debug_assertions)]
-use env_logger;
-use nalgebra::{Matrix4, Point3, Rotation3, Vector3};
-use wgpu;
 use wgpu::winit;
-use wgpu::winit::dpi::PhysicalSize;
 
+use crate::camera::{Camera, CameraOptions};
+use crate::input::InputManager;
 use crate::viewport_renderer::ViewportRenderer;
 
+mod camera;
+mod input;
 mod primitives;
 mod viewport_renderer;
 
@@ -39,26 +39,35 @@ fn main() {
     });
     let mut swap_chain = create_swap_chain(&device, &surface, window_size);
 
-    // FIXME: This will later come from the camera system
-    let camera_position_initial = &Point3::new(1.5f32, -5.0, 3.0);
-
-    let mut viewport_renderer = ViewportRenderer::new(
-        &mut device,
-        SWAP_CHAIN_FORMAT,
-        window_size,
-        Matrix4::look_at_rh(
-            &camera_position_initial,
-            &Point3::new(0f32, 0.0, 0.0),
-            &Vector3::new(0.0, 0.0, 1.0),
-        ),
+    let mut input_manager = InputManager::new();
+    let mut camera = Camera::new(
+        [window_size.width as f32, window_size.height as f32],
+        5.0,
+        45_f32.to_radians(),
+        60_f32.to_radians(),
+        CameraOptions {
+            radius_min: 1.0,
+            radius_max: 500.0,
+            polar_angle_distance_min: 5f32.to_radians(),
+            speed_pan: 0.1,
+            speed_rotate: 0.005,
+            speed_zoom: 0.01,
+            speed_zoom_step: 1.0,
+            fovy: 45f32.to_radians(),
+            znear: 0.01,
+            zfar: 1000.0,
+        },
     );
+    let mut viewport_renderer =
+        ViewportRenderer::new(&mut device, SWAP_CHAIN_FORMAT, window_size, camera.matrix());
 
     // FIXME: This is just temporary code so that we can see something
     // in the scene and know the renderer works.
     let (cube1_v, cube1_i) = primitives::cube([0.0, 0.0, 0.0], 0.5);
     let (cube2_v, cube2_i) = primitives::cube([5.0, 5.0, 0.0], 0.7);
     let (cube3_v, cube3_i) = primitives::cube([5.0, 0.0, 0.0], 1.0);
-    let (cube4_v, cube4_i) = primitives::cube([0.0, 0.0, 5.0], 1.5);
+    let (cube4_v, cube4_i) = primitives::cube([0.0, 5.0, 0.0], 0.9);
+    let (cube5_v, cube5_i) = primitives::cube([0.0, 0.0, 5.0], 1.5);
     let plane1_v = primitives::plane([0.0, 0.0, 20.0], 10.0);
     let plane2_v = primitives::plane([0.0, 0.0, -20.0], 10.0);
 
@@ -74,6 +83,9 @@ fn main() {
     let cube4 = viewport_renderer
         .add_geometry_indexed(&device, &cube4_v, &cube4_i)
         .unwrap();
+    let cube5 = viewport_renderer
+        .add_geometry_indexed(&device, &cube5_v, &cube5_i)
+        .unwrap();
     let plane1 = viewport_renderer.add_geometry(&device, &plane1_v).unwrap();
     let plane2 = viewport_renderer.add_geometry(&device, &plane2_v).unwrap();
 
@@ -82,7 +94,7 @@ fn main() {
 
     let mut running = true;
     while running {
-        let (_duration_last_frame, duration_running) = {
+        let (_duration_last_frame, _duration_running) = {
             let now = Instant::now();
             let duration_last_frame = now.duration_since(time);
             let duration_running = now.duration_since(time_start);
@@ -91,52 +103,50 @@ fn main() {
             (duration_last_frame, duration_running)
         };
 
-        event_loop.poll_events(|event| {
-            if let winit::Event::WindowEvent { event, .. } = event {
-                match event {
-                    winit::WindowEvent::KeyboardInput {
-                        input:
-                            winit::KeyboardInput {
-                                virtual_keycode: Some(code),
-                                state: winit::ElementState::Pressed,
-                                ..
-                            },
-                        ..
-                    } => {
-                        if let winit::VirtualKeyCode::Q = code {
-                            running = false;
-                        }
-                    }
-                    winit::WindowEvent::CloseRequested => running = false,
-                    winit::WindowEvent::Resized(logical_size) => {
-                        let physical_size = logical_size.to_physical(window.get_hidpi_factor());
-                        log::debug!(
-                            "Window resized to new size: logical [{},{}], physical [{},{}]",
-                            logical_size.width,
-                            logical_size.height,
-                            physical_size.width,
-                            physical_size.height,
-                        );
+        input_manager.start_frame();
+        event_loop.poll_events(|event| input_manager.process_event(event));
+        {
+            let input_state = input_manager.input_state();
 
-                        swap_chain = create_swap_chain(&device, &surface, physical_size);
-                        viewport_renderer.set_screen_size(&mut device, physical_size);
-                    }
-                    _ => (),
-                }
+            let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
+            let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
+            let [rotate_x, rotate_y] = input_state.camera_rotate;
+
+            camera.pan_ground(pan_ground_x, pan_ground_y);
+            camera.pan_screen(pan_screen_x, pan_screen_y);
+            camera.rotate(rotate_x, rotate_y);
+            camera.zoom(input_state.camera_zoom);
+            camera.zoom_step(input_state.camera_zoom_steps);
+
+            if input_state.camera_reset_viewport {
+                // FIXME: For now this is a cheap man's version of:
+                // https://trello.com/c/JFNQ6GyJ/85-center-viewport
+                camera.reset_origin();
             }
-        });
 
-        // FIXME: This will eventually come from the camera system
-        let camera_rotation =
-            Rotation3::new(Vector3::z() * duration_running.as_millis() as f32 / 1000.0);
-        let camera_position = camera_rotation * camera_position_initial;
-        let view_matrix = Matrix4::look_at_rh(
-            &camera_position,
-            &Point3::new(0f32, 0.0, 0.0),
-            &Vector3::new(0.0, 0.0, 1.0),
-        );
+            if input_state.close_requested {
+                running = false;
+            }
 
-        viewport_renderer.set_view_matrix(&mut device, view_matrix);
+            if let Some(logical_size) = input_state.window_resized {
+                let physical_size = logical_size.to_physical(window.get_hidpi_factor());
+                log::debug!(
+                    "Window resized to new size: logical [{},{}], physical [{},{}]",
+                    logical_size.width,
+                    logical_size.height,
+                    physical_size.width,
+                    physical_size.height,
+                );
+
+                camera.set_screen_size([physical_size.width as f32, physical_size.height as f32]);
+
+                swap_chain = create_swap_chain(&device, &surface, physical_size);
+                viewport_renderer.set_screen_size(&mut device, physical_size);
+                viewport_renderer.set_camera_matrix(&mut device, camera.matrix());
+            }
+        }
+
+        viewport_renderer.set_camera_matrix(&mut device, camera.matrix());
 
         let frame = swap_chain.get_next_texture();
         let mut encoder =
@@ -145,7 +155,7 @@ fn main() {
         viewport_renderer.draw_geometry(
             &mut encoder,
             &frame.view,
-            &[cube1, cube2, cube3, cube4, plane1, plane2],
+            &[cube1, cube2, cube3, cube4, cube5, plane1, plane2],
         );
 
         device.get_queue().submit(&[encoder.finish()]);
@@ -155,6 +165,7 @@ fn main() {
     viewport_renderer.remove_geometry(cube2);
     viewport_renderer.remove_geometry(cube3);
     viewport_renderer.remove_geometry(cube4);
+    viewport_renderer.remove_geometry(cube5);
     viewport_renderer.remove_geometry(plane1);
     viewport_renderer.remove_geometry(plane2);
 }
@@ -162,7 +173,7 @@ fn main() {
 fn create_swap_chain(
     device: &wgpu::Device,
     surface: &wgpu::Surface,
-    window_size: PhysicalSize,
+    window_size: winit::dpi::PhysicalSize,
 ) -> wgpu::SwapChain {
     device.create_swap_chain(
         &surface,
