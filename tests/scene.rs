@@ -4,7 +4,7 @@ use hurban_selector::file;
 use hurban_selector::scene::Scene;
 
 #[test]
-fn it_adds_valid_obj_file() {
+fn test_adds_valid_obj_file() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/valid.obj".to_string();
     let checksum = file::calculate_checksum(&path);
@@ -29,7 +29,7 @@ fn it_adds_valid_obj_file() {
 }
 
 #[test]
-fn it_adds_two_different_valid_obj_files() {
+fn test_adds_two_different_valid_obj_files() {
     let mut scene = Scene::new();
     let path_1 = "tests/fixtures/valid.obj".to_string();
     let checksum_1 = file::calculate_checksum(&path_1);
@@ -62,7 +62,7 @@ fn it_adds_two_different_valid_obj_files() {
 }
 
 #[test]
-fn it_does_not_add_invalid_obj_file() {
+fn test_does_not_add_invalid_obj_file() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/invalid.obj".to_string();
     let checksum = file::calculate_checksum(&path);
@@ -76,7 +76,7 @@ fn it_does_not_add_invalid_obj_file() {
 }
 
 #[test]
-fn it_does_not_add_the_same_obj_file_with_the_same_contents_twice() {
+fn test_does_not_add_the_same_obj_file_with_the_same_contents_twice() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/valid.obj".to_string();
     let checksum = file::calculate_checksum(&path);
@@ -104,7 +104,7 @@ fn it_does_not_add_the_same_obj_file_with_the_same_contents_twice() {
 }
 
 #[test]
-fn it_adds_two_different_files_with_the_same_contents() {
+fn test_adds_two_different_files_with_the_same_contents() {
     let mut scene = Scene::new();
     let path_1 = "tests/fixtures/valid.obj".to_string();
     let checksum_1 = file::calculate_checksum(&path_1);
