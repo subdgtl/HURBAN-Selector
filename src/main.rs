@@ -143,6 +143,9 @@ fn main() {
                             }
                             dbg!(save_file);
                         }
+                        winit::VirtualKeyCode::Q => {
+                            running = false;
+                        }
                         _ => {}
                     },
                     _ => (),
