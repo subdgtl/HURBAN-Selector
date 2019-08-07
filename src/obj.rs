@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use tobj;
 
 use crate::viewport_renderer::{Index, Vertex};
@@ -7,6 +9,14 @@ pub struct Model {
     pub name: String,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<Index>,
+}
+
+/// Converts contents of obj file into tobj representation. Materials are
+/// ignored.
+pub fn obj_buf_into_tobj(file_contents: &str) -> tobj::LoadResult {
+    tobj::load_obj_buf(&mut file_contents.as_bytes(), |_| {
+        Ok((vec![], HashMap::new()))
+    })
 }
 
 /// Converts `tobj::Model` vector into vector of internal `Model` representations.

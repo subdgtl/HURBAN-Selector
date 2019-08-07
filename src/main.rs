@@ -9,7 +9,7 @@ use wgpu::winit;
 use wgpu::winit::dpi::PhysicalSize;
 
 use hurban_selector::viewport_renderer::ViewportRenderer;
-use hurban_selector::{file, primitives, scene};
+use hurban_selector::{primitives, scene};
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
@@ -124,9 +124,7 @@ fn main() {
                                 "",
                                 Some((&["*.obj"], "Wavefront (.obj)")),
                             ) {
-                                let checksum = file::calculate_checksum(&path);
-
-                                if scene.add_obj_contents(path, checksum).is_err() {
+                                if scene.add_obj_contents(path).is_err() {
                                     tinyfiledialogs::message_box_ok(
                                         "Error",
                                         "The obj file is not valid.",

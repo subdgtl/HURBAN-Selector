@@ -1,31 +1,14 @@
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufReader;
-use std::path::Path;
+use std::fs;
 
 use crc32fast;
-use tobj;
 
-/// Loads file from `file_path` and converts it into `tobj` result. `file_path`
-/// expects valid path string. It's not validated since the only input should
-/// be from system file dialogs.
-pub fn load_obj(file_path: &str) -> tobj::LoadResult {
-    let path = Path::new(file_path);
-
-    tobj::load_obj(&path)
+pub fn load_file_into_string(file_path: &str) -> String {
+    fs::read_to_string(file_path).unwrap_or_else(|_| panic!("File {} should be loaded", file_path))
 }
 
-pub fn calculate_checksum(file_path: &str) -> u32 {
-    let file = File::open(file_path).unwrap_or_else(|_| panic!("File {} to be loaded", file_path));
-    let mut reader = BufReader::new(file);
-    let mut contents = String::new();
-    reader
-        .read_to_string(&mut contents)
-        .unwrap_or_else(|_| panic!("Read contents of file {} into string.", file_path));
-
-    let bytes = contents.into_bytes();
+pub fn calculate_checksum(string: &str) -> u32 {
     let mut hasher = crc32fast::Hasher::new();
 
-    hasher.update(&bytes);
+    hasher.update(string.as_bytes());
     hasher.finalize()
 }

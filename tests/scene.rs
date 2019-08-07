@@ -7,10 +7,11 @@ use hurban_selector::scene::Scene;
 fn test_adds_valid_obj_file() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/valid.obj".to_string();
-    let checksum = file::calculate_checksum(&path);
+    let file_buffer = file::load_file_into_string(&path);
+    let checksum = file::calculate_checksum(&file_buffer);
 
     scene
-        .add_obj_contents(path.clone(), checksum)
+        .add_obj_contents(path.clone())
         .expect("Valid object should be loaded");
 
     let mut expected_path_checksums = HashMap::new();
@@ -32,15 +33,17 @@ fn test_adds_valid_obj_file() {
 fn test_adds_two_different_valid_obj_files() {
     let mut scene = Scene::new();
     let path_1 = "tests/fixtures/valid.obj".to_string();
-    let checksum_1 = file::calculate_checksum(&path_1);
+    let file_buffer_1 = file::load_file_into_string(&path_1);
+    let checksum_1 = file::calculate_checksum(&file_buffer_1);
     let path_2 = "tests/fixtures/valid_2.obj".to_string();
-    let checksum_2 = file::calculate_checksum(&path_2);
+    let file_buffer_2 = file::load_file_into_string(&path_2);
+    let checksum_2 = file::calculate_checksum(&file_buffer_2);
 
     scene
-        .add_obj_contents(path_1.clone(), checksum_1)
+        .add_obj_contents(path_1.clone())
         .expect("Valid object should be loaded");
     scene
-        .add_obj_contents(path_2.clone(), checksum_2)
+        .add_obj_contents(path_2.clone())
         .expect("Valid object should be loaded");
 
     let mut expected_path_checksums = HashMap::new();
@@ -65,9 +68,8 @@ fn test_adds_two_different_valid_obj_files() {
 fn test_does_not_add_invalid_obj_file() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/invalid.obj".to_string();
-    let checksum = file::calculate_checksum(&path);
 
-    let result = scene.add_obj_contents(path, checksum);
+    let result = scene.add_obj_contents(path);
 
     assert_eq!(result.is_err(), true);
     assert_eq!(scene.path_checksums, HashMap::new());
@@ -79,13 +81,14 @@ fn test_does_not_add_invalid_obj_file() {
 fn test_does_not_add_the_same_obj_file_with_the_same_contents_twice() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/valid.obj".to_string();
-    let checksum = file::calculate_checksum(&path);
+    let file_buffer = file::load_file_into_string(&path);
+    let checksum = file::calculate_checksum(&file_buffer);
 
     scene
-        .add_obj_contents(path.clone(), checksum)
+        .add_obj_contents(path.clone())
         .expect("Valid object should be loaded");
     scene
-        .add_obj_contents(path.clone(), checksum)
+        .add_obj_contents(path.clone())
         .expect("Valid object should be loaded");
 
     let mut expected_path_checksums = HashMap::new();
@@ -107,15 +110,17 @@ fn test_does_not_add_the_same_obj_file_with_the_same_contents_twice() {
 fn test_adds_two_different_files_with_the_same_contents() {
     let mut scene = Scene::new();
     let path_1 = "tests/fixtures/valid.obj".to_string();
-    let checksum_1 = file::calculate_checksum(&path_1);
+    let file_buffer_1 = file::load_file_into_string(&path_1);
+    let checksum_1 = file::calculate_checksum(&file_buffer_1);
     let path_2 = "tests/fixtures/valid_copy.obj".to_string();
-    let checksum_2 = file::calculate_checksum(&path_2);
+    let file_buffer_2 = file::load_file_into_string(&path_2);
+    let checksum_2 = file::calculate_checksum(&file_buffer_2);
 
     scene
-        .add_obj_contents(path_1.clone(), checksum_1)
+        .add_obj_contents(path_1.clone())
         .expect("Valid object should be loaded");
     scene
-        .add_obj_contents(path_2.clone(), checksum_2)
+        .add_obj_contents(path_2.clone())
         .expect("Valid object should be loaded");
 
     let mut expected_path_checksums = HashMap::new();

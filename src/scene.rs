@@ -18,7 +18,9 @@ impl Scene {
         Default::default()
     }
 
-    pub fn add_obj_contents(&mut self, path: String, checksum: u32) -> Result<(), tobj::LoadError> {
+    pub fn add_obj_contents(&mut self, path: String) -> Result<(), tobj::LoadError> {
+        let file_contents = file::load_file_into_string(&path);
+        let checksum = file::calculate_checksum(&file_contents);
         let is_identical_obj_loaded =
             self.checksum_paths.contains_key(&checksum) && !self.loaded_models.contains_key(&path);
 
@@ -28,7 +30,7 @@ impl Scene {
             match self.path_checksums.entry(path.clone()) {
                 Entry::Occupied(path_checksum) => {
                     if checksum != *path_checksum.get() {
-                        match file::load_obj(&path) {
+                        match obj::obj_buf_into_tobj(&file_contents) {
                             Ok((tobj_models, _)) => {
                                 let models = obj::tobj_to_internal(tobj_models);
 
@@ -38,8 +40,9 @@ impl Scene {
                         }
                     }
                 }
-                Entry::Vacant(path_checksum) => match file::load_obj(&path) {
+                Entry::Vacant(path_checksum) => match obj::obj_buf_into_tobj(&file_contents) {
                     Ok((tobj_models, _)) => {
+                        dbg!(&tobj_models);
                         let models = obj::tobj_to_internal(tobj_models);
 
                         self.loaded_models.insert(path.clone(), models);
