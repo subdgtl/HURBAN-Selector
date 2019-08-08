@@ -7,8 +7,8 @@ use hurban_selector::scene::Scene;
 fn test_adds_valid_obj_file() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/valid.obj".to_string();
-    let file_buffer = file::load_file_into_string(&path);
-    let checksum = file::calculate_checksum(&file_buffer);
+    let file_contents = file::load_file_into_string(&path);
+    let checksum = file::calculate_checksum(&file_contents);
 
     scene
         .add_obj_contents(&path)
@@ -33,11 +33,11 @@ fn test_adds_valid_obj_file() {
 fn test_adds_two_different_valid_obj_files() {
     let mut scene = Scene::new();
     let path_1 = "tests/fixtures/valid.obj".to_string();
-    let file_buffer_1 = file::load_file_into_string(&path_1);
-    let checksum_1 = file::calculate_checksum(&file_buffer_1);
+    let file_contents_1 = file::load_file_into_string(&path_1);
+    let checksum_1 = file::calculate_checksum(&file_contents_1);
     let path_2 = "tests/fixtures/valid_2.obj".to_string();
-    let file_buffer_2 = file::load_file_into_string(&path_2);
-    let checksum_2 = file::calculate_checksum(&file_buffer_2);
+    let file_contents_2 = file::load_file_into_string(&path_2);
+    let checksum_2 = file::calculate_checksum(&file_contents_2);
 
     scene
         .add_obj_contents(&path_1)
@@ -81,8 +81,8 @@ fn test_does_not_add_invalid_obj_file() {
 fn test_does_not_add_the_same_obj_file_with_the_same_contents_twice() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/valid.obj".to_string();
-    let file_buffer = file::load_file_into_string(&path);
-    let checksum = file::calculate_checksum(&file_buffer);
+    let file_contents = file::load_file_into_string(&path);
+    let checksum = file::calculate_checksum(&file_contents);
 
     scene
         .add_obj_contents(&path)
@@ -110,11 +110,11 @@ fn test_does_not_add_the_same_obj_file_with_the_same_contents_twice() {
 fn test_adds_two_different_files_with_the_same_contents() {
     let mut scene = Scene::new();
     let path_1 = "tests/fixtures/valid.obj".to_string();
-    let file_buffer_1 = file::load_file_into_string(&path_1);
-    let checksum_1 = file::calculate_checksum(&file_buffer_1);
+    let file_contents_1 = file::load_file_into_string(&path_1);
+    let checksum_1 = file::calculate_checksum(&file_contents_1);
     let path_2 = "tests/fixtures/valid_copy.obj".to_string();
-    let file_buffer_2 = file::load_file_into_string(&path_2);
-    let checksum_2 = file::calculate_checksum(&file_buffer_2);
+    let file_contents_2 = file::load_file_into_string(&path_2);
+    let checksum_2 = file::calculate_checksum(&file_contents_2);
 
     scene
         .add_obj_contents(&path_1)
