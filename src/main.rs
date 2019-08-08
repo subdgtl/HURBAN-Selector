@@ -124,13 +124,24 @@ fn main() {
                                 "",
                                 Some((&["*.obj"], "Wavefront (.obj)")),
                             ) {
-                                if scene.add_obj_contents(&path).is_err() {
+                                if let Err(err) = scene.add_obj_contents(&path) {
+                                    let error_message = match err {
+                                        scene::ImporterError::FileNotFound => "File was not found.",
+                                        scene::ImporterError::InvalidStructure => {
+                                            "The obj file is not valid."
+                                        }
+                                        scene::ImporterError::PermissionDenied => {
+                                            "Permission denied."
+                                        }
+                                        scene::ImporterError::Other => "Unexpected error happened.",
+                                    };
+
                                     tinyfiledialogs::message_box_ok(
                                         "Error",
-                                        "The obj file is not valid.",
+                                        error_message,
                                         tinyfiledialogs::MessageBoxIcon::Error,
                                     )
-                                }
+                                };
                             }
                         }
                         winit::VirtualKeyCode::S => {

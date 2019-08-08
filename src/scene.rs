@@ -1,10 +1,18 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-
-use tobj;
+use std::fs;
+use std::io::ErrorKind;
 
 use crate::file;
 use crate::obj;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ImporterError {
+    FileNotFound,
+    PermissionDenied,
+    InvalidStructure,
+    Other,
+}
 
 #[derive(Default)]
 pub struct Scene {
@@ -18,8 +26,8 @@ impl Scene {
         Default::default()
     }
 
-    pub fn add_obj_contents(&mut self, path: &str) -> Result<(), tobj::LoadError> {
-        let file_contents = file::load_file_into_string(&path);
+    pub fn add_obj_contents(&mut self, path: &str) -> Result<(), ImporterError> {
+        let file_contents = self.load_file_to_string(path)?;
         let checksum = file::calculate_checksum(&file_contents);
         let is_identical_obj_loaded =
             self.checksum_paths.contains_key(&checksum) && !self.loaded_models.contains_key(path);
@@ -36,7 +44,7 @@ impl Scene {
 
                                 self.loaded_models.insert(path.to_string(), models);
                             }
-                            Err(load_error) => return Err(load_error),
+                            Err(_) => return Err(ImporterError::InvalidStructure),
                         }
                     }
                 }
@@ -49,12 +57,25 @@ impl Scene {
                         path_checksum.insert(checksum);
                         self.checksum_paths.insert(checksum, vec![path.to_string()]);
                     }
-                    Err(load_error) => return Err(load_error),
+                    Err(_) => return Err(ImporterError::InvalidStructure),
                 },
             }
         }
 
         Ok(())
+    }
+
+    /// Loads contents of file to string. In case of any error, it is converted
+    /// into `ImporterError`.
+    fn load_file_to_string(&self, path: &str) -> Result<String, ImporterError> {
+        match fs::read_to_string(path) {
+            Ok(contents) => Ok(contents),
+            Err(err) => match err.kind() {
+                ErrorKind::NotFound => Err(ImporterError::FileNotFound),
+                ErrorKind::PermissionDenied => Err(ImporterError::PermissionDenied),
+                _ => Err(ImporterError::Other),
+            },
+        }
     }
 
     fn duplicate_obj_models(&mut self, path: &str, checksum: u32) {

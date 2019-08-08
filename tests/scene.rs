@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use hurban_selector::file;
-use hurban_selector::scene::Scene;
+use hurban_selector::scene::{ImporterError, Scene};
 
 #[test]
 fn test_adds_valid_obj_file() {
@@ -69,9 +69,26 @@ fn test_does_not_add_invalid_obj_file() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/invalid.obj".to_string();
 
-    let result = scene.add_obj_contents(&path);
+    let error = scene
+        .add_obj_contents(&path)
+        .expect_err("Error should be thrown");
 
-    assert_eq!(result.is_err(), true);
+    assert_eq!(error, ImporterError::InvalidStructure);
+    assert_eq!(scene.path_checksums, HashMap::new());
+    assert_eq!(scene.checksum_paths, HashMap::new());
+    assert_eq!(scene.loaded_models, HashMap::new());
+}
+
+#[test]
+fn test_does_not_add_nonexistent_file() {
+    let mut scene = Scene::new();
+    let path = "tests/fixtures/wrong_path.obj".to_string();
+
+    let error = scene
+        .add_obj_contents(&path)
+        .expect_err("Error should be thrown");
+
+    assert_eq!(error, ImporterError::FileNotFound);
     assert_eq!(scene.path_checksums, HashMap::new());
     assert_eq!(scene.checksum_paths, HashMap::new());
     assert_eq!(scene.loaded_models, HashMap::new());
