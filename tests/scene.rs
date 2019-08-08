@@ -11,7 +11,7 @@ fn test_adds_valid_obj_file() {
     let checksum = file::calculate_checksum(&file_buffer);
 
     scene
-        .add_obj_contents(path.clone())
+        .add_obj_contents(&path)
         .expect("Valid object should be loaded");
 
     let mut expected_path_checksums = HashMap::new();
@@ -40,10 +40,10 @@ fn test_adds_two_different_valid_obj_files() {
     let checksum_2 = file::calculate_checksum(&file_buffer_2);
 
     scene
-        .add_obj_contents(path_1.clone())
+        .add_obj_contents(&path_1)
         .expect("Valid object should be loaded");
     scene
-        .add_obj_contents(path_2.clone())
+        .add_obj_contents(&path_2)
         .expect("Valid object should be loaded");
 
     let mut expected_path_checksums = HashMap::new();
@@ -69,7 +69,7 @@ fn test_does_not_add_invalid_obj_file() {
     let mut scene = Scene::new();
     let path = "tests/fixtures/invalid.obj".to_string();
 
-    let result = scene.add_obj_contents(path);
+    let result = scene.add_obj_contents(&path);
 
     assert_eq!(result.is_err(), true);
     assert_eq!(scene.path_checksums, HashMap::new());
@@ -85,10 +85,10 @@ fn test_does_not_add_the_same_obj_file_with_the_same_contents_twice() {
     let checksum = file::calculate_checksum(&file_buffer);
 
     scene
-        .add_obj_contents(path.clone())
+        .add_obj_contents(&path)
         .expect("Valid object should be loaded");
     scene
-        .add_obj_contents(path.clone())
+        .add_obj_contents(&path)
         .expect("Valid object should be loaded");
 
     let mut expected_path_checksums = HashMap::new();
@@ -117,10 +117,10 @@ fn test_adds_two_different_files_with_the_same_contents() {
     let checksum_2 = file::calculate_checksum(&file_buffer_2);
 
     scene
-        .add_obj_contents(path_1.clone())
+        .add_obj_contents(&path_1)
         .expect("Valid object should be loaded");
     scene
-        .add_obj_contents(path_2.clone())
+        .add_obj_contents(&path_2)
         .expect("Valid object should be loaded");
 
     let mut expected_path_checksums = HashMap::new();

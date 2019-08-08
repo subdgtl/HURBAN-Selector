@@ -124,7 +124,7 @@ fn main() {
                                 "",
                                 Some((&["*.obj"], "Wavefront (.obj)")),
                             ) {
-                                if scene.add_obj_contents(path).is_err() {
+                                if scene.add_obj_contents(&path).is_err() {
                                     tinyfiledialogs::message_box_ok(
                                         "Error",
                                         "The obj file is not valid.",

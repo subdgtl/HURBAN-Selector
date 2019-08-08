@@ -18,23 +18,23 @@ impl Scene {
         Default::default()
     }
 
-    pub fn add_obj_contents(&mut self, path: String) -> Result<(), tobj::LoadError> {
+    pub fn add_obj_contents(&mut self, path: &str) -> Result<(), tobj::LoadError> {
         let file_contents = file::load_file_into_string(&path);
         let checksum = file::calculate_checksum(&file_contents);
         let is_identical_obj_loaded =
-            self.checksum_paths.contains_key(&checksum) && !self.loaded_models.contains_key(&path);
+            self.checksum_paths.contains_key(&checksum) && !self.loaded_models.contains_key(path);
 
         if is_identical_obj_loaded {
             self.duplicate_obj_models(path, checksum);
         } else {
-            match self.path_checksums.entry(path.clone()) {
+            match self.path_checksums.entry(path.to_string()) {
                 Entry::Occupied(path_checksum) => {
                     if checksum != *path_checksum.get() {
                         match obj::obj_buf_into_tobj(&file_contents) {
                             Ok((tobj_models, _)) => {
                                 let models = obj::tobj_to_internal(tobj_models);
 
-                                self.loaded_models.insert(path, models);
+                                self.loaded_models.insert(path.to_string(), models);
                             }
                             Err(load_error) => return Err(load_error),
                         }
@@ -45,9 +45,9 @@ impl Scene {
                         dbg!(&tobj_models);
                         let models = obj::tobj_to_internal(tobj_models);
 
-                        self.loaded_models.insert(path.clone(), models);
+                        self.loaded_models.insert(path.to_string(), models);
                         path_checksum.insert(checksum);
-                        self.checksum_paths.insert(checksum, vec![path.clone()]);
+                        self.checksum_paths.insert(checksum, vec![path.to_string()]);
                     }
                     Err(load_error) => return Err(load_error),
                 },
@@ -57,7 +57,7 @@ impl Scene {
         Ok(())
     }
 
-    fn duplicate_obj_models(&mut self, path: String, checksum: u32) {
+    fn duplicate_obj_models(&mut self, path: &str, checksum: u32) {
         let duplicate_paths = self
             .checksum_paths
             .get_mut(&checksum)
@@ -70,8 +70,8 @@ impl Scene {
         let cloned_models_to_duplicate = models_to_duplicate.clone();
 
         self.loaded_models
-            .insert(path.clone(), cloned_models_to_duplicate);
-        duplicate_paths.push(path.clone());
-        self.path_checksums.insert(path.clone(), checksum);
+            .insert(path.to_string(), cloned_models_to_duplicate);
+        duplicate_paths.push(path.to_string());
+        self.path_checksums.insert(path.to_string(), checksum);
     }
 }
