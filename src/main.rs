@@ -8,8 +8,9 @@ use wgpu;
 use wgpu::winit;
 use wgpu::winit::dpi::PhysicalSize;
 
+use hurban_selector::importer::{Importer, ImporterError};
+use hurban_selector::primitives;
 use hurban_selector::viewport_renderer::ViewportRenderer;
-use hurban_selector::{primitives, scene};
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
@@ -79,7 +80,7 @@ fn main() {
     let time_start = Instant::now();
     let mut time = time_start;
 
-    let mut scene = scene::Scene::new();
+    let mut importer = Importer::new();
     let mut running = true;
 
     while running {
@@ -124,23 +125,21 @@ fn main() {
                                 "",
                                 Some((&["*.obj"], "Wavefront (.obj)")),
                             ) {
-                                if let Err(err) = scene.add_obj_contents(&path) {
+                                if let Err(err) = importer.import_obj(&path) {
                                     let error_message = match err {
-                                        scene::ImporterError::FileNotFound => "File was not found.",
-                                        scene::ImporterError::InvalidStructure => {
+                                        ImporterError::FileNotFound => "File was not found.",
+                                        ImporterError::InvalidStructure => {
                                             "The obj file is not valid."
                                         }
-                                        scene::ImporterError::PermissionDenied => {
-                                            "Permission denied."
-                                        }
-                                        scene::ImporterError::Other => "Unexpected error happened.",
+                                        ImporterError::PermissionDenied => "Permission denied.",
+                                        ImporterError::Other => "Unexpected error happened.",
                                     };
 
                                     tinyfiledialogs::message_box_ok(
                                         "Error",
                                         error_message,
                                         tinyfiledialogs::MessageBoxIcon::Error,
-                                    )
+                                    );
                                 };
                             }
                         }
