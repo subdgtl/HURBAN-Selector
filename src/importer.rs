@@ -1,19 +1,50 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::error;
+use std::fmt;
 use std::fs;
-use std::io::ErrorKind;
+use std::io;
 
 use crc32fast;
 use tobj;
 
 use crate::viewport_renderer::{Index, Vertex};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum ImporterError {
     FileNotFound,
     PermissionDenied,
     InvalidStructure,
     Other,
+}
+
+impl fmt::Display for ImporterError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ImporterError::FileNotFound => write!(f, "File was not found."),
+            ImporterError::InvalidStructure => write!(f, "The obj file is not valid."),
+            ImporterError::PermissionDenied => write!(f, "Permission denied."),
+            ImporterError::Other => write!(f, "Unexpected error happened."),
+        }
+    }
+}
+
+impl error::Error for ImporterError {}
+
+impl From<io::Error> for ImporterError {
+    fn from(err: io::Error) -> Self {
+        match err.kind() {
+            io::ErrorKind::NotFound => ImporterError::FileNotFound,
+            io::ErrorKind::PermissionDenied => ImporterError::PermissionDenied,
+            _ => ImporterError::Other,
+        }
+    }
+}
+
+impl From<tobj::LoadError> for ImporterError {
+    fn from(_err: tobj::LoadError) -> Self {
+        ImporterError::InvalidStructure
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,7 +76,7 @@ impl Importer {
     /// matches other file, it is cloned. Brand new files are parsed and
     /// cached.
     pub fn import_obj(&mut self, path: &str) -> Result<Vec<Model>, ImporterError> {
-        let file_contents = self.load_file_to_string(path)?;
+        let file_contents = fs::read_to_string(path)?;
         let checksum = calculate_checksum(&file_contents);
         let is_identical_obj_loaded =
             self.checksum_paths.contains_key(&checksum) && !self.loaded_models.contains_key(path);
@@ -70,52 +101,33 @@ impl Importer {
                             .expect("Model should be present in cache")
                             .clone()
                     } else {
-                        match obj_buf_into_tobj(&file_contents) {
-                            Ok((tobj_models, _)) => {
-                                let models = tobj_to_internal(tobj_models);
-                                let old_checksum = *path_checksum.get();
-
-                                self.loaded_models.insert(path.to_string(), models.clone());
-                                path_checksum.insert(checksum);
-                                self.remove_checksum_path(old_checksum, &path);
-                                self.add_checksum_path(checksum, &path);
-
-                                models
-                            }
-                            Err(_) => return Err(ImporterError::InvalidStructure),
-                        }
-                    }
-                }
-                // This is a brand new file to parse.
-                Entry::Vacant(path_checksum) => match obj_buf_into_tobj(&file_contents) {
-                    Ok((tobj_models, _)) => {
+                        let (tobj_models, _) = obj_buf_into_tobj(&file_contents)?;
                         let models = tobj_to_internal(tobj_models);
+                        let old_checksum = *path_checksum.get();
 
                         self.loaded_models.insert(path.to_string(), models.clone());
                         path_checksum.insert(checksum);
-                        self.checksum_paths.insert(checksum, vec![path.to_string()]);
+                        self.remove_checksum_path(old_checksum, &path);
+                        self.add_checksum_path(checksum, &path);
 
                         models
                     }
-                    Err(_) => return Err(ImporterError::InvalidStructure),
-                },
+                }
+                // This is a brand new file to parse.
+                Entry::Vacant(path_checksum) => {
+                    let (tobj_models, _) = obj_buf_into_tobj(&file_contents)?;
+                    let models = tobj_to_internal(tobj_models);
+
+                    self.loaded_models.insert(path.to_string(), models.clone());
+                    path_checksum.insert(checksum);
+                    self.checksum_paths.insert(checksum, vec![path.to_string()]);
+
+                    models
+                }
             }
         };
 
         Ok(models)
-    }
-
-    /// Loads contents of file to string. In case of any error, it is converted
-    /// into `ImporterError`.
-    fn load_file_to_string(&self, path: &str) -> Result<String, ImporterError> {
-        match fs::read_to_string(path) {
-            Ok(contents) => Ok(contents),
-            Err(err) => match err.kind() {
-                ErrorKind::NotFound => Err(ImporterError::FileNotFound),
-                ErrorKind::PermissionDenied => Err(ImporterError::PermissionDenied),
-                _ => Err(ImporterError::Other),
-            },
-        }
     }
 
     fn duplicate_models(&mut self, checksum: u32, path: &str) {

@@ -8,7 +8,7 @@ use wgpu;
 use wgpu::winit;
 use wgpu::winit::dpi::PhysicalSize;
 
-use hurban_selector::importer::{Importer, ImporterError};
+use hurban_selector::importer::Importer;
 use hurban_selector::primitives;
 use hurban_selector::viewport_renderer::ViewportRenderer;
 
@@ -126,18 +126,9 @@ fn main() {
                                 Some((&["*.obj"], "Wavefront (.obj)")),
                             ) {
                                 if let Err(err) = importer.import_obj(&path) {
-                                    let error_message = match err {
-                                        ImporterError::FileNotFound => "File was not found.",
-                                        ImporterError::InvalidStructure => {
-                                            "The obj file is not valid."
-                                        }
-                                        ImporterError::PermissionDenied => "Permission denied.",
-                                        ImporterError::Other => "Unexpected error happened.",
-                                    };
-
                                     tinyfiledialogs::message_box_ok(
                                         "Error",
-                                        error_message,
+                                        &format!("{}", err),
                                         tinyfiledialogs::MessageBoxIcon::Error,
                                     );
                                 };
