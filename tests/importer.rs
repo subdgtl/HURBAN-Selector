@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
-use hurban_selector::importer;
-use hurban_selector::importer::{Importer, ImporterError};
+use hurban_selector::importer::{self, Importer, ImporterError};
 
 fn import_obj(path: &str) -> Vec<importer::Model> {
     let file_contents = fs::read_to_string(&path).expect("File should be read to string");
