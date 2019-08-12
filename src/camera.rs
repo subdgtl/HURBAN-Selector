@@ -131,17 +131,18 @@ impl Camera {
         self.radius = clamp(new_radius, self.options.radius_min, self.options.radius_max);
     }
 
-    pub fn matrix(&self) -> Matrix4<f32> {
+    pub fn view_matrix(&self) -> Matrix4<f32> {
         let eye = self.compute_eye();
-        let view_matrix = Matrix4::look_at_rh(&eye, &self.origin, &self.up);
-        let projection_matrix = Matrix4::new_perspective(
+        Matrix4::look_at_rh(&eye, &self.origin, &self.up)
+    }
+
+    pub fn projection_matrix(&self) -> Matrix4<f32> {
+        Matrix4::new_perspective(
             self.aspect_ratio,
             self.options.fovy,
             self.options.znear,
             self.options.zfar,
-        );
-
-        projection_matrix * view_matrix
+        )
     }
 
     fn compute_eye(&self) -> Point3<f32> {

@@ -1,6 +1,5 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::error;
 use std::fmt;
 use std::fs;
@@ -9,7 +8,7 @@ use std::io::{self, Read};
 use crc32fast;
 use tobj;
 
-use crate::viewport_renderer::{Index, Vertex};
+use crate::viewport_renderer::Index;
 
 #[derive(Debug, PartialEq)]
 pub enum ImporterError {
@@ -51,7 +50,8 @@ impl From<tobj::LoadError> for ImporterError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Model {
     pub name: String,
-    pub vertices: Vec<Vertex>,
+    pub vertex_positions: Vec<[f32; 3]>,
+    pub vertex_normals: Vec<[f32; 3]>,
     pub indices: Vec<Index>,
 }
 
@@ -158,19 +158,24 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
     let mut models = Vec::with_capacity(tobj_models.len());
 
     for model in tobj_models {
-        let mut vertices = Vec::with_capacity(model.mesh.positions.len() / 3);
+        let vertex_positions: Vec<_> = model
+            .mesh
+            .positions
+            .chunks_exact(3)
+            .map(|chunk| [chunk[0], chunk[1], chunk[2]])
+            .collect();
 
-        for positions_chunk in model.mesh.positions.chunks_exact(3) {
-            vertices.push(Vertex {
-                position: positions_chunk
-                    .try_into()
-                    .expect("Should convert slice into array"),
-            });
-        }
+        let vertex_normals: Vec<_> = model
+            .mesh
+            .normals
+            .chunks_exact(3)
+            .map(|chunk| [chunk[0], chunk[1], chunk[2]])
+            .collect();
 
         models.push(Model {
             name: model.name,
-            vertices,
+            vertex_positions,
+            vertex_normals,
             indices: model.mesh.indices,
         });
     }
@@ -189,22 +194,26 @@ pub fn calculate_checksum(string: &[u8]) -> u32 {
 mod tests {
     use super::*;
 
-    fn create_tobj_model(indices: Vec<u32>, positions: Vec<f32>) -> tobj::Model {
+    fn create_tobj_model(indices: Vec<u32>, positions: Vec<f32>, normals: Vec<f32>) -> tobj::Model {
         tobj::Model {
             name: String::from("Test model"),
             mesh: tobj::Mesh {
                 indices,
                 positions,
-                material_id: None,
-                normals: vec![],
+                normals,
                 texcoords: vec![],
+                material_id: None,
             },
         }
     }
 
     #[test]
     fn test_tobj_to_internal_returns_correct_representation_for_single_model() {
-        let tobj_model = create_tobj_model(vec![1, 2], vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0]);
+        let tobj_model = create_tobj_model(
+            vec![1, 2],
+            vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+            vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        );
         let tobj_models = vec![tobj_model.clone()];
         let models = tobj_to_internal(tobj_models);
 
@@ -212,14 +221,8 @@ mod tests {
             models,
             vec![Model {
                 name: tobj_model.name,
-                vertices: vec![
-                    Vertex {
-                        position: [6.0, 5.0, 4.0]
-                    },
-                    Vertex {
-                        position: [3.0, 2.0, 1.0]
-                    }
-                ],
+                vertex_positions: vec![[6.0, 5.0, 4.0], [3.0, 2.0, 1.0],],
+                vertex_normals: vec![[1.0, 0.0, 0.0], [1.0, 0.0, 0.0],],
                 indices: tobj_model.mesh.indices,
             }]
         );
@@ -227,8 +230,16 @@ mod tests {
 
     #[test]
     fn test_tobj_to_internal_returns_correct_representation_for_multiple_models() {
-        let tobj_model_1 = create_tobj_model(vec![1, 2], vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0]);
-        let tobj_model_2 = create_tobj_model(vec![3, 4], vec![16.0, 15.0, 14.0, 13.0, 12.0, 11.0]);
+        let tobj_model_1 = create_tobj_model(
+            vec![1, 2],
+            vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+            vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        );
+        let tobj_model_2 = create_tobj_model(
+            vec![3, 4],
+            vec![16.0, 15.0, 14.0, 13.0, 12.0, 11.0],
+            vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        );
         let tobj_models = vec![tobj_model_1.clone(), tobj_model_2.clone()];
         let models = tobj_to_internal(tobj_models);
 
@@ -237,26 +248,14 @@ mod tests {
             vec![
                 Model {
                     name: tobj_model_1.name,
-                    vertices: vec![
-                        Vertex {
-                            position: [6.0, 5.0, 4.0]
-                        },
-                        Vertex {
-                            position: [3.0, 2.0, 1.0]
-                        }
-                    ],
+                    vertex_positions: vec![[6.0, 5.0, 4.0], [3.0, 2.0, 1.0],],
+                    vertex_normals: vec![[1.0, 0.0, 0.0], [1.0, 0.0, 0.0],],
                     indices: tobj_model_1.mesh.indices,
                 },
                 Model {
                     name: tobj_model_2.name,
-                    vertices: vec![
-                        Vertex {
-                            position: [16.0, 15.0, 14.0]
-                        },
-                        Vertex {
-                            position: [13.0, 12.0, 11.0]
-                        }
-                    ],
+                    vertex_positions: vec![[16.0, 15.0, 14.0], [13.0, 12.0, 11.0],],
+                    vertex_normals: vec![[1.0, 0.0, 0.0], [1.0, 0.0, 0.0],],
                     indices: tobj_model_2.mesh.indices,
                 }
             ]

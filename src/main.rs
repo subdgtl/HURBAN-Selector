@@ -6,12 +6,11 @@ use hurban_selector::camera::{Camera, CameraOptions};
 use hurban_selector::importer::Importer;
 use hurban_selector::input::InputManager;
 use hurban_selector::primitives;
-use hurban_selector::viewport_renderer::ViewportRenderer;
+use hurban_selector::viewport_renderer::{Geometry, ViewportRenderer};
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
 fn main() {
-    #[cfg(debug_assertions)]
     env_logger::init();
 
     let mut event_loop = winit::EventsLoop::new();
@@ -39,12 +38,12 @@ fn main() {
     let mut camera = Camera::new(
         [window_size.width as f32, window_size.height as f32],
         5.0,
-        45_f32.to_radians(),
-        60_f32.to_radians(),
+        45f32.to_radians(),
+        60f32.to_radians(),
         CameraOptions {
             radius_min: 1.0,
             radius_max: 500.0,
-            polar_angle_distance_min: 5f32.to_radians(),
+            polar_angle_distance_min: 1f32.to_radians(),
             speed_pan: 0.1,
             speed_rotate: 0.005,
             speed_zoom: 0.01,
@@ -54,36 +53,31 @@ fn main() {
             zfar: 1000.0,
         },
     );
-    let mut viewport_renderer =
-        ViewportRenderer::new(&mut device, SWAP_CHAIN_FORMAT, window_size, camera.matrix());
+    let mut viewport_renderer = ViewportRenderer::new(
+        &mut device,
+        SWAP_CHAIN_FORMAT,
+        window_size,
+        &camera.projection_matrix(),
+        &camera.view_matrix(),
+    );
 
     // FIXME: This is just temporary code so that we can see something
     // in the scene and know the renderer works.
-    let (cube1_v, cube1_i) = primitives::cube([0.0, 0.0, 0.0], 0.5);
-    let (cube2_v, cube2_i) = primitives::cube([5.0, 5.0, 0.0], 0.7);
-    let (cube3_v, cube3_i) = primitives::cube([5.0, 0.0, 0.0], 1.0);
-    let (cube4_v, cube4_i) = primitives::cube([0.0, 5.0, 0.0], 0.9);
-    let (cube5_v, cube5_i) = primitives::cube([0.0, 0.0, 5.0], 1.5);
-    let plane1_v = primitives::plane([0.0, 0.0, 20.0], 10.0);
-    let plane2_v = primitives::plane([0.0, 0.0, -20.0], 10.0);
+    let cube1_g = primitives::uv_cube([0.0, 0.0, 0.0], 0.5);
+    let cube2_g = primitives::uv_cube([5.0, 5.0, 0.0], 0.7);
+    let cube3_g = primitives::uv_cube([5.0, 0.0, 0.0], 1.0);
+    let cube4_g = primitives::cube([0.0, 5.0, 0.0], 0.9);
+    let cube5_g = primitives::cube([0.0, 0.0, 5.0], 1.5);
+    let plane1_g = primitives::plane([0.0, 0.0, 20.0], 10.0);
+    let plane2_g = primitives::plane([0.0, 0.0, -20.0], 10.0);
 
-    let cube1 = viewport_renderer
-        .add_geometry_indexed(&device, &cube1_v, &cube1_i)
-        .unwrap();
-    let cube2 = viewport_renderer
-        .add_geometry_indexed(&device, &cube2_v, &cube2_i)
-        .unwrap();
-    let cube3 = viewport_renderer
-        .add_geometry_indexed(&device, &cube3_v, &cube3_i)
-        .unwrap();
-    let cube4 = viewport_renderer
-        .add_geometry_indexed(&device, &cube4_v, &cube4_i)
-        .unwrap();
-    let cube5 = viewport_renderer
-        .add_geometry_indexed(&device, &cube5_v, &cube5_i)
-        .unwrap();
-    let plane1 = viewport_renderer.add_geometry(&device, &plane1_v).unwrap();
-    let plane2 = viewport_renderer.add_geometry(&device, &plane2_v).unwrap();
+    let cube1 = viewport_renderer.add_geometry(&device, &cube1_g).unwrap();
+    let cube2 = viewport_renderer.add_geometry(&device, &cube2_g).unwrap();
+    let cube3 = viewport_renderer.add_geometry(&device, &cube3_g).unwrap();
+    let cube4 = viewport_renderer.add_geometry(&device, &cube4_g).unwrap();
+    let cube5 = viewport_renderer.add_geometry(&device, &cube5_g).unwrap();
+    let plane1 = viewport_renderer.add_geometry(&device, &plane1_g).unwrap();
+    let plane2 = viewport_renderer.add_geometry(&device, &plane2_g).unwrap();
 
     let mut dynamic_models = Vec::new();
 
@@ -132,9 +126,13 @@ fn main() {
                 match importer.import_obj(&path) {
                     Ok(models) => {
                         for model in models {
-                            let model_handle = viewport_renderer
-                                .add_geometry_indexed(&device, &model.vertices, &model.indices)
-                                .unwrap();
+                            let geometry = Geometry::from_positions_and_normals_indexed(
+                                model.indices,
+                                model.vertex_positions,
+                                model.vertex_normals,
+                            );
+                            let model_handle =
+                                viewport_renderer.add_geometry(&device, &geometry).unwrap();
                             dynamic_models.push(model_handle);
                         }
                     }
@@ -167,10 +165,16 @@ fn main() {
 
             swap_chain = create_swap_chain(&device, &surface, physical_size);
             viewport_renderer.set_screen_size(&mut device, physical_size);
-            viewport_renderer.set_camera_matrix(&mut device, camera.matrix());
         }
 
-        viewport_renderer.set_camera_matrix(&mut device, camera.matrix());
+        // Camera matrices have to be uploaded when either window
+        // resizes, or anything the camera moves. Seems easier to just
+        // upload them always.
+        viewport_renderer.set_camera_matrices(
+            &mut device,
+            &camera.projection_matrix(),
+            &camera.view_matrix(),
+        );
 
         let frame = swap_chain.get_next_texture();
         let mut encoder =
