@@ -1,5 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::error;
 use std::fmt;
 use std::fs;
@@ -187,13 +188,11 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
     for model in tobj_models {
         let mut vertices = Vec::with_capacity(model.mesh.positions.len() / 3);
 
-        for (index, _) in model.mesh.positions.iter().enumerate().step_by(3) {
+        for positions_chunk in model.mesh.positions.chunks_exact(3) {
             vertices.push(Vertex {
-                position: [
-                    model.mesh.positions[index],
-                    model.mesh.positions[index + 1],
-                    model.mesh.positions[index + 2],
-                ],
+                position: positions_chunk
+                    .try_into()
+                    .expect("Should convert slice into array"),
             });
         }
 
