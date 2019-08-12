@@ -4,7 +4,7 @@ use std::convert::TryInto;
 use std::error;
 use std::fmt;
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 
 use crc32fast;
 use tobj;
@@ -55,13 +55,19 @@ pub struct Model {
     pub indices: Vec<Index>,
 }
 
+#[derive(Debug)]
+pub struct FileMetadata {
+    checksum: u32,
+    last_modified: std::time::SystemTime,
+}
+
 /// `Importer` takes care of importing of obj files and caching of their
-/// internal representations. It holds paths to files, their checksums and
-/// parsed obj files.
+/// internal representations. It holds paths to files, their metadata
+/// (checksums, timestamps) and models of parsed obj files.
 #[derive(Debug, Default)]
 pub struct Importer {
-    pub path_checksums: HashMap<String, u32>,
-    pub loaded_models: HashMap<u32, Vec<Model>>,
+    path_metadata: HashMap<String, FileMetadata>,
+    loaded_models: HashMap<u32, Vec<Model>>,
 }
 
 impl Importer {
@@ -69,19 +75,43 @@ impl Importer {
         Default::default()
     }
 
-    /// Tries to import obj file from given `path`. If file was already
-    /// imported and its checksum is identical, parsed models are returned
-    /// from cache. If the checksum doesn't match, file is reimported and
-    /// the old one is forgotten. If file wasn't imported, but its checksum
-    /// matches other file, it is cloned. Brand new files are parsed and
+    /// Tries to import obj file from given `path`. If file was already imported
+    /// and its timestamp is identical, parsed models are returned from cache.
+    /// Otherwise, file is read, checksum calculated and cache is checked whether
+    /// given file contents were already saved. If not, obj file is parsed and
     /// cached.
     pub fn import_obj(&mut self, path: &str) -> Result<Vec<Model>, ImporterError> {
-        let file_contents = fs::read(path)?;
+        let mut file = fs::File::open(path)?;
+        let file_modified = file
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .expect("obj file should return its modified timestamp");
+
+        // If paths and timestamps match, we can just return cached models.
+        if let Entry::Occupied(path_metadata) = self.path_metadata.entry(path.to_string()) {
+            if path_metadata.get().last_modified == file_modified {
+                return Ok(self
+                    .loaded_models
+                    .get(&path_metadata.get().checksum)
+                    .expect("Should get loaded models by obj file's checksum")
+                    .clone());
+            }
+        }
+
+        let file_size = file.metadata().map(|m| m.len() as usize + 1).unwrap_or(0);
+        let mut file_contents = Vec::with_capacity(file_size);
+        file.read_to_end(&mut file_contents)?;
         let checksum = calculate_checksum(&file_contents);
 
         let models = match self.loaded_models.entry(checksum) {
             Entry::Occupied(loaded_model) => {
-                self.path_checksums.insert(path.to_string(), checksum);
+                self.path_metadata.insert(
+                    path.to_string(),
+                    FileMetadata {
+                        checksum,
+                        last_modified: file_modified,
+                    },
+                );
 
                 loaded_model.get().clone()
             }
@@ -89,7 +119,13 @@ impl Importer {
                 let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
                 let models = tobj_to_internal(tobj_models);
 
-                self.path_checksums.insert(path.to_string(), checksum);
+                self.path_metadata.insert(
+                    path.to_string(),
+                    FileMetadata {
+                        checksum,
+                        last_modified: file_modified,
+                    },
+                );
                 loaded_model.insert(models.clone());
 
                 models
@@ -97,6 +133,18 @@ impl Importer {
         };
 
         Ok(models)
+    }
+
+    /// FIXME: This is a poor man's testing method for cache contents. It should
+    /// be removed once cacher is removed from this structure and proper unit
+    /// tests are written for it.
+    pub fn is_cached(&self, path: &str, checksum: u32) -> bool {
+        if self.path_metadata.contains_key(path) {
+            self.path_metadata.get(path).expect("").checksum == checksum
+                && self.loaded_models.contains_key(&checksum)
+        } else {
+            false
+        }
     }
 }
 
