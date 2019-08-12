@@ -82,17 +82,14 @@ impl Importer {
     /// cached.
     pub fn import_obj(&mut self, path: &str) -> Result<Vec<Model>, ImporterError> {
         let mut file = fs::File::open(path)?;
-        let file_modified = file
-            .metadata()
-            .and_then(|metadata| metadata.modified())
-            .expect("obj file should return its modified timestamp");
+        let file_modified = file.metadata().and_then(|metadata| metadata.modified())?;
 
         // If paths and timestamps match, we can just return cached models.
-        if let Entry::Occupied(path_metadata) = self.path_metadata.entry(path.to_string()) {
-            if path_metadata.get().last_modified == file_modified {
+        if let Some(path_metadata) = self.path_metadata.get(path) {
+            if path_metadata.last_modified == file_modified {
                 return Ok(self
                     .loaded_models
-                    .get(&path_metadata.get().checksum)
+                    .get(&path_metadata.checksum)
                     .expect("Should get loaded models by obj file's checksum")
                     .clone());
             }
@@ -139,12 +136,11 @@ impl Importer {
     /// be removed once cacher is removed from this structure and proper unit
     /// tests are written for it.
     pub fn is_cached(&self, path: &str, checksum: u32) -> bool {
-        if self.path_metadata.contains_key(path) {
-            self.path_metadata.get(path).expect("").checksum == checksum
-                && self.loaded_models.contains_key(&checksum)
-        } else {
-            false
+        if let Some(path_metadata) = self.path_metadata.get(path) {
+            return path_metadata.checksum == checksum && self.loaded_models.contains_key(&checksum);
         }
+
+        false
     }
 }
 
