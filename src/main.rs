@@ -3,14 +3,14 @@ use std::time::Instant;
 #[cfg(debug_assertions)]
 use env_logger;
 use nalgebra::{Matrix4, Point3, Rotation3, Vector3};
+use tinyfiledialogs;
 use wgpu;
 use wgpu::winit;
 use wgpu::winit::dpi::PhysicalSize;
 
-use crate::viewport_renderer::ViewportRenderer;
-
-mod primitives;
-mod viewport_renderer;
+use hurban_selector::importer::Importer;
+use hurban_selector::primitives;
+use hurban_selector::viewport_renderer::ViewportRenderer;
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
@@ -80,7 +80,9 @@ fn main() {
     let time_start = Instant::now();
     let mut time = time_start;
 
+    let mut importer = Importer::new();
     let mut running = true;
+
     while running {
         let (_duration_last_frame, duration_running) = {
             let now = Instant::now();
@@ -94,19 +96,6 @@ fn main() {
         event_loop.poll_events(|event| {
             if let winit::Event::WindowEvent { event, .. } = event {
                 match event {
-                    winit::WindowEvent::KeyboardInput {
-                        input:
-                            winit::KeyboardInput {
-                                virtual_keycode: Some(code),
-                                state: winit::ElementState::Pressed,
-                                ..
-                            },
-                        ..
-                    } => {
-                        if let winit::VirtualKeyCode::Q = code {
-                            running = false;
-                        }
-                    }
                     winit::WindowEvent::CloseRequested => running = false,
                     winit::WindowEvent::Resized(logical_size) => {
                         let physical_size = logical_size.to_physical(window.get_hidpi_factor());
@@ -121,6 +110,43 @@ fn main() {
                         swap_chain = create_swap_chain(&device, &surface, physical_size);
                         viewport_renderer.set_screen_size(&mut device, physical_size);
                     }
+                    winit::WindowEvent::KeyboardInput {
+                        input:
+                            winit::KeyboardInput {
+                                virtual_keycode: Some(code),
+                                state: winit::ElementState::Pressed,
+                                ..
+                            },
+                        ..
+                    } => match code {
+                        winit::VirtualKeyCode::O => {
+                            if let Some(path) = tinyfiledialogs::open_file_dialog(
+                                "Open",
+                                "",
+                                Some((&["*.obj"], "Wavefront (.obj)")),
+                            ) {
+                                if let Err(err) = importer.import_obj(&path) {
+                                    tinyfiledialogs::message_box_ok(
+                                        "Error",
+                                        &format!("{}", err),
+                                        tinyfiledialogs::MessageBoxIcon::Error,
+                                    );
+                                };
+                            }
+                        }
+                        winit::VirtualKeyCode::S => {
+                            let save_file: String;
+                            match tinyfiledialogs::save_file_dialog("Save", "password.txt") {
+                                Some(file_path) => save_file = file_path,
+                                None => save_file = "null".to_string(),
+                            }
+                            dbg!(save_file);
+                        }
+                        winit::VirtualKeyCode::Q => {
+                            running = false;
+                        }
+                        _ => {}
+                    },
                     _ => (),
                 }
             }
