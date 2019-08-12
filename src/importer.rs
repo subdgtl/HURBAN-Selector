@@ -76,7 +76,7 @@ impl Importer {
     /// matches other file, it is cloned. Brand new files are parsed and
     /// cached.
     pub fn import_obj(&mut self, path: &str) -> Result<Vec<Model>, ImporterError> {
-        let file_contents = fs::read_to_string(path)?;
+        let file_contents = fs::read(path)?;
         let checksum = calculate_checksum(&file_contents);
         let is_identical_obj_loaded =
             self.checksum_paths.contains_key(&checksum) && !self.loaded_models.contains_key(path);
@@ -101,7 +101,7 @@ impl Importer {
                             .expect("Model should be present in cache")
                             .clone()
                     } else {
-                        let (tobj_models, _) = obj_buf_into_tobj(&file_contents)?;
+                        let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
                         let models = tobj_to_internal(tobj_models);
                         let old_checksum = *path_checksum.get();
 
@@ -115,7 +115,7 @@ impl Importer {
                 }
                 // This is a brand new file to parse.
                 Entry::Vacant(path_checksum) => {
-                    let (tobj_models, _) = obj_buf_into_tobj(&file_contents)?;
+                    let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
                     let models = tobj_to_internal(tobj_models);
 
                     self.loaded_models.insert(path.to_string(), models.clone());
@@ -174,10 +174,8 @@ impl Importer {
 
 /// Converts contents of obj file into tobj representation. Materials are
 /// ignored.
-pub fn obj_buf_into_tobj(file_contents: &str) -> tobj::LoadResult {
-    tobj::load_obj_buf(&mut file_contents.as_bytes(), |_| {
-        Ok((vec![], HashMap::new()))
-    })
+pub fn obj_buf_into_tobj(file_contents: &mut &[u8]) -> tobj::LoadResult {
+    tobj::load_obj_buf(file_contents, |_| Ok((vec![], HashMap::new())))
 }
 
 /// Converts `tobj::Model` vector into vector of internal `Model` representations.
@@ -209,10 +207,10 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
     models
 }
 
-pub fn calculate_checksum(string: &str) -> u32 {
+pub fn calculate_checksum(string: &[u8]) -> u32 {
     let mut hasher = crc32fast::Hasher::new();
 
-    hasher.update(string.as_bytes());
+    hasher.update(string);
     hasher.finalize()
 }
 
