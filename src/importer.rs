@@ -61,8 +61,7 @@ pub struct Model {
 #[derive(Debug, Default)]
 pub struct Importer {
     pub path_checksums: HashMap<String, u32>,
-    pub checksum_paths: HashMap<u32, Vec<String>>,
-    pub loaded_models: HashMap<String, Vec<Model>>,
+    pub loaded_models: HashMap<u32, Vec<Model>>,
 }
 
 impl Importer {
@@ -80,14 +79,12 @@ impl Importer {
         let file_contents = fs::read(path)?;
         let checksum = calculate_checksum(&file_contents);
         let is_identical_obj_loaded =
-            self.checksum_paths.contains_key(&checksum) && !self.loaded_models.contains_key(path);
+            self.loaded_models.contains_key(&checksum) && !self.path_checksums.contains_key(path);
 
-        // Identical models imported from different path are duplicated.
         let models = if is_identical_obj_loaded {
-            self.duplicate_models(checksum, path);
-
+            self.path_checksums.insert(path.to_string(), checksum);
             self.loaded_models
-                .get(path)
+                .get(&checksum)
                 .expect("Model should be present in cache")
                 .clone()
         } else {
@@ -98,18 +95,15 @@ impl Importer {
                 Entry::Occupied(mut path_checksum) => {
                     if checksum == *path_checksum.get() {
                         self.loaded_models
-                            .get(path)
+                            .get(&checksum)
                             .expect("Model should be present in cache")
                             .clone()
                     } else {
                         let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
                         let models = tobj_to_internal(tobj_models);
-                        let old_checksum = *path_checksum.get();
 
-                        self.loaded_models.insert(path.to_string(), models.clone());
+                        self.loaded_models.insert(checksum, models.clone());
                         path_checksum.insert(checksum);
-                        self.remove_checksum_path(old_checksum, &path);
-                        self.add_checksum_path(checksum, &path);
 
                         models
                     }
@@ -119,9 +113,8 @@ impl Importer {
                     let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
                     let models = tobj_to_internal(tobj_models);
 
-                    self.loaded_models.insert(path.to_string(), models.clone());
+                    self.loaded_models.insert(checksum, models.clone());
                     path_checksum.insert(checksum);
-                    self.checksum_paths.insert(checksum, vec![path.to_string()]);
 
                     models
                 }
@@ -129,47 +122,6 @@ impl Importer {
         };
 
         Ok(models)
-    }
-
-    fn duplicate_models(&mut self, checksum: u32, path: &str) {
-        let duplicate_paths = self
-            .checksum_paths
-            .get_mut(&checksum)
-            .expect("Checksum expected to be present in cache");
-        let duplicate_path = duplicate_paths[0].clone();
-        let models_to_duplicate = self
-            .loaded_models
-            .get(&duplicate_path)
-            .expect("Models for given path should be present in cache");
-        let cloned_models_to_duplicate = models_to_duplicate.clone();
-
-        self.loaded_models
-            .insert(path.to_string(), cloned_models_to_duplicate);
-        duplicate_paths.push(path.to_string());
-        self.path_checksums.insert(path.to_string(), checksum);
-    }
-
-    fn add_checksum_path(&mut self, checksum: u32, path: &str) {
-        match self.checksum_paths.entry(checksum) {
-            Entry::Occupied(mut checksum_paths) => {
-                checksum_paths.get_mut().push(path.to_string());
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(vec![path.to_string()]);
-            }
-        };
-    }
-
-    fn remove_checksum_path(&mut self, checksum: u32, path: &str) {
-        let checksum_paths = self
-            .checksum_paths
-            .get_mut(&checksum)
-            .expect("Checksum should be present in cache");
-        let pos = checksum_paths
-            .iter()
-            .position(|x| *x == *path)
-            .expect("Path should be present in cached vector");
-        checksum_paths.remove(pos);
     }
 }
 
