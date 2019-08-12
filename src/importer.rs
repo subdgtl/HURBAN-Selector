@@ -137,7 +137,8 @@ impl Importer {
     /// tests are written for it.
     pub fn is_cached(&self, path: &str, checksum: u32) -> bool {
         if let Some(path_metadata) = self.path_metadata.get(path) {
-            return path_metadata.checksum == checksum && self.loaded_models.contains_key(&checksum);
+            return path_metadata.checksum == checksum
+                && self.loaded_models.contains_key(&checksum);
         }
 
         false
