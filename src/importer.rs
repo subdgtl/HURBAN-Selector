@@ -78,46 +78,21 @@ impl Importer {
     pub fn import_obj(&mut self, path: &str) -> Result<Vec<Model>, ImporterError> {
         let file_contents = fs::read(path)?;
         let checksum = calculate_checksum(&file_contents);
-        let is_identical_obj_loaded =
-            self.loaded_models.contains_key(&checksum) && !self.path_checksums.contains_key(path);
 
-        let models = if is_identical_obj_loaded {
-            self.path_checksums.insert(path.to_string(), checksum);
-            self.loaded_models
-                .get(&checksum)
-                .expect("Model should be present in cache")
-                .clone()
-        } else {
-            match self.path_checksums.entry(path.to_string()) {
-                // This file was already imported and we need to check its
-                // checksum and either just return parsed models or reimport
-                // and recache it.
-                Entry::Occupied(mut path_checksum) => {
-                    if checksum == *path_checksum.get() {
-                        self.loaded_models
-                            .get(&checksum)
-                            .expect("Model should be present in cache")
-                            .clone()
-                    } else {
-                        let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
-                        let models = tobj_to_internal(tobj_models);
+        let models = match self.loaded_models.entry(checksum) {
+            Entry::Occupied(loaded_model) => {
+                self.path_checksums.insert(path.to_string(), checksum);
 
-                        self.loaded_models.insert(checksum, models.clone());
-                        path_checksum.insert(checksum);
+                loaded_model.get().clone()
+            }
+            Entry::Vacant(loaded_model) => {
+                let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
+                let models = tobj_to_internal(tobj_models);
 
-                        models
-                    }
-                }
-                // This is a brand new file to parse.
-                Entry::Vacant(path_checksum) => {
-                    let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
-                    let models = tobj_to_internal(tobj_models);
+                self.path_checksums.insert(path.to_string(), checksum);
+                loaded_model.insert(models.clone());
 
-                    self.loaded_models.insert(checksum, models.clone());
-                    path_checksum.insert(checksum);
-
-                    models
-                }
+                models
             }
         };
 
