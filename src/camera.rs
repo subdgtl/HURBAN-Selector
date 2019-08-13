@@ -42,7 +42,7 @@ impl Camera {
         Camera {
             aspect_ratio: screen_size[0] / screen_size[1],
             radius: clamp(radius, options.radius_min, options.radius_max),
-            azimuthal_angle: fmod(azimuthal_angle, TWO_PI),
+            azimuthal_angle: azimuthal_angle % TWO_PI,
             polar_angle: clamp(
                 polar_angle,
                 options.polar_angle_distance_min,
@@ -91,7 +91,7 @@ impl Camera {
         let dtheta = dtheta * self.options.speed_rotate;
         let dphi = dphi * self.options.speed_rotate;
 
-        self.azimuthal_angle = fmod(self.azimuthal_angle + dtheta, TWO_PI);
+        self.azimuthal_angle = (self.azimuthal_angle + dtheta) % TWO_PI;
         self.polar_angle = clamp(
             self.polar_angle + dphi,
             self.options.polar_angle_distance_min,
@@ -154,9 +154,7 @@ impl Camera {
 }
 
 fn clamp(x: f32, min: f32, max: f32) -> f32 {
+    // FIXME: clamp may eventually be stabilized in std
+    // https://github.com/rust-lang/rust/issues/44095
     f32::max(min, f32::min(max, x))
-}
-
-fn fmod(x: f32, y: f32) -> f32 {
-    x - y * (x / y).floor()
 }
