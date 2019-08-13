@@ -14,7 +14,7 @@ jobs:
   steps:
     - template: ci/azure-test-all.yml
       parameters:
-        3DAPI: vulkan
+        api: vulkan
   variables:
     TOOLCHAIN: 1.36.0
 
@@ -24,7 +24,7 @@ jobs:
   steps:
     - template: ci/azure-test-all.yml
       parameters:
-        3DAPI: metal
+        api: metal
   variables:
     TOOLCHAIN: 1.36.0
 
@@ -40,6 +40,6 @@ jobs:
         architecture: 'x64'
     - template: ci/azure-test-all.yml
       parameters:
-        3DAPI: d3d12
+        api: d3d12
   variables:
     TOOLCHAIN: 1.36.0

@@ -6,7 +6,7 @@ steps:
 
 - bash: cargo fmt -- --check
   displayName: "cargo fmt"
-- bash: cargo clippy --features ${{ parameters.3DAPI }} -- -D warnings
+- bash: cargo clippy --features ${{ parameters.api }} -- -D warnings
   displayName: "cargo clippy"
-- bash: cargo test --verbose --features ${{ parameters.3DAPI }}
+- bash: cargo test --verbose --features ${{ parameters.api }}
   displayName: "cargo test"
