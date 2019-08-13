@@ -15,7 +15,7 @@ pub struct InputState {
     pub window_resized: Option<winit::dpi::LogicalSize>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct InputManager {
     lmb_down: bool,
     rmb_down: bool,
