@@ -105,71 +105,69 @@ fn main() {
 
         input_manager.start_frame();
         event_loop.poll_events(|event| input_manager.process_event(event));
-        {
-            let input_state = input_manager.input_state();
+        let input_state = input_manager.input_state();
 
-            let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
-            let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
-            let [rotate_x, rotate_y] = input_state.camera_rotate;
+        let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
+        let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
+        let [rotate_x, rotate_y] = input_state.camera_rotate;
 
-            camera.pan_ground(pan_ground_x, pan_ground_y);
-            camera.pan_screen(pan_screen_x, pan_screen_y);
-            camera.rotate(rotate_x, rotate_y);
-            camera.zoom(input_state.camera_zoom);
-            camera.zoom_step(input_state.camera_zoom_steps);
+        camera.pan_ground(pan_ground_x, pan_ground_y);
+        camera.pan_screen(pan_screen_x, pan_screen_y);
+        camera.rotate(rotate_x, rotate_y);
+        camera.zoom(input_state.camera_zoom);
+        camera.zoom_step(input_state.camera_zoom_steps);
 
-            if input_state.camera_reset_viewport {
-                // FIXME: For now this is a cheap man's version of:
-                // https://trello.com/c/JFNQ6GyJ/85-center-viewport
-                camera.reset_origin();
-            }
+        if input_state.camera_reset_viewport {
+            // FIXME: For now this is a cheap man's version of:
+            // https://trello.com/c/JFNQ6GyJ/85-center-viewport
+            camera.reset_origin();
+        }
 
-            if input_state.import_requested {
-                if let Some(path) = tinyfiledialogs::open_file_dialog(
-                    "Open",
-                    "",
-                    Some((&["*.obj"], "Wavefront (.obj)")),
-                ) {
-                    match importer.import_obj(&path) {
-                        Ok(models) => {
-                            for model in models {
-                                let model_handle = viewport_renderer
-                                    .add_geometry_indexed(&device, &model.vertices, &model.indices)
-                                    .unwrap();
-                                dynamic_models.push(model_handle);
-                            }
+        if input_state.import_requested {
+            if let Some(path) = tinyfiledialogs::open_file_dialog(
+                "Open",
+                "",
+                Some((&["*.obj"], "Wavefront (.obj)")),
+            ) {
+                match importer.import_obj(&path) {
+                    Ok(models) => {
+                        for model in models {
+                            let model_handle = viewport_renderer
+                                .add_geometry_indexed(&device, &model.vertices, &model.indices)
+                                .unwrap();
+                            dynamic_models.push(model_handle);
                         }
-                        Err(err) => {
-                            tinyfiledialogs::message_box_ok(
-                                "Error",
-                                &format!("{}", err),
-                                tinyfiledialogs::MessageBoxIcon::Error,
-                            );
-                        }
+                    }
+                    Err(err) => {
+                        tinyfiledialogs::message_box_ok(
+                            "Error",
+                            &format!("{}", err),
+                            tinyfiledialogs::MessageBoxIcon::Error,
+                        );
                     }
                 }
             }
+        }
 
-            if input_state.close_requested {
-                running = false;
-            }
+        if input_state.close_requested {
+            running = false;
+        }
 
-            if let Some(logical_size) = input_state.window_resized {
-                let physical_size = logical_size.to_physical(window.get_hidpi_factor());
-                log::debug!(
-                    "Window resized to new size: logical [{},{}], physical [{},{}]",
-                    logical_size.width,
-                    logical_size.height,
-                    physical_size.width,
-                    physical_size.height,
-                );
+        if let Some(logical_size) = input_state.window_resized {
+            let physical_size = logical_size.to_physical(window.get_hidpi_factor());
+            log::debug!(
+                "Window resized to new size: logical [{},{}], physical [{},{}]",
+                logical_size.width,
+                logical_size.height,
+                physical_size.width,
+                physical_size.height,
+            );
 
-                camera.set_screen_size([physical_size.width as f32, physical_size.height as f32]);
+            camera.set_screen_size([physical_size.width as f32, physical_size.height as f32]);
 
-                swap_chain = create_swap_chain(&device, &surface, physical_size);
-                viewport_renderer.set_screen_size(&mut device, physical_size);
-                viewport_renderer.set_camera_matrix(&mut device, camera.matrix());
-            }
+            swap_chain = create_swap_chain(&device, &surface, physical_size);
+            viewport_renderer.set_screen_size(&mut device, physical_size);
+            viewport_renderer.set_camera_matrix(&mut device, camera.matrix());
         }
 
         viewport_renderer.set_camera_matrix(&mut device, camera.matrix());
