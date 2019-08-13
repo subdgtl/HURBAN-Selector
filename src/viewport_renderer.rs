@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::error;
-use std::f32;
 use std::fmt;
 use std::mem;
 

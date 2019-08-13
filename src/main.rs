@@ -1,4 +1,3 @@
-use std::f32;
 use std::time::Instant;
 
 use wgpu::winit;
