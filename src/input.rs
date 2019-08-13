@@ -11,6 +11,7 @@ pub struct InputState {
     pub camera_zoom_steps: i32,
     pub camera_reset_viewport: bool,
     pub close_requested: bool,
+    pub import_requested: bool,
     pub window_resized: Option<winit::dpi::LogicalSize>,
 }
 
@@ -41,6 +42,13 @@ impl InputManager {
     }
 
     pub fn process_event(&mut self, ev: winit::Event) {
+        const MODIFIERS_NONE: winit::ModifiersState = winit::ModifiersState {
+            logo: false,
+            shift: false,
+            ctrl: false,
+            alt: false,
+        };
+
         // FIXME: these should come in as parameters
         let gui_captured_keyboard: bool = false;
         let gui_captured_mouse: bool = false;
@@ -91,10 +99,22 @@ impl InputManager {
 
                     // These events are responded to only when gui doesn't have focus
                     if !gui_captured_keyboard {
-                        if let (Some(winit::VirtualKeyCode::A), winit::ElementState::Pressed, _) =
-                            (virtual_keycode, state, modifiers)
-                        {
-                            self.input_state.camera_reset_viewport = true;
+                        match (virtual_keycode, state, modifiers) {
+                            (
+                                Some(winit::VirtualKeyCode::A),
+                                winit::ElementState::Pressed,
+                                MODIFIERS_NONE,
+                            ) => {
+                                self.input_state.camera_reset_viewport = true;
+                            }
+                            (
+                                Some(winit::VirtualKeyCode::O),
+                                winit::ElementState::Pressed,
+                                MODIFIERS_NONE,
+                            ) => {
+                                self.input_state.import_requested = true;
+                            }
+                            _ => (),
                         }
                     }
                 }

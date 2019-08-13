@@ -1,0 +1,12 @@
+steps:
+- checkout: self
+  fetchDepth: 1
+
+- template: azure-install-rust.yml
+
+- bash: cargo fmt -- --check
+  displayName: "cargo fmt"
+- bash: cargo clippy --features ${{ parameters.api }} -- -D warnings
+  displayName: "cargo clippy"
+- bash: cargo test --verbose --features ${{ parameters.api }}
+  displayName: "cargo test"

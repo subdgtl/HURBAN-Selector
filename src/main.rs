@@ -3,14 +3,11 @@ use std::time::Instant;
 
 use wgpu::winit;
 
-use crate::camera::{Camera, CameraOptions};
-use crate::input::InputManager;
-use crate::viewport_renderer::ViewportRenderer;
-
-mod camera;
-mod input;
-mod primitives;
-mod viewport_renderer;
+use hurban_selector::camera::{Camera, CameraOptions};
+use hurban_selector::importer::Importer;
+use hurban_selector::input::InputManager;
+use hurban_selector::primitives;
+use hurban_selector::viewport_renderer::ViewportRenderer;
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
@@ -92,7 +89,9 @@ fn main() {
     let time_start = Instant::now();
     let mut time = time_start;
 
+    let mut importer = Importer::new();
     let mut running = true;
+
     while running {
         let (_duration_last_frame, _duration_running) = {
             let now = Instant::now();
@@ -122,6 +121,22 @@ fn main() {
                 // FIXME: For now this is a cheap man's version of:
                 // https://trello.com/c/JFNQ6GyJ/85-center-viewport
                 camera.reset_origin();
+            }
+
+            if input_state.import_requested {
+                if let Some(path) = tinyfiledialogs::open_file_dialog(
+                    "Open",
+                    "",
+                    Some((&["*.obj"], "Wavefront (.obj)")),
+                ) {
+                    if let Err(err) = importer.import_obj(&path) {
+                        tinyfiledialogs::message_box_ok(
+                            "Error",
+                            &format!("{}", err),
+                            tinyfiledialogs::MessageBoxIcon::Error,
+                        );
+                    };
+                }
             }
 
             if input_state.close_requested {
