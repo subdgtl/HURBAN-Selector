@@ -1,0 +1,45 @@
+trigger:
+  branches:
+    include:
+    - '*'
+    exclude:
+    - master
+pr:
+- master
+
+jobs:
+- job: Linux
+  pool:
+    vmImage: ubuntu-16.04
+  steps:
+    - template: ci/azure-test-all.yml
+      parameters:
+        3DAPI: vulkan
+  variables:
+    TOOLCHAIN: 1.36.0
+
+- job: macOS
+  pool:
+    vmImage: macos-10.14
+  steps:
+    - template: ci/azure-test-all.yml
+      parameters:
+        3DAPI: metal
+  variables:
+    TOOLCHAIN: 1.36.0
+
+- job: Windows
+  pool:
+    vmImage: windows-2019
+  steps:
+    - script: choco install -y ninja cmake
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.7.4'
+        addToPath: true
+        architecture: 'x64'
+    - template: ci/azure-test-all.yml
+      parameters:
+        3DAPI: d3d12
+  variables:
+    TOOLCHAIN: 1.36.0
