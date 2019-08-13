@@ -77,7 +77,7 @@ impl InputManager {
                                 logo: true,
                                 shift: false,
                                 ctrl: false,
-                                alt: false,
+                                ..
                             },
                         ) => {
                             self.input_state.close_requested = true;
