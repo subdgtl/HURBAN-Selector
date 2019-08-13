@@ -4,10 +4,9 @@ use std::error;
 use std::fmt;
 use std::mem;
 
-use log;
 use nalgebra::base::Matrix4;
-use wgpu;
-use wgpu::winit::dpi::PhysicalSize;
+
+use wgpu::winit;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::D32Float;
 
@@ -58,8 +57,7 @@ pub struct ViewportRenderer {
     depth_texture: wgpu::TextureView,
     uniform_matrix_buffer: wgpu::Buffer,
     uniform_matrix_bind_group: wgpu::BindGroup,
-    view_matrix: Matrix4<f32>,
-    aspect_ratio: f32,
+    camera_matrix: Matrix4<f32>,
 }
 
 impl ViewportRenderer {
@@ -67,13 +65,13 @@ impl ViewportRenderer {
     ///
     /// Initializes GPU resources and the rendering pipeline to draw
     /// to a texture of `output_format`. `screen_size` and
-    /// `view_matrix` are the initial states of the screen and camera,
+    /// `camera_matrix` are the initial states of the screen and camera,
     /// and can be updated with setters later.
     pub fn new(
         device: &mut wgpu::Device,
         output_format: wgpu::TextureFormat,
-        screen_size: PhysicalSize,
-        view_matrix: Matrix4<f32>,
+        screen_size: winit::dpi::PhysicalSize,
+        camera_matrix: Matrix4<f32>,
     ) -> Self {
         let vs_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/shaders/shaded.vert.spv"));
         let fs_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/shaders/shaded.frag.spv"));
@@ -157,11 +155,10 @@ impl ViewportRenderer {
             sample_count: 1,
         });
 
-        let PhysicalSize { width, height } = screen_size;
-        let aspect_ratio = width as f32 / height as f32;
+        let winit::dpi::PhysicalSize { width, height } = screen_size;
         let (tex_width, tex_height) = (width as u32, height as u32);
 
-        let matrix = Self::create_matrix(aspect_ratio, &view_matrix);
+        let matrix = Self::create_matrix(&camera_matrix);
         Self::upload_uniform_matrix_buffer(device, &uniform_matrix_buffer, &matrix);
         let depth_texture = Self::create_depth_texture(device, tex_width, tex_height);
 
@@ -172,18 +169,16 @@ impl ViewportRenderer {
             depth_texture: depth_texture.create_default_view(),
             uniform_matrix_buffer,
             uniform_matrix_bind_group,
-            view_matrix,
-            aspect_ratio,
+            camera_matrix,
         }
     }
 
-    /// Update the view matrix.
-    ///
-    /// Recomputes the scene's transformation matrix as necessary.
-    pub fn set_view_matrix(&mut self, device: &mut wgpu::Device, view_matrix: Matrix4<f32>) {
-        self.view_matrix = view_matrix;
+    /// Update the camera matrix (a composition of projection matrix
+    /// and view matrix).
+    pub fn set_camera_matrix(&mut self, device: &mut wgpu::Device, camera_matrix: Matrix4<f32>) {
+        self.camera_matrix = camera_matrix;
 
-        let matrix = Self::create_matrix(self.aspect_ratio, &view_matrix);
+        let matrix = Self::create_matrix(&camera_matrix);
         Self::upload_uniform_matrix_buffer(device, &self.uniform_matrix_buffer, &matrix);
     }
 
@@ -191,13 +186,13 @@ impl ViewportRenderer {
     ///
     /// Recreates depth texture and recomputes the scene's
     /// transformation matrix as necessary.
-    pub fn set_screen_size(&mut self, device: &mut wgpu::Device, screen_size: PhysicalSize) {
-        let PhysicalSize { width, height } = screen_size;
+    pub fn set_screen_size(
+        &mut self,
+        device: &mut wgpu::Device,
+        screen_size: winit::dpi::PhysicalSize,
+    ) {
+        let winit::dpi::PhysicalSize { width, height } = screen_size;
         let (tex_width, tex_height) = (width as u32, height as u32);
-        self.aspect_ratio = width as f32 / height as f32;
-
-        let matrix = Self::create_matrix(self.aspect_ratio, &self.view_matrix);
-        Self::upload_uniform_matrix_buffer(device, &self.uniform_matrix_buffer, &matrix);
 
         let depth_texture = Self::create_depth_texture(device, tex_width, tex_height);
         self.depth_texture = depth_texture.create_default_view();
@@ -337,15 +332,9 @@ impl ViewportRenderer {
         }
     }
 
-    /// Create the global matrix for the scene and camera given an
-    /// aspect ratio and a view matrix. Applies vulkan/wgpu correction
-    /// matrix to the perspective projection matrix which assumes
-    /// OpenGL clip-space coordinates.
-    fn create_matrix(aspect_ratio: f32, view_matrix: &Matrix4<f32>) -> Matrix4<f32> {
-        const FOVY: f32 = std::f32::consts::FRAC_PI_3;
-        const ZNEAR: f32 = 0.01;
-        const ZFAR: f32 = 1000.0;
-
+    /// Applies vulkan/wgpu correction matrix to the camera matrix
+    /// (composition of projection and view matrices).
+    fn create_matrix(camera_matrix: &Matrix4<f32>) -> Matrix4<f32> {
         // Vulkan (and therefore wgpu) has different NDC and
         // clip-space semantics than OpenGL: Vulkan is right-handed, Y
         // grows downwards. The easiest way to keep everything working
@@ -361,9 +350,8 @@ impl ViewportRenderer {
             0.0,  0.0,  0.5,  0.0,
             0.0,  0.0,  0.5,  1.0,
         );
-        let projection_matrix = Matrix4::new_perspective(aspect_ratio, FOVY, ZNEAR, ZFAR);
 
-        wgpu_correction_matrix * projection_matrix * view_matrix
+        wgpu_correction_matrix * camera_matrix
     }
 
     fn upload_uniform_matrix_buffer(
