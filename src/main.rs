@@ -86,6 +86,8 @@ fn main() {
     let plane1 = viewport_renderer.add_geometry(&device, &plane1_v).unwrap();
     let plane2 = viewport_renderer.add_geometry(&device, &plane2_v).unwrap();
 
+    let mut dynamic_models = Vec::new();
+
     let time_start = Instant::now();
     let mut time = time_start;
 
@@ -129,13 +131,23 @@ fn main() {
                     "",
                     Some((&["*.obj"], "Wavefront (.obj)")),
                 ) {
-                    if let Err(err) = importer.import_obj(&path) {
-                        tinyfiledialogs::message_box_ok(
-                            "Error",
-                            &format!("{}", err),
-                            tinyfiledialogs::MessageBoxIcon::Error,
-                        );
-                    };
+                    match importer.import_obj(&path) {
+                        Ok(models) => {
+                            for model in models {
+                                let model_handle = viewport_renderer
+                                    .add_geometry_indexed(&device, &model.vertices, &model.indices)
+                                    .unwrap();
+                                dynamic_models.push(model_handle);
+                            }
+                        }
+                        Err(err) => {
+                            tinyfiledialogs::message_box_ok(
+                                "Error",
+                                &format!("{}", err),
+                                tinyfiledialogs::MessageBoxIcon::Error,
+                            );
+                        }
+                    }
                 }
             }
 
@@ -172,6 +184,10 @@ fn main() {
             &frame.view,
             &[cube1, cube2, cube3, cube4, cube5, plane1, plane2],
         );
+
+        if !dynamic_models.is_empty() {
+            viewport_renderer.draw_geometry(&mut encoder, &frame.view, &dynamic_models[..]);
+        }
 
         device.get_queue().submit(&[encoder.finish()]);
     }
