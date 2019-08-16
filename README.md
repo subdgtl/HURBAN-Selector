@@ -8,7 +8,7 @@
 - [Rust](https://rustup.rs/)
 - [Dependencies for `shaderc-sys`](https://github.com/google/shaderc-rs#building-from-source)
 
-## Running
+## Developing
 
 Use `cargo run` with one of the following feature flags, depending on the platform:
 
@@ -19,3 +19,13 @@ E.g. `cargo run --features vulkan`
 
 Other rendering backends (d3d11, OpenGL) may become supported once
 they are stable enough in `wgpu` and `gfx-hal`.
+
+If working on the renderer (on a platform supporting vulkan), enabling
+the vulkan validation layers is useful for catching errors until wgpu
+validation catches up:
+
+``` shell
+VK_LAYER_PATH=/path/to/VulkanSDK/version/Bin \
+VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_VALIDATION \
+cargo run --features vulkan
+```
