@@ -176,6 +176,38 @@ impl fmt::Display for ViewportRendererAddGeometryError {
 
 impl error::Error for ViewportRendererAddGeometryError {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Msaa {
+    Disabled,
+    X4,
+    X8,
+    X16,
+}
+
+impl Msaa {
+    pub fn enabled(self) -> bool {
+        match self {
+            Msaa::Disabled => false,
+            _ => true,
+        }
+    }
+
+    pub fn sample_count(self) -> u32 {
+        match self {
+            Msaa::Disabled => 1,
+            Msaa::X4 => 4,
+            Msaa::X8 => 8,
+            Msaa::X16 => 16,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ViewportRendererOptions {
+    pub msaa: Msaa,
+    pub output_format: wgpu::TextureFormat,
+}
+
 /// 3D renderer of the editor viewport.
 ///
 /// Can be used to upload `Geometry` on the GPU and draw it in the
@@ -183,11 +215,13 @@ impl error::Error for ViewportRendererAddGeometryError {}
 pub struct ViewportRenderer {
     geometries: HashMap<u64, GeometryDescriptor>,
     geometries_next_id: u64,
+    msaa_framebuffer_texture_view: Option<wgpu::TextureView>,
+    depth_texture_view: wgpu::TextureView,
     global_matrix_buffer: wgpu::Buffer,
     global_matrix_bind_group: wgpu::BindGroup,
-    depth_texture: wgpu::TextureView,
     matcap_texture_bind_group: wgpu::BindGroup,
     matcap_render_pipeline: wgpu::RenderPipeline,
+    options: ViewportRendererOptions,
 }
 
 impl ViewportRenderer {
@@ -199,13 +233,17 @@ impl ViewportRenderer {
     /// can be updated with setters later.
     pub fn new(
         device: &mut wgpu::Device,
-        output_format: wgpu::TextureFormat,
         screen_size: winit::dpi::PhysicalSize,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
+        options: ViewportRendererOptions,
     ) -> Self {
-        let vs_module = device.create_shader_module(SHADER_MATCAP_VERT);
-        let fs_module = device.create_shader_module(SHADER_MATCAP_FRAG);
+        let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_MATCAP_VERT))
+            .expect("Couldn't read pre-built SPIR-V");
+        let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_MATCAP_FRAG))
+            .expect("Couldn't read pre-built SPIR-V");
+        let vs_module = device.create_shader_module(&vs_words);
+        let fs_module = device.create_shader_module(&fs_words);
 
         let global_matrix_buffer_size = wgpu_size_of::<GlobalMatrixUniforms>();
         let global_matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -354,7 +392,7 @@ impl ViewportRenderer {
                 },
                 primitive_topology: wgpu::PrimitiveTopology::TriangleList,
                 color_states: &[wgpu::ColorStateDescriptor {
-                    format: output_format,
+                    format: options.output_format,
                     color_blend: wgpu::BlendDescriptor::REPLACE,
                     alpha_blend: wgpu::BlendDescriptor::REPLACE,
                     write_mask: wgpu::ColorWrite::ALL,
@@ -385,27 +423,44 @@ impl ViewportRenderer {
                         },
                     ],
                 }],
-                sample_count: 1,
+                sample_count: options.msaa.sample_count(),
             });
 
         let winit::dpi::PhysicalSize { width, height } = screen_size;
         let (tex_width, tex_height) = (width as u32, height as u32);
+
+        let msaa_framebuffer_texture = if options.msaa.enabled() {
+            Some(create_msaa_framebuffer_texture(
+                device,
+                tex_width,
+                tex_height,
+                options.msaa.sample_count(),
+                options.output_format,
+            ))
+        } else {
+            None
+        };
+
+        let depth_texture =
+            create_depth_texture(device, tex_width, tex_height, options.msaa.sample_count());
 
         let global_matrix_uniforms = GlobalMatrixUniforms {
             projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
             view_matrix: view_matrix.clone().into(),
         };
         upload_global_matrix_buffer(device, &global_matrix_buffer, global_matrix_uniforms);
-        let depth_texture = create_depth_texture(device, tex_width, tex_height);
 
         Self {
             geometries: HashMap::new(),
             geometries_next_id: 0,
+            msaa_framebuffer_texture_view: msaa_framebuffer_texture
+                .map(|texture| texture.create_default_view()),
+            depth_texture_view: depth_texture.create_default_view(),
             global_matrix_buffer,
             global_matrix_bind_group,
-            depth_texture: depth_texture.create_default_view(),
             matcap_texture_bind_group,
             matcap_render_pipeline,
+            options,
         }
     }
 
@@ -436,8 +491,26 @@ impl ViewportRenderer {
         let winit::dpi::PhysicalSize { width, height } = screen_size;
         let (tex_width, tex_height) = (width as u32, height as u32);
 
-        let depth_texture = create_depth_texture(device, tex_width, tex_height);
-        self.depth_texture = depth_texture.create_default_view();
+        if self.options.msaa.enabled() {
+            let msaa_framebuffer_texture = create_msaa_framebuffer_texture(
+                device,
+                tex_width,
+                tex_height,
+                self.options.msaa.sample_count(),
+                self.options.output_format,
+            );
+
+            self.msaa_framebuffer_texture_view =
+                Some(msaa_framebuffer_texture.create_default_view());
+        }
+
+        let depth_texture = create_depth_texture(
+            device,
+            tex_width,
+            tex_height,
+            self.options.msaa.sample_count(),
+        );
+        self.depth_texture_view = depth_texture.create_default_view();
     }
 
     /// Upload geometry on the GPU.
@@ -519,21 +592,39 @@ impl ViewportRenderer {
         target_attachment: &wgpu::TextureView,
         ids: &[GeometryId],
     ) {
+        let rpass_color_attachment =
+            if let Some(msaa_framebuffer_texture_view) = &self.msaa_framebuffer_texture_view {
+                wgpu::RenderPassColorAttachmentDescriptor {
+                    attachment: msaa_framebuffer_texture_view,
+                    resolve_target: Some(target_attachment),
+                    load_op: wgpu::LoadOp::Clear,
+                    store_op: wgpu::StoreOp::Store,
+                    clear_color: wgpu::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    },
+                }
+            } else {
+                wgpu::RenderPassColorAttachmentDescriptor {
+                    attachment: target_attachment,
+                    resolve_target: None,
+                    load_op: wgpu::LoadOp::Clear,
+                    store_op: wgpu::StoreOp::Store,
+                    clear_color: wgpu::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    },
+                }
+            };
+
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: target_attachment,
-                resolve_target: None,
-                load_op: wgpu::LoadOp::Clear,
-                store_op: wgpu::StoreOp::Store,
-                clear_color: wgpu::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                },
-            }],
+            color_attachments: &[rpass_color_attachment],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                attachment: &self.depth_texture,
+                attachment: &self.depth_texture_view,
                 depth_load_op: wgpu::LoadOp::Clear,
                 depth_store_op: wgpu::StoreOp::Store,
                 stencil_load_op: wgpu::LoadOp::Clear,
@@ -543,7 +634,13 @@ impl ViewportRenderer {
             }),
         });
 
+        // This needs to be set for vulkan, oterwise the validation
+        // layers complain about the stencil reference not being
+        // set... Not sure if this is a bug or not.
+        rpass.set_stencil_reference(0);
+
         rpass.set_pipeline(&self.matcap_render_pipeline);
+
         rpass.set_bind_group(0, &self.global_matrix_bind_group, &[]);
         rpass.set_bind_group(1, &self.matcap_texture_bind_group, &[]);
 
@@ -576,7 +673,12 @@ struct GlobalMatrixUniforms {
     view_matrix: [[f32; 4]; 4],
 }
 
-fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
+fn create_depth_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    sample_count: u32,
+) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         size: wgpu::Extent3d {
             width,
@@ -585,9 +687,31 @@ fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu:
         },
         array_layer_count: 1,
         mip_level_count: 1,
-        sample_count: 1,
+        sample_count,
         dimension: wgpu::TextureDimension::D2,
         format: DEPTH_FORMAT,
+        usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+    })
+}
+
+fn create_msaa_framebuffer_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    sample_count: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth: 1,
+        },
+        array_layer_count: 1,
+        mip_level_count: 1,
+        sample_count,
+        dimension: wgpu::TextureDimension::D2,
+        format,
         usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
     })
 }
