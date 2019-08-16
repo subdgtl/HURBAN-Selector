@@ -63,10 +63,18 @@ impl Geometry {
         vertex_positions: Vec<[f32; 3]>,
         vertex_normals: Vec<[f32; 3]>,
     ) -> Self {
+        assert!(
+            !vertex_positions.is_empty(),
+            "Vertex positions must not be empty",
+        );
+        assert!(
+            !vertex_normals.is_empty(),
+            "Vertex normals must not be empty",
+        );
         assert_eq!(
             vertex_positions.len(),
             vertex_normals.len(),
-            "Renderer geometry requires same length per-vertex data",
+            "Per-vertex data must be same length",
         );
 
         let vertex_data = vertex_positions
@@ -89,10 +97,19 @@ impl Geometry {
         vertex_positions: Vec<[f32; 3]>,
         vertex_normals: Vec<[f32; 3]>,
     ) -> Self {
+        assert!(!indices.is_empty(), "Indices must not be empty");
+        assert!(
+            !vertex_positions.is_empty(),
+            "Vertex positions must not be empty",
+        );
+        assert!(
+            !vertex_normals.is_empty(),
+            "Vertex normals must not be empty",
+        );
         assert_eq!(
             vertex_positions.len(),
             vertex_normals.len(),
-            "Renderer geometry requires same length per-vertex data",
+            "Per-vertex data must be same length",
         );
 
         let vertex_data = vertex_positions
@@ -664,4 +681,100 @@ fn wgpu_size_of<T>() -> wgpu::BufferAddress {
     let size = mem::size_of::<T>();
     wgpu::BufferAddress::try_from(size)
         .unwrap_or_else(|_| panic!("Size {} does not fit into wgpu BufferAddress", size))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn triangle() -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
+        #[rustfmt::skip]
+        let vertex_positions = vec![
+            [ -0.3, -0.5,  0.0 ],
+            [  0.3, -0.5,  0.0 ],
+            [  0.0,  0.5,  0.0 ],
+        ];
+
+        #[rustfmt::skip]
+        let vertex_normals = vec![
+            [ 0.0, 0.0, 1.0 ],
+            [ 0.0, 0.0, 1.0 ],
+            [ 0.0, 0.0, 1.0 ],
+        ];
+
+        (vertex_positions, vertex_normals)
+    }
+
+    fn triangle_indexed() -> (Vec<Index>, Vec<[f32; 3]>, Vec<[f32; 3]>) {
+        let (vertex_positions, vertex_normals) = triangle();
+        let indices = vec![0, 1, 2];
+
+        (indices, vertex_positions, vertex_normals)
+    }
+
+    #[test]
+    fn test_create_valid_geometry_does_not_panic() {
+        let (positions, normals) = triangle();
+        let _geometry = Geometry::from_positions_and_normals(positions, normals);
+
+        // Didn't panic!
+    }
+
+    #[test]
+    fn test_create_valid_indexed_geometry_does_not_panic() {
+        let (indices, positions, normals) = triangle_indexed();
+        let _geometry = Geometry::from_positions_and_normals_indexed(indices, positions, normals);
+
+        // Didn't panic!
+    }
+
+    #[test]
+    #[should_panic(expected = "Per-vertex data must be same length")]
+    fn test_create_geometry_from_different_length_vertex_data_panicks() {
+        let (_, normals) = triangle();
+        let _geometry = Geometry::from_positions_and_normals(vec![[1.0, 1.0, 1.0]], normals);
+    }
+
+    #[test]
+    #[should_panic(expected = "Per-vertex data must be same length")]
+    fn test_create_indexed_geometry_from_different_length_vertex_data_panicks() {
+        let (indices, positions, _) = triangle_indexed();
+        let _geometry =
+            Geometry::from_positions_and_normals_indexed(indices, positions, vec![[1.0, 1.0, 1.0]]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Vertex positions must not be empty")]
+    fn test_create_geometry_from_empty_vertex_positions_panicks() {
+        let (_, normals) = triangle();
+        let _geometry = Geometry::from_positions_and_normals(vec![], normals);
+    }
+
+    #[test]
+    #[should_panic(expected = "Vertex normals must not be empty")]
+    fn test_create_geometry_from_empty_vertex_normals_panicks() {
+        let (positions, _) = triangle();
+        let _geometry = Geometry::from_positions_and_normals(positions, vec![]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Vertex positions must not be empty")]
+    fn test_create_indexed_geometry_from_empty_vertex_positions_panicks() {
+        let (indices, _, normals) = triangle_indexed();
+        let _geometry = Geometry::from_positions_and_normals_indexed(indices, vec![], normals);
+    }
+
+    #[test]
+    #[should_panic(expected = "Vertex normals must not be empty")]
+    fn test_create_indexed_geometry_from_empty_vertex_normals_panicks() {
+        let (indices, positions, _) = triangle_indexed();
+        let _geometry = Geometry::from_positions_and_normals_indexed(indices, positions, vec![]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Indices must not be empty")]
+    fn test_create_indexed_geometry_from_empty_indices_panicks() {
+        let (_, vertices, normals) = triangle_indexed();
+        let _geometry = Geometry::from_positions_and_normals_indexed(vec![], vertices, normals);
+    }
 }
