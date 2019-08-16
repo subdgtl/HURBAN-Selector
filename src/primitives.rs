@@ -5,8 +5,6 @@
 //! The primitives live in a right-handed coordinate space with the XY
 //! plane being the ground and and Z axis growing up.
 
-use std::f32;
-
 use crate::viewport_renderer::{Geometry, Index};
 
 pub fn plane(position: [f32; 3], scale: f32) -> Geometry {
