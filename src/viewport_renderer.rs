@@ -717,20 +717,23 @@ mod tests {
         let (positions, normals) = triangle();
         let geometry = Geometry::from_positions_and_normals(positions, normals);
 
-        assert_eq!(geometry.vertex_data, vec![
-            Vertex {
-                position: [-0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-            },
-            Vertex {
-                position: [0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-            },
-            Vertex {
-                position: [0.0, 0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-            },
-        ]);
+        assert_eq!(
+            geometry.vertex_data,
+            vec![
+                Vertex {
+                    position: [-0.3, -0.5, 0.0, 1.0],
+                    normal: [0.0, 0.0, 1.0, 0.0],
+                },
+                Vertex {
+                    position: [0.3, -0.5, 0.0, 1.0],
+                    normal: [0.0, 0.0, 1.0, 0.0],
+                },
+                Vertex {
+                    position: [0.0, 0.5, 0.0, 1.0],
+                    normal: [0.0, 0.0, 1.0, 0.0],
+                },
+            ]
+        );
         assert_eq!(geometry.indices, None);
     }
 
@@ -739,20 +742,23 @@ mod tests {
         let (indices, positions, normals) = triangle_indexed();
         let geometry = Geometry::from_positions_and_normals_indexed(indices, positions, normals);
 
-        assert_eq!(geometry.vertex_data, vec![
-            Vertex {
-                position: [-0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-            },
-            Vertex {
-                position: [0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-            },
-            Vertex {
-                position: [0.0, 0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-            },
-        ]);
+        assert_eq!(
+            geometry.vertex_data,
+            vec![
+                Vertex {
+                    position: [-0.3, -0.5, 0.0, 1.0],
+                    normal: [0.0, 0.0, 1.0, 0.0],
+                },
+                Vertex {
+                    position: [0.3, -0.5, 0.0, 1.0],
+                    normal: [0.0, 0.0, 1.0, 0.0],
+                },
+                Vertex {
+                    position: [0.0, 0.5, 0.0, 1.0],
+                    normal: [0.0, 0.0, 1.0, 0.0],
+                },
+            ]
+        );
         assert_eq!(geometry.indices, Some(vec![0, 1, 2]));
     }
 
