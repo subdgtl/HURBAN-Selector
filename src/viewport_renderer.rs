@@ -715,17 +715,45 @@ mod tests {
     #[test]
     fn test_create_valid_geometry_does_not_panic() {
         let (positions, normals) = triangle();
-        let _geometry = Geometry::from_positions_and_normals(positions, normals);
+        let geometry = Geometry::from_positions_and_normals(positions, normals);
 
-        // Didn't panic!
+        assert_eq!(geometry.vertex_data, vec![
+            Vertex {
+                position: [-0.3, -0.5, 0.0, 1.0],
+                normal: [0.0, 0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [0.3, -0.5, 0.0, 1.0],
+                normal: [0.0, 0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [0.0, 0.5, 0.0, 1.0],
+                normal: [0.0, 0.0, 1.0, 0.0],
+            },
+        ]);
+        assert_eq!(geometry.indices, None);
     }
 
     #[test]
     fn test_create_valid_indexed_geometry_does_not_panic() {
         let (indices, positions, normals) = triangle_indexed();
-        let _geometry = Geometry::from_positions_and_normals_indexed(indices, positions, normals);
+        let geometry = Geometry::from_positions_and_normals_indexed(indices, positions, normals);
 
-        // Didn't panic!
+        assert_eq!(geometry.vertex_data, vec![
+            Vertex {
+                position: [-0.3, -0.5, 0.0, 1.0],
+                normal: [0.0, 0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [0.3, -0.5, 0.0, 1.0],
+                normal: [0.0, 0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [0.0, 0.5, 0.0, 1.0],
+                normal: [0.0, 0.0, 1.0, 0.0],
+            },
+        ]);
+        assert_eq!(geometry.indices, Some(vec![0, 1, 2]));
     }
 
     #[test]
