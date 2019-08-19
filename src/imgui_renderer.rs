@@ -389,8 +389,6 @@ impl ImguiRenderer {
 }
 
 struct Texture {
-    texture: wgpu::Texture,
-    sampler: wgpu::Sampler,
     bind_group: wgpu::BindGroup,
 }
 
@@ -417,11 +415,7 @@ impl Texture {
             ],
         });
 
-        Texture {
-            texture,
-            sampler,
-            bind_group,
-        }
+        Texture { bind_group }
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
