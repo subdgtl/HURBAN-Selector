@@ -1,7 +1,5 @@
 use std::time::Instant;
 
-use imgui;
-use imgui_winit_support;
 use wgpu::winit;
 
 use hurban_selector::camera::{Camera, CameraOptions};
@@ -9,6 +7,7 @@ use hurban_selector::imgui_renderer::ImguiRenderer;
 use hurban_selector::importer::Importer;
 use hurban_selector::input::InputManager;
 use hurban_selector::primitives;
+use hurban_selector::ui::{self, Ui};
 use hurban_selector::viewport_renderer::{Geometry, ViewportRenderer};
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
@@ -84,9 +83,9 @@ fn main() {
 
     let mut dynamic_models = Vec::new();
 
-    let (mut imgui, mut imgui_winit_platform) = init_imgui(&window);
+    let mut ui = Ui::new(&window);
     let mut imgui_renderer = ImguiRenderer::new(
-        &mut imgui,
+        ui.context(),
         &mut device,
         wgpu::TextureFormat::Bgra8Unorm,
         None,
@@ -111,8 +110,8 @@ fn main() {
 
         input_manager.start_frame();
         event_loop.poll_events(|event| {
-            imgui_winit_platform.handle_event(imgui.io_mut(), &window, &event);
-            input_manager.process_event(event);
+            let (ui_captured_keyboard, ui_captured_mouse) = ui.process_event(&event);
+            input_manager.process_event(event, ui_captured_keyboard, ui_captured_mouse);
         });
         let input_state = input_manager.input_state();
 
@@ -191,14 +190,11 @@ fn main() {
             &camera.view_matrix(),
         );
 
-        imgui_winit_platform
-            .prepare_frame(imgui.io_mut(), &window)
-            .expect("Failed to start imgui frame");
+        time = ui.update_delta_time(time);
 
-        let ui = imgui.frame();
-
-        imgui_winit_platform.prepare_render(&ui, &window);
-        let imgui_draw_data = ui.render();
+        let imgui_draw_data = ui.create(|imgui_ui| {
+            ui::draw_fps_window(imgui_ui);
+        });
 
         let frame = swap_chain.get_next_texture();
         let mut encoder =
@@ -245,32 +241,4 @@ fn create_swap_chain(
             present_mode: wgpu::PresentMode::Vsync,
         },
     )
-}
-
-fn init_imgui(window: &winit::Window) -> (imgui::Context, imgui_winit_support::WinitPlatform) {
-    use imgui::{Context, FontConfig, FontSource};
-    use imgui_winit_support::{HiDpiMode, WinitPlatform};
-
-    let mut imgui = Context::create();
-    let mut style = imgui.style_mut();
-    style.window_padding = [10.0, 10.0];
-
-    imgui.set_ini_filename(None);
-
-    let mut platform = WinitPlatform::init(&mut imgui);
-    platform.attach_window(imgui.io_mut(), window, HiDpiMode::Default);
-
-    let hidpi_factor = platform.hidpi_factor();
-
-    let font_size = (13.0 * hidpi_factor) as f32;
-    imgui.fonts().add_font(&[FontSource::DefaultFontData {
-        config: Some(FontConfig {
-            size_pixels: font_size,
-            ..FontConfig::default()
-        }),
-    }]);
-
-    imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
-
-    (imgui, platform)
 }
