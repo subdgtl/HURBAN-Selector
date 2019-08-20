@@ -6,7 +6,9 @@ use hurban_selector::camera::{Camera, CameraOptions};
 use hurban_selector::importer::Importer;
 use hurban_selector::input::InputManager;
 use hurban_selector::primitives;
-use hurban_selector::viewport_renderer::{Geometry, ViewportRenderer};
+use hurban_selector::viewport_renderer::{
+    Geometry, Msaa, ViewportRenderer, ViewportRendererOptions,
+};
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
@@ -55,10 +57,17 @@ fn main() {
     );
     let mut viewport_renderer = ViewportRenderer::new(
         &mut device,
-        SWAP_CHAIN_FORMAT,
         window_size,
         &camera.projection_matrix(),
         &camera.view_matrix(),
+        ViewportRendererOptions {
+            // FIXME: Msaa X4 is the only value currently working on
+            // all devices we tried. We should query the device
+            // capabilities (but how?!) to select the proper MSAA
+            // value.
+            msaa: Msaa::X4,
+            output_format: SWAP_CHAIN_FORMAT,
+        },
     );
 
     // FIXME: This is just temporary code so that we can see something
