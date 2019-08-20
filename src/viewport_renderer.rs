@@ -145,7 +145,7 @@ impl Geometry {
 }
 
 /// Opaque handle to geometry stored in viewport renderer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GeometryId(u64);
 
 #[derive(Debug)]
