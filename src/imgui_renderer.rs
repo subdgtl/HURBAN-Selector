@@ -135,8 +135,7 @@ impl ImguiRenderer {
             depth_stencil_state: None,
             index_format: wgpu::IndexFormat::Uint16, // FIXME(yanchith): may need 32bit indices!
             vertex_buffers: &[wgpu::VertexBufferDescriptor {
-                stride: u64::try_from(wgpu_size_of::<imgui::DrawVert>())
-                    .expect("Should convert size of draw vert to u64"),
+                stride: wgpu_size_of::<imgui::DrawVert>(),
                 step_mode: wgpu::InputStepMode::Vertex,
                 attributes: &[
                     wgpu::VertexAttributeDescriptor {
