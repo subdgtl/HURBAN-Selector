@@ -114,6 +114,7 @@ fn main() {
             let duration_running = now.duration_since(time_start);
             time = now;
 
+            // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
             let duration_last_frame_s = duration_last_frame.as_secs() as f32
                 + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
 
