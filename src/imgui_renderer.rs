@@ -38,8 +38,9 @@ impl ImguiRenderer {
 
         // Create ortho projection matrix uniform buffer, layout and bind group
 
+        let uniform_buffer_size = wgpu_size_of::<TransformUniforms>();
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            size: UNIFORM_BUFFER_SIZE,
+            size: uniform_buffer_size,
             // FIXME(yanchith): `TRANSFER_DST` is required because the
             // only way to upload the buffer currently is by issueing
             // the transfer command in `upload_buffer_immediate`. We
@@ -62,7 +63,7 @@ impl ImguiRenderer {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer {
                     buffer: &uniform_buffer,
-                    range: 0..UNIFORM_BUFFER_SIZE,
+                    range: 0..uniform_buffer_size,
                 },
             }],
         });
@@ -272,7 +273,7 @@ impl ImguiRenderer {
         upload_buffer_immediate(
             device,
             &self.uniform_buffer,
-            &[translate[0], translate[1], scale[0], scale[1]],
+            TransformUniforms { translate, scale },
         );
 
         // Will project scissor/clipping rectangles into framebuffer space
@@ -425,15 +426,26 @@ impl Texture {
     }
 }
 
-fn upload_buffer_immediate(device: &mut wgpu::Device, buffer: &wgpu::Buffer, data: &[f32]) {
-    let count = data.len();
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct TransformUniforms {
+    translate: [f32; 2],
+    scale: [f32; 2],
+}
+
+fn upload_buffer_immediate(
+    device: &mut wgpu::Device,
+    buffer: &wgpu::Buffer,
+    transform_uniforms: TransformUniforms,
+) {
+    let transform_uniforms_size = wgpu_size_of::<TransformUniforms>();
     let source_buffer = device
-        .create_buffer_mapped(count, wgpu::BufferUsage::TRANSFER_SRC)
-        .fill_from_slice(data);
+        .create_buffer_mapped(1, wgpu::BufferUsage::TRANSFER_SRC)
+        .fill_from_slice(&[transform_uniforms]);
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
 
-    encoder.copy_buffer_to_buffer(&source_buffer, 0, buffer, 0, UNIFORM_BUFFER_SIZE);
+    encoder.copy_buffer_to_buffer(&source_buffer, 0, buffer, 0, transform_uniforms_size);
 
     device.get_queue().submit(&[encoder.finish()]);
 }
@@ -494,4 +506,8 @@ fn create_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     })
 }
 
-const UNIFORM_BUFFER_SIZE: u64 = 16;
+fn wgpu_size_of<T>() -> wgpu::BufferAddress {
+    let size = mem::size_of::<T>();
+    wgpu::BufferAddress::try_from(size)
+        .unwrap_or_else(|_| panic!("Size {} does not fit into wgpu BufferAddress", size))
+}
