@@ -202,6 +202,8 @@ impl ImguiRenderer {
         height: u32,
         data: &[u8],
     ) -> imgui::TextureId {
+        assert_eq!(data.len() % 4, 0);
+
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
                 width,
