@@ -21,8 +21,6 @@ pub struct ImguiRenderer {
 }
 
 impl ImguiRenderer {
-    const DRAW_VERT_SIZE: usize = mem::size_of::<imgui::DrawVert>();
-
     pub fn new(
         imgui: &mut imgui::Context,
         device: &mut wgpu::Device,
@@ -132,7 +130,7 @@ impl ImguiRenderer {
             depth_stencil_state: None,
             index_format: wgpu::IndexFormat::Uint16, // FIXME(yanchith): may need 32bit indices!
             vertex_buffers: &[wgpu::VertexBufferDescriptor {
-                stride: u64::try_from(Self::DRAW_VERT_SIZE).unwrap(),
+                stride: u64::try_from(wgpu_size_of::<imgui::DrawVert>()).unwrap(),
                 step_mode: wgpu::InputStepMode::Vertex,
                 attributes: &[
                     wgpu::VertexAttributeDescriptor {
