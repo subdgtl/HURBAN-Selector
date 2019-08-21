@@ -4,6 +4,8 @@ use std::mem;
 use imgui;
 use imgui::internal::RawWrapper;
 
+use crate::include_shader;
+
 #[derive(Debug, Clone)]
 pub enum ImguiRendererError {
     BadTexture(imgui::TextureId),
@@ -29,8 +31,8 @@ impl ImguiRenderer {
     ) -> Result<ImguiRenderer, ImguiRendererError> {
         // Link shaders
 
-        let vs_spv = include_bytes!(concat!(env!("OUT_DIR"), "/shaders/imgui.vert.spv"));
-        let fs_spv = include_bytes!(concat!(env!("OUT_DIR"), "/shaders/imgui.frag.spv"));
+        let vs_spv = include_shader!("imgui.vert.spv");
+        let fs_spv = include_shader!("imgui.frag.spv");
         let vs_module = device.create_shader_module(vs_spv);
         let fs_module = device.create_shader_module(fs_spv);
 
