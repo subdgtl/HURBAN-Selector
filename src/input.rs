@@ -41,17 +41,18 @@ impl InputManager {
         self.input_state = InputState::default();
     }
 
-    pub fn process_event(&mut self, ev: winit::Event) {
+    pub fn process_event(
+        &mut self,
+        ev: winit::Event,
+        ui_captured_keyboard: bool,
+        ui_captured_mouse: bool,
+    ) {
         const MODIFIERS_NONE: winit::ModifiersState = winit::ModifiersState {
             logo: false,
             shift: false,
             ctrl: false,
             alt: false,
         };
-
-        // FIXME: these should come in as parameters
-        let gui_captured_keyboard: bool = false;
-        let gui_captured_mouse: bool = false;
 
         match ev {
             winit::Event::WindowEvent { event, .. } => match event {
@@ -98,7 +99,7 @@ impl InputManager {
                     };
 
                     // These events are responded to only when gui doesn't have focus
-                    if !gui_captured_keyboard {
+                    if !ui_captured_keyboard {
                         match (virtual_keycode, state, modifiers) {
                             (
                                 Some(winit::VirtualKeyCode::A),
@@ -142,7 +143,7 @@ impl InputManager {
             },
             winit::Event::DeviceEvent { event, .. } => match event {
                 winit::DeviceEvent::MouseMotion { delta } => {
-                    if !gui_captured_mouse {
+                    if !ui_captured_mouse {
                         let x = delta.0 as f32;
                         let y = delta.1 as f32;
                         if self.lmb_down && self.rmb_down {
@@ -165,7 +166,7 @@ impl InputManager {
                     winit::MouseScrollDelta::PixelDelta(winit::dpi::LogicalPosition {
                         y, ..
                     }) => {
-                        if !gui_captured_mouse {
+                        if !ui_captured_mouse {
                             match y.partial_cmp(&0.0) {
                                 Some(Ordering::Greater) => self.input_state.camera_zoom_steps += 1,
                                 Some(Ordering::Less) => self.input_state.camera_zoom_steps -= 1,
@@ -174,7 +175,7 @@ impl InputManager {
                         }
                     }
                     winit::MouseScrollDelta::LineDelta(_, y) => {
-                        if !gui_captured_mouse {
+                        if !ui_captured_mouse {
                             match y.partial_cmp(&0.0) {
                                 Some(Ordering::Greater) => self.input_state.camera_zoom_steps += 1,
                                 Some(Ordering::Less) => self.input_state.camera_zoom_steps -= 1,

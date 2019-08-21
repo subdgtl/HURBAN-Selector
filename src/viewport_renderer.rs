@@ -6,14 +6,9 @@ use std::io;
 use std::mem;
 
 use nalgebra::base::Matrix4;
-
 use wgpu::winit;
 
-macro_rules! include_shader {
-    ($name:expr) => {{
-        include_bytes!(concat!(env!("OUT_DIR"), "/shaders/", $name))
-    }};
-}
+use crate::include_shader;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::D32Float;
 
