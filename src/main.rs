@@ -7,7 +7,7 @@ use hurban_selector::imgui_renderer::ImguiRenderer;
 use hurban_selector::importer::Importer;
 use hurban_selector::input::InputManager;
 use hurban_selector::primitives;
-use hurban_selector::ui::{self, Ui};
+use hurban_selector::ui;
 use hurban_selector::viewport_renderer::{Geometry, ViewportRenderer};
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
@@ -83,9 +83,9 @@ fn main() {
 
     let mut dynamic_models = Vec::new();
 
-    let mut ui = Ui::new(&window);
+    let (mut imgui_context, mut winit_platform) = ui::init(&window);
     let mut imgui_renderer = ImguiRenderer::new(
-        ui.context(),
+        &mut imgui_context,
         &mut device,
         wgpu::TextureFormat::Bgra8Unorm,
         None,
@@ -105,14 +105,41 @@ fn main() {
             let duration_running = now.duration_since(time_start);
             time = now;
 
+            let duration_last_frame_s = duration_last_frame.as_secs() as f32
+                + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
+
+            imgui_context.io_mut().delta_time = duration_last_frame_s;
+
             (duration_last_frame, duration_running)
         };
 
-        input_manager.start_frame();
+        // Since input manager needs to process events separately after imgui
+        // handles them, this buffer with copies of events is needed.
+        let mut input_events = vec![];
+
         event_loop.poll_events(|event| {
-            let (ui_captured_keyboard, ui_captured_mouse) = ui.process_event(&event);
-            input_manager.process_event(event, ui_captured_keyboard, ui_captured_mouse);
+            input_events.push(event.clone());
+            winit_platform.handle_event(imgui_context.io_mut(), &window, &event);
         });
+
+        // Start UI and input manger frames
+        winit_platform
+            .prepare_frame(imgui_context.io_mut(), &window)
+            .expect("Failed to start imgui frame");
+        let imgui_ui = imgui_context.frame();
+        let imgui_ui_io = imgui_ui.io();
+
+        input_manager.start_frame();
+
+        // Imgui's IO is updated after current frame starts, else it'd contain
+        // outdated values.
+        let ui_captured_keyboard = imgui_ui_io.want_capture_keyboard;
+        let ui_captured_mouse = imgui_ui_io.want_capture_mouse;
+
+        for event in input_events {
+            input_manager.process_event(event, ui_captured_keyboard, ui_captured_mouse);
+        }
+
         let input_state = input_manager.input_state();
 
         let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
@@ -190,11 +217,10 @@ fn main() {
             &camera.view_matrix(),
         );
 
-        time = ui.update_delta_time(time);
+        ui::draw_fps_window(&imgui_ui);
 
-        let imgui_draw_data = ui.create(|imgui_ui| {
-            ui::draw_fps_window(imgui_ui);
-        });
+        winit_platform.prepare_render(&imgui_ui, &window);
+        let imgui_draw_data = imgui_ui.render();
 
         let frame = swap_chain.get_next_texture();
         let mut encoder =
