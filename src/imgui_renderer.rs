@@ -130,7 +130,8 @@ impl ImguiRenderer {
             depth_stencil_state: None,
             index_format: wgpu::IndexFormat::Uint16, // FIXME(yanchith): may need 32bit indices!
             vertex_buffers: &[wgpu::VertexBufferDescriptor {
-                stride: u64::try_from(wgpu_size_of::<imgui::DrawVert>()).unwrap(),
+                stride: u64::try_from(wgpu_size_of::<imgui::DrawVert>())
+                    .expect("Should convert size of draw vert to u64"),
                 step_mode: wgpu::InputStepMode::Vertex,
                 attributes: &[
                     wgpu::VertexAttributeDescriptor {
@@ -464,7 +465,9 @@ fn upload_texture_immediate(
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
 
-    let pixel_size = u32::try_from(count).unwrap() / width / height;
+    let count = u32::try_from(count).expect("Should convert texture data length to u32");
+    let pixel_size = count / width / height;
+
     encoder.copy_buffer_to_texture(
         wgpu::BufferCopyView {
             buffer: &buffer,
