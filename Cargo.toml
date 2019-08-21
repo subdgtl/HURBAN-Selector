@@ -23,7 +23,7 @@ vulkan = ["wgpu/vulkan"]
 # opengl = ["wgpu/gl"]
 
 [dependencies]
-wgpu = { git = "https://github.com/gfx-rs/wgpu-rs", rev = "5dd361fc639e71af328504f9e27a08daf83d7633" }
+wgpu = { git = "https://github.com/gfx-rs/wgpu-rs", rev = "79b5342ee2972b219e1ba08173b4d6c88b191344" }
 imgui = "0.1.0"
 imgui-winit-support = "0.1.0"
 tinyfiledialogs = "3.3.5"

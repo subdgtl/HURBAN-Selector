@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::io;
 use std::mem;
 
 use imgui;
@@ -29,10 +30,14 @@ impl ImguiRenderer {
     ) -> Result<ImguiRenderer, ImguiRendererError> {
         // Link shaders
 
-        let vs_spv = include_shader!("imgui.vert.spv");
-        let fs_spv = include_shader!("imgui.frag.spv");
-        let vs_module = device.create_shader_module(vs_spv);
-        let fs_module = device.create_shader_module(fs_spv);
+        let vs_spv: &[u8] = include_shader!("imgui.vert.spv");
+        let fs_spv: &[u8] = include_shader!("imgui.frag.spv");
+        let vs_words =
+            wgpu::read_spirv(io::Cursor::new(vs_spv)).expect("Couldn't read pre-built SPIR-V");
+        let fs_words =
+            wgpu::read_spirv(io::Cursor::new(fs_spv)).expect("Couldn't read pre-built SPIR-V");
+        let vs_module = device.create_shader_module(&vs_words);
+        let fs_module = device.create_shader_module(&fs_words);
 
         // Create ortho projection matrix uniform buffer, layout and bind group
 
