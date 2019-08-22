@@ -3,13 +3,13 @@ use std::time::Instant;
 use wgpu::winit;
 
 use hurban_selector::camera::{Camera, CameraOptions};
+use hurban_selector::geometry;
 use hurban_selector::imgui_renderer::ImguiRenderer;
 use hurban_selector::importer::Importer;
 use hurban_selector::input::InputManager;
-use hurban_selector::primitives;
 use hurban_selector::ui;
 use hurban_selector::viewport_renderer::{
-    Geometry, Msaa, ViewportRenderer, ViewportRendererOptions,
+    Msaa, RendererGeometry, ViewportRenderer, ViewportRendererOptions,
 };
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
@@ -46,7 +46,7 @@ fn main() {
         60f32.to_radians(),
         CameraOptions {
             radius_min: 1.0,
-            radius_max: 500.0,
+            radius_max: 10000.0,
             polar_angle_distance_min: 1f32.to_radians(),
             speed_pan: 0.1,
             speed_rotate: 0.005,
@@ -72,25 +72,26 @@ fn main() {
         },
     );
 
-    // FIXME: This is just temporary code so that we can see something
-    // in the scene and know the renderer works.
-    let cube1_g = primitives::uv_cube([0.0, 0.0, 0.0], 0.5);
-    let cube2_g = primitives::uv_cube([5.0, 5.0, 0.0], 0.7);
-    let cube3_g = primitives::uv_cube([5.0, 0.0, 0.0], 1.0);
-    let cube4_g = primitives::cube([0.0, 5.0, 0.0], 0.9);
-    let cube5_g = primitives::cube([0.0, 0.0, 5.0], 1.5);
-    let plane1_g = primitives::plane([0.0, 0.0, 20.0], 10.0);
-    let plane2_g = primitives::plane([0.0, 0.0, -20.0], 10.0);
+    let mut scene_geometries = vec![
+        // FIXME: This is just temporary code so that we can see
+        // something in the scene and know the renderer works.
+        geometry::uv_cube([0.0, 0.0, 0.0], 0.5),
+        geometry::uv_cube([0.0, 500.0, 0.0], 5.0),
+        geometry::uv_cube([500.0, 0.0, 0.0], 5.0),
+        geometry::cube([0.0, 5.0, 0.0], 0.9),
+        geometry::cube([0.0, 0.0, 5.0], 1.5),
+        geometry::plane([0.0, 0.0, 20.0], 10.0),
+        geometry::plane([0.0, 0.0, -20.0], 10.0),
+    ];
 
-    let cube1 = viewport_renderer.add_geometry(&device, &cube1_g).unwrap();
-    let cube2 = viewport_renderer.add_geometry(&device, &cube2_g).unwrap();
-    let cube3 = viewport_renderer.add_geometry(&device, &cube3_g).unwrap();
-    let cube4 = viewport_renderer.add_geometry(&device, &cube4_g).unwrap();
-    let cube5 = viewport_renderer.add_geometry(&device, &cube5_g).unwrap();
-    let plane1 = viewport_renderer.add_geometry(&device, &plane1_g).unwrap();
-    let plane2 = viewport_renderer.add_geometry(&device, &plane2_g).unwrap();
-
-    let mut dynamic_models = Vec::new();
+    let mut scene_renderer_geometry = Vec::with_capacity(scene_geometries.len());
+    for geometry in &scene_geometries {
+        let renderer_geometry = RendererGeometry::from_geometry(geometry);
+        let handle = viewport_renderer
+            .add_geometry(&device, &renderer_geometry)
+            .unwrap();
+        scene_renderer_geometry.push(handle);
+    }
 
     let (mut imgui_context, mut winit_platform) = ui::init(&window);
     let mut imgui_renderer = ImguiRenderer::new(
@@ -163,9 +164,8 @@ fn main() {
         camera.zoom_step(input_state.camera_zoom_steps);
 
         if input_state.camera_reset_viewport {
-            // FIXME: For now this is a cheap man's version of:
-            // https://trello.com/c/JFNQ6GyJ/85-center-viewport
-            camera.reset_origin();
+            let (origin, radius) = geometry::compute_bounding_sphere(&scene_geometries[..]);
+            camera.zoom_to_fit_sphere(&origin, radius);
         }
 
         if input_state.import_requested {
@@ -177,14 +177,14 @@ fn main() {
                 match importer.import_obj(&path) {
                     Ok(models) => {
                         for model in models {
-                            let geometry = Geometry::from_positions_and_normals_indexed(
-                                model.indices,
-                                model.vertex_positions,
-                                model.vertex_normals,
-                            );
-                            let model_handle =
-                                viewport_renderer.add_geometry(&device, &geometry).unwrap();
-                            dynamic_models.push(model_handle);
+                            let geometry = model.geometry;
+                            let renderer_geometry = RendererGeometry::from_geometry(&geometry);
+                            let handle = viewport_renderer
+                                .add_geometry(&device, &renderer_geometry)
+                                .unwrap();
+
+                            scene_geometries.push(geometry);
+                            scene_renderer_geometry.push(handle);
                         }
                     }
                     Err(err) => {
@@ -236,15 +236,7 @@ fn main() {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
 
-        viewport_renderer.draw_geometry(
-            &mut encoder,
-            &frame.view,
-            &[cube1, cube2, cube3, cube4, cube5, plane1, plane2],
-        );
-
-        if !dynamic_models.is_empty() {
-            viewport_renderer.draw_geometry(&mut encoder, &frame.view, &dynamic_models[..]);
-        }
+        viewport_renderer.draw_geometry(&mut encoder, &frame.view, &scene_renderer_geometry[..]);
 
         imgui_renderer
             .render(&mut device, &mut encoder, &frame.view, imgui_draw_data)
@@ -253,13 +245,9 @@ fn main() {
         device.get_queue().submit(&[encoder.finish()]);
     }
 
-    viewport_renderer.remove_geometry(cube1);
-    viewport_renderer.remove_geometry(cube2);
-    viewport_renderer.remove_geometry(cube3);
-    viewport_renderer.remove_geometry(cube4);
-    viewport_renderer.remove_geometry(cube5);
-    viewport_renderer.remove_geometry(plane1);
-    viewport_renderer.remove_geometry(plane2);
+    for handle in scene_renderer_geometry {
+        viewport_renderer.remove_geometry(handle);
+    }
 }
 
 fn create_swap_chain(
