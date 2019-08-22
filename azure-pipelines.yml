@@ -26,7 +26,7 @@ jobs:
   variables:
     TOOLCHAIN: 1.36.0
 
-- job: Windows
+- job: Windows_D3D12
   pool:
     vmImage: windows-2019
   steps:
@@ -39,5 +39,21 @@ jobs:
     - template: ci/azure-test-all.yml
       parameters:
         api: d3d12
+  variables:
+    TOOLCHAIN: 1.36.0
+
+- job: Windows_Vulkan
+  pool:
+    vmImage: windows-2019
+  steps:
+    - script: choco install -y ninja
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.7.4'
+        addToPath: true
+        architecture: 'x64'
+    - template: ci/azure-test-all.yml
+      parameters:
+        api: vulkan
   variables:
     TOOLCHAIN: 1.36.0
