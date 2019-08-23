@@ -177,31 +177,34 @@ fn main() {
             camera.reset_origin();
         }
 
-        if input_state.import_requested {
-            if let Some(path) = tinyfiledialogs::open_file_dialog(
-                "Open",
-                "",
-                Some((&["*.obj"], "Wavefront (.obj)")),
-            ) {
-                match importer.import_obj(&path) {
-                    Ok(models) => {
-                        for model in models {
-                            let geometry = Geometry::from_positions_and_normals_indexed(
-                                model.indices,
-                                model.vertex_positions,
-                                model.vertex_normals,
-                            );
-                            let model_handle =
-                                viewport_renderer.add_geometry(&device, &geometry).unwrap();
-                            dynamic_models.push(model_handle);
+        #[cfg(debug_assertions)]
+        {
+            if input_state.import_requested {
+                if let Some(path) = tinyfiledialogs::open_file_dialog(
+                    "Open",
+                    "",
+                    Some((&["*.obj"], "Wavefront (.obj)")),
+                ) {
+                    match importer.import_obj(&path) {
+                        Ok(models) => {
+                            for model in models {
+                                let geometry = Geometry::from_positions_and_normals_indexed(
+                                    model.indices,
+                                    model.vertex_positions,
+                                    model.vertex_normals,
+                                );
+                                let model_handle =
+                                    viewport_renderer.add_geometry(&device, &geometry).unwrap();
+                                dynamic_models.push(model_handle);
+                            }
                         }
-                    }
-                    Err(err) => {
-                        tinyfiledialogs::message_box_ok(
-                            "Error",
-                            &format!("{}", err),
-                            tinyfiledialogs::MessageBoxIcon::Error,
-                        );
+                        Err(err) => {
+                            tinyfiledialogs::message_box_ok(
+                                "Error",
+                                &format!("{}", err),
+                                tinyfiledialogs::MessageBoxIcon::Error,
+                            );
+                        }
                     }
                 }
             }
@@ -236,6 +239,7 @@ fn main() {
             &camera.view_matrix(),
         );
 
+        #[cfg(debug_assertions)]
         ui::draw_fps_window(&imgui_ui);
 
         // Clicking any of the models in the list means clearing everything out
