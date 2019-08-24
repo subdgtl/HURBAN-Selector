@@ -3,57 +3,29 @@ use std::convert::TryFrom;
 use std::error;
 use std::fmt;
 use std::io;
-use std::mem;
 
 use nalgebra::base::{Matrix4, Vector3};
 use nalgebra::geometry::Point3;
-use wgpu::winit;
 
 use crate::convert::cast_usize;
 use crate::geometry::Geometry;
-use crate::include_shader;
 
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::D32Float;
+use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
 
 const SHADER_MATCAP_VERT: &[u8] = include_shader!("matcap.vert.spv");
 const SHADER_MATCAP_FRAG: &[u8] = include_shader!("matcap.frag.spv");
 
-const MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../resources/matcap.png");
-
-/// The geometry vertex data as uploaded on the GPU.
-///
-/// Positions and normals are internally `[f32; 4]` with the last
-/// component filled in as 0.0 or 1.0 depending on it being a position
-/// or vector.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RendererVertex {
-    // These are defined as [f32; 4] for 2 reasons:
-    //
-    // - point vs vector clarity
-    // - padding: vec3 has the same size as vec4 in std140 layout.
-    //   https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL)
-    //
-    // We might decide to pack more useful data than just 0/1 in the
-    // last component later.
-    pub position: [f32; 4],
-    pub normal: [f32; 4],
-}
-
-// FIXME: @Optimization Determine u16/u32 dynamically per geometry to
-// save memory
-/// The geometry indices as uploaded on the GPU.
-pub type RendererIndex = u32;
+const MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../resources/matcap.png");
 
 /// The geometry containing index and vertex data in same-length
 /// format as will be uploaded on the GPU.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RendererGeometry {
-    indices: Option<Vec<RendererIndex>>,
-    vertex_data: Vec<RendererVertex>,
+pub struct SceneRendererGeometry {
+    indices: Option<Vec<GeometryIndex>>,
+    vertex_data: Vec<GeometryVertex>,
 }
 
-impl RendererGeometry {
+impl SceneRendererGeometry {
     /// Construct geometry with same-length per-vertex data from
     /// variable-length data `Geometry`.
     ///
@@ -70,7 +42,7 @@ impl RendererGeometry {
             // This capacity is a lower bound estimate. Given that
             // `Geometry` contains no orphan vertices, there should be
             // at least `vertices.len()` vertices present in the
-            // resulting `RendererGeometry`.
+            // resulting `SceneRendererGeometry`.
             let mut vertex_data = Vec::with_capacity(vertices.len());
 
             // This capacity is an upper bound estimate and will
@@ -125,7 +97,7 @@ impl RendererGeometry {
 
             vertex_data.shrink_to_fit();
 
-            RendererGeometry {
+            SceneRendererGeometry {
                 indices: Some(indices),
                 vertex_data,
             }
@@ -174,7 +146,7 @@ impl RendererGeometry {
     /// of same length. Does not run any validations except for length
     /// checking.
     pub fn from_positions_and_normals_indexed(
-        indices: Vec<RendererIndex>,
+        indices: Vec<GeometryIndex>,
         vertex_positions: Vec<Point3<f32>>,
         vertex_normals: Vec<Vector3<f32>>,
     ) -> Self {
@@ -205,39 +177,27 @@ impl RendererGeometry {
         }
     }
 
-    pub fn vertex_data(&self) -> &[RendererVertex] {
-        &self.vertex_data
-    }
-
-    pub fn indices(&self) -> Option<&[RendererIndex]> {
-        if let Some(indices) = &self.indices {
-            Some(&indices)
-        } else {
-            None
-        }
-    }
-
-    fn vertex((position, normal): (Point3<f32>, Vector3<f32>)) -> RendererVertex {
-        RendererVertex {
+    fn vertex((position, normal): (Point3<f32>, Vector3<f32>)) -> GeometryVertex {
+        GeometryVertex {
             position: [position[0], position[1], position[2], 1.0],
             normal: [normal[0], normal[1], normal[2], 0.0],
         }
     }
 }
 
-/// Opaque handle to geometry stored in viewport renderer.
+/// Opaque handle to geometry stored in scene renderer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RendererGeometryId(u64);
+pub struct SceneRendererGeometryId(u64);
 
 #[derive(Debug)]
-pub enum ViewportRendererAddGeometryError {
+pub enum SceneRendererAddGeometryError {
     TooManyVertices(usize),
     TooManyIndices(usize),
 }
 
-impl fmt::Display for ViewportRendererAddGeometryError {
+impl fmt::Display for SceneRendererAddGeometryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use ViewportRendererAddGeometryError as AddGeometryError;
+        use SceneRendererAddGeometryError as AddGeometryError;
         match self {
             AddGeometryError::TooManyVertices(given) => write!(
                 f,
@@ -255,69 +215,38 @@ impl fmt::Display for ViewportRendererAddGeometryError {
     }
 }
 
-impl error::Error for ViewportRendererAddGeometryError {}
+impl error::Error for SceneRendererAddGeometryError {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Msaa {
-    Disabled,
-    X4,
-    X8,
-    X16,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SceneRendererOptions {
+    pub sample_count: u32,
+    pub output_color_attachment_format: wgpu::TextureFormat,
+    pub output_depth_attachment_format: wgpu::TextureFormat,
 }
 
-impl Msaa {
-    pub fn enabled(self) -> bool {
-        match self {
-            Msaa::Disabled => false,
-            _ => true,
-        }
-    }
-
-    pub fn sample_count(self) -> u32 {
-        match self {
-            Msaa::Disabled => 1,
-            Msaa::X4 => 4,
-            Msaa::X8 => 8,
-            Msaa::X16 => 16,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ViewportRendererOptions {
-    pub msaa: Msaa,
-    pub output_format: wgpu::TextureFormat,
-}
-
-/// 3D renderer of the editor viewport.
+/// 3D renderer of the editor scene.
 ///
 /// Can be used to upload `Geometry` on the GPU and draw it in the
 /// viewport. Currently supports just matcap rendering.
-pub struct ViewportRenderer {
-    geometries: HashMap<u64, GeometryDescriptor>,
-    geometries_next_id: u64,
-    msaa_framebuffer_texture_view: Option<wgpu::TextureView>,
-    depth_texture_view: wgpu::TextureView,
+pub struct SceneRenderer {
+    geometry_resources: HashMap<u64, GeometryResource>,
+    geometry_resources_next_id: u64,
     global_matrix_buffer: wgpu::Buffer,
     global_matrix_bind_group: wgpu::BindGroup,
     matcap_texture_bind_group: wgpu::BindGroup,
     matcap_render_pipeline: wgpu::RenderPipeline,
-    options: ViewportRendererOptions,
 }
 
-impl ViewportRenderer {
-    /// Create a new viewport renderer.
+impl SceneRenderer {
+    /// Create a new scene renderer.
     ///
     /// Initializes GPU resources and the rendering pipeline to draw
-    /// to a texture of `output_format`. `screen_size` and the camera
-    /// matrices are the initial states of the screen and camera, and
-    /// can be updated with setters later.
+    /// to a texture of `output_color_attachment_format`.
     pub fn new(
         device: &mut wgpu::Device,
-        screen_size: winit::dpi::PhysicalSize,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
-        options: ViewportRendererOptions,
+        options: SceneRendererOptions,
     ) -> Self {
         let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_MATCAP_VERT))
             .expect("Couldn't read pre-built SPIR-V");
@@ -329,9 +258,6 @@ impl ViewportRenderer {
         let global_matrix_buffer_size = wgpu_size_of::<GlobalMatrixUniforms>();
         let global_matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             size: global_matrix_buffer_size,
-            // TRANSFER_DST is here because uploading data to this
-            // buffer is not done via MAP_WRITE, but rather creating
-            // another mapped buffer, and issuing a transfer command.
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::TRANSFER_DST,
         });
 
@@ -390,7 +316,7 @@ impl ViewportRenderer {
         });
         let matcap_texture_view = matcap_texture.create_default_view();
 
-        upload_texture(
+        upload_texture_rgba8_unorm(
             device,
             &matcap_texture,
             matcap_texture_width,
@@ -473,13 +399,13 @@ impl ViewportRenderer {
                 },
                 primitive_topology: wgpu::PrimitiveTopology::TriangleList,
                 color_states: &[wgpu::ColorStateDescriptor {
-                    format: options.output_format,
+                    format: options.output_color_attachment_format,
                     color_blend: wgpu::BlendDescriptor::REPLACE,
                     alpha_blend: wgpu::BlendDescriptor::REPLACE,
                     write_mask: wgpu::ColorWrite::ALL,
                 }],
                 depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
-                    format: DEPTH_FORMAT,
+                    format: options.output_depth_attachment_format,
                     depth_write_enabled: true,
                     depth_compare: wgpu::CompareFunction::Less,
                     stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
@@ -489,7 +415,7 @@ impl ViewportRenderer {
                 }),
                 index_format: wgpu::IndexFormat::Uint32,
                 vertex_buffers: &[wgpu::VertexBufferDescriptor {
-                    stride: wgpu_size_of::<RendererVertex>(),
+                    stride: wgpu_size_of::<GeometryVertex>(),
                     step_mode: wgpu::InputStepMode::Vertex,
                     attributes: &[
                         wgpu::VertexAttributeDescriptor {
@@ -504,26 +430,8 @@ impl ViewportRenderer {
                         },
                     ],
                 }],
-                sample_count: options.msaa.sample_count(),
+                sample_count: options.sample_count,
             });
-
-        let winit::dpi::PhysicalSize { width, height } = screen_size;
-        let (tex_width, tex_height) = (width as u32, height as u32);
-
-        let msaa_framebuffer_texture = if options.msaa.enabled() {
-            Some(create_msaa_framebuffer_texture(
-                device,
-                tex_width,
-                tex_height,
-                options.msaa.sample_count(),
-                options.output_format,
-            ))
-        } else {
-            None
-        };
-
-        let depth_texture =
-            create_depth_texture(device, tex_width, tex_height, options.msaa.sample_count());
 
         let global_matrix_uniforms = GlobalMatrixUniforms {
             projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
@@ -532,21 +440,16 @@ impl ViewportRenderer {
         upload_global_matrix_buffer(device, &global_matrix_buffer, global_matrix_uniforms);
 
         Self {
-            geometries: HashMap::new(),
-            geometries_next_id: 0,
-            msaa_framebuffer_texture_view: msaa_framebuffer_texture
-                .map(|texture| texture.create_default_view()),
-            depth_texture_view: depth_texture.create_default_view(),
+            geometry_resources: HashMap::new(),
+            geometry_resources_next_id: 0,
             global_matrix_buffer,
             global_matrix_bind_group,
             matcap_texture_bind_group,
             matcap_render_pipeline,
-            options,
         }
     }
 
-    /// Update the camera matrix (a composition of projection matrix
-    /// and view matrix).
+    /// Update camera matrices (projection matrix and view matrix).
     pub fn set_camera_matrices(
         &mut self,
         device: &mut wgpu::Device,
@@ -560,40 +463,6 @@ impl ViewportRenderer {
         upload_global_matrix_buffer(device, &self.global_matrix_buffer, global_matrix_uniforms);
     }
 
-    /// Update the screen size.
-    ///
-    /// Recreates depth texture and recomputes the scene's
-    /// transformation matrix as necessary.
-    pub fn set_screen_size(
-        &mut self,
-        device: &mut wgpu::Device,
-        screen_size: winit::dpi::PhysicalSize,
-    ) {
-        let winit::dpi::PhysicalSize { width, height } = screen_size;
-        let (tex_width, tex_height) = (width as u32, height as u32);
-
-        if self.options.msaa.enabled() {
-            let msaa_framebuffer_texture = create_msaa_framebuffer_texture(
-                device,
-                tex_width,
-                tex_height,
-                self.options.msaa.sample_count(),
-                self.options.output_format,
-            );
-
-            self.msaa_framebuffer_texture_view =
-                Some(msaa_framebuffer_texture.create_default_view());
-        }
-
-        let depth_texture = create_depth_texture(
-            device,
-            tex_width,
-            tex_height,
-            self.options.msaa.sample_count(),
-        );
-        self.depth_texture_view = depth_texture.create_default_view();
-    }
-
     /// Upload geometry on the GPU.
     ///
     /// Whether indexed or not, the data must be in the
@@ -602,17 +471,17 @@ impl ViewportRenderer {
     pub fn add_geometry(
         &mut self,
         device: &wgpu::Device,
-        geometry: &RendererGeometry,
-    ) -> Result<RendererGeometryId, ViewportRendererAddGeometryError> {
-        use ViewportRendererAddGeometryError as AddGeometryError;
+        geometry: &SceneRendererGeometry,
+    ) -> Result<SceneRendererGeometryId, SceneRendererAddGeometryError> {
+        use SceneRendererAddGeometryError as AddGeometryError;
 
-        let id = RendererGeometryId(self.geometries_next_id);
+        let id = SceneRendererGeometryId(self.geometry_resources_next_id);
 
-        let vertex_data = geometry.vertex_data();
+        let vertex_data = &geometry.vertex_data[..];
         let vertex_data_count = u32::try_from(vertex_data.len())
             .map_err(|_| AddGeometryError::TooManyVertices(vertex_data.len()))?;
 
-        let geometry_descriptor = if let Some(indices) = geometry.indices() {
+        let geometry_descriptor = if let Some(indices) = &geometry.indices {
             let index_count = u32::try_from(indices.len())
                 .map_err(|_| AddGeometryError::TooManyIndices(indices.len()))?;
 
@@ -631,7 +500,7 @@ impl ViewportRenderer {
                 .create_buffer_mapped(indices.len(), wgpu::BufferUsage::INDEX)
                 .fill_from_slice(indices);
 
-            GeometryDescriptor {
+            GeometryResource {
                 vertices: (vertex_buffer, vertex_data_count),
                 indices: Some((index_buffer, index_count)),
             }
@@ -646,67 +515,82 @@ impl ViewportRenderer {
                 .create_buffer_mapped(vertex_data.len(), wgpu::BufferUsage::VERTEX)
                 .fill_from_slice(vertex_data);
 
-            GeometryDescriptor {
+            GeometryResource {
                 vertices: (vertex_buffer, vertex_data_count),
                 indices: None,
             }
         };
 
-        self.geometries.insert(id.0, geometry_descriptor);
-        self.geometries_next_id += 1;
+        self.geometry_resources.insert(id.0, geometry_descriptor);
+        self.geometry_resources_next_id += 1;
         Ok(id)
     }
 
     /// Remove a previously uploaded geometry from the GPU.
-    pub fn remove_geometry(&mut self, id: RendererGeometryId) {
+    pub fn remove_geometry(&mut self, id: SceneRendererGeometryId) {
         log::debug!("Removing geometry with {}", id.0);
         // Dropping the geometry descriptor here unstreams the buffers from device memory
-        self.geometries.remove(&id.0);
+        self.geometry_resources.remove(&id.0);
     }
 
-    /// Clear the screen and draw previously uploaded geometries as
-    /// one of the commands executed with the `command_encoder` to the
-    /// `target_attachment`.
+    /// Optionally clear color and depth and draw previously uploaded
+    /// geometries as one of the commands executed with the `encoder`
+    /// to the `color_attachment`.
     pub fn draw_geometry(
         &self,
+        clear_color_requested: bool,
+        clear_depth_requested: bool,
         encoder: &mut wgpu::CommandEncoder,
-        target_attachment: &wgpu::TextureView,
-        ids: &[RendererGeometryId],
+        color_attachment: &wgpu::TextureView,
+        msaa_attachment: Option<&wgpu::TextureView>,
+        depth_attachment: &wgpu::TextureView,
+        ids: &[SceneRendererGeometryId],
     ) {
-        let rpass_color_attachment =
-            if let Some(msaa_framebuffer_texture_view) = &self.msaa_framebuffer_texture_view {
-                wgpu::RenderPassColorAttachmentDescriptor {
-                    attachment: msaa_framebuffer_texture_view,
-                    resolve_target: Some(target_attachment),
-                    load_op: wgpu::LoadOp::Clear,
-                    store_op: wgpu::StoreOp::Store,
-                    clear_color: wgpu::Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    },
-                }
-            } else {
-                wgpu::RenderPassColorAttachmentDescriptor {
-                    attachment: target_attachment,
-                    resolve_target: None,
-                    load_op: wgpu::LoadOp::Clear,
-                    store_op: wgpu::StoreOp::Store,
-                    clear_color: wgpu::Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    },
-                }
-            };
+        let color_load_op = if clear_color_requested {
+            wgpu::LoadOp::Clear
+        } else {
+            wgpu::LoadOp::Load
+        };
+
+        let depth_load_op = if clear_depth_requested {
+            wgpu::LoadOp::Clear
+        } else {
+            wgpu::LoadOp::Load
+        };
+
+        let rpass_color_attachment_descriptor = if let Some(msaa_attachment) = msaa_attachment {
+            wgpu::RenderPassColorAttachmentDescriptor {
+                attachment: msaa_attachment,
+                resolve_target: Some(color_attachment),
+                load_op: color_load_op,
+                store_op: wgpu::StoreOp::Store,
+                clear_color: wgpu::Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                },
+            }
+        } else {
+            wgpu::RenderPassColorAttachmentDescriptor {
+                attachment: color_attachment,
+                resolve_target: None,
+                load_op: color_load_op,
+                store_op: wgpu::StoreOp::Store,
+                clear_color: wgpu::Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                },
+            }
+        };
 
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[rpass_color_attachment],
+            color_attachments: &[rpass_color_attachment_descriptor],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                attachment: &self.depth_texture_view,
-                depth_load_op: wgpu::LoadOp::Clear,
+                attachment: depth_attachment,
+                depth_load_op,
                 depth_store_op: wgpu::StoreOp::Store,
                 stencil_load_op: wgpu::LoadOp::Clear,
                 stencil_store_op: wgpu::StoreOp::Store,
@@ -726,7 +610,7 @@ impl ViewportRenderer {
         rpass.set_bind_group(1, &self.matcap_texture_bind_group, &[]);
 
         for id in ids {
-            if let Some(geometry) = &self.geometries.get(&id.0) {
+            if let Some(geometry) = &self.geometry_resources.get(&id.0) {
                 let (vertex_buffer, vertex_count) = &geometry.vertices;
                 rpass.set_vertex_buffers(&[(vertex_buffer, 0)]);
                 if let Some((index_buffer, index_count)) = &geometry.indices {
@@ -742,59 +626,40 @@ impl ViewportRenderer {
     }
 }
 
-struct GeometryDescriptor {
+struct GeometryResource {
     vertices: (wgpu::Buffer, u32),
     indices: Option<(wgpu::Buffer, u32)>,
 }
+
+/// The geometry vertex data as uploaded on the GPU.
+///
+/// Positions and normals are internally `[f32; 4]` with the last
+/// component filled in as 0.0 or 1.0 depending on it being a position
+/// or vector.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct GeometryVertex {
+    // These are defined as [f32; 4] for 2 reasons:
+    //
+    // - point vs vector clarity
+    // - padding: vec3 has the same size as vec4 in std140 layout.
+    //   https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL)
+    //
+    // We might decide to pack more useful data than just 0/1 in the
+    // last component later.
+    pub position: [f32; 4],
+    pub normal: [f32; 4],
+}
+
+// FIXME: @Optimization Determine u16/u32 dynamically per geometry to
+// save memory
+type GeometryIndex = u32;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct GlobalMatrixUniforms {
     projection_matrix: [[f32; 4]; 4],
     view_matrix: [[f32; 4]; 4],
-}
-
-fn create_depth_texture(
-    device: &wgpu::Device,
-    width: u32,
-    height: u32,
-    sample_count: u32,
-) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth: 1,
-        },
-        array_layer_count: 1,
-        mip_level_count: 1,
-        sample_count,
-        dimension: wgpu::TextureDimension::D2,
-        format: DEPTH_FORMAT,
-        usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-    })
-}
-
-fn create_msaa_framebuffer_texture(
-    device: &wgpu::Device,
-    width: u32,
-    height: u32,
-    sample_count: u32,
-    format: wgpu::TextureFormat,
-) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth: 1,
-        },
-        array_layer_count: 1,
-        mip_level_count: 1,
-        sample_count,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-    })
 }
 
 fn upload_global_matrix_buffer(
@@ -804,60 +669,18 @@ fn upload_global_matrix_buffer(
 ) {
     let global_matrix_uniforms_size = wgpu_size_of::<GlobalMatrixUniforms>();
 
-    let tmp_buffer = device
+    let transfer_buffer = device
         .create_buffer_mapped(1, wgpu::BufferUsage::TRANSFER_SRC)
         .fill_from_slice(&[global_matrix_uniforms]);
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
     encoder.copy_buffer_to_buffer(
-        &tmp_buffer,
+        &transfer_buffer,
         0,
         global_matrix_buffer,
         0,
         global_matrix_uniforms_size,
     );
-    device.get_queue().submit(&[encoder.finish()]);
-}
-
-fn upload_texture(
-    device: &mut wgpu::Device,
-    texture: &wgpu::Texture,
-    width: u32,
-    height: u32,
-    data: &[u8],
-) {
-    let buffer = device
-        .create_buffer_mapped(data.len(), wgpu::BufferUsage::TRANSFER_SRC)
-        .fill_from_slice(data);
-
-    let byte_count = u32::try_from(data.len()).expect("Texture byte length must fit in u32");
-    let pixel_size = byte_count / width / height;
-
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-    encoder.copy_buffer_to_texture(
-        wgpu::BufferCopyView {
-            buffer: &buffer,
-            offset: 0,
-            row_pitch: pixel_size * width,
-            image_height: height,
-        },
-        wgpu::TextureCopyView {
-            texture,
-            mip_level: 0,
-            array_layer: 0,
-            origin: wgpu::Origin3d {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        },
-        wgpu::Extent3d {
-            width,
-            height,
-            depth: 1,
-        },
-    );
-
     device.get_queue().submit(&[encoder.finish()]);
 }
 
@@ -880,12 +703,6 @@ fn apply_wgpu_correction_matrix(projection_matrix: &Matrix4<f32>) -> Matrix4<f32
     );
 
     wgpu_correction_matrix * projection_matrix
-}
-
-fn wgpu_size_of<T>() -> wgpu::BufferAddress {
-    let size = mem::size_of::<T>();
-    wgpu::BufferAddress::try_from(size)
-        .unwrap_or_else(|_| panic!("Size {} does not fit into wgpu BufferAddress", size))
 }
 
 #[cfg(test)]
@@ -912,7 +729,7 @@ mod tests {
         (vertex_positions, vertex_normals)
     }
 
-    fn triangle_indexed() -> (Vec<RendererIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
+    fn triangle_indexed() -> (Vec<GeometryIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
         let (vertex_positions, vertex_normals) = triangle();
         let indices = vec![0, 1, 2];
 
@@ -966,20 +783,20 @@ mod tests {
     #[test]
     fn test_renderer_geometry_from_positions_and_normals() {
         let (positions, normals) = triangle();
-        let geometry = RendererGeometry::from_positions_and_normals(positions, normals);
+        let geometry = SceneRendererGeometry::from_positions_and_normals(positions, normals);
 
         assert_eq!(
             geometry.vertex_data,
             vec![
-                RendererVertex {
+                GeometryVertex {
                     position: [-0.3, -0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
                 },
-                RendererVertex {
+                GeometryVertex {
                     position: [0.3, -0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
                 },
-                RendererVertex {
+                GeometryVertex {
                     position: [0.0, 0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
                 },
@@ -992,13 +809,13 @@ mod tests {
     fn test_renderer_geometry_from_positions_and_normals_indexed() {
         let (indices, positions, normals) = triangle_indexed();
         let geometry =
-            RendererGeometry::from_positions_and_normals_indexed(indices, positions, normals);
+            SceneRendererGeometry::from_positions_and_normals_indexed(indices, positions, normals);
 
         #[rustfmt::skip]
         let expected_vertex_data = vec![
-            RendererVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
-            RendererVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
-            RendererVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
         ];
 
         assert_eq!(geometry.vertex_data, expected_vertex_data);
@@ -1009,15 +826,17 @@ mod tests {
     #[should_panic(expected = "Per-vertex data must be same length")]
     fn test_renderer_geometry_from_positions_and_normals_panics_on_different_length_data() {
         let (_, normals) = triangle();
-        let _geometry =
-            RendererGeometry::from_positions_and_normals(vec![Point3::new(1.0, 1.0, 1.0)], normals);
+        let _geometry = SceneRendererGeometry::from_positions_and_normals(
+            vec![Point3::new(1.0, 1.0, 1.0)],
+            normals,
+        );
     }
 
     #[test]
     #[should_panic(expected = "Per-vertex data must be same length")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_different_length_data() {
         let (indices, positions, _) = triangle_indexed();
-        let _geometry = RendererGeometry::from_positions_and_normals_indexed(
+        let _geometry = SceneRendererGeometry::from_positions_and_normals_indexed(
             indices,
             positions,
             vec![Vector3::new(1.0, 1.0, 1.0)],
@@ -1028,14 +847,14 @@ mod tests {
     #[should_panic(expected = "Vertex positions must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_positions() {
         let (_, normals) = triangle();
-        let _geometry = RendererGeometry::from_positions_and_normals(vec![], normals);
+        let _geometry = SceneRendererGeometry::from_positions_and_normals(vec![], normals);
     }
 
     #[test]
     #[should_panic(expected = "Vertex normals must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_positions() {
         let (positions, _) = triangle();
-        let _geometry = RendererGeometry::from_positions_and_normals(positions, vec![]);
+        let _geometry = SceneRendererGeometry::from_positions_and_normals(positions, vec![]);
     }
 
     #[test]
@@ -1043,7 +862,7 @@ mod tests {
     fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_normals() {
         let (indices, _, normals) = triangle_indexed();
         let _geometry =
-            RendererGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
+            SceneRendererGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
     }
 
     #[test]
@@ -1051,7 +870,7 @@ mod tests {
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_normals() {
         let (indices, positions, _) = triangle_indexed();
         let _geometry =
-            RendererGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
+            SceneRendererGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
     }
 
     #[test]
@@ -1059,18 +878,18 @@ mod tests {
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_indices() {
         let (_, vertices, normals) = triangle_indexed();
         let _geometry =
-            RendererGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
+            SceneRendererGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
     }
 
     #[test]
     fn test_renderer_geometry_from_geometry_preserves_already_same_len_geometry() {
-        let geometry = RendererGeometry::from_geometry(&triangle_geometry_same_len());
+        let geometry = SceneRendererGeometry::from_geometry(&triangle_geometry_same_len());
 
         #[rustfmt::skip]
         let expected_vertex_data = vec![
-            RendererVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
-            RendererVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
-            RendererVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
         ];
 
         assert_eq!(geometry.vertex_data, expected_vertex_data);
@@ -1079,13 +898,13 @@ mod tests {
 
     #[test]
     fn test_renderer_geometry_from_geometry_duplicates_normals_in_var_len_geometry() {
-        let geometry = RendererGeometry::from_geometry(&triangle_geometry_var_len());
+        let geometry = SceneRendererGeometry::from_geometry(&triangle_geometry_var_len());
 
         #[rustfmt::skip]
         let expected_vertex_data = vec![
-            RendererVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
-            RendererVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
-            RendererVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
         ];
 
         assert_eq!(geometry.vertex_data, expected_vertex_data);

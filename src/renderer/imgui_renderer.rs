@@ -1,32 +1,37 @@
-use std::convert::TryFrom;
 use std::io;
-use std::mem;
 
 use imgui;
 use imgui::internal::RawWrapper;
 
 use crate::include_shader;
 
+use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
+
 #[derive(Debug, Clone)]
 pub enum ImguiRendererError {
     BadTexture(imgui::TextureId),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImguiRendererOptions {
+    pub sample_count: u32,
+    pub output_color_attachment_format: wgpu::TextureFormat,
+}
+
 pub struct ImguiRenderer {
+    texture_resources: imgui::Textures<Texture>,
+    sampler: wgpu::Sampler,
+    transform_buffer: wgpu::Buffer,
+    transform_bind_group: wgpu::BindGroup,
+    texture_bind_group_layout: wgpu::BindGroupLayout,
     render_pipeline: wgpu::RenderPipeline,
-    uniform_buffer: wgpu::Buffer,
-    uniform_bind_group: wgpu::BindGroup,
-    texture_layout: wgpu::BindGroupLayout,
-    textures: imgui::Textures<Texture>,
-    clear_color: Option<wgpu::Color>,
 }
 
 impl ImguiRenderer {
     pub fn new(
-        imgui: &mut imgui::Context,
+        mut imgui_font_atlas: imgui::FontAtlasRefMut,
         device: &mut wgpu::Device,
-        format: wgpu::TextureFormat,
-        clear_color: Option<wgpu::Color>,
+        options: ImguiRendererOptions,
     ) -> Result<ImguiRenderer, ImguiRendererError> {
         // Link shaders
 
@@ -39,59 +44,54 @@ impl ImguiRenderer {
         let vs_module = device.create_shader_module(&vs_words);
         let fs_module = device.create_shader_module(&fs_words);
 
-        // Create ortho projection matrix uniform buffer, layout and bind group
-
-        let uniform_buffer_size = wgpu_size_of::<TransformUniforms>();
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            size: uniform_buffer_size,
-            // FIXME(yanchith): `TRANSFER_DST` is required because the
-            // only way to upload the buffer currently is by issueing
-            // the transfer command in `upload_buffer_immediate`. We
-            // can remove the flag once we get rid of the hack and
-            // learn to write to mapped buffers correctly.
+        // Create transform uniform buffer bind group
+        let transform_buffer_size = wgpu_size_of::<TransformUniforms>();
+        let transform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            size: transform_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::TRANSFER_DST,
         });
 
-        let uniform_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            bindings: &[wgpu::BindGroupLayoutBinding {
-                binding: 0,
-                visibility: wgpu::ShaderStage::VERTEX,
-                ty: wgpu::BindingType::UniformBuffer,
-            }],
-        });
+        let transform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                bindings: &[wgpu::BindGroupLayoutBinding {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::VERTEX,
+                    ty: wgpu::BindingType::UniformBuffer,
+                }],
+            });
 
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &uniform_layout,
+        let transform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &transform_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer {
-                    buffer: &uniform_buffer,
-                    range: 0..uniform_buffer_size,
+                    buffer: &transform_buffer,
+                    range: 0..transform_buffer_size,
                 },
             }],
         });
 
-        // Create texture uniforms layout
-
-        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            bindings: &[
-                wgpu::BindGroupLayoutBinding {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::SampledTexture,
-                },
-                wgpu::BindGroupLayoutBinding {
-                    binding: 1,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler,
-                },
-            ],
-        });
+        // Create texture uniform bind group
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                bindings: &[
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::SampledTexture,
+                    },
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 1,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler,
+                    },
+                ],
+            });
 
         // Create render pipeline
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            bind_group_layouts: &[&uniform_layout, &texture_layout],
+            bind_group_layouts: &[&transform_bind_group_layout, &texture_bind_group_layout],
         });
 
         // Setup render state: alpha-blending enabled, no face
@@ -117,7 +117,7 @@ impl ImguiRenderer {
             },
             primitive_topology: wgpu::PrimitiveTopology::TriangleList,
             color_states: &[wgpu::ColorStateDescriptor {
-                format,
+                format: options.output_color_attachment_format,
                 // Enable alpha blending
                 color_blend: wgpu::BlendDescriptor {
                     src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -155,17 +155,16 @@ impl ImguiRenderer {
                     },
                 ],
             }],
-            sample_count: 1,
+            sample_count: options.sample_count,
         });
 
-        // Create the font atlas texture
+        // Create the font texture and add it to the font atlas
 
-        let mut fonts = imgui.fonts();
-        let font_texture = fonts.build_rgba32_texture();
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+        let font_atlas_image = imgui_font_atlas.build_rgba32_texture();
+        let font_atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
-                width: font_texture.width,
-                height: font_texture.height,
+                width: font_atlas_image.width,
+                height: font_atlas_image.height,
                 depth: 1,
             },
             array_layer_count: 1,
@@ -176,31 +175,47 @@ impl ImguiRenderer {
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::TRANSFER_DST,
         });
 
-        upload_texture_immediate(
+        upload_texture_rgba8_unorm(
             device,
-            &texture,
-            font_texture.width,
-            font_texture.height,
-            font_texture.data,
+            &font_atlas_texture,
+            font_atlas_image.width,
+            font_atlas_image.height,
+            font_atlas_image.data,
         );
 
-        let sampler = create_sampler(device);
-        let pair = Texture::new(device, &texture_layout, texture, sampler);
-        let mut textures = imgui::Textures::new();
-        let atlas_id = textures.insert(pair);
-        fonts.tex_id = atlas_id;
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            lod_min_clamp: -100.0,
+            lod_max_clamp: 100.0,
+            compare_function: wgpu::CompareFunction::Always,
+        });
+
+        let font_atlas_texture_resource = Texture::new(
+            device,
+            &texture_bind_group_layout,
+            &font_atlas_texture,
+            &sampler,
+        );
+        let mut texture_resources = imgui::Textures::new();
+        let font_atlas_texture_id = texture_resources.insert(font_atlas_texture_resource);
+        imgui_font_atlas.tex_id = font_atlas_texture_id;
 
         Ok(ImguiRenderer {
+            texture_resources,
+            sampler,
             render_pipeline,
-            uniform_buffer,
-            uniform_bind_group,
-            texture_layout,
-            textures,
-            clear_color,
+            transform_buffer,
+            transform_bind_group,
+            texture_bind_group_layout,
         })
     }
 
-    pub fn add_rgba32_texture(
+    pub fn add_texture_rgba8_unorm(
         &mut self,
         device: &mut wgpu::Device,
         width: u32,
@@ -223,18 +238,28 @@ impl ImguiRenderer {
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::TRANSFER_DST,
         });
 
-        upload_texture_immediate(device, &texture, width, height, data);
+        upload_texture_rgba8_unorm(device, &texture, width, height, data);
 
-        let sampler = create_sampler(device);
-        let pair = Texture::new(device, &self.texture_layout, texture, sampler);
-        self.textures.insert(pair)
+        let texture_resource = Texture::new(
+            device,
+            &self.texture_bind_group_layout,
+            &texture,
+            &self.sampler,
+        );
+        self.texture_resources.insert(texture_resource)
     }
 
-    pub fn render(
-        &mut self,
+    pub fn remove_texture(&mut self, id: imgui::TextureId) {
+        self.texture_resources.remove(id);
+    }
+
+    pub fn draw_ui(
+        &self,
+        clear_color_requested: bool,
         device: &mut wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
-        target_attachment: &wgpu::TextureView,
+        color_attachment: &wgpu::TextureView,
+        msaa_attachment: Option<&wgpu::TextureView>,
         draw_data: &imgui::DrawData,
     ) -> Result<(), ImguiRendererError> {
         // This is mostly a transcript of the following:
@@ -257,28 +282,18 @@ impl ImguiRenderer {
             -1.0 - draw_data.display_pos[1] * scale[1],
         ];
 
-        // FIXME(yanchith): try to use map_write_async here... but
-        // figure out how to use it correctly beforehand. Currently,
-        // even calling unmap does not force the callback in
-        // map_write_async.
+        let transform_uniforms = TransformUniforms { translate, scale };
+        let transform_uniforms_size = wgpu_size_of::<TransformUniforms>();
+        let transform_transfer_buffer = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::TRANSFER_SRC)
+            .fill_from_slice(&[transform_uniforms]);
 
-        // self.uniform_buffer.map_write_async(0, UNIFORM_BUFFER_SIZE, move |target| {
-        //     println!("MAP");
-        //     if let Ok(t) = target {
-        //         t.data[0] = translate[0];
-        //         t.data[1] = translate[1];
-        //         t.data[2] = scale[0];
-        //         t.data[3] = scale[1];
-        //     }
-        // });
-        // println!("UNMAP starting");
-        // self.uniform_buffer.unmap();
-        // println!("UNMAP done");
-
-        upload_buffer_immediate(
-            device,
-            &self.uniform_buffer,
-            TransformUniforms { translate, scale },
+        encoder.copy_buffer_to_buffer(
+            &transform_transfer_buffer,
+            0,
+            &self.transform_buffer,
+            0,
+            transform_uniforms_size,
         );
 
         // Will project scissor/clipping rectangles into framebuffer space
@@ -301,27 +316,46 @@ impl ImguiRenderer {
         // `idx_start..idx_end` and set those to the render pass, and
         // finally draw.
 
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: target_attachment,
-                resolve_target: None,
-                load_op: match self.clear_color {
-                    Some(_) => wgpu::LoadOp::Clear,
-                    None => wgpu::LoadOp::Load,
-                },
+        let color_load_op = if clear_color_requested {
+            wgpu::LoadOp::Clear
+        } else {
+            wgpu::LoadOp::Load
+        };
+        let rpass_color_attachment_descriptor = if let Some(msaa_attachment) = msaa_attachment {
+            wgpu::RenderPassColorAttachmentDescriptor {
+                attachment: msaa_attachment,
+                resolve_target: Some(color_attachment),
+                load_op: color_load_op,
                 store_op: wgpu::StoreOp::Store,
-                clear_color: self.clear_color.unwrap_or(wgpu::Color {
+                clear_color: wgpu::Color {
                     r: 0.0,
                     g: 0.0,
                     b: 0.0,
                     a: 1.0,
-                }),
-            }],
+                },
+            }
+        } else {
+            wgpu::RenderPassColorAttachmentDescriptor {
+                attachment: color_attachment,
+                resolve_target: None,
+                load_op: color_load_op,
+                store_op: wgpu::StoreOp::Store,
+                clear_color: wgpu::Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                },
+            }
+        };
+
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[rpass_color_attachment_descriptor],
             depth_stencil_attachment: None,
         });
 
         rpass.set_pipeline(&self.render_pipeline);
-        rpass.set_bind_group(0, &self.uniform_bind_group, &[]);
+        rpass.set_bind_group(0, &self.transform_bind_group, &[]);
 
         for draw_list in draw_data.draw_lists() {
             let vtx_buffer = draw_list.vtx_buffer();
@@ -364,7 +398,7 @@ impl ImguiRenderer {
                             && clip_rect[3] >= 0.0
                         {
                             let texture = self
-                                .textures
+                                .texture_resources
                                 .get(texture_id)
                                 .ok_or_else(|| ImguiRendererError::BadTexture(texture_id))?;
 
@@ -404,8 +438,8 @@ impl Texture {
     pub fn new(
         device: &wgpu::Device,
         layout: &wgpu::BindGroupLayout,
-        texture: wgpu::Texture,
-        sampler: wgpu::Sampler,
+        texture: &wgpu::Texture,
+        sampler: &wgpu::Sampler,
     ) -> Self {
         let view = texture.create_default_view();
 
@@ -418,7 +452,7 @@ impl Texture {
                 },
                 wgpu::Binding {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
+                    resource: wgpu::BindingResource::Sampler(sampler),
                 },
             ],
         });
@@ -436,85 +470,4 @@ impl Texture {
 struct TransformUniforms {
     translate: [f32; 2],
     scale: [f32; 2],
-}
-
-fn upload_buffer_immediate(
-    device: &mut wgpu::Device,
-    buffer: &wgpu::Buffer,
-    transform_uniforms: TransformUniforms,
-) {
-    let transform_uniforms_size = wgpu_size_of::<TransformUniforms>();
-    let source_buffer = device
-        .create_buffer_mapped(1, wgpu::BufferUsage::TRANSFER_SRC)
-        .fill_from_slice(&[transform_uniforms]);
-
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-
-    encoder.copy_buffer_to_buffer(&source_buffer, 0, buffer, 0, transform_uniforms_size);
-
-    device.get_queue().submit(&[encoder.finish()]);
-}
-
-fn upload_texture_immediate(
-    device: &mut wgpu::Device,
-    texture: &wgpu::Texture,
-    width: u32,
-    height: u32,
-    data: &[u8],
-) {
-    let count = data.len();
-    let buffer = device
-        .create_buffer_mapped(count, wgpu::BufferUsage::TRANSFER_SRC)
-        .fill_from_slice(data);
-
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-
-    let count = u32::try_from(count).expect("Should convert texture data length to u32");
-    let pixel_size = count / width / height;
-
-    encoder.copy_buffer_to_texture(
-        wgpu::BufferCopyView {
-            buffer: &buffer,
-            offset: 0,
-            row_pitch: pixel_size * width,
-            image_height: height,
-        },
-        wgpu::TextureCopyView {
-            texture,
-            mip_level: 0,
-            array_layer: 0,
-            origin: wgpu::Origin3d {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        },
-        wgpu::Extent3d {
-            width,
-            height,
-            depth: 1,
-        },
-    );
-
-    device.get_queue().submit(&[encoder.finish()]);
-}
-
-fn create_sampler(device: &wgpu::Device) -> wgpu::Sampler {
-    device.create_sampler(&wgpu::SamplerDescriptor {
-        address_mode_u: wgpu::AddressMode::ClampToEdge,
-        address_mode_v: wgpu::AddressMode::ClampToEdge,
-        address_mode_w: wgpu::AddressMode::ClampToEdge,
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::FilterMode::Linear,
-        lod_min_clamp: -100.0,
-        lod_max_clamp: 100.0,
-        compare_function: wgpu::CompareFunction::Always,
-    })
-}
-
-fn wgpu_size_of<T>() -> wgpu::BufferAddress {
-    let size = mem::size_of::<T>();
-    wgpu::BufferAddress::try_from(size)
-        .unwrap_or_else(|_| panic!("Size {} does not fit into wgpu BufferAddress", size))
 }

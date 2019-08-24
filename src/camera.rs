@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::f32;
 
 use nalgebra::{Matrix4, Point3, Rotation3, Vector3};
+use wgpu::winit;
 
 const TWO_PI: f32 = f32::consts::PI * 2.0;
 const ZOOM_SPEED_BASE: f32 = 0.95;
@@ -33,14 +34,14 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(
-        screen_size: [f32; 2],
+        window_size: [f32; 2],
         radius: f32,
         azimuthal_angle: f32,
         polar_angle: f32,
         options: CameraOptions,
     ) -> Camera {
         Camera {
-            aspect_ratio: screen_size[0] / screen_size[1],
+            aspect_ratio: window_size[0] / window_size[1],
             radius: clamp(radius, options.radius_min, options.radius_max),
             azimuthal_angle: azimuthal_angle % TWO_PI,
             polar_angle: clamp(
@@ -54,8 +55,8 @@ impl Camera {
         }
     }
 
-    pub fn set_screen_size(&mut self, screen_size: [f32; 2]) {
-        self.aspect_ratio = screen_size[0] / screen_size[1];
+    pub fn set_window_size(&mut self, window_size: winit::dpi::PhysicalSize) {
+        self.aspect_ratio = (window_size.width / window_size.height) as f32;
     }
 
     pub fn reset_origin(&mut self) {
