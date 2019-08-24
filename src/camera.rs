@@ -139,7 +139,7 @@ impl Camera {
     pub fn zoom_to_fit_sphere(&mut self, sphere_origin: &Point3<f32>, sphere_radius: f32) {
         let fovy = self.options.fovy;
         let fovx = fovy * self.aspect_ratio;
-        let fov = fovy.min(fovx);
+        let fov = fovy.max(fovx);
 
         // Compute the distance needed from the sphere for it to fit
         // inside the camera frustrum
