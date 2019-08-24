@@ -137,13 +137,15 @@ impl Camera {
     /// `radius_max` or a too large `radius_min` may cause the result
     /// to be not zoomed out enough, or not zoomed in enough.
     pub fn zoom_to_fit_sphere(&mut self, sphere_origin: &Point3<f32>, sphere_radius: f32) {
+        const MARGIN_MULTIPLIER: f32 = 1.005;
+
         let fovy = self.options.fovy;
         let fovx = fovy * self.aspect_ratio;
-        let fov = fovy.max(fovx);
+        let fov = fovy.min(fovx);
 
         // Compute the distance needed from the sphere for it to fit
         // inside the camera frustrum
-        let new_radius = (sphere_radius * 2.0) / (fov / 2.0).tan();
+        let new_radius = MARGIN_MULTIPLIER * sphere_radius / (fov / 2.0).tan();
 
         self.origin = *sphere_origin;
         self.radius = clamp(new_radius, self.options.radius_min, self.options.radius_max);
