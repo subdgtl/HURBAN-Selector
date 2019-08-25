@@ -66,8 +66,8 @@ impl RendererGeometry {
             let normals_len = normals.len();
             let len = vertices_len.max(normals_len);
 
-            let indices_len = geometry.triangle_face_indices_len();
-            let mut indices: Vec<RendererIndex> = Vec::with_capacity(indices_len);
+            let faces_len = geometry.triangle_faces_len();
+            let mut indices: Vec<RendererIndex> = Vec::with_capacity(faces_len);
             let mut vertex_positions: Vec<Point3<f32>> = vec![Point3::origin(); len];
             let mut vertex_normals: Vec<Vector3<f32>> = vec![Vector3::zeros(); len];
 
@@ -77,7 +77,7 @@ impl RendererGeometry {
                     // number of normals, the order of normals will be
                     // used and vertices will be duplicated.
 
-                    for triangle_index in geometry.triangle_face_indices() {
+                    for triangle_index in geometry.triangle_faces() {
                         let v = triangle_index.vertices;
                         let n = triangle_index
                             .normals
@@ -108,7 +108,7 @@ impl RendererGeometry {
                     // different order, so we need use the index to
                     // access them.
 
-                    for triangle_index in geometry.triangle_face_indices() {
+                    for triangle_index in geometry.triangle_faces() {
                         let v = triangle_index.vertices;
                         let n = triangle_index
                             .normals

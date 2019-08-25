@@ -10,7 +10,7 @@ use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 use tobj;
 
-use crate::geometry::{Geometry, TriangleFaceIndex};
+use crate::geometry::{Geometry, TriangleFace};
 
 #[derive(Debug, PartialEq)]
 pub enum ImporterError {
@@ -182,7 +182,7 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
             .mesh
             .indices
             .chunks_exact(3)
-            .map(|chunk| TriangleFaceIndex {
+            .map(|chunk| TriangleFace {
                 vertices: (chunk[0], chunk[1], chunk[2]),
                 normals: if vertex_normals.is_some() {
                     Some((chunk[0], chunk[1], chunk[2]))
@@ -250,7 +250,7 @@ mod tests {
             vec![Model {
                 name: tobj_model.name,
                 geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
-                    vec![TriangleFaceIndex {
+                    vec![TriangleFace {
                         vertices: (0, 1, 2),
                         normals: Some((0, 1, 2)),
                     }],
@@ -290,7 +290,7 @@ mod tests {
                 Model {
                     name: tobj_model_1.name,
                     geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
-                        vec![TriangleFaceIndex {
+                        vec![TriangleFace {
                             vertices: (0, 1, 2),
                             normals: Some((0, 1, 2)),
                         }],
@@ -309,7 +309,7 @@ mod tests {
                 Model {
                     name: tobj_model_2.name,
                     geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
-                        vec![TriangleFaceIndex {
+                        vec![TriangleFace {
                             vertices: (0, 1, 2),
                             normals: Some((0, 1, 2)),
                         }],
