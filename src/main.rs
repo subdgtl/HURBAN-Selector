@@ -1,3 +1,8 @@
+#![windows_subsystem = "windows"]
+
+use std::collections::HashMap;
+use std::env;
+use std::fs;
 use std::time::Instant;
 
 use wgpu::winit;
@@ -84,13 +89,13 @@ fn main() {
         geometry::plane_var_len([0.0, 0.0, -20.0], 10.0),
     ];
 
-    let mut scene_renderer_geometry = Vec::with_capacity(scene_geometries.len());
+    let mut scene_renderer_geometry_ids = Vec::with_capacity(scene_geometries.len());
     for geometry in &scene_geometries {
         let renderer_geometry = RendererGeometry::from_geometry(geometry);
-        let handle = viewport_renderer
+        let renderer_geometry_id = viewport_renderer
             .add_geometry(&device, &renderer_geometry)
             .unwrap();
-        scene_renderer_geometry.push(handle);
+        scene_renderer_geometry_ids.push(renderer_geometry_id);
     }
 
     let (mut imgui_context, mut winit_platform) = ui::init(&window);
@@ -104,6 +109,31 @@ fn main() {
 
     let time_start = Instant::now();
     let mut time = time_start;
+
+    // Temporary model list
+
+    let models_dir = env::var_os("MODELS_DIR")
+        .unwrap_or_else(|| env::current_dir().expect("Should load current dir").into());
+    let obj_path_results = fs::read_dir(models_dir).expect("Should read directory with obj files");
+    let mut obj_file_paths = HashMap::new();
+
+    for obj_path_result in obj_path_results {
+        let obj_path = obj_path_result.expect("Should read directory entry");
+        let path = obj_path.path();
+
+        if let Some(ext) = path.extension() {
+            if ext == "obj" {
+                let filename = obj_path
+                    .file_name()
+                    .into_string()
+                    .expect("Filename UTF-8 conversion failed");
+
+                obj_file_paths.insert(filename, path.clone());
+            }
+        }
+    }
+
+    let obj_filenames: Vec<String> = obj_file_paths.keys().cloned().collect();
 
     let mut importer = Importer::new();
     let mut running = true;
@@ -168,31 +198,34 @@ fn main() {
             camera.zoom_to_fit_sphere(&origin, radius);
         }
 
-        if input_state.import_requested {
-            if let Some(path) = tinyfiledialogs::open_file_dialog(
-                "Open",
-                "",
-                Some((&["*.obj"], "Wavefront (.obj)")),
-            ) {
-                match importer.import_obj(&path) {
-                    Ok(models) => {
-                        for model in models {
-                            let geometry = model.geometry;
-                            let renderer_geometry = RendererGeometry::from_geometry(&geometry);
-                            let handle = viewport_renderer
-                                .add_geometry(&device, &renderer_geometry)
-                                .unwrap();
+        #[cfg(debug_assertions)]
+        {
+            if input_state.import_requested {
+                if let Some(path) = tinyfiledialogs::open_file_dialog(
+                    "Open",
+                    "",
+                    Some((&["*.obj"], "Wavefront (.obj)")),
+                ) {
+                    match importer.import_obj(&path) {
+                        Ok(models) => {
+                            for model in models {
+                                let geometry = model.geometry;
+                                let renderer_geometry = RendererGeometry::from_geometry(&geometry);
+                                let renderer_geometry_id = viewport_renderer
+                                    .add_geometry(&device, &renderer_geometry)
+                                    .unwrap();
 
-                            scene_geometries.push(geometry);
-                            scene_renderer_geometry.push(handle);
+                                scene_geometries.push(geometry);
+                                scene_renderer_geometry_ids.push(renderer_geometry_id);
+                            }
                         }
-                    }
-                    Err(err) => {
-                        tinyfiledialogs::message_box_ok(
-                            "Error",
-                            &format!("{}", err),
-                            tinyfiledialogs::MessageBoxIcon::Error,
-                        );
+                        Err(err) => {
+                            tinyfiledialogs::message_box_ok(
+                                "Error",
+                                &format!("{}", err),
+                                tinyfiledialogs::MessageBoxIcon::Error,
+                            );
+                        }
                     }
                 }
             }
@@ -227,7 +260,45 @@ fn main() {
             &camera.view_matrix(),
         );
 
+        #[cfg(debug_assertions)]
         ui::draw_fps_window(&imgui_ui);
+
+        // Clicking any of the models in the list means clearing everything out
+        // of the scene, importing given model and pushing it into scene.
+        if let Some(clicked_model) = ui::draw_model_window(&imgui_ui, &obj_filenames) {
+            let clicked_model_path = obj_file_paths
+                .get(&clicked_model)
+                .expect("Should get clicked model path from hash map");
+
+            match importer.import_obj(&clicked_model_path.to_str().unwrap()) {
+                Ok(models) => {
+                    // Clear existing scene first...
+                    scene_geometries.clear();
+                    for geometry in scene_renderer_geometry_ids.drain(..) {
+                        viewport_renderer.remove_geometry(geometry);
+                    }
+
+                    // ... and add everything we found to it
+                    for model in models {
+                        let geometry = model.geometry;
+                        let renderer_geometry = RendererGeometry::from_geometry(&geometry);
+                        let renderer_geometry_id = viewport_renderer
+                            .add_geometry(&device, &renderer_geometry)
+                            .unwrap();
+
+                        scene_geometries.push(geometry);
+                        scene_renderer_geometry_ids.push(renderer_geometry_id);
+                    }
+                }
+                Err(err) => {
+                    tinyfiledialogs::message_box_ok(
+                        "Error",
+                        &format!("{}", err),
+                        tinyfiledialogs::MessageBoxIcon::Error,
+                    );
+                }
+            }
+        }
 
         winit_platform.prepare_render(&imgui_ui, &window);
         let imgui_draw_data = imgui_ui.render();
@@ -236,7 +307,11 @@ fn main() {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
 
-        viewport_renderer.draw_geometry(&mut encoder, &frame.view, &scene_renderer_geometry[..]);
+        viewport_renderer.draw_geometry(
+            &mut encoder,
+            &frame.view,
+            &scene_renderer_geometry_ids[..],
+        );
 
         imgui_renderer
             .render(&mut device, &mut encoder, &frame.view, imgui_draw_data)
@@ -245,8 +320,8 @@ fn main() {
         device.get_queue().submit(&[encoder.finish()]);
     }
 
-    for handle in scene_renderer_geometry {
-        viewport_renderer.remove_geometry(handle);
+    for renderer_geometry_id in scene_renderer_geometry_ids {
+        viewport_renderer.remove_geometry(renderer_geometry_id);
     }
 }
 
