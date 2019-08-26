@@ -181,19 +181,44 @@ pub fn plane(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
+pub fn plane_compressed(position: [f32; 3], scale: f32) -> Geometry {
+    #[rustfmt::skip]
+    let vertex_positions = vec![
+        v(-1.0, -1.0,  0.0, position, scale),
+        v( 1.0, -1.0,  0.0, position, scale),
+        v( 1.0,  1.0,  0.0, position, scale),
+        v( 1.0,  1.0,  0.0, position, scale),
+        v(-1.0,  1.0,  0.0, position, scale),
+        v(-1.0, -1.0,  0.0, position, scale),
+    ];
+
+    #[rustfmt::skip]
+    let vertex_normals = vec![
+        n( 0.0,  0.0,  1.0),
+    ];
+
+    #[rustfmt::skip]
+    let faces = vec![
+        tf_vn_separate(0, 1, 2, 0, 0, 0),
+        tf_vn_separate(3, 4, 5, 0, 0, 0),
+    ];
+
+    Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
+}
+
 pub fn cube(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
+        // back
+        v(-1.0,  1.0, -1.0, position, scale),
+        v(-1.0,  1.0,  1.0, position, scale),
+        v( 1.0,  1.0,  1.0, position, scale),
+        v( 1.0,  1.0, -1.0, position, scale),
         // front
         v(-1.0, -1.0, -1.0, position, scale),
         v( 1.0, -1.0, -1.0, position, scale),
         v( 1.0, -1.0,  1.0, position, scale),
         v(-1.0, -1.0,  1.0, position, scale),
-        // back
-        v(-1.0,  1.0, -1.0, position, scale),
-        v( 1.0,  1.0, -1.0, position, scale),
-        v( 1.0,  1.0,  1.0, position, scale),
-        v(-1.0,  1.0,  1.0, position, scale),
     ];
 
     // FIXME: make const once float arithmetic is stabilized in const fns
@@ -202,39 +227,38 @@ pub fn cube(position: [f32; 3], scale: f32) -> Geometry {
 
     #[rustfmt::skip]
     let vertex_normals = vec![
+        // back
+        n(-frac_1_sqrt_3,  frac_1_sqrt_3, -frac_1_sqrt_3),
+        n(-frac_1_sqrt_3,  frac_1_sqrt_3,  frac_1_sqrt_3),
+        n( frac_1_sqrt_3,  frac_1_sqrt_3,  frac_1_sqrt_3),
+        n( frac_1_sqrt_3,  frac_1_sqrt_3, -frac_1_sqrt_3),
         // front
         n(-frac_1_sqrt_3, -frac_1_sqrt_3, -frac_1_sqrt_3),
         n( frac_1_sqrt_3, -frac_1_sqrt_3, -frac_1_sqrt_3),
         n( frac_1_sqrt_3, -frac_1_sqrt_3,  frac_1_sqrt_3),
         n(-frac_1_sqrt_3, -frac_1_sqrt_3,  frac_1_sqrt_3),
-        // back
-        n(-frac_1_sqrt_3,  frac_1_sqrt_3, -frac_1_sqrt_3),
-        n( frac_1_sqrt_3,  frac_1_sqrt_3, -frac_1_sqrt_3),
-        n( frac_1_sqrt_3,  frac_1_sqrt_3,  frac_1_sqrt_3),
-        n(-frac_1_sqrt_3,  frac_1_sqrt_3,  frac_1_sqrt_3),
-
     ];
 
     #[rustfmt::skip]
     let faces = vec![
-        // front
+        // back
         tf_vn(0, 1, 2),
         tf_vn(2, 3, 0),
-        // right
-        tf_vn(1, 5, 6),
-        tf_vn(6, 2, 1),
-        // back
-        tf_vn(7, 6, 5),
-        tf_vn(5, 4, 7),
-        // left
-        tf_vn(4, 0, 3),
-        tf_vn(3, 7, 4),
-        // bottom
-        tf_vn(4, 5, 1),
-        tf_vn(1, 0, 4),
+        // front
+        tf_vn(4, 5, 6),
+        tf_vn(6, 7, 4),
         // top
-        tf_vn(3, 2, 6),
-        tf_vn(6, 7, 3),
+        tf_vn(7, 6, 2),
+        tf_vn(2, 1, 7),
+        // bottom
+        tf_vn(4, 0, 3),
+        tf_vn(3, 5, 4),
+        // right
+        tf_vn(5, 3, 2),
+        tf_vn(2, 6, 5),
+        // left
+        tf_vn(4, 7, 1),
+        tf_vn(1, 0, 4),
     ];
 
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
@@ -334,6 +358,62 @@ pub fn uv_cube(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
+pub fn uv_cube_compressed(position: [f32; 3], scale: f32) -> Geometry {
+    #[rustfmt::skip]
+    let vertex_positions = vec![
+        // back
+        v(-1.0,  1.0, -1.0, position, scale),
+        v(-1.0,  1.0,  1.0, position, scale),
+        v( 1.0,  1.0,  1.0, position, scale),
+        v( 1.0,  1.0, -1.0, position, scale),
+        // front
+        v(-1.0, -1.0, -1.0, position, scale),
+        v( 1.0, -1.0, -1.0, position, scale),
+        v( 1.0, -1.0,  1.0, position, scale),
+        v(-1.0, -1.0,  1.0, position, scale),
+    ];
+
+    #[rustfmt::skip]
+    let vertex_normals = vec![
+        // back
+        n( 0.0,  1.0,  0.0),
+        // front
+        n( 0.0, -1.0,  0.0),
+        // top
+        n( 0.0,  0.0,  1.0),
+        // bottom
+        n( 0.0,  0.0, -1.0),
+        // right
+        n( 1.0,  0.0,  0.0),
+        // left
+        n(-1.0,  0.0,  0.0),
+    ];
+
+    #[rustfmt::skip]
+    let faces = vec![
+        // back
+        tf_vn_separate(0, 1, 2, 0, 0, 0),
+        tf_vn_separate(2, 3, 0, 0, 0, 0),
+        // front
+        tf_vn_separate(4, 5, 6, 1, 1, 1),
+        tf_vn_separate(6, 7, 4, 1, 1, 1),
+        // top
+        tf_vn_separate(7, 6, 2, 2, 2, 2),
+        tf_vn_separate(2, 1, 7, 2, 2, 2),
+        // bottom
+        tf_vn_separate(4, 0, 3, 3, 3, 3),
+        tf_vn_separate(3, 5, 4, 3, 3, 3),
+        // right
+        tf_vn_separate(5, 3, 2, 4, 4, 4),
+        tf_vn_separate(2, 6, 5, 4, 4, 4),
+        // left
+        tf_vn_separate(4, 7, 1, 5, 5, 5),
+        tf_vn_separate(1, 0, 4, 5, 5, 5),
+    ];
+
+    Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
+}
+
 pub fn compute_bounding_sphere(geometries: &[Geometry]) -> (Point3<f32>, f32) {
     let centroid = compute_centroid(geometries);
     let mut max_distance = 0.0;
@@ -384,6 +464,13 @@ fn tf_vn(a: u32, b: u32, c: u32) -> TriangleFace {
     TriangleFace {
         vertices: (a, b, c),
         normals: Some((a, b, c)),
+    }
+}
+
+fn tf_vn_separate(va: u32, vb: u32, vc: u32, na: u32, nb: u32, nc: u32) -> TriangleFace {
+    TriangleFace {
+        vertices: (va, vb, vc),
+        normals: Some((na, nb, nc)),
     }
 }
 

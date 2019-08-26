@@ -1,5 +1,4 @@
-use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::hash_map::{Entry, HashMap};
 use std::convert::TryFrom;
 use std::error;
 use std::fmt;
@@ -56,84 +55,80 @@ pub struct RendererGeometry {
 
 impl RendererGeometry {
     /// Construct flat geometry with same-length per-vertex data from
-    /// variable length data `Geometry`
+    /// variable length data `Geometry`.
+    ///
+    /// Duplicates vertices if same vertex is encountered multiple
+    /// times paired with different per-vertex data, e.g. normals.
     pub fn from_geometry(geometry: &Geometry) -> Self {
         let vertices = geometry.vertices();
         if let Some(normals) = geometry.normals() {
-            // Duplicate either vertices or normals, whichever list
-            // was shorter
-            let vertices_len = vertices.len();
-            let normals_len = normals.len();
-            let len = vertices_len.max(normals_len);
-
             let faces_len = geometry.triangle_faces_len();
-            let mut indices: Vec<RendererIndex> = Vec::with_capacity(faces_len);
-            let mut vertex_positions: Vec<Point3<f32>> = vec![Point3::origin(); len];
-            let mut vertex_normals: Vec<Vector3<f32>> = vec![Vector3::zeros(); len];
+            let indices_len_est = faces_len * 3;
 
-            match vertices_len.cmp(&normals_len) {
-                Ordering::Less => {
-                    // If number of vertices is smaller than the
-                    // number of normals, the order of normals will be
-                    // used and vertices will be duplicated.
+            let mut indices = Vec::with_capacity(indices_len_est);
 
-                    for triangle_index in geometry.triangle_faces() {
-                        let v = triangle_index.vertices;
-                        let n = triangle_index
-                            .normals
-                            .expect("Normal indices must be present if normals are");
-                        let (v1, v2, v3) = (cast_usize(v.0), cast_usize(v.1), cast_usize(v.2));
-                        let (n1, n2, n3) = (cast_usize(n.0), cast_usize(n.1), cast_usize(n.2));
+            // This capacity is a lower bound estimate. Given that the
+            // `Geometry` contains no orphan vertices, there should be
+            // at least `vertices.len()` vertices present in the
+            // `RendererGeometry`
+            let mut vertex_data = Vec::with_capacity(vertices.len());
 
-                        indices.push(n.0);
-                        indices.push(n.1);
-                        indices.push(n.2);
+            // This capacity is an upper bound estimate and will
+            // overshoot if indices are re-used
+            let mut index_map = HashMap::with_capacity(faces_len);
+            let mut next_renderer_index: RendererIndex = 0;
 
-                        // Swizzle vertices to use normal indexing scheme
-                        vertex_positions[n1] = vertices[v1];
-                        vertex_positions[n2] = vertices[v2];
-                        vertex_positions[n3] = vertices[v3];
+            for triangle_face in geometry.triangle_faces() {
+                let v = triangle_face.vertices;
+                let n = triangle_face
+                    .normals
+                    .expect("Normal indices must be present if normals are");
 
-                        // Copy normal data as is
-                        vertex_normals[n1] = normals[n1];
-                        vertex_normals[n2] = normals[n2];
-                        vertex_normals[n3] = normals[n3];
-                    }
-                }
-                Ordering::Greater | Ordering::Equal => {
-                    // If number of vertices is greater or the same as
-                    // the number of normals, use the vertex order and
-                    // duplicate normal data.  Note that even if same
-                    // length, vertices and normals can still be in
-                    // different order, so we need use the index to
-                    // access them.
+                for (vi, ni) in &[(v.0, n.0), (v.1, n.1), (v.2, n.2)] {
+                    let vi = *vi;
+                    let ni = *ni;
 
-                    for triangle_index in geometry.triangle_faces() {
-                        let v = triangle_index.vertices;
-                        let n = triangle_index
-                            .normals
-                            .expect("Normal indices must be present if normals are");
-                        let (v1, v2, v3) = (cast_usize(v.0), cast_usize(v.1), cast_usize(v.2));
-                        let (n1, n2, n3) = (cast_usize(n.0), cast_usize(n.1), cast_usize(n.2));
+                    match index_map.entry((vi, ni)) {
+                        Entry::Occupied(occupied) => {
+                            // This concrete vertex/normal combination
+                            // was used before, re-use the vertex it
+                            // created
+                            let renderer_index = *occupied.get();
 
-                        indices.push(v.0);
-                        indices.push(v.1);
-                        indices.push(v.2);
+                            indices.push(renderer_index);
+                        }
+                        Entry::Vacant(vacant) => {
+                            // We didn't see this vertex/normal
+                            // combination before, we need to create a
+                            // new vertex and remember the index we
+                            // assigned
+                            let renderer_index = next_renderer_index;
+                            let position = vertices[cast_usize(vi)];
+                            let normal = normals[cast_usize(ni)];
+                            let vertex = Self::vertex((position, normal));
 
-                        // Copy vertex data as is
-                        vertex_positions[v1] = vertices[v1];
-                        vertex_positions[v2] = vertices[v2];
-                        vertex_positions[v3] = vertices[v3];
+                            vacant.insert(renderer_index);
+                            next_renderer_index += 1;
 
-                        // Swizzle normals to use vertex indexing scheme
-                        vertex_normals[v1] = normals[n1];
-                        vertex_normals[v2] = normals[n2];
-                        vertex_normals[v3] = normals[n3];
-                    }
+                            vertex_data.push(vertex);
+                            indices.push(renderer_index)
+                        }
+                    };
                 }
             }
 
-            Self::from_positions_and_normals_indexed(indices, vertex_positions, vertex_normals)
+            assert_eq!(
+                indices.capacity(),
+                indices_len_est,
+                "Number of indices does not match estimate"
+            );
+
+            vertex_data.shrink_to_fit();
+
+            RendererGeometry {
+                indices: Some(indices),
+                vertex_data,
+            }
         } else {
             // FIXME: add ability to compute normals on demand if not
             // present here
@@ -170,8 +165,8 @@ impl RendererGeometry {
             .collect();
 
         Self {
-            vertex_data,
             indices: None,
+            vertex_data,
         }
     }
 
@@ -205,8 +200,8 @@ impl RendererGeometry {
             .collect();
 
         Self {
-            vertex_data,
             indices: Some(indices),
+            vertex_data,
         }
     }
 
@@ -1029,4 +1024,6 @@ mod tests {
         let _geometry =
             RendererGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
     }
+
+    // TODO: test RendererGeometry::from_geometry
 }

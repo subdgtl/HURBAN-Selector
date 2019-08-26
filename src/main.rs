@@ -75,13 +75,13 @@ fn main() {
     let mut scene_geometries = vec![
         // FIXME: This is just temporary code so that we can see
         // something in the scene and know the renderer works.
-        geometry::uv_cube([0.0, 0.0, 0.0], 0.5),
-        geometry::uv_cube([0.0, 500.0, 0.0], 5.0),
-        geometry::uv_cube([500.0, 0.0, 0.0], 5.0),
+        geometry::uv_cube_compressed([0.0, 0.0, 0.0], 0.5),
+        geometry::uv_cube([0.0, 50.0, 0.0], 5.0),
+        geometry::uv_cube([50.0, 0.0, 0.0], 5.0),
         geometry::cube([0.0, 5.0, 0.0], 0.9),
         geometry::cube([0.0, 0.0, 5.0], 1.5),
         geometry::plane([0.0, 0.0, 20.0], 10.0),
-        geometry::plane([0.0, 0.0, -20.0], 10.0),
+        geometry::plane_compressed([0.0, 0.0, -20.0], 10.0),
     ];
 
     let mut scene_renderer_geometry = Vec::with_capacity(scene_geometries.len());
