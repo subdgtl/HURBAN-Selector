@@ -90,8 +90,8 @@ fn main() {
 
     // Temporary model list
 
-    let models_dir =
-        env::var_os("MODELS_DIR").unwrap_or_else(|| env::current_dir().expect("").into());
+    let models_dir = env::var_os("MODELS_DIR")
+        .unwrap_or_else(|| env::current_dir().expect("Should load current dir").into());
     let obj_path_results = fs::read_dir(models_dir).expect("Should read directory with obj files");
     let mut obj_file_paths = HashMap::new();
 
@@ -104,7 +104,7 @@ fn main() {
                 let filename = obj_path
                     .file_name()
                     .into_string()
-                    .expect("Filename should be converted into String");
+                    .expect("Filename UTF-8 conversion failed");
 
                 obj_file_paths.insert(filename, path.clone());
             }
