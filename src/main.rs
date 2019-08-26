@@ -1,5 +1,8 @@
 #![windows_subsystem = "windows"]
 
+use std::collections::HashMap;
+use std::env;
+use std::fs;
 use std::time::Instant;
 
 use wgpu::winit;
@@ -8,7 +11,6 @@ use hurban_selector::camera::{Camera, CameraOptions};
 use hurban_selector::imgui_renderer::ImguiRenderer;
 use hurban_selector::importer::Importer;
 use hurban_selector::input::InputManager;
-use hurban_selector::primitives;
 use hurban_selector::ui;
 use hurban_selector::viewport_renderer::{
     Geometry, Msaa, ViewportRenderer, ViewportRendererOptions,
@@ -74,24 +76,6 @@ fn main() {
         },
     );
 
-    // FIXME: This is just temporary code so that we can see something
-    // in the scene and know the renderer works.
-    let cube1_g = primitives::uv_cube([0.0, 0.0, 0.0], 0.5);
-    let cube2_g = primitives::uv_cube([5.0, 5.0, 0.0], 0.7);
-    let cube3_g = primitives::uv_cube([5.0, 0.0, 0.0], 1.0);
-    let cube4_g = primitives::cube([0.0, 5.0, 0.0], 0.9);
-    let cube5_g = primitives::cube([0.0, 0.0, 5.0], 1.5);
-    let plane1_g = primitives::plane([0.0, 0.0, 20.0], 10.0);
-    let plane2_g = primitives::plane([0.0, 0.0, -20.0], 10.0);
-
-    let cube1 = viewport_renderer.add_geometry(&device, &cube1_g).unwrap();
-    let cube2 = viewport_renderer.add_geometry(&device, &cube2_g).unwrap();
-    let cube3 = viewport_renderer.add_geometry(&device, &cube3_g).unwrap();
-    let cube4 = viewport_renderer.add_geometry(&device, &cube4_g).unwrap();
-    let cube5 = viewport_renderer.add_geometry(&device, &cube5_g).unwrap();
-    let plane1 = viewport_renderer.add_geometry(&device, &plane1_g).unwrap();
-    let plane2 = viewport_renderer.add_geometry(&device, &plane2_g).unwrap();
-
     let mut dynamic_models = Vec::new();
 
     let (mut imgui_context, mut winit_platform) = ui::init(&window);
@@ -105,6 +89,31 @@ fn main() {
 
     let time_start = Instant::now();
     let mut time = time_start;
+
+    // Temporary model list
+
+    let models_dir = env::var_os("MODELS_DIR")
+        .unwrap_or_else(|| env::current_dir().expect("Should load current dir").into());
+    let obj_path_results = fs::read_dir(models_dir).expect("Should read directory with obj files");
+    let mut obj_file_paths = HashMap::new();
+
+    for obj_path_result in obj_path_results {
+        let obj_path = obj_path_result.expect("Should read directory entry");
+        let path = obj_path.path();
+
+        if let Some(ext) = path.extension() {
+            if ext == "obj" {
+                let filename = obj_path
+                    .file_name()
+                    .into_string()
+                    .expect("Filename UTF-8 conversion failed");
+
+                obj_file_paths.insert(filename, path.clone());
+            }
+        }
+    }
+
+    let obj_filenames: Vec<String> = obj_file_paths.keys().cloned().collect();
 
     let mut importer = Importer::new();
     let mut running = true;
@@ -170,31 +179,34 @@ fn main() {
             camera.reset_origin();
         }
 
-        if input_state.import_requested {
-            if let Some(path) = tinyfiledialogs::open_file_dialog(
-                "Open",
-                "",
-                Some((&["*.obj"], "Wavefront (.obj)")),
-            ) {
-                match importer.import_obj(&path) {
-                    Ok(models) => {
-                        for model in models {
-                            let geometry = Geometry::from_positions_and_normals_indexed(
-                                model.indices,
-                                model.vertex_positions,
-                                model.vertex_normals,
-                            );
-                            let model_handle =
-                                viewport_renderer.add_geometry(&device, &geometry).unwrap();
-                            dynamic_models.push(model_handle);
+        #[cfg(debug_assertions)]
+        {
+            if input_state.import_requested {
+                if let Some(path) = tinyfiledialogs::open_file_dialog(
+                    "Open",
+                    "",
+                    Some((&["*.obj"], "Wavefront (.obj)")),
+                ) {
+                    match importer.import_obj(&path) {
+                        Ok(models) => {
+                            for model in models {
+                                let geometry = Geometry::from_positions_and_normals_indexed(
+                                    model.indices,
+                                    model.vertex_positions,
+                                    model.vertex_normals,
+                                );
+                                let model_handle =
+                                    viewport_renderer.add_geometry(&device, &geometry).unwrap();
+                                dynamic_models.push(model_handle);
+                            }
                         }
-                    }
-                    Err(err) => {
-                        tinyfiledialogs::message_box_ok(
-                            "Error",
-                            &format!("{}", err),
-                            tinyfiledialogs::MessageBoxIcon::Error,
-                        );
+                        Err(err) => {
+                            tinyfiledialogs::message_box_ok(
+                                "Error",
+                                &format!("{}", err),
+                                tinyfiledialogs::MessageBoxIcon::Error,
+                            );
+                        }
                     }
                 }
             }
@@ -229,7 +241,44 @@ fn main() {
             &camera.view_matrix(),
         );
 
+        #[cfg(debug_assertions)]
         ui::draw_fps_window(&imgui_ui);
+
+        // Clicking any of the models in the list means clearing everything out
+        // of the scene, importing given model and pushing it into scene.
+        if let Some(clicked_model) = ui::draw_model_window(&imgui_ui, &obj_filenames) {
+            let clicked_model_path = obj_file_paths
+                .get(&clicked_model)
+                .expect("Should get clicked model path from hash map");
+
+            match importer.import_obj(&clicked_model_path.to_str().unwrap()) {
+                Ok(models) => {
+                    for model in models {
+                        let geometry = Geometry::from_positions_and_normals_indexed(
+                            model.indices,
+                            model.vertex_positions,
+                            model.vertex_normals,
+                        );
+                        let model_handle =
+                            viewport_renderer.add_geometry(&device, &geometry).unwrap();
+
+                        for model in dynamic_models.iter() {
+                            viewport_renderer.remove_geometry(*model);
+                        }
+
+                        dynamic_models.clear();
+                        dynamic_models.push(model_handle);
+                    }
+                }
+                Err(err) => {
+                    tinyfiledialogs::message_box_ok(
+                        "Error",
+                        &format!("{}", err),
+                        tinyfiledialogs::MessageBoxIcon::Error,
+                    );
+                }
+            }
+        }
 
         winit_platform.prepare_render(&imgui_ui, &window);
         let imgui_draw_data = imgui_ui.render();
@@ -237,12 +286,6 @@ fn main() {
         let frame = swap_chain.get_next_texture();
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-
-        viewport_renderer.draw_geometry(
-            &mut encoder,
-            &frame.view,
-            &[cube1, cube2, cube3, cube4, cube5, plane1, plane2],
-        );
 
         if !dynamic_models.is_empty() {
             viewport_renderer.draw_geometry(&mut encoder, &frame.view, &dynamic_models[..]);
@@ -254,14 +297,6 @@ fn main() {
 
         device.get_queue().submit(&[encoder.finish()]);
     }
-
-    viewport_renderer.remove_geometry(cube1);
-    viewport_renderer.remove_geometry(cube2);
-    viewport_renderer.remove_geometry(cube3);
-    viewport_renderer.remove_geometry(cube4);
-    viewport_renderer.remove_geometry(cube5);
-    viewport_renderer.remove_geometry(plane1);
-    viewport_renderer.remove_geometry(plane2);
 }
 
 fn create_swap_chain(
