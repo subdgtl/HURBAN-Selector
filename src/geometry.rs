@@ -151,7 +151,7 @@ pub struct TriangleFace {
     // tex_coords
 }
 
-pub fn plane(position: [f32; 3], scale: f32) -> Geometry {
+pub fn plane_same_len(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
         v(-1.0, -1.0,  0.0, position, scale),
@@ -181,7 +181,7 @@ pub fn plane(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn plane_compressed(position: [f32; 3], scale: f32) -> Geometry {
+pub fn plane_var_len(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
         v(-1.0, -1.0,  0.0, position, scale),
@@ -206,7 +206,7 @@ pub fn plane_compressed(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn cube(position: [f32; 3], scale: f32) -> Geometry {
+pub fn cube_same_len(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
         // back
@@ -264,7 +264,7 @@ pub fn cube(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn uv_cube(position: [f32; 3], scale: f32) -> Geometry {
+pub fn uv_cube_same_len(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
         // back
@@ -358,7 +358,7 @@ pub fn uv_cube(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn uv_cube_compressed(position: [f32; 3], scale: f32) -> Geometry {
+pub fn uv_cube_var_len(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
         // back
@@ -530,7 +530,7 @@ mod tests {
     }
 
     #[test]
-    fn test_from_triangle_faces_with_vertices() {
+    fn test_geometry_from_triangle_faces_with_vertices() {
         let (faces, vertices) = quad();
         let geometry = Geometry::from_triangle_faces_with_vertices(faces.clone(), vertices.clone());
         let geometry_faces: Vec<_> = geometry.triangle_faces().collect();
@@ -541,7 +541,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Faces reference out of bounds data")]
-    fn test_from_triangle_faces_with_vertices_bounds_check() {
+    fn test_geometry_from_triangle_faces_with_vertices_bounds_check() {
         let (_, vertices) = quad();
         #[rustfmt::skip]
         let faces = vec![
@@ -553,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn test_from_triangle_faces_with_vertices_and_normals() {
+    fn test_geometry_from_triangle_faces_with_vertices_and_normals() {
         let (faces, vertices, normals) = quad_with_normals();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
             faces.clone(),
@@ -569,7 +569,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Faces reference out of bounds data")]
-    fn test_from_triangle_faces_with_vertices_and_normals_bounds_check() {
+    fn test_geometry_from_triangle_faces_with_vertices_and_normals_bounds_check() {
         let (_, vertices, normals) = quad_with_normals();
         #[rustfmt::skip]
         let faces = vec![

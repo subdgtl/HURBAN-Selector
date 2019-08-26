@@ -45,8 +45,8 @@ pub struct RendererVertex {
 /// The geometry indices as uploaded on the GPU.
 pub type RendererIndex = u32;
 
-/// The geometry containing index and vertex data in flat format as
-/// will be uploaded on the GPU.
+/// The geometry containing index and vertex data in same-lenght
+/// format as will be uploaded on the GPU.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RendererGeometry {
     indices: Option<Vec<RendererIndex>>,
@@ -54,8 +54,8 @@ pub struct RendererGeometry {
 }
 
 impl RendererGeometry {
-    /// Construct flat geometry with same-length per-vertex data from
-    /// variable length data `Geometry`.
+    /// Construct geometry with same-length per-vertex data from
+    /// variable-length data `Geometry`.
     ///
     /// Duplicates vertices if same vertex is encountered multiple
     /// times paired with different per-vertex data, e.g. normals.
@@ -63,21 +63,24 @@ impl RendererGeometry {
         let vertices = geometry.vertices();
         if let Some(normals) = geometry.normals() {
             let faces_len = geometry.triangle_faces_len();
-            let indices_len_est = faces_len * 3;
+            let indices_len_estimate = faces_len * 3;
 
-            let mut indices = Vec::with_capacity(indices_len_est);
+            let mut indices = Vec::with_capacity(indices_len_estimate);
 
-            // This capacity is a lower bound estimate. Given that the
+            // This capacity is a lower bound estimate. Given that
             // `Geometry` contains no orphan vertices, there should be
             // at least `vertices.len()` vertices present in the
-            // `RendererGeometry`
+            // resulting `RendererGeometry`.
             let mut vertex_data = Vec::with_capacity(vertices.len());
 
             // This capacity is an upper bound estimate and will
             // overshoot if indices are re-used
-            let mut index_map = HashMap::with_capacity(faces_len);
-            let mut next_renderer_index: RendererIndex = 0;
+            let mut index_map = HashMap::with_capacity(indices_len_estimate);
+            let mut next_renderer_index = 0;
 
+            // Iterate over all faces, creating or re-using vertices
+            // as we go. Vertex data identity is defined by equality
+            // of the index that constructed the vertex.
             for triangle_face in geometry.triangle_faces() {
                 let v = triangle_face.vertices;
                 let n = triangle_face
@@ -119,7 +122,7 @@ impl RendererGeometry {
 
             assert_eq!(
                 indices.capacity(),
-                indices_len_est,
+                indices_len_estimate,
                 "Number of indices does not match estimate"
             );
 
@@ -890,6 +893,8 @@ fn wgpu_size_of<T>() -> wgpu::BufferAddress {
 
 #[cfg(test)]
 mod tests {
+    use crate::geometry::TriangleFace;
+
     use super::*;
 
     fn triangle() -> (Vec<Point3<f32>>, Vec<Vector3<f32>>) {
@@ -917,8 +922,52 @@ mod tests {
         (indices, vertex_positions, vertex_normals)
     }
 
+    fn triangle_geometry_same_len() -> Geometry {
+        #[rustfmt::skip]
+        let positions = vec![
+            Point3::new(-0.3, -0.5,  0.0),
+            Point3::new( 0.3, -0.5,  0.0),
+            Point3::new( 0.0,  0.5,  0.0),
+        ];
+
+        #[rustfmt::skip]
+        let normals = vec![
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+        ];
+
+        #[rustfmt::skip]
+        let faces = vec![
+            TriangleFace { vertices: (0, 1, 2), normals: Some((0, 1, 2)) }
+        ];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
+    }
+
+    fn triangle_geometry_var_len() -> Geometry {
+        #[rustfmt::skip]
+        let positions = vec![
+            Point3::new(-0.3, -0.5,  0.0),
+            Point3::new( 0.3, -0.5,  0.0),
+            Point3::new( 0.0,  0.5,  0.0),
+        ];
+
+        #[rustfmt::skip]
+        let normals = vec![
+            Vector3::new(0.0, 0.0, 1.0),
+        ];
+
+        #[rustfmt::skip]
+        let faces = vec![
+            TriangleFace { vertices: (0, 1, 2), normals: Some((0, 0, 0)) }
+        ];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
+    }
+
     #[test]
-    fn test_create_valid_geometry_does_not_panic() {
+    fn test_renderer_geometry_from_positions_and_normals() {
         let (positions, normals) = triangle();
         let geometry = RendererGeometry::from_positions_and_normals(positions, normals);
 
@@ -943,34 +992,25 @@ mod tests {
     }
 
     #[test]
-    fn test_create_valid_indexed_geometry_does_not_panic() {
+    fn test_renderer_geometry_from_positions_and_normals_indexed() {
         let (indices, positions, normals) = triangle_indexed();
         let geometry =
             RendererGeometry::from_positions_and_normals_indexed(indices, positions, normals);
 
-        assert_eq!(
-            geometry.vertex_data,
-            vec![
-                RendererVertex {
-                    position: [-0.3, -0.5, 0.0, 1.0],
-                    normal: [0.0, 0.0, 1.0, 0.0],
-                },
-                RendererVertex {
-                    position: [0.3, -0.5, 0.0, 1.0],
-                    normal: [0.0, 0.0, 1.0, 0.0],
-                },
-                RendererVertex {
-                    position: [0.0, 0.5, 0.0, 1.0],
-                    normal: [0.0, 0.0, 1.0, 0.0],
-                },
-            ]
-        );
+        #[rustfmt::skip]
+        let expected_vertex_data = vec![
+            RendererVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            RendererVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            RendererVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+        ];
+
+        assert_eq!(geometry.vertex_data, expected_vertex_data);
         assert_eq!(geometry.indices, Some(vec![0, 1, 2]));
     }
 
     #[test]
     #[should_panic(expected = "Per-vertex data must be same length")]
-    fn test_create_geometry_from_different_length_vertex_data_panicks() {
+    fn test_renderer_geometry_from_positions_and_normals_panics_on_different_length_data() {
         let (_, normals) = triangle();
         let _geometry =
             RendererGeometry::from_positions_and_normals(vec![Point3::new(1.0, 1.0, 1.0)], normals);
@@ -978,7 +1018,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Per-vertex data must be same length")]
-    fn test_create_indexed_geometry_from_different_length_vertex_data_panicks() {
+    fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_different_length_data() {
         let (indices, positions, _) = triangle_indexed();
         let _geometry = RendererGeometry::from_positions_and_normals_indexed(
             indices,
@@ -989,21 +1029,21 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Vertex positions must not be empty")]
-    fn test_create_geometry_from_empty_vertex_positions_panicks() {
+    fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_positions() {
         let (_, normals) = triangle();
         let _geometry = RendererGeometry::from_positions_and_normals(vec![], normals);
     }
 
     #[test]
     #[should_panic(expected = "Vertex normals must not be empty")]
-    fn test_create_geometry_from_empty_vertex_normals_panicks() {
+    fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_positions() {
         let (positions, _) = triangle();
         let _geometry = RendererGeometry::from_positions_and_normals(positions, vec![]);
     }
 
     #[test]
     #[should_panic(expected = "Vertex positions must not be empty")]
-    fn test_create_indexed_geometry_from_empty_vertex_positions_panicks() {
+    fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_normals() {
         let (indices, _, normals) = triangle_indexed();
         let _geometry =
             RendererGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
@@ -1011,7 +1051,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Vertex normals must not be empty")]
-    fn test_create_indexed_geometry_from_empty_vertex_normals_panicks() {
+    fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_normals() {
         let (indices, positions, _) = triangle_indexed();
         let _geometry =
             RendererGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
@@ -1019,11 +1059,39 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Indices must not be empty")]
-    fn test_create_indexed_geometry_from_empty_indices_panicks() {
+    fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_indices() {
         let (_, vertices, normals) = triangle_indexed();
         let _geometry =
             RendererGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
     }
 
-    // TODO: test RendererGeometry::from_geometry
+    #[test]
+    fn test_renderer_geometry_from_geometry_preserves_already_same_len_geometry() {
+        let geometry = RendererGeometry::from_geometry(&triangle_geometry_same_len());
+
+        #[rustfmt::skip]
+        let expected_vertex_data = vec![
+            RendererVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            RendererVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            RendererVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+        ];
+
+        assert_eq!(geometry.vertex_data, expected_vertex_data);
+        assert_eq!(geometry.indices, Some(vec![0, 1, 2]));
+    }
+
+    #[test]
+    fn test_renderer_geometry_from_geometry_duplicates_normals_in_var_len_geometry() {
+        let geometry = RendererGeometry::from_geometry(&triangle_geometry_var_len());
+
+        #[rustfmt::skip]
+        let expected_vertex_data = vec![
+            RendererVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            RendererVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            RendererVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+        ];
+
+        assert_eq!(geometry.vertex_data, expected_vertex_data);
+        assert_eq!(geometry.indices, Some(vec![0, 1, 2]));
+    }
 }
