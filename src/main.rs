@@ -22,7 +22,15 @@ fn main() {
     env_logger::init();
 
     let mut event_loop = winit::EventsLoop::new();
-    let window = winit::Window::new(&event_loop).expect("Failed to create window.");
+    // let monitor_id = event_loop.get_primary_monitor();
+    let window = winit::WindowBuilder::new()
+        .with_title("H.U.R.B.A.N. Selector")
+        // .with_fullscreen(Some(monitor_id))
+        // .with_maximized(true)
+        // .with_multitouch()
+        .build(&event_loop)
+        .expect("Failed to create window");
+
     let window_size = window
         .get_inner_size()
         .expect("Failed to get window inner size")
@@ -52,7 +60,7 @@ fn main() {
             radius_min: 1.0,
             radius_max: 500.0,
             polar_angle_distance_min: 1f32.to_radians(),
-            speed_pan: 0.1,
+            speed_pan: 0.5,
             speed_rotate: 0.005,
             speed_zoom: 0.01,
             speed_zoom_step: 1.0,

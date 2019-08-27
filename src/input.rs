@@ -21,6 +21,8 @@ pub struct InputManager {
     rmb_down: bool,
     shift_down: bool,
     input_state: InputState,
+    window_mouse_x: f64,
+    window_mouse_y: f64,
 }
 
 impl InputManager {
@@ -30,6 +32,8 @@ impl InputManager {
             rmb_down: false,
             shift_down: false,
             input_state: InputState::default(),
+            window_mouse_x: 0.0,
+            window_mouse_y: 0.0,
         }
     }
 
@@ -59,6 +63,7 @@ impl InputManager {
                 winit::WindowEvent::CloseRequested => {
                     self.input_state.close_requested = true;
                 }
+
                 winit::WindowEvent::KeyboardInput { input, .. } => {
                     let winit::KeyboardInput {
                         virtual_keycode,
@@ -119,6 +124,7 @@ impl InputManager {
                         }
                     }
                 }
+
                 winit::WindowEvent::MouseInput { state, button, .. } => match (state, button) {
                     (winit::ElementState::Pressed, winit::MouseButton::Left) => {
                         self.lmb_down = true;
@@ -134,34 +140,47 @@ impl InputManager {
                     }
                     (_, _) => (),
                 },
+
+                winit::WindowEvent::CursorMoved { position, .. } => {
+                    if !ui_captured_mouse {
+                        let x = position.x;
+                        let y = position.y;
+                        let x_prev = self.window_mouse_x;
+                        let y_prev = self.window_mouse_y;
+                        self.window_mouse_x = x;
+                        self.window_mouse_y = y;
+
+                        let dx = (x - x_prev) as f32;
+                        let dy = (y - y_prev) as f32;
+
+                        if self.lmb_down && self.rmb_down {
+                            self.input_state.camera_zoom -= dy;
+                        } else if self.lmb_down {
+                            self.input_state.camera_rotate[0] -= dx;
+                            self.input_state.camera_rotate[1] -= dy;
+                        } else if self.rmb_down {
+                            if self.shift_down {
+                                self.input_state.camera_pan_ground[0] += dx;
+                                self.input_state.camera_pan_ground[1] -= dy;
+                            } else {
+                                self.input_state.camera_pan_screen[0] += dx;
+                                self.input_state.camera_pan_screen[1] -= dy;
+                            }
+                        }
+                    }
+
+                }
+
                 winit::WindowEvent::Resized(logical_size) => {
                     // Even if the window resized multiple times, only
                     // take the last one into account.
                     self.input_state.window_resized = Some(logical_size);
                 }
+
                 _ => (),
             },
+
             winit::Event::DeviceEvent { event, .. } => match event {
-                winit::DeviceEvent::MouseMotion { delta } => {
-                    if !ui_captured_mouse {
-                        let x = delta.0 as f32;
-                        let y = delta.1 as f32;
-                        if self.lmb_down && self.rmb_down {
-                            self.input_state.camera_zoom -= y;
-                        } else if self.lmb_down {
-                            self.input_state.camera_rotate[0] -= x;
-                            self.input_state.camera_rotate[1] -= y;
-                        } else if self.rmb_down {
-                            if self.shift_down {
-                                self.input_state.camera_pan_ground[0] += x;
-                                self.input_state.camera_pan_ground[1] -= y;
-                            } else {
-                                self.input_state.camera_pan_screen[0] += x;
-                                self.input_state.camera_pan_screen[1] -= y;
-                            }
-                        }
-                    }
-                }
                 winit::DeviceEvent::MouseWheel { delta, .. } => match delta {
                     winit::MouseScrollDelta::PixelDelta(winit::dpi::LogicalPosition {
                         y, ..
@@ -174,6 +193,7 @@ impl InputManager {
                             }
                         }
                     }
+
                     winit::MouseScrollDelta::LineDelta(_, y) => {
                         if !ui_captured_mouse {
                             match y.partial_cmp(&0.0) {
@@ -184,8 +204,10 @@ impl InputManager {
                         }
                     }
                 },
+
                 _ => (),
             },
+
             _ => (),
         }
     }
