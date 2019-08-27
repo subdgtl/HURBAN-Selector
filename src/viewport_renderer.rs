@@ -45,7 +45,7 @@ pub struct RendererVertex {
 /// The geometry indices as uploaded on the GPU.
 pub type RendererIndex = u32;
 
-/// The geometry containing index and vertex data in same-lenght
+/// The geometry containing index and vertex data in same-length
 /// format as will be uploaded on the GPU.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RendererGeometry {
@@ -81,16 +81,13 @@ impl RendererGeometry {
             // Iterate over all faces, creating or re-using vertices
             // as we go. Vertex data identity is defined by equality
             // of the index that constructed the vertex.
-            for triangle_face in geometry.triangle_faces() {
+            for triangle_face in geometry.triangle_faces_iter() {
                 let v = triangle_face.vertices;
                 let n = triangle_face
                     .normals
                     .expect("Normal indices must be present if normals are");
 
-                for (vi, ni) in &[(v.0, n.0), (v.1, n.1), (v.2, n.2)] {
-                    let vi = *vi;
-                    let ni = *ni;
-
+                for &(vi, ni) in &[(v.0, n.0), (v.1, n.1), (v.2, n.2)] {
                     match index_map.entry((vi, ni)) {
                         Entry::Occupied(occupied) => {
                             // This concrete vertex/normal combination

@@ -94,7 +94,7 @@ fn main() {
         let renderer_geometry = RendererGeometry::from_geometry(geometry);
         let renderer_geometry_id = viewport_renderer
             .add_geometry(&device, &renderer_geometry)
-            .unwrap();
+            .expect("Failed to add geometry to renderer");
         scene_renderer_geometry_ids.push(renderer_geometry_id);
     }
 
@@ -213,7 +213,7 @@ fn main() {
                                 let renderer_geometry = RendererGeometry::from_geometry(&geometry);
                                 let renderer_geometry_id = viewport_renderer
                                     .add_geometry(&device, &renderer_geometry)
-                                    .unwrap();
+                                    .expect("Failed to add geometry to renderer");
 
                                 scene_geometries.push(geometry);
                                 scene_renderer_geometry_ids.push(renderer_geometry_id);
@@ -284,7 +284,7 @@ fn main() {
                         let renderer_geometry = RendererGeometry::from_geometry(&geometry);
                         let renderer_geometry_id = viewport_renderer
                             .add_geometry(&device, &renderer_geometry)
-                            .unwrap();
+                            .expect("Failed to add geometry to renderer");
 
                         scene_geometries.push(geometry);
                         scene_renderer_geometry_ids.push(renderer_geometry_id);

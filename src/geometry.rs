@@ -110,7 +110,7 @@ impl Geometry {
 
     /// Return a view of all triangle faces in this geometry. Skip all
     /// other types of faces.
-    pub fn triangle_faces<'a>(&'a self) -> impl Iterator<Item = TriangleFace> + 'a {
+    pub fn triangle_faces_iter<'a>(&'a self) -> impl Iterator<Item = TriangleFace> + 'a {
         self.faces.iter().copied().map(|index| match index {
             Face::Triangle(f) => f,
         })
@@ -533,7 +533,7 @@ mod tests {
     fn test_geometry_from_triangle_faces_with_vertices() {
         let (faces, vertices) = quad();
         let geometry = Geometry::from_triangle_faces_with_vertices(faces.clone(), vertices.clone());
-        let geometry_faces: Vec<_> = geometry.triangle_faces().collect();
+        let geometry_faces: Vec<_> = geometry.triangle_faces_iter().collect();
 
         assert_eq!(vertices.as_slice(), geometry.vertices());
         assert_eq!(faces.as_slice(), geometry_faces.as_slice());
@@ -560,7 +560,7 @@ mod tests {
             vertices.clone(),
             normals.clone(),
         );
-        let geometry_faces: Vec<_> = geometry.triangle_faces().collect();
+        let geometry_faces: Vec<_> = geometry.triangle_faces_iter().collect();
 
         assert_eq!(vertices.as_slice(), geometry.vertices());
         assert_eq!(normals.as_slice(), geometry.normals().unwrap());
