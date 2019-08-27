@@ -1,6 +1,5 @@
 # HURBAN Selector
 
-[![Build Status](https://travis-ci.org/sub-digital/HURBAN-Selector.svg?branch=master)](https://travis-ci.org/sub-digital/HURBAN-Selector)
 [![Build Status](https://dev.azure.com/subdigital/HURBAN-selector/_apis/build/status/sub-digital.HURBAN-Selector?branchName=master)](https://dev.azure.com/subdigital/HURBAN-selector/_build/latest?definitionId=1&branchName=master)
 
 ## Prerequisites
