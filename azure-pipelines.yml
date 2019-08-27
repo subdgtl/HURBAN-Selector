@@ -6,7 +6,7 @@ pr:
   - master
 
 jobs:
-  - job: Linux
+  - job: Linux_Vulkan
     pool:
       vmImage: ubuntu-16.04
     steps:
@@ -16,7 +16,7 @@ jobs:
     variables:
       TOOLCHAIN: 1.36.0
 
-  - job: macOS
+  - job: macOS_Metal
     strategy:
       matrix:
         macos-10_13:
