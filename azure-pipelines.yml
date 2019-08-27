@@ -1,59 +1,65 @@
 trigger:
   branches:
     include:
-    - master
+      - master
 pr:
-- master
+  - master
 
 jobs:
-- job: Linux
-  pool:
-    vmImage: ubuntu-16.04
-  steps:
-    - template: ci/azure-test-all.yml
-      parameters:
-        api: vulkan
-  variables:
-    TOOLCHAIN: 1.36.0
+  - job: Linux_Vulkan
+    pool:
+      vmImage: ubuntu-16.04
+    steps:
+      - template: ci/azure-test-all.yml
+        parameters:
+          api: vulkan
+    variables:
+      TOOLCHAIN: 1.36.0
 
-- job: macOS
-  pool:
-    vmImage: macos-10.14
-  steps:
-    - template: ci/azure-test-all.yml
-      parameters:
-        api: metal
-  variables:
-    TOOLCHAIN: 1.36.0
+  - job: macOS_Metal
+    strategy:
+      matrix:
+        macos-10_13:
+          imageName: macos-10.13
+        macos-10_14:
+          imageName: macos-10.14
+    pool:
+      vmImage: ${imageName}
+    steps:
+      - template: ci/azure-test-all.yml
+        parameters:
+          api: metal
+    variables:
+      TOOLCHAIN: 1.36.0
 
-- job: Windows_D3D12
-  pool:
-    vmImage: windows-2019
-  steps:
-    - script: choco install -y ninja
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.7.4'
-        addToPath: true
-        architecture: 'x64'
-    - template: ci/azure-test-all.yml
-      parameters:
-        api: d3d12
-  variables:
-    TOOLCHAIN: 1.36.0
+  - job: Windows_D3D12
+    pool:
+      vmImage: windows-2019
+    steps:
+      - script: choco install -y ninja
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: "3.7.4"
+          addToPath: true
+          architecture: "x64"
+      - template: ci/azure-test-all.yml
+        parameters:
+          api: d3d12
+    variables:
+      TOOLCHAIN: 1.36.0
 
-- job: Windows_Vulkan
-  pool:
-    vmImage: windows-2019
-  steps:
-    - script: choco install -y ninja
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.7.4'
-        addToPath: true
-        architecture: 'x64'
-    - template: ci/azure-test-all.yml
-      parameters:
-        api: vulkan
-  variables:
-    TOOLCHAIN: 1.36.0
+  - job: Windows_Vulkan
+    pool:
+      vmImage: windows-2019
+    steps:
+      - script: choco install -y ninja
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: "3.7.4"
+          addToPath: true
+          architecture: "x64"
+      - template: ci/azure-test-all.yml
+        parameters:
+          api: vulkan
+    variables:
+      TOOLCHAIN: 1.36.0
