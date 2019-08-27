@@ -58,8 +58,8 @@ impl InputManager {
             alt: false,
         };
 
-        match ev {
-            winit::Event::WindowEvent { event, .. } => match event {
+        if let winit::Event::WindowEvent { event, .. } = ev {
+            match event {
                 winit::WindowEvent::CloseRequested => {
                     self.input_state.close_requested = true;
                 }
@@ -168,20 +168,9 @@ impl InputManager {
                             }
                         }
                     }
-
                 }
 
-                winit::WindowEvent::Resized(logical_size) => {
-                    // Even if the window resized multiple times, only
-                    // take the last one into account.
-                    self.input_state.window_resized = Some(logical_size);
-                }
-
-                _ => (),
-            },
-
-            winit::Event::DeviceEvent { event, .. } => match event {
-                winit::DeviceEvent::MouseWheel { delta, .. } => match delta {
+                winit::WindowEvent::MouseWheel { delta, .. } => match delta {
                     winit::MouseScrollDelta::PixelDelta(winit::dpi::LogicalPosition {
                         y, ..
                     }) => {
@@ -205,10 +194,14 @@ impl InputManager {
                     }
                 },
 
-                _ => (),
-            },
+                winit::WindowEvent::Resized(logical_size) => {
+                    // Even if the window resized multiple times, only
+                    // take the last one into account.
+                    self.input_state.window_resized = Some(logical_size);
+                }
 
-            _ => (),
+                _ => (),
+            }
         }
     }
 }
