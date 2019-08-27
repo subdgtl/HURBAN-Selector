@@ -8,12 +8,13 @@ use std::time::Instant;
 use wgpu::winit;
 
 use hurban_selector::camera::{Camera, CameraOptions};
+use hurban_selector::geometry;
 use hurban_selector::imgui_renderer::ImguiRenderer;
 use hurban_selector::importer::Importer;
 use hurban_selector::input::InputManager;
 use hurban_selector::ui;
 use hurban_selector::viewport_renderer::{
-    Geometry, Msaa, ViewportRenderer, ViewportRendererOptions,
+    Msaa, RendererGeometry, ViewportRenderer, ViewportRendererOptions,
 };
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
@@ -58,7 +59,7 @@ fn main() {
         60f32.to_radians(),
         CameraOptions {
             radius_min: 1.0,
-            radius_max: 500.0,
+            radius_max: 10000.0,
             polar_angle_distance_min: 1f32.to_radians(),
             speed_pan: 0.5,
             speed_rotate: 0.005,
@@ -84,7 +85,26 @@ fn main() {
         },
     );
 
-    let mut dynamic_models = Vec::new();
+    let mut scene_geometries = vec![
+        // FIXME: This is just temporary code so that we can see
+        // something in the scene and know the renderer works.
+        geometry::uv_cube_var_len([0.0, 0.0, 0.0], 0.5),
+        geometry::uv_cube_same_len([0.0, 50.0, 0.0], 5.0),
+        geometry::uv_cube_same_len([50.0, 0.0, 0.0], 5.0),
+        geometry::cube_same_len([0.0, 5.0, 0.0], 0.9),
+        geometry::cube_same_len([0.0, 0.0, 5.0], 1.5),
+        geometry::plane_same_len([0.0, 0.0, 20.0], 10.0),
+        geometry::plane_var_len([0.0, 0.0, -20.0], 10.0),
+    ];
+
+    let mut scene_renderer_geometry_ids = Vec::with_capacity(scene_geometries.len());
+    for geometry in &scene_geometries {
+        let renderer_geometry = RendererGeometry::from_geometry(geometry);
+        let renderer_geometry_id = viewport_renderer
+            .add_geometry(&device, &renderer_geometry)
+            .expect("Failed to add geometry to renderer");
+        scene_renderer_geometry_ids.push(renderer_geometry_id);
+    }
 
     let (mut imgui_context, mut winit_platform) = ui::init(&window);
     let mut imgui_renderer = ImguiRenderer::new(
@@ -182,9 +202,8 @@ fn main() {
         camera.zoom_step(input_state.camera_zoom_steps);
 
         if input_state.camera_reset_viewport {
-            // FIXME: For now this is a cheap man's version of:
-            // https://trello.com/c/JFNQ6GyJ/85-center-viewport
-            camera.reset_origin();
+            let (origin, radius) = geometry::compute_bounding_sphere(&scene_geometries[..]);
+            camera.zoom_to_fit_sphere(&origin, radius);
         }
 
         #[cfg(debug_assertions)]
@@ -198,14 +217,14 @@ fn main() {
                     match importer.import_obj(&path) {
                         Ok(models) => {
                             for model in models {
-                                let geometry = Geometry::from_positions_and_normals_indexed(
-                                    model.indices,
-                                    model.vertex_positions,
-                                    model.vertex_normals,
-                                );
-                                let model_handle =
-                                    viewport_renderer.add_geometry(&device, &geometry).unwrap();
-                                dynamic_models.push(model_handle);
+                                let geometry = model.geometry;
+                                let renderer_geometry = RendererGeometry::from_geometry(&geometry);
+                                let renderer_geometry_id = viewport_renderer
+                                    .add_geometry(&device, &renderer_geometry)
+                                    .expect("Failed to add geometry to renderer");
+
+                                scene_geometries.push(geometry);
+                                scene_renderer_geometry_ids.push(renderer_geometry_id);
                             }
                         }
                         Err(err) => {
@@ -261,21 +280,22 @@ fn main() {
 
             match importer.import_obj(&clicked_model_path.to_str().unwrap()) {
                 Ok(models) => {
+                    // Clear existing scene first...
+                    scene_geometries.clear();
+                    for geometry in scene_renderer_geometry_ids.drain(..) {
+                        viewport_renderer.remove_geometry(geometry);
+                    }
+
+                    // ... and add everything we found to it
                     for model in models {
-                        let geometry = Geometry::from_positions_and_normals_indexed(
-                            model.indices,
-                            model.vertex_positions,
-                            model.vertex_normals,
-                        );
-                        let model_handle =
-                            viewport_renderer.add_geometry(&device, &geometry).unwrap();
+                        let geometry = model.geometry;
+                        let renderer_geometry = RendererGeometry::from_geometry(&geometry);
+                        let renderer_geometry_id = viewport_renderer
+                            .add_geometry(&device, &renderer_geometry)
+                            .expect("Failed to add geometry to renderer");
 
-                        for model in dynamic_models.iter() {
-                            viewport_renderer.remove_geometry(*model);
-                        }
-
-                        dynamic_models.clear();
-                        dynamic_models.push(model_handle);
+                        scene_geometries.push(geometry);
+                        scene_renderer_geometry_ids.push(renderer_geometry_id);
                     }
                 }
                 Err(err) => {
@@ -295,15 +315,21 @@ fn main() {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
 
-        if !dynamic_models.is_empty() {
-            viewport_renderer.draw_geometry(&mut encoder, &frame.view, &dynamic_models[..]);
-        }
+        viewport_renderer.draw_geometry(
+            &mut encoder,
+            &frame.view,
+            &scene_renderer_geometry_ids[..],
+        );
 
         imgui_renderer
             .render(&mut device, &mut encoder, &frame.view, imgui_draw_data)
             .expect("Should render an imgui frame");
 
         device.get_queue().submit(&[encoder.finish()]);
+    }
+
+    for renderer_geometry_id in scene_renderer_geometry_ids {
+        viewport_renderer.remove_geometry(renderer_geometry_id);
     }
 }
 

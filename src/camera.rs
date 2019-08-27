@@ -131,6 +131,26 @@ impl Camera {
         self.radius = clamp(new_radius, self.options.radius_min, self.options.radius_max);
     }
 
+    /// Attempt to fit a sphere into camera view frustrum.
+    ///
+    /// Camera options may affect the outcome. A too small
+    /// `radius_max` or a too large `radius_min` may cause the result
+    /// to be not zoomed out enough, or not zoomed in enough.
+    pub fn zoom_to_fit_sphere(&mut self, sphere_origin: &Point3<f32>, sphere_radius: f32) {
+        const MARGIN_MULTIPLIER: f32 = 1.005;
+
+        let fovy = self.options.fovy;
+        let fovx = fovy * self.aspect_ratio;
+        let fov = fovy.min(fovx);
+
+        // Compute the distance needed from the sphere for it to fit
+        // inside the camera frustrum
+        let new_radius = MARGIN_MULTIPLIER * sphere_radius / (fov / 2.0).tan();
+
+        self.origin = *sphere_origin;
+        self.radius = clamp(new_radius, self.options.radius_min, self.options.radius_max);
+    }
+
     pub fn view_matrix(&self) -> Matrix4<f32> {
         let eye = self.compute_eye();
         Matrix4::look_at_rh(&eye, &self.origin, &self.up)

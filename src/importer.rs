@@ -6,9 +6,11 @@ use std::fs;
 use std::io::{self, Read};
 
 use crc32fast;
+use nalgebra::base::Vector3;
+use nalgebra::geometry::Point3;
 use tobj;
 
-use crate::viewport_renderer::Index;
+use crate::geometry::{Geometry, TriangleFace};
 
 #[derive(Debug, PartialEq)]
 pub enum ImporterError {
@@ -50,9 +52,7 @@ impl From<tobj::LoadError> for ImporterError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Model {
     pub name: String,
-    pub vertex_positions: Vec<[f32; 3]>,
-    pub vertex_normals: Vec<[f32; 3]>,
-    pub indices: Vec<Index>,
+    pub geometry: Geometry,
 }
 
 #[derive(Debug)]
@@ -162,21 +162,49 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
             .mesh
             .positions
             .chunks_exact(3)
-            .map(|chunk| [chunk[0], chunk[1], chunk[2]])
+            .map(|chunk| Point3::new(chunk[0], chunk[1], chunk[2]))
             .collect();
 
-        let vertex_normals: Vec<_> = model
+        let vertex_normals = if model.mesh.normals.is_empty() {
+            None
+        } else {
+            let normals = model
+                .mesh
+                .normals
+                .chunks_exact(3)
+                .map(|chunk| Vector3::new(chunk[0], chunk[1], chunk[2]))
+                .collect();
+
+            Some(normals)
+        };
+
+        let faces = model
             .mesh
-            .normals
+            .indices
             .chunks_exact(3)
-            .map(|chunk| [chunk[0], chunk[1], chunk[2]])
+            .map(|chunk| TriangleFace {
+                vertices: (chunk[0], chunk[1], chunk[2]),
+                normals: if vertex_normals.is_some() {
+                    Some((chunk[0], chunk[1], chunk[2]))
+                } else {
+                    None
+                },
+            })
             .collect();
+
+        let geometry = if let Some(vertex_normals) = vertex_normals {
+            Geometry::from_triangle_faces_with_vertices_and_normals(
+                faces,
+                vertex_positions,
+                vertex_normals,
+            )
+        } else {
+            Geometry::from_triangle_faces_with_vertices(faces, vertex_positions)
+        };
 
         models.push(Model {
             name: model.name,
-            vertex_positions,
-            vertex_normals,
-            indices: model.mesh.indices,
+            geometry,
         });
     }
 
@@ -210,9 +238,9 @@ mod tests {
     #[test]
     fn test_tobj_to_internal_returns_correct_representation_for_single_model() {
         let tobj_model = create_tobj_model(
-            vec![1, 2],
-            vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
-            vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            vec![0, 1, 2],
+            vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0],
+            vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
         );
         let tobj_models = vec![tobj_model.clone()];
         let models = tobj_to_internal(tobj_models);
@@ -221,9 +249,22 @@ mod tests {
             models,
             vec![Model {
                 name: tobj_model.name,
-                vertex_positions: vec![[6.0, 5.0, 4.0], [3.0, 2.0, 1.0],],
-                vertex_normals: vec![[1.0, 0.0, 0.0], [1.0, 0.0, 0.0],],
-                indices: tobj_model.mesh.indices,
+                geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
+                    vec![TriangleFace {
+                        vertices: (0, 1, 2),
+                        normals: Some((0, 1, 2)),
+                    }],
+                    vec![
+                        Point3::new(6.0, 5.0, 4.0),
+                        Point3::new(3.0, 2.0, 1.0),
+                        Point3::new(0.0, 1.0, 2.0),
+                    ],
+                    vec![
+                        Vector3::new(1.0, 0.0, 0.0),
+                        Vector3::new(1.0, 0.0, 0.0),
+                        Vector3::new(1.0, 0.0, 0.0),
+                    ],
+                ),
             }]
         );
     }
@@ -231,14 +272,14 @@ mod tests {
     #[test]
     fn test_tobj_to_internal_returns_correct_representation_for_multiple_models() {
         let tobj_model_1 = create_tobj_model(
-            vec![1, 2],
-            vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
-            vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            vec![0, 1, 2],
+            vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0],
+            vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
         );
         let tobj_model_2 = create_tobj_model(
-            vec![3, 4],
-            vec![16.0, 15.0, 14.0, 13.0, 12.0, 11.0],
-            vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            vec![0, 1, 2],
+            vec![16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 9.0, 8.0],
+            vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
         );
         let tobj_models = vec![tobj_model_1.clone(), tobj_model_2.clone()];
         let models = tobj_to_internal(tobj_models);
@@ -248,16 +289,42 @@ mod tests {
             vec![
                 Model {
                     name: tobj_model_1.name,
-                    vertex_positions: vec![[6.0, 5.0, 4.0], [3.0, 2.0, 1.0],],
-                    vertex_normals: vec![[1.0, 0.0, 0.0], [1.0, 0.0, 0.0],],
-                    indices: tobj_model_1.mesh.indices,
+                    geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
+                        vec![TriangleFace {
+                            vertices: (0, 1, 2),
+                            normals: Some((0, 1, 2)),
+                        }],
+                        vec![
+                            Point3::new(6.0, 5.0, 4.0),
+                            Point3::new(3.0, 2.0, 1.0),
+                            Point3::new(0.0, 1.0, 2.0),
+                        ],
+                        vec![
+                            Vector3::new(1.0, 0.0, 0.0),
+                            Vector3::new(1.0, 0.0, 0.0),
+                            Vector3::new(1.0, 0.0, 0.0),
+                        ],
+                    ),
                 },
                 Model {
                     name: tobj_model_2.name,
-                    vertex_positions: vec![[16.0, 15.0, 14.0], [13.0, 12.0, 11.0],],
-                    vertex_normals: vec![[1.0, 0.0, 0.0], [1.0, 0.0, 0.0],],
-                    indices: tobj_model_2.mesh.indices,
-                }
+                    geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
+                        vec![TriangleFace {
+                            vertices: (0, 1, 2),
+                            normals: Some((0, 1, 2)),
+                        }],
+                        vec![
+                            Point3::new(16.0, 15.0, 14.0),
+                            Point3::new(13.0, 12.0, 11.0),
+                            Point3::new(10.0, 9.0, 8.0),
+                        ],
+                        vec![
+                            Vector3::new(1.0, 0.0, 0.0),
+                            Vector3::new(1.0, 0.0, 0.0),
+                            Vector3::new(1.0, 0.0, 0.0),
+                        ],
+                    ),
+                },
             ]
         );
     }
