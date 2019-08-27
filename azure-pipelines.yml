@@ -24,7 +24,7 @@ jobs:
         macos-10_14:
           imageName: macos-10.14
     pool:
-      vmImage: ${imageName}
+      vmImage: $(imageName)
     steps:
       - template: ci/azure-test-all.yml
         parameters:
