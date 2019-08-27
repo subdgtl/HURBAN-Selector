@@ -460,17 +460,17 @@ fn n(x: f32, y: f32, z: f32) -> Vector3<f32> {
     Vector3::new(x, y, z)
 }
 
-fn tf_vn(a: u32, b: u32, c: u32) -> TriangleFace {
+fn tf_vn(i1: u32, i2: u32, i3: u32) -> TriangleFace {
     TriangleFace {
-        vertices: (a, b, c),
-        normals: Some((a, b, c)),
+        vertices: (i1, i2, i3),
+        normals: Some((i1, i2, i3)),
     }
 }
 
-fn tf_vn_separate(va: u32, vb: u32, vc: u32, na: u32, nb: u32, nc: u32) -> TriangleFace {
+fn tf_vn_separate(v1: u32, v2: u32, v3: u32, n1: u32, n2: u32, n3: u32) -> TriangleFace {
     TriangleFace {
-        vertices: (va, vb, vc),
-        normals: Some((na, nb, nc)),
+        vertices: (v1, v2, v3),
+        normals: Some((n1, n2, n3)),
     }
 }
 
