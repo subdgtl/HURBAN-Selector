@@ -36,7 +36,7 @@ fn main() {
 
     let mut input_manager = InputManager::new();
     let mut camera = Camera::new(
-        [window_size.width as f32, window_size.height as f32],
+        window_size,
         5.0,
         45f32.to_radians(),
         60f32.to_radians(),

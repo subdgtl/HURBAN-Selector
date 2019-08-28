@@ -34,14 +34,14 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(
-        window_size: [f32; 2],
+        window_size: winit::dpi::PhysicalSize,
         radius: f32,
         azimuthal_angle: f32,
         polar_angle: f32,
         options: CameraOptions,
     ) -> Camera {
         Camera {
-            aspect_ratio: window_size[0] / window_size[1],
+            aspect_ratio: (window_size.width / window_size.height) as f32,
             radius: clamp(radius, options.radius_min, options.radius_max),
             azimuthal_angle: azimuthal_angle % TWO_PI,
             polar_angle: clamp(
