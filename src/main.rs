@@ -10,7 +10,7 @@ use wgpu::winit;
 use hurban_selector::camera::{Camera, CameraOptions};
 use hurban_selector::geometry;
 use hurban_selector::imgui_renderer::ImguiRenderer;
-use hurban_selector::importer::Importer;
+use hurban_selector::importer::ImporterWorker;
 use hurban_selector::input::InputManager;
 use hurban_selector::ui;
 use hurban_selector::viewport_renderer::{
@@ -143,7 +143,7 @@ fn main() {
 
     let obj_filenames: Vec<String> = obj_file_paths.keys().cloned().collect();
 
-    let mut importer = Importer::new();
+    let importer_worker = ImporterWorker::new();
     let mut running = true;
 
     while running {
@@ -214,27 +214,38 @@ fn main() {
                     "",
                     Some((&["*.obj"], "Wavefront (.obj)")),
                 ) {
-                    match importer.import_obj(&path) {
-                        Ok(models) => {
-                            for model in models {
-                                let geometry = model.geometry;
-                                let renderer_geometry = RendererGeometry::from_geometry(&geometry);
-                                let renderer_geometry_id = viewport_renderer
-                                    .add_geometry(&device, &renderer_geometry)
-                                    .expect("Failed to add geometry to renderer");
+                    importer_worker.import_obj(&path);
+                }
+            }
+        }
 
-                                scene_geometries.push(geometry);
-                                scene_renderer_geometry_ids.push(renderer_geometry_id);
-                            }
-                        }
-                        Err(err) => {
-                            tinyfiledialogs::message_box_ok(
-                                "Error",
-                                &format!("{}", err),
-                                tinyfiledialogs::MessageBoxIcon::Error,
-                            );
-                        }
+        if let Some(parsed_models) = importer_worker.parsed_obj() {
+            match parsed_models {
+                Ok(models) => {
+                    // Clear existing scene first...
+                    scene_geometries.clear();
+                    for geometry in scene_renderer_geometry_ids.drain(..) {
+                        viewport_renderer.remove_geometry(geometry);
                     }
+
+                    // ... and add everything we found to it
+                    for model in models {
+                        let geometry = model.geometry;
+                        let renderer_geometry = RendererGeometry::from_geometry(&geometry);
+                        let renderer_geometry_id = viewport_renderer
+                            .add_geometry(&device, &renderer_geometry)
+                            .expect("Failed to add geometry to renderer");
+
+                        scene_geometries.push(geometry);
+                        scene_renderer_geometry_ids.push(renderer_geometry_id);
+                    }
+                }
+                Err(err) => {
+                    tinyfiledialogs::message_box_ok(
+                        "Error",
+                        &format!("{}", err),
+                        tinyfiledialogs::MessageBoxIcon::Error,
+                    );
                 }
             }
         }
@@ -278,34 +289,7 @@ fn main() {
                 .get(&clicked_model)
                 .expect("Should get clicked model path from hash map");
 
-            match importer.import_obj(&clicked_model_path.to_str().unwrap()) {
-                Ok(models) => {
-                    // Clear existing scene first...
-                    scene_geometries.clear();
-                    for geometry in scene_renderer_geometry_ids.drain(..) {
-                        viewport_renderer.remove_geometry(geometry);
-                    }
-
-                    // ... and add everything we found to it
-                    for model in models {
-                        let geometry = model.geometry;
-                        let renderer_geometry = RendererGeometry::from_geometry(&geometry);
-                        let renderer_geometry_id = viewport_renderer
-                            .add_geometry(&device, &renderer_geometry)
-                            .expect("Failed to add geometry to renderer");
-
-                        scene_geometries.push(geometry);
-                        scene_renderer_geometry_ids.push(renderer_geometry_id);
-                    }
-                }
-                Err(err) => {
-                    tinyfiledialogs::message_box_ok(
-                        "Error",
-                        &format!("{}", err),
-                        tinyfiledialogs::MessageBoxIcon::Error,
-                    );
-                }
-            }
+            importer_worker.import_obj(&clicked_model_path.to_str().unwrap());
         }
 
         winit_platform.prepare_render(&imgui_ui, &window);
