@@ -3,8 +3,10 @@ use wgpu::winit;
 
 pub use self::scene_renderer::{SceneRendererGeometry, SceneRendererGeometryId};
 
-use self::imgui_renderer::{ImguiRenderer, ImguiRendererOptions};
-use self::scene_renderer::{SceneRenderer, SceneRendererAddGeometryError, SceneRendererOptions};
+use self::imgui_renderer::{ImguiRenderer, ImguiRendererClearFlags, ImguiRendererOptions};
+use self::scene_renderer::{
+    SceneRenderer, SceneRendererAddGeometryError, SceneRendererClearFlags, SceneRendererOptions,
+};
 
 #[macro_use]
 mod common;
@@ -229,9 +231,16 @@ pub struct Render<'a> {
 
 impl Render<'_> {
     pub fn draw_geometry(&mut self, ids: &[SceneRendererGeometryId]) {
+        let mut clear_flags = SceneRendererClearFlags::empty();
+        if self.color_needs_clearing {
+            clear_flags.insert(SceneRendererClearFlags::COLOR);
+        }
+        if self.depth_needs_clearing {
+            clear_flags.insert(SceneRendererClearFlags::DEPTH);
+        }
+
         self.scene_renderer.draw_geometry(
-            self.color_needs_clearing,
-            self.depth_needs_clearing,
+            clear_flags,
             self.encoder
                 .as_mut()
                 .expect("Need encoder to record drawing"),
@@ -246,9 +255,14 @@ impl Render<'_> {
     }
 
     pub fn draw_ui(&mut self, draw_data: &imgui::DrawData) {
+        let mut clear_flags = ImguiRendererClearFlags::empty();
+        if self.color_needs_clearing {
+            clear_flags.insert(ImguiRendererClearFlags::COLOR);
+        }
+
         self.imgui_renderer
             .draw_ui(
-                self.color_needs_clearing,
+                clear_flags,
                 self.device,
                 self.encoder
                     .as_mut()

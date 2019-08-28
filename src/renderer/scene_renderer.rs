@@ -4,6 +4,7 @@ use std::error;
 use std::fmt;
 use std::io;
 
+use bitflags::bitflags;
 use nalgebra::base::{Matrix4, Vector3};
 use nalgebra::geometry::Point3;
 
@@ -222,6 +223,13 @@ pub struct SceneRendererOptions {
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
     pub output_depth_attachment_format: wgpu::TextureFormat,
+}
+
+bitflags! {
+    pub struct SceneRendererClearFlags: u8 {
+        const COLOR = 0b_0000_0001;
+        const DEPTH = 0b_0000_0010;
+    }
 }
 
 /// 3D renderer of the editor scene.
@@ -538,21 +546,20 @@ impl SceneRenderer {
     /// to the `color_attachment`.
     pub fn draw_geometry(
         &self,
-        clear_color_requested: bool,
-        clear_depth_requested: bool,
+        clear_flags: SceneRendererClearFlags,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
         msaa_attachment: Option<&wgpu::TextureView>,
         depth_attachment: &wgpu::TextureView,
         ids: &[SceneRendererGeometryId],
     ) {
-        let color_load_op = if clear_color_requested {
+        let color_load_op = if clear_flags.contains(SceneRendererClearFlags::COLOR) {
             wgpu::LoadOp::Clear
         } else {
             wgpu::LoadOp::Load
         };
 
-        let depth_load_op = if clear_depth_requested {
+        let depth_load_op = if clear_flags.contains(SceneRendererClearFlags::DEPTH) {
             wgpu::LoadOp::Clear
         } else {
             wgpu::LoadOp::Load
