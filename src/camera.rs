@@ -3,6 +3,8 @@ use std::f32;
 
 use nalgebra::{Matrix4, Point3, Rotation3, Vector3};
 
+use crate::math::clamp;
+
 const TWO_PI: f32 = f32::consts::PI * 2.0;
 const ZOOM_SPEED_BASE: f32 = 0.95;
 
@@ -172,10 +174,4 @@ impl Camera {
 
         self.origin + Vector3::new(x, y, z)
     }
-}
-
-fn clamp(x: f32, min: f32, max: f32) -> f32 {
-    // FIXME: clamp may eventually be stabilized in std
-    // https://github.com/rust-lang/rust/issues/44095
-    f32::max(min, f32::min(max, x))
 }

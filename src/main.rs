@@ -12,6 +12,7 @@ use hurban_selector::geometry;
 use hurban_selector::imgui_renderer::ImguiRenderer;
 use hurban_selector::importer::ImporterWorker;
 use hurban_selector::input::InputManager;
+use hurban_selector::math::decay;
 use hurban_selector::ui;
 use hurban_selector::viewport_renderer::{
     Msaa, RendererGeometry, ViewportRenderer, ViewportRendererOptions,
@@ -144,23 +145,27 @@ fn main() {
     let obj_filenames: Vec<String> = obj_file_paths.keys().cloned().collect();
 
     let importer_worker = ImporterWorker::new();
+    let mut is_importing = false;
+    let mut import_progress = 1.0;
     let mut running = true;
 
     while running {
-        let (_duration_last_frame, _duration_running) = {
-            let now = Instant::now();
-            let duration_last_frame = now.duration_since(time);
-            let duration_running = now.duration_since(time_start);
-            time = now;
+        let now = Instant::now();
+        let duration_last_frame = now.duration_since(time);
+        let _duration_running = now.duration_since(time_start);
+        time = now;
 
-            // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
-            let duration_last_frame_s = duration_last_frame.as_secs() as f32
-                + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
+        // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
+        let duration_last_frame_s = duration_last_frame.as_secs() as f32
+            + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
 
-            imgui_context.io_mut().delta_time = duration_last_frame_s;
+        imgui_context.io_mut().delta_time = duration_last_frame_s;
 
-            (duration_last_frame, duration_running)
-        };
+        if !is_importing {
+            import_progress = 1.0;
+        } else {
+            import_progress = decay(import_progress, 1.0, 0.5, duration_last_frame_s);
+        }
 
         // Since input manager needs to process events separately after imgui
         // handles them, this buffer with copies of events is needed.
@@ -215,11 +220,17 @@ fn main() {
                     Some((&["*.obj"], "Wavefront (.obj)")),
                 ) {
                     importer_worker.import_obj(&path);
+
+                    is_importing = true;
+                    import_progress = 0.0;
                 }
             }
         }
 
         if let Some(parsed_models) = importer_worker.parsed_obj() {
+            is_importing = false;
+            import_progress = 1.0;
+
             match parsed_models {
                 Ok(models) => {
                     // Clear existing scene first...
@@ -284,12 +295,21 @@ fn main() {
 
         // Clicking any of the models in the list means clearing everything out
         // of the scene, importing given model and pushing it into scene.
-        if let Some(clicked_model) = ui::draw_model_window(&imgui_ui, &obj_filenames) {
+        if let Some(clicked_model) =
+            ui::draw_model_window(&imgui_ui, &obj_filenames, import_progress)
+        {
             let clicked_model_path = obj_file_paths
                 .get(&clicked_model)
                 .expect("Should get clicked model path from hash map");
 
-            importer_worker.import_obj(&clicked_model_path.to_str().unwrap());
+            importer_worker.import_obj(
+                &clicked_model_path
+                    .to_str()
+                    .expect("Failed to convert obj Path to str"),
+            );
+
+            is_importing = true;
+            import_progress = 0.0;
         }
 
         winit_platform.prepare_render(&imgui_ui, &window);

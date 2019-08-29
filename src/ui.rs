@@ -37,21 +37,27 @@ pub fn draw_fps_window(ui: &imgui::Ui) {
 
 /// Draws window with list of model filenames. If any of them is clicked, the
 /// filename is returned for further processing.
-pub fn draw_model_window(ui: &imgui::Ui, filenames: &[String]) -> Option<String> {
+pub fn draw_model_window(
+    ui: &imgui::Ui,
+    filenames: &[String],
+    loading_progress: f32,
+) -> Option<String> {
     let _button_style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([-1.0, 0.0]));
     let mut clicked_button = None;
 
-    for filename in filenames {
-        ui.window(imgui::im_str!("Models"))
-            .position([50.0, 200.0], imgui::Condition::Always)
-            .movable(false)
-            .resizable(false)
-            .build(|| {
+    ui.window(imgui::im_str!("Models"))
+        .position([50.0, 200.0], imgui::Condition::Always)
+        .movable(false)
+        .resizable(false)
+        .build(|| {
+            ui.progress_bar(loading_progress).build();
+
+            for filename in filenames {
                 if ui.button(&imgui::im_str!("{}", filename), [180.0, 20.0]) {
                     clicked_button = Some(filename.clone());
                 }
-            });
-    }
+            }
+        });
 
     clicked_button
 }
