@@ -161,11 +161,11 @@ fn main() {
 
         imgui_context.io_mut().delta_time = duration_last_frame_s;
 
-        if !is_importing {
-            import_progress = 1.0;
+        import_progress = if !is_importing {
+            1.0
         } else {
-            import_progress = decay(import_progress, 1.0, 0.5, duration_last_frame_s);
-        }
+            decay(import_progress, 1.0, 0.5, duration_last_frame_s)
+        };
 
         // Since input manager needs to process events separately after imgui
         // handles them, this buffer with copies of events is needed.
