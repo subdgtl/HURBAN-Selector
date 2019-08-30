@@ -289,7 +289,7 @@ fn main() {
         render_pass.draw_geometry(&scene_renderer_geometry_ids[..]);
         render_pass.draw_ui(&imgui_draw_data);
 
-        render_pass.finish();
+        render_pass.submit();
     }
 
     for renderer_geometry_id in scene_renderer_geometry_ids {

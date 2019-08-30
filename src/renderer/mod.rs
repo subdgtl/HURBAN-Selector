@@ -22,6 +22,8 @@ pub struct RendererOptions {
     pub msaa: Msaa,
 }
 
+/// Multi-sampling setting. Can be either disabled (1 sample per
+/// pixel), or 4/8/16 samples per pixel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Msaa {
     Disabled,
@@ -48,6 +50,17 @@ impl Msaa {
     }
 }
 
+/// High level renderer abstraction over wgpu-rs.
+///
+/// Handles GPU resources (swap chain, msaa buffer, depth buffer) and
+/// their resizing as well as geometry and textures stored for
+/// drawing.
+///
+/// Drawing happens within a single wgpu command encoder, which is
+/// passed to the underlying scene and UI renderers to fill it with
+/// draw commands. Use `renderer.begin_render_pass()` to start
+/// recording draw commands and `render_pass.submit()` to execute
+/// them.
 pub struct Renderer {
     device: wgpu::Device,
     surface: wgpu::Surface,
@@ -172,6 +185,8 @@ impl Renderer {
         self.depth_texture_view = depth_texture.create_default_view();
     }
 
+    /// Upload geometry to the GPU to be used in scene rendering. It
+    /// will be available for drawing in subsequent render passes.
     pub fn add_scene_geometry(
         &mut self,
         geometry: &SceneRendererGeometry,
@@ -179,10 +194,14 @@ impl Renderer {
         self.scene_renderer.add_geometry(&self.device, geometry)
     }
 
+    /// Remove geometry from the GPU.
     pub fn remove_scene_geometry(&mut self, id: SceneRendererGeometryId) {
         self.scene_renderer.remove_geometry(id);
     }
 
+    /// Upload an RGBA8 texture to the GPU to be used in UI
+    /// rendering. It will be available for drawing in the subsequent
+    /// render passes.
     pub fn add_ui_texture_rgba8_unorm(
         &mut self,
         width: u32,
@@ -193,10 +212,12 @@ impl Renderer {
             .add_texture_rgba8_unorm(&mut self.device, width, height, data)
     }
 
+    /// Remove texture from the GPU.
     pub fn remove_ui_texture(&mut self, id: imgui::TextureId) {
         self.imgui_renderer.remove_texture(id);
     }
 
+    /// Start recording draw commands.
     pub fn begin_render_pass(&mut self) -> RenderPass {
         let frame = self.swap_chain.get_next_texture();
         let encoder = self
@@ -217,6 +238,8 @@ impl Renderer {
     }
 }
 
+/// An ongoing recording of draw commands. Will be submitted on
+/// `render_pass.submit()`. Must be submitted before it is dropped.
 pub struct RenderPass<'a> {
     color_needs_clearing: bool,
     depth_needs_clearing: bool,
@@ -230,6 +253,9 @@ pub struct RenderPass<'a> {
 }
 
 impl RenderPass<'_> {
+    /// Record a geometry drawing operation to the command
+    /// buffer. Geometries with provided ids must be present in the
+    /// renderer.
     pub fn draw_geometry(&mut self, ids: &[SceneRendererGeometryId]) {
         let mut clear_flags = SceneRendererClearFlags::empty();
         if self.color_needs_clearing {
@@ -254,6 +280,8 @@ impl RenderPass<'_> {
         self.depth_needs_clearing = false;
     }
 
+    /// Record a UI drawing operation to the command buffer. Textures
+    /// referenced by the draw data must be present in the renderer.
     pub fn draw_ui(&mut self, draw_data: &imgui::DrawData) {
         self.imgui_renderer
             .draw_ui(
@@ -271,7 +299,8 @@ impl RenderPass<'_> {
         self.color_needs_clearing = false;
     }
 
-    pub fn finish(mut self) {
+    /// Submit the built command buffer for drawing.
+    pub fn submit(mut self) {
         let encoder = self.encoder.take().expect("Can't finish rendering twice");
         self.device.get_queue().submit(&[encoder.finish()]);
     }
