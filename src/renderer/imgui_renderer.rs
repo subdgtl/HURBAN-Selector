@@ -1,6 +1,5 @@
 use std::io;
 
-use bitflags::bitflags;
 use imgui;
 use imgui::internal::RawWrapper;
 
@@ -17,12 +16,6 @@ pub enum ImguiRendererError {
 pub struct ImguiRendererOptions {
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
-}
-
-bitflags! {
-    pub struct ImguiRendererClearFlags: u8 {
-        const COLOR = 0b_0000_0001;
-    }
 }
 
 pub struct ImguiRenderer {
@@ -262,7 +255,7 @@ impl ImguiRenderer {
 
     pub fn draw_ui(
         &self,
-        clear_flags: ImguiRendererClearFlags,
+        color_needs_clearing: bool,
         device: &mut wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
@@ -323,7 +316,7 @@ impl ImguiRenderer {
         // `idx_start..idx_end` and set those to the render pass, and
         // finally draw.
 
-        let color_load_op = if clear_flags.contains(ImguiRendererClearFlags::COLOR) {
+        let color_load_op = if color_needs_clearing {
             wgpu::LoadOp::Clear
         } else {
             wgpu::LoadOp::Load

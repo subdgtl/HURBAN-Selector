@@ -3,7 +3,7 @@ use wgpu::winit;
 
 pub use self::scene_renderer::{SceneRendererGeometry, SceneRendererGeometryId};
 
-use self::imgui_renderer::{ImguiRenderer, ImguiRendererClearFlags, ImguiRendererOptions};
+use self::imgui_renderer::{ImguiRenderer, ImguiRendererOptions};
 use self::scene_renderer::{
     SceneRenderer, SceneRendererAddGeometryError, SceneRendererClearFlags, SceneRendererOptions,
 };
@@ -197,13 +197,13 @@ impl Renderer {
         self.imgui_renderer.remove_texture(id);
     }
 
-    pub fn begin_render(&mut self) -> Render {
+    pub fn begin_render_pass(&mut self) -> RenderPass {
         let frame = self.swap_chain.get_next_texture();
         let encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
 
-        Render {
+        RenderPass {
             color_needs_clearing: true,
             depth_needs_clearing: true,
             device: &mut self.device,
@@ -217,7 +217,7 @@ impl Renderer {
     }
 }
 
-pub struct Render<'a> {
+pub struct RenderPass<'a> {
     color_needs_clearing: bool,
     depth_needs_clearing: bool,
     device: &'a mut wgpu::Device,
@@ -229,7 +229,7 @@ pub struct Render<'a> {
     imgui_renderer: &'a ImguiRenderer,
 }
 
-impl Render<'_> {
+impl RenderPass<'_> {
     pub fn draw_geometry(&mut self, ids: &[SceneRendererGeometryId]) {
         let mut clear_flags = SceneRendererClearFlags::empty();
         if self.color_needs_clearing {
@@ -255,14 +255,9 @@ impl Render<'_> {
     }
 
     pub fn draw_ui(&mut self, draw_data: &imgui::DrawData) {
-        let mut clear_flags = ImguiRendererClearFlags::empty();
-        if self.color_needs_clearing {
-            clear_flags.insert(ImguiRendererClearFlags::COLOR);
-        }
-
         self.imgui_renderer
             .draw_ui(
-                clear_flags,
+                self.color_needs_clearing,
                 self.device,
                 self.encoder
                     .as_mut()
@@ -282,7 +277,7 @@ impl Render<'_> {
     }
 }
 
-impl Drop for Render<'_> {
+impl Drop for RenderPass<'_> {
     fn drop(&mut self) {
         assert!(
             self.encoder.is_none(),

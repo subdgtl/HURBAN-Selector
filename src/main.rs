@@ -284,12 +284,12 @@ fn main() {
         imgui_winit_platform.prepare_render(&imgui_ui, &window);
         let imgui_draw_data = imgui_ui.render();
 
-        let mut render = renderer.begin_render();
+        let mut render_pass = renderer.begin_render_pass();
 
-        render.draw_geometry(&scene_renderer_geometry_ids[..]);
-        render.draw_ui(&imgui_draw_data);
+        render_pass.draw_geometry(&scene_renderer_geometry_ids[..]);
+        render_pass.draw_ui(&imgui_draw_data);
 
-        render.finish();
+        render_pass.finish();
     }
 
     for renderer_geometry_id in scene_renderer_geometry_ids {
