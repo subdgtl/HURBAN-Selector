@@ -119,7 +119,8 @@ fn main() {
         }
     }
 
-    let obj_filenames: Vec<String> = obj_file_paths.keys().cloned().collect();
+    let mut obj_filenames: Vec<String> = obj_file_paths.keys().cloned().collect();
+    obj_filenames.sort();
 
     let mut importer = Importer::new();
     let mut running = true;

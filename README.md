@@ -5,23 +5,32 @@
 ## Prerequisites
 
 - [Rust](https://rustup.rs/)
+- Clippy (`rustup component add clippy`)
+- Rustfmt (`rustup component add rustfmt`)
 - [Dependencies for `shaderc-sys`](https://github.com/google/shaderc-rs#building-from-source)
 
 ## Developing
 
-Use `cargo run` with one of the following feature flags, depending on the platform:
+We use standard `cargo` workflows:
 
-- `vulkan` or `d3d12` on Windows
-- `metal` on macOS
+- `cargo clippy` to have a nice chat with 📎, the linter,
+- `cargo fmt` to format the project,
+- `cargo test` to run tests,
+- `cargo doc --open` to build and open local documentation for the
+  project and all dependencies (optionally pass
+  `--document-private-items`),
+- `cargo build --features <GPU-BACKEND>` to build,
+- `cargo run --features <GPU-BACKEND>` to run,
 
-E.g. `cargo run --features vulkan`
+where `<GPU-BACKEND>` is one of:
 
-Other rendering backends (d3d11, OpenGL) may become supported once
-they are stable enough in `wgpu` and `gfx-hal`.
+- `vulkan` (Windows and Linux),
+- `d3d12` (Windows),
+- `metal` (macOS).
 
-If working on the renderer (on a platform supporting vulkan), enabling
-the vulkan validation layers is useful for catching errors until wgpu
-validation catches up:
+If working on the renderer (on a platform supporting Vulkan), enabling
+the Vulkan validation layers is useful for having additional
+validation:
 
 ``` shell
 VK_LAYER_PATH=/path/to/VulkanSDK/version/Bin \
