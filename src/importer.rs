@@ -150,7 +150,7 @@ impl Importer {
     }
 }
 
-enum ImporterWorkerMessage {
+enum ImporterWorkerRequest {
     NewImport(String),
     Terminate,
 }
@@ -163,12 +163,12 @@ enum ImporterWorkerMessage {
 pub struct ImporterWorker {
     thread: Option<thread::JoinHandle<()>>,
     response_rx: crossbeam_channel::Receiver<ImporterResult>,
-    request_tx: crossbeam_channel::Sender<ImporterWorkerMessage>,
+    request_tx: crossbeam_channel::Sender<ImporterWorkerRequest>,
 }
 
 impl ImporterWorker {
     /// Prepares communication channels and spawns a thread listening for
-    /// `ImporterWorkerMessage`.
+    /// `ImporterWorkerRequest`.
     pub fn new() -> Self {
         let (request_tx, request_rx) = unbounded();
         let (response_tx, response_rx) = unbounded();
@@ -178,7 +178,7 @@ impl ImporterWorker {
 
             let mut importer = Importer::new();
 
-            while let ImporterWorkerMessage::NewImport(path) = request_rx
+            while let ImporterWorkerRequest::NewImport(path) = request_rx
                 .recv()
                 .expect("Failed to receive message in importer worker")
             {
@@ -205,7 +205,7 @@ impl ImporterWorker {
     /// a queue.
     pub fn import_obj(&self, filename: &str) {
         self.request_tx
-            .send(ImporterWorkerMessage::NewImport(filename.to_string()))
+            .send(ImporterWorkerRequest::NewImport(filename.to_string()))
             .expect("Failed to send new import message to improter worker");
     }
 
@@ -233,7 +233,7 @@ impl Default for ImporterWorker {
 impl Drop for ImporterWorker {
     fn drop(&mut self) {
         self.request_tx
-            .send(ImporterWorkerMessage::Terminate)
+            .send(ImporterWorkerRequest::Terminate)
             .expect("Failed to send terminate message to importer worker");
 
         if let Some(thread) = self.thread.take() {
