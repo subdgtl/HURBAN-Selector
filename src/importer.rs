@@ -64,7 +64,7 @@ pub struct FileMetadata {
     last_modified: std::time::SystemTime,
 }
 
-type ImporterResult = Result<Vec<Model>, ImporterError>;
+pub type ImporterResult = Result<Vec<Model>, ImporterError>;
 
 /// `Importer` takes care of importing of obj files and caching of their
 /// internal representations. It holds paths to files, their metadata
