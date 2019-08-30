@@ -9,15 +9,10 @@ use wgpu::winit;
 
 use hurban_selector::camera::{Camera, CameraOptions};
 use hurban_selector::geometry;
-use hurban_selector::imgui_renderer::ImguiRenderer;
 use hurban_selector::importer::Importer;
 use hurban_selector::input::InputManager;
+use hurban_selector::renderer::{Msaa, Renderer, RendererOptions, SceneRendererGeometry};
 use hurban_selector::ui;
-use hurban_selector::viewport_renderer::{
-    Msaa, RendererGeometry, ViewportRenderer, ViewportRendererOptions,
-};
-
-const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
 fn main() {
     env_logger::init();
@@ -38,22 +33,10 @@ fn main() {
         .to_physical(window.get_hidpi_factor());
 
     let wgpu_instance = wgpu::Instance::new();
-    let surface = wgpu_instance.create_surface(&window);
-    let adapter = wgpu_instance.get_adapter(&wgpu::AdapterDescriptor {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-    });
-
-    let mut device = adapter.request_device(&wgpu::DeviceDescriptor {
-        extensions: wgpu::Extensions {
-            anisotropic_filtering: false,
-        },
-        limits: wgpu::Limits::default(),
-    });
-    let mut swap_chain = create_swap_chain(&device, &surface, window_size);
 
     let mut input_manager = InputManager::new();
     let mut camera = Camera::new(
-        [window_size.width as f32, window_size.height as f32],
+        window_size,
         5.0,
         45f32.to_radians(),
         60f32.to_radians(),
@@ -70,18 +53,22 @@ fn main() {
             zfar: 1000.0,
         },
     );
-    let mut viewport_renderer = ViewportRenderer::new(
-        &mut device,
-        window_size,
+
+    let (mut imgui_context, mut imgui_winit_platform) = ui::init(&window);
+
+    let mut renderer = Renderer::new(
+        &wgpu_instance,
+        &window,
         &camera.projection_matrix(),
         &camera.view_matrix(),
-        ViewportRendererOptions {
-            // FIXME: Msaa X4 is the only value currently working on
-            // all devices we tried. We should query the device
-            // capabilities (but how?!) to select the proper MSAA
-            // value.
+        imgui_context.fonts(),
+        RendererOptions {
+            // FIXME: @Correctness Msaa X4 is the only value currently
+            // working on all devices we tried. Once device
+            // capabilities are queryable with wgpu `Limits`, we
+            // should have a chain of options the renderer tries
+            // before giving up.
             msaa: Msaa::X4,
-            output_format: SWAP_CHAIN_FORMAT,
         },
     );
 
@@ -99,21 +86,12 @@ fn main() {
 
     let mut scene_renderer_geometry_ids = Vec::with_capacity(scene_geometries.len());
     for geometry in &scene_geometries {
-        let renderer_geometry = RendererGeometry::from_geometry(geometry);
-        let renderer_geometry_id = viewport_renderer
-            .add_geometry(&device, &renderer_geometry)
+        let renderer_geometry = SceneRendererGeometry::from_geometry(geometry);
+        let renderer_geometry_id = renderer
+            .add_scene_geometry(&renderer_geometry)
             .expect("Failed to add geometry to renderer");
         scene_renderer_geometry_ids.push(renderer_geometry_id);
     }
-
-    let (mut imgui_context, mut winit_platform) = ui::init(&window);
-    let mut imgui_renderer = ImguiRenderer::new(
-        &mut imgui_context,
-        &mut device,
-        wgpu::TextureFormat::Bgra8Unorm,
-        None,
-    )
-    .expect("Failed to create imgui renderer");
 
     let time_start = Instant::now();
     let mut time = time_start;
@@ -169,22 +147,22 @@ fn main() {
 
         event_loop.poll_events(|event| {
             input_events.push(event.clone());
-            winit_platform.handle_event(imgui_context.io_mut(), &window, &event);
+            imgui_winit_platform.handle_event(imgui_context.io_mut(), &window, &event);
         });
 
         // Start UI and input manger frames
-        winit_platform
+        imgui_winit_platform
             .prepare_frame(imgui_context.io_mut(), &window)
             .expect("Failed to start imgui frame");
         let imgui_ui = imgui_context.frame();
-        let imgui_ui_io = imgui_ui.io();
+        let imgui_io = imgui_ui.io();
 
         input_manager.start_frame();
 
         // Imgui's IO is updated after current frame starts, else it'd contain
         // outdated values.
-        let ui_captured_keyboard = imgui_ui_io.want_capture_keyboard;
-        let ui_captured_mouse = imgui_ui_io.want_capture_mouse;
+        let ui_captured_keyboard = imgui_io.want_capture_keyboard;
+        let ui_captured_mouse = imgui_io.want_capture_mouse;
 
         for event in input_events {
             input_manager.process_event(event, ui_captured_keyboard, ui_captured_mouse);
@@ -219,9 +197,10 @@ fn main() {
                         Ok(models) => {
                             for model in models {
                                 let geometry = model.geometry;
-                                let renderer_geometry = RendererGeometry::from_geometry(&geometry);
-                                let renderer_geometry_id = viewport_renderer
-                                    .add_geometry(&device, &renderer_geometry)
+                                let renderer_geometry =
+                                    SceneRendererGeometry::from_geometry(&geometry);
+                                let renderer_geometry_id = renderer
+                                    .add_scene_geometry(&renderer_geometry)
                                     .expect("Failed to add geometry to renderer");
 
                                 scene_geometries.push(geometry);
@@ -254,20 +233,14 @@ fn main() {
                 physical_size.height,
             );
 
-            camera.set_screen_size([physical_size.width as f32, physical_size.height as f32]);
-
-            swap_chain = create_swap_chain(&device, &surface, physical_size);
-            viewport_renderer.set_screen_size(&mut device, physical_size);
+            camera.set_window_size(physical_size);
+            renderer.set_window_size(physical_size);
         }
 
         // Camera matrices have to be uploaded when either window
-        // resizes, or anything the camera moves. Seems easier to just
-        // upload them always.
-        viewport_renderer.set_camera_matrices(
-            &mut device,
-            &camera.projection_matrix(),
-            &camera.view_matrix(),
-        );
+        // resizes or the camera moves. We do it every frame for
+        // simplicity.
+        renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
 
         #[cfg(debug_assertions)]
         ui::draw_fps_window(&imgui_ui);
@@ -284,15 +257,15 @@ fn main() {
                     // Clear existing scene first...
                     scene_geometries.clear();
                     for geometry in scene_renderer_geometry_ids.drain(..) {
-                        viewport_renderer.remove_geometry(geometry);
+                        renderer.remove_scene_geometry(geometry);
                     }
 
                     // ... and add everything we found to it
                     for model in models {
                         let geometry = model.geometry;
-                        let renderer_geometry = RendererGeometry::from_geometry(&geometry);
-                        let renderer_geometry_id = viewport_renderer
-                            .add_geometry(&device, &renderer_geometry)
+                        let renderer_geometry = SceneRendererGeometry::from_geometry(&geometry);
+                        let renderer_geometry_id = renderer
+                            .add_scene_geometry(&renderer_geometry)
                             .expect("Failed to add geometry to renderer");
 
                         scene_geometries.push(geometry);
@@ -309,44 +282,18 @@ fn main() {
             }
         }
 
-        winit_platform.prepare_render(&imgui_ui, &window);
+        imgui_winit_platform.prepare_render(&imgui_ui, &window);
         let imgui_draw_data = imgui_ui.render();
 
-        let frame = swap_chain.get_next_texture();
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+        let mut render_pass = renderer.begin_render_pass();
 
-        viewport_renderer.draw_geometry(
-            &mut encoder,
-            &frame.view,
-            &scene_renderer_geometry_ids[..],
-        );
+        render_pass.draw_geometry(&scene_renderer_geometry_ids[..]);
+        render_pass.draw_ui(&imgui_draw_data);
 
-        imgui_renderer
-            .render(&mut device, &mut encoder, &frame.view, imgui_draw_data)
-            .expect("Should render an imgui frame");
-
-        device.get_queue().submit(&[encoder.finish()]);
+        render_pass.submit();
     }
 
     for renderer_geometry_id in scene_renderer_geometry_ids {
-        viewport_renderer.remove_geometry(renderer_geometry_id);
+        renderer.remove_scene_geometry(renderer_geometry_id);
     }
-}
-
-fn create_swap_chain(
-    device: &wgpu::Device,
-    surface: &wgpu::Surface,
-    window_size: winit::dpi::PhysicalSize,
-) -> wgpu::SwapChain {
-    device.create_swap_chain(
-        &surface,
-        &wgpu::SwapChainDescriptor {
-            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-            format: SWAP_CHAIN_FORMAT,
-            width: window_size.width.round() as u32,
-            height: window_size.height.round() as u32,
-            present_mode: wgpu::PresentMode::Vsync,
-        },
-    )
 }
