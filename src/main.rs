@@ -9,8 +9,9 @@ use wgpu::winit;
 
 use hurban_selector::camera::{Camera, CameraOptions};
 use hurban_selector::geometry;
-use hurban_selector::importer::Importer;
+use hurban_selector::importer::ImporterWorker;
 use hurban_selector::input::InputManager;
+use hurban_selector::math::decay;
 use hurban_selector::renderer::{Msaa, Renderer, RendererOptions, SceneRendererGeometry};
 use hurban_selector::ui;
 
@@ -122,23 +123,27 @@ fn main() {
     let mut obj_filenames: Vec<String> = obj_file_paths.keys().cloned().collect();
     obj_filenames.sort();
 
-    let mut importer = Importer::new();
+    let importer_worker = ImporterWorker::new();
+    let mut is_importing = false;
+    let mut import_progress = 1.0;
     let mut running = true;
 
     while running {
-        let (_duration_last_frame, _duration_running) = {
-            let now = Instant::now();
-            let duration_last_frame = now.duration_since(time);
-            let duration_running = now.duration_since(time_start);
-            time = now;
+        let now = Instant::now();
+        let duration_last_frame = now.duration_since(time);
+        let _duration_running = now.duration_since(time_start);
+        time = now;
 
-            // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
-            let duration_last_frame_s = duration_last_frame.as_secs() as f32
-                + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
+        // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
+        let duration_last_frame_s = duration_last_frame.as_secs() as f32
+            + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
 
-            imgui_context.io_mut().delta_time = duration_last_frame_s;
+        imgui_context.io_mut().delta_time = duration_last_frame_s;
 
-            (duration_last_frame, duration_running)
+        import_progress = if !is_importing {
+            1.0
+        } else {
+            decay(import_progress, 1.0, 0.5, duration_last_frame_s)
         };
 
         // Since input manager needs to process events separately after imgui
@@ -193,28 +198,44 @@ fn main() {
                     "",
                     Some((&["*.obj"], "Wavefront (.obj)")),
                 ) {
-                    match importer.import_obj(&path) {
-                        Ok(models) => {
-                            for model in models {
-                                let geometry = model.geometry;
-                                let renderer_geometry =
-                                    SceneRendererGeometry::from_geometry(&geometry);
-                                let renderer_geometry_id = renderer
-                                    .add_scene_geometry(&renderer_geometry)
-                                    .expect("Failed to add geometry to renderer");
+                    importer_worker.import_obj(&path);
 
-                                scene_geometries.push(geometry);
-                                scene_renderer_geometry_ids.push(renderer_geometry_id);
-                            }
-                        }
-                        Err(err) => {
-                            tinyfiledialogs::message_box_ok(
-                                "Error",
-                                &format!("{}", err),
-                                tinyfiledialogs::MessageBoxIcon::Error,
-                            );
-                        }
+                    is_importing = true;
+                    import_progress = 0.0;
+                }
+            }
+        }
+
+        if let Some(parsed_models) = importer_worker.parsed_obj() {
+            is_importing = false;
+            import_progress = 1.0;
+
+            match parsed_models {
+                Ok(models) => {
+                    // Clear existing scene first...
+                    scene_geometries.clear();
+                    for geometry in scene_renderer_geometry_ids.drain(..) {
+                        renderer.remove_scene_geometry(geometry);
                     }
+
+                    // ... and add everything we found to it
+                    for model in models {
+                        let geometry = model.geometry;
+                        let renderer_geometry = SceneRendererGeometry::from_geometry(&geometry);
+                        let renderer_geometry_id = renderer
+                            .add_scene_geometry(&renderer_geometry)
+                            .expect("Failed to add geometry to renderer");
+
+                        scene_geometries.push(geometry);
+                        scene_renderer_geometry_ids.push(renderer_geometry_id);
+                    }
+                }
+                Err(err) => {
+                    tinyfiledialogs::message_box_ok(
+                        "Error",
+                        &format!("{}", err),
+                        tinyfiledialogs::MessageBoxIcon::Error,
+                    );
                 }
             }
         }
@@ -247,39 +268,21 @@ fn main() {
 
         // Clicking any of the models in the list means clearing everything out
         // of the scene, importing given model and pushing it into scene.
-        if let Some(clicked_model) = ui::draw_model_window(&imgui_ui, &obj_filenames) {
+        if let Some(clicked_model) =
+            ui::draw_model_window(&imgui_ui, &obj_filenames, import_progress)
+        {
             let clicked_model_path = obj_file_paths
                 .get(&clicked_model)
                 .expect("Should get clicked model path from hash map");
 
-            match importer.import_obj(&clicked_model_path.to_str().unwrap()) {
-                Ok(models) => {
-                    // Clear existing scene first...
-                    scene_geometries.clear();
-                    for geometry in scene_renderer_geometry_ids.drain(..) {
-                        renderer.remove_scene_geometry(geometry);
-                    }
+            importer_worker.import_obj(
+                &clicked_model_path
+                    .to_str()
+                    .expect("Failed to convert obj Path to str"),
+            );
 
-                    // ... and add everything we found to it
-                    for model in models {
-                        let geometry = model.geometry;
-                        let renderer_geometry = SceneRendererGeometry::from_geometry(&geometry);
-                        let renderer_geometry_id = renderer
-                            .add_scene_geometry(&renderer_geometry)
-                            .expect("Failed to add geometry to renderer");
-
-                        scene_geometries.push(geometry);
-                        scene_renderer_geometry_ids.push(renderer_geometry_id);
-                    }
-                }
-                Err(err) => {
-                    tinyfiledialogs::message_box_ok(
-                        "Error",
-                        &format!("{}", err),
-                        tinyfiledialogs::MessageBoxIcon::Error,
-                    );
-                }
-            }
+            is_importing = true;
+            import_progress = 0.0;
         }
 
         imgui_winit_platform.prepare_render(&imgui_ui, &window);
