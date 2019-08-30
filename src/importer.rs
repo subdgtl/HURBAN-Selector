@@ -162,23 +162,23 @@ enum ImporterWorkerRequest {
 /// of the application.
 pub struct ImporterWorker {
     thread: Option<thread::JoinHandle<()>>,
-    response_rx: crossbeam_channel::Receiver<ImporterResult>,
-    request_tx: crossbeam_channel::Sender<ImporterWorkerRequest>,
+    response_receiver: crossbeam_channel::Receiver<ImporterResult>,
+    request_sender: crossbeam_channel::Sender<ImporterWorkerRequest>,
 }
 
 impl ImporterWorker {
     /// Prepares communication channels and spawns a thread listening for
     /// `ImporterWorkerRequest`.
     pub fn new() -> Self {
-        let (request_tx, request_rx) = unbounded();
-        let (response_tx, response_rx) = unbounded();
+        let (request_sender, request_receiver) = unbounded();
+        let (response_sender, response_receiver) = unbounded();
 
         let thread = thread::spawn(move || {
             log::info!("Spawned importer worker.");
 
             let mut importer = Importer::new();
 
-            while let ImporterWorkerRequest::NewImport(path) = request_rx
+            while let ImporterWorkerRequest::NewImport(path) = request_receiver
                 .recv()
                 .expect("Failed to receive message in importer worker")
             {
@@ -188,7 +188,7 @@ impl ImporterWorker {
 
                 log::info!("Successfully parsed obj: {}", &path);
 
-                response_tx
+                response_sender
                     .send(imported_file)
                     .expect("Failed to send importer result message to main thread");
             }
@@ -196,26 +196,26 @@ impl ImporterWorker {
 
         ImporterWorker {
             thread: Some(thread),
-            request_tx,
-            response_rx,
+            request_sender,
+            response_receiver,
         }
     }
 
     /// Requests import of object with given `filename`. This request is put to
     /// a queue.
     pub fn import_obj(&self, filename: &str) {
-        self.request_tx
+        self.request_sender
             .send(ImporterWorkerRequest::NewImport(filename.to_string()))
             .expect("Failed to send new import message to improter worker");
     }
 
     /// Reads response queue and returns last parsed obj in case there's any.
     pub fn parsed_obj(&self) -> Option<ImporterResult> {
-        if self.response_rx.is_empty() {
+        if self.response_receiver.is_empty() {
             None
         } else {
             let obj_importer_result = self
-                .response_rx
+                .response_receiver
                 .recv()
                 .expect("Failed to receive message from importer worker");
 
@@ -232,7 +232,7 @@ impl Default for ImporterWorker {
 
 impl Drop for ImporterWorker {
     fn drop(&mut self) {
-        self.request_tx
+        self.request_sender
             .send(ImporterWorkerRequest::Terminate)
             .expect("Failed to send terminate message to importer worker");
 
