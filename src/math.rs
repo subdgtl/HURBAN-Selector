@@ -1,8 +1,3 @@
-/// Linear interpolation between values `a` and `b` for parameter `f`.
-fn lerp(a: f32, b: f32, f: f32) -> f32 {
-    a + f * (b - a)
-}
-
 pub fn clamp(x: f32, min: f32, max: f32) -> f32 {
     // FIXME: clamp may eventually be stabilized in std
     // https://github.com/rust-lang/rust/issues/44095
@@ -25,4 +20,9 @@ pub fn decay(source: f32, target: f32, smoothness: f32, delta: f32) -> f32 {
         target,
         1.0 - clamp(smoothness, 0.0, 1.0).powf(delta),
     )
+}
+
+/// Linear interpolation between values `a` and `b` for parameter `f`.
+fn lerp(a: f32, b: f32, f: f32) -> f32 {
+    a + f * (b - a)
 }
