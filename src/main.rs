@@ -126,6 +126,7 @@ fn main() {
     let importer_worker = ImporterWorker::new();
     let mut is_importing = false;
     let mut import_progress = 1.0;
+    let mut selected_model = String::from("");
     let mut running = true;
 
     while running {
@@ -264,7 +265,9 @@ fn main() {
 
         // Clicking any of the models in the list means clearing everything out
         // of the scene, importing given model and pushing it into scene.
-        if let Some(clicked_model) = ui_frame.draw_model_window(&obj_filenames, import_progress) {
+        if let Some(clicked_model) =
+            ui_frame.draw_model_window(&obj_filenames, &selected_model, import_progress)
+        {
             let clicked_model_path = obj_file_paths
                 .get(&clicked_model)
                 .expect("Should get clicked model path from hash map");
@@ -275,6 +278,7 @@ fn main() {
                     .expect("Failed to convert obj Path to str"),
             );
 
+            selected_model = clicked_model;
             is_importing = true;
             import_progress = 0.0;
         }

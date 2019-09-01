@@ -30,7 +30,7 @@ impl<'a> Ui<'a> {
         platform.attach_window(imgui_context.io_mut(), window, HiDpiMode::Default);
 
         let hidpi_factor = platform.hidpi_factor();
-        let font_size = (13.0 * hidpi_factor) as f32;
+        let font_size = (20.0 * hidpi_factor) as f32;
 
         let regular_font_id = imgui_context
             .fonts()
@@ -134,36 +134,107 @@ impl<'a> UiFrame<'a> {
     pub fn draw_fps_window(&self) {
         let ui = &self.imgui_ui;
 
-        ui.window(imgui::im_str!("FPS")).build(|| {
-            ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
-        });
+        ui.window(imgui::im_str!("FPS"))
+            .position([450.0, 50.0], imgui::Condition::Always)
+            .build(|| {
+                ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
+            });
     }
 
     /// Draws window with list of model filenames. If any of them is clicked, the
     /// filename is returned for further processing.
-    pub fn draw_model_window(&self, filenames: &[String], loading_progress: f32) -> Option<String> {
+    pub fn draw_model_window(
+        &self,
+        filenames: &[String],
+        selected_filename: &str,
+        loading_progress: f32,
+    ) -> Option<String> {
         let ui = &self.imgui_ui;
-        let _button_style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([-1.0, 0.0]));
+        let _window_styles = ui.push_style_vars(&[
+            imgui::StyleVar::WindowRounding(0.0),
+            imgui::StyleVar::ScrollbarRounding(0.0),
+            imgui::StyleVar::FramePadding([20.0, 15.0]),
+        ]);
+        let _button_style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([-1.0, 0.5]));
         let mut clicked_button = None;
 
-        let _regular_font_token = ui.push_font(*self.regular_font_id);
+        let _regular_font_token = ui.push_font(*self.bold_font_id);
 
-        ui.window(imgui::im_str!("Models"))
-            .position([50.0, 200.0], imgui::Condition::Always)
+        let _default_colors = self.imgui_ui.push_style_colors(&[
+            (
+                imgui::StyleColor::WindowBg,
+                int_to_float_color(87, 90, 28, 128),
+            ),
+            (
+                imgui::StyleColor::TitleBg,
+                int_to_float_color(25, 75, 113, 255),
+            ),
+            (
+                imgui::StyleColor::Button,
+                int_to_float_color(99, 129, 79, 255),
+            ),
+        ]);
+
+        let window_width = 350.0;
+        let window_height = self.io().display_size[1] - 100.0;
+
+        ui.window(imgui::im_str!("H.U.R.B.A.N. Selector"))
+            .position([50.0, 50.0], imgui::Condition::Always)
+            .size([window_width, window_height], imgui::Condition::Always)
             .movable(false)
             .resizable(false)
+            .collapsible(false)
             .build(|| {
+                let inner_width = window_width - 20.0;
                 let _light_font_token = ui.push_font(*self.light_font_id);
 
-                ui.progress_bar(loading_progress).build();
+                ui.child_frame(imgui::im_str!("progress bar"), [inner_width, 40.0])
+                    .build(|| {
+                        let _progress_bar_text_color = ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            int_to_float_color(0, 0, 0, 255),
+                        );
 
-                for filename in filenames {
-                    if ui.button(&imgui::im_str!("{}", filename), [180.0, 20.0]) {
-                        clicked_button = Some(filename.clone());
+                        ui.progress_bar(loading_progress)
+                            .size([inner_width, 30.0])
+                            .overlay_text(imgui::im_str!(""))
+                            .build();
+                    });
+
+                ui.child_frame(
+                    imgui::im_str!("model list"),
+                    [inner_width, window_height - 115.0],
+                )
+                .build(|| {
+                    for filename in filenames {
+                        let mut _selected_button_colors: imgui::ColorStackToken;
+
+                        if selected_filename == filename {
+                            _selected_button_colors = self.imgui_ui.push_style_colors(&[
+                                (
+                                    imgui::StyleColor::Button,
+                                    int_to_float_color(232, 210, 20, 255),
+                                ),
+                                (imgui::StyleColor::Text, int_to_float_color(0, 0, 0, 255)),
+                            ]);
+                        }
+
+                        if ui.button(&imgui::im_str!("{}", filename), [inner_width, 60.0]) {
+                            clicked_button = Some(filename.clone());
+                        }
                     }
-                }
+                })
             });
 
         clicked_button
     }
+}
+
+fn int_to_float_color(r: u8, g: u8, b: u8, a: u8) -> [f32; 4] {
+    [
+        f32::from(r) / 255.0,
+        f32::from(g) / 255.0,
+        f32::from(b) / 255.0,
+        f32::from(a) / 255.0,
+    ]
 }
