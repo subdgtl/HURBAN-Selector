@@ -3,17 +3,20 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use nalgebra::geometry::Point3;
 use wgpu::winit;
 
 use hurban_selector::camera::{Camera, CameraOptions};
 use hurban_selector::geometry;
 use hurban_selector::importer::ImporterWorker;
 use hurban_selector::input::InputManager;
-use hurban_selector::math::decay;
+use hurban_selector::math;
 use hurban_selector::renderer::{Msaa, Renderer, RendererOptions, SceneRendererGeometry};
 use hurban_selector::ui;
+
+const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 
 fn main() {
     env_logger::init();
@@ -36,6 +39,8 @@ fn main() {
     let wgpu_instance = wgpu::Instance::new();
 
     let mut input_manager = InputManager::new();
+    let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
+
     let mut camera = Camera::new(
         window_size,
         5.0,
@@ -132,8 +137,12 @@ fn main() {
     obj_filenames.sort();
 
     let importer_worker = ImporterWorker::new();
+
     let mut is_importing = false;
     let mut import_progress = 1.0;
+
+    let mut camera_interpolation: Option<CameraInterpolation> = None;
+
     let mut running = true;
 
     while running {
@@ -142,16 +151,13 @@ fn main() {
         let _duration_running = now.duration_since(time_start);
         time = now;
 
-        // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
-        let duration_last_frame_s = duration_last_frame.as_secs() as f32
-            + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
-
+        let duration_last_frame_s = duration_as_secs_f32(duration_last_frame);
         imgui_context.io_mut().delta_time = duration_last_frame_s;
 
         import_progress = if !is_importing {
             1.0
         } else {
-            decay(import_progress, 1.0, 0.5, duration_last_frame_s)
+            math::decay(import_progress, 1.0, 0.5, duration_last_frame_s)
         };
 
         // Since input manager needs to process events separately after imgui
@@ -194,8 +200,16 @@ fn main() {
         camera.zoom_step(input_state.camera_zoom_steps);
 
         if input_state.camera_reset_viewport {
-            let (origin, radius) = geometry::compute_bounding_sphere(&scene_geometries[..]);
-            camera.zoom_to_fit_sphere(&origin, radius);
+            let (source_origin, source_radius) = camera.visible_sphere();
+            let (target_origin, target_radius) =
+                geometry::compute_bounding_sphere(&scene_geometries[..]);
+            camera_interpolation = Some(CameraInterpolation {
+                source_origin,
+                source_radius,
+                target_origin,
+                target_radius,
+                target_time: now + CAMERA_INTERPOLATION_DURATION,
+            });
         }
 
         #[cfg(debug_assertions)]
@@ -266,6 +280,27 @@ fn main() {
             renderer.set_window_size(physical_size);
         }
 
+        if let Some(interp) = camera_interpolation {
+            if interp.target_time > now {
+                let duration_left = duration_as_secs_f32(interp.target_time.duration_since(now));
+                let whole_duration = duration_as_secs_f32(CAMERA_INTERPOLATION_DURATION);
+                let t = cubic_bezier.apply(1.0 - duration_left / whole_duration);
+
+                let sphere_origin = Point3::from(
+                    interp
+                        .source_origin
+                        .coords
+                        .lerp(&interp.target_origin.coords, t),
+                );
+                let sphere_radius = math::lerp(interp.source_radius, interp.target_radius, t);
+
+                camera.zoom_to_fit_visible_sphere(sphere_origin, sphere_radius);
+            } else {
+                camera.zoom_to_fit_visible_sphere(interp.target_origin, interp.target_radius);
+                camera_interpolation = None;
+            }
+        }
+
         // Camera matrices have to be uploaded when either window
         // resizes or the camera moves. We do it every frame for
         // simplicity.
@@ -300,4 +335,18 @@ fn main() {
     for renderer_geometry_id in scene_renderer_geometry_ids {
         renderer.remove_scene_geometry(renderer_geometry_id);
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CameraInterpolation {
+    source_origin: Point3<f32>,
+    source_radius: f32,
+    target_origin: Point3<f32>,
+    target_radius: f32,
+    target_time: Instant,
+}
+
+fn duration_as_secs_f32(duration: Duration) -> f32 {
+    // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
+    duration.as_secs() as f32 + duration.subsec_nanos() as f32 / 1_000_000_000.0
 }
