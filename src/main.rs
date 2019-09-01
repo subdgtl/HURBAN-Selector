@@ -13,7 +13,7 @@ use hurban_selector::importer::ImporterWorker;
 use hurban_selector::input::InputManager;
 use hurban_selector::math::decay;
 use hurban_selector::renderer::{Msaa, Renderer, RendererOptions, SceneRendererGeometry};
-use hurban_selector::ui;
+use hurban_selector::ui::Ui;
 
 fn main() {
     env_logger::init();
@@ -55,14 +55,14 @@ fn main() {
         },
     );
 
-    let (mut imgui_context, mut imgui_winit_platform) = ui::init(&window);
+    let mut ui = Ui::new(&window);
 
     let mut renderer = Renderer::new(
         &wgpu_instance,
         &window,
         &camera.projection_matrix(),
         &camera.view_matrix(),
-        imgui_context.fonts(),
+        ui.imgui_context().fonts(),
         RendererOptions {
             // FIXME: @Correctness Msaa X4 is the only value currently
             // working on all devices we tried. Once device
@@ -138,7 +138,7 @@ fn main() {
         let duration_last_frame_s = duration_last_frame.as_secs() as f32
             + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
 
-        imgui_context.io_mut().delta_time = duration_last_frame_s;
+        ui.imgui_context().io_mut().delta_time = duration_last_frame_s;
 
         import_progress = if !is_importing {
             1.0
@@ -152,22 +152,18 @@ fn main() {
 
         event_loop.poll_events(|event| {
             input_events.push(event.clone());
-            imgui_winit_platform.handle_event(imgui_context.io_mut(), &window, &event);
+            ui.handle_event(&event);
         });
 
         // Start UI and input manger frames
-        imgui_winit_platform
-            .prepare_frame(imgui_context.io_mut(), &window)
-            .expect("Failed to start imgui frame");
-        let imgui_ui = imgui_context.frame();
-        let imgui_io = imgui_ui.io();
+        let ui_frame = ui.prepare_frame();
 
         input_manager.start_frame();
 
         // Imgui's IO is updated after current frame starts, else it'd contain
         // outdated values.
-        let ui_captured_keyboard = imgui_io.want_capture_keyboard;
-        let ui_captured_mouse = imgui_io.want_capture_mouse;
+        let ui_captured_keyboard = ui_frame.io().want_capture_keyboard;
+        let ui_captured_mouse = ui_frame.io().want_capture_mouse;
 
         for event in input_events {
             input_manager.process_event(event, ui_captured_keyboard, ui_captured_mouse);
@@ -264,13 +260,11 @@ fn main() {
         renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
 
         #[cfg(debug_assertions)]
-        ui::draw_fps_window(&imgui_ui);
+        ui_frame.draw_fps_window();
 
         // Clicking any of the models in the list means clearing everything out
         // of the scene, importing given model and pushing it into scene.
-        if let Some(clicked_model) =
-            ui::draw_model_window(&imgui_ui, &obj_filenames, import_progress)
-        {
+        if let Some(clicked_model) = ui_frame.draw_model_window(&obj_filenames, import_progress) {
             let clicked_model_path = obj_file_paths
                 .get(&clicked_model)
                 .expect("Should get clicked model path from hash map");
@@ -285,8 +279,10 @@ fn main() {
             import_progress = 0.0;
         }
 
-        imgui_winit_platform.prepare_render(&imgui_ui, &window);
-        let imgui_draw_data = imgui_ui.render();
+        let imgui_draw_data = ui_frame.render();
+
+        // imgui_winit_platform.prepare_render(&imgui_ui, &window);
+        // let imgui_draw_data = imgui_ui.render();
 
         let mut render_pass = renderer.begin_render_pass();
 
