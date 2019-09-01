@@ -110,12 +110,13 @@ fn main() {
 
         if let Some(ext) = path.extension() {
             if ext == "obj" {
-                let filename = obj_path
-                    .file_name()
-                    .into_string()
+                let filename = path
+                    .file_stem()
+                    .expect("Failed to extract obj file stem")
+                    .to_str()
                     .expect("Filename UTF-8 conversion failed");
 
-                obj_file_paths.insert(filename, path.clone());
+                obj_file_paths.insert(filename.to_uppercase(), path.clone());
             }
         }
     }
