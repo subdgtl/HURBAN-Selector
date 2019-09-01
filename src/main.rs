@@ -146,10 +146,14 @@ fn main() {
     let mut running = true;
 
     while running {
-        let now = Instant::now();
-        let duration_last_frame = now.duration_since(time);
-        let _duration_running = now.duration_since(time_start);
-        time = now;
+        let (duration_last_frame, _duration_running) = {
+            let now = Instant::now();
+            let duration_last_frame = now.duration_since(time);
+            let duration_running = now.duration_since(time_start);
+            time = now;
+
+            (duration_last_frame, duration_running)
+        };
 
         let duration_last_frame_s = duration_as_secs_f32(duration_last_frame);
         imgui_context.io_mut().delta_time = duration_last_frame_s;
@@ -208,7 +212,7 @@ fn main() {
                 source_radius,
                 target_origin,
                 target_radius,
-                target_time: now + CAMERA_INTERPOLATION_DURATION,
+                target_time: time + CAMERA_INTERPOLATION_DURATION,
             });
         }
 
@@ -281,8 +285,8 @@ fn main() {
         }
 
         if let Some(interp) = camera_interpolation {
-            if interp.target_time > now {
-                let duration_left = duration_as_secs_f32(interp.target_time.duration_since(now));
+            if interp.target_time > time {
+                let duration_left = duration_as_secs_f32(interp.target_time.duration_since(time));
                 let whole_duration = duration_as_secs_f32(CAMERA_INTERPOLATION_DURATION);
                 let t = cubic_bezier.apply(1.0 - duration_left / whole_duration);
 
