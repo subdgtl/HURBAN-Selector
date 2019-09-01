@@ -146,11 +146,15 @@ impl<'a> UiFrame<'a> {
         let _button_style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([-1.0, 0.0]));
         let mut clicked_button = None;
 
+        let _regular_font_token = ui.push_font(*self.regular_font_id);
+
         ui.window(imgui::im_str!("Models"))
             .position([50.0, 200.0], imgui::Condition::Always)
             .movable(false)
             .resizable(false)
             .build(|| {
+                let _light_font_token = ui.push_font(*self.light_font_id);
+
                 ui.progress_bar(loading_progress).build();
 
                 for filename in filenames {
