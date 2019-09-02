@@ -172,8 +172,8 @@ fn main() {
 
         // Imgui's IO is updated after current frame starts, else it'd contain
         // outdated values.
-        let ui_captured_keyboard = ui_frame.io().want_capture_keyboard;
-        let ui_captured_mouse = ui_frame.io().want_capture_mouse;
+        let ui_captured_keyboard = ui_frame.want_capture_keyboard();
+        let ui_captured_mouse = ui_frame.want_capture_mouse();
 
         for event in input_events {
             input_manager.process_event(event, ui_captured_keyboard, ui_captured_mouse);

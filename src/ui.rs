@@ -123,8 +123,12 @@ impl<'a> UiFrame<'a> {
         }
     }
 
-    pub fn io(&self) -> &imgui::Io {
-        self.imgui_ui.io()
+    pub fn want_capture_keyboard(&self) -> bool {
+        self.imgui_ui.io().want_capture_keyboard
+    }
+
+    pub fn want_capture_mouse(&self) -> bool {
+        self.imgui_ui.io().want_capture_mouse
     }
 
     pub fn render(self) -> &'a imgui::DrawData {
@@ -178,7 +182,7 @@ impl<'a> UiFrame<'a> {
         ]);
 
         let window_width = 350.0;
-        let window_height = self.io().display_size[1] - 100.0;
+        let window_height = self.imgui_ui.io().display_size[1] - 100.0;
 
         ui.window(imgui::im_str!("H.U.R.B.A.N. Selector"))
             .position([50.0, 50.0], imgui::Condition::Always)
