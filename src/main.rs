@@ -22,10 +22,10 @@ fn main() {
     env_logger::init();
 
     let mut event_loop = winit::EventsLoop::new();
-    // let monitor_id = event_loop.get_primary_monitor();
+    let monitor_id = event_loop.get_primary_monitor();
     let window = winit::WindowBuilder::new()
         .with_title("H.U.R.B.A.N. Selector")
-        // .with_fullscreen(Some(monitor_id))
+        .with_fullscreen(Some(monitor_id))
         // .with_maximized(true)
         // .with_multitouch()
         .build(&event_loop)
