@@ -287,9 +287,6 @@ fn main() {
 
         let imgui_draw_data = ui_frame.render();
 
-        // imgui_winit_platform.prepare_render(&imgui_ui, &window);
-        // let imgui_draw_data = imgui_ui.render();
-
         let mut render_pass = renderer.begin_render_pass();
 
         render_pass.draw_geometry(&scene_renderer_geometry_ids[..]);
