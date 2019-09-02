@@ -134,23 +134,32 @@ impl Camera {
         self.radius = clamp(new_radius, self.options.radius_min, self.options.radius_max);
     }
 
-    /// Attempt to fit a sphere into camera view frustrum.
+    /// A sphere that is completely visible by this camera, no matter
+    /// the rotation.
+    pub fn visible_sphere(&self) -> (Point3<f32>, f32) {
+        const MARGIN_MULTIPLIER: f32 = 1.005;
+        let alpha = self.compute_visible_sphere_alpha();
+
+        let sphere_radius = self.radius / MARGIN_MULTIPLIER * alpha.tan();
+
+        (self.origin, sphere_radius)
+    }
+
+    /// Attempt to fit a sphere into camera view, not matter the
+    /// rotation.
     ///
     /// Camera options may affect the outcome. A too small
     /// `radius_max` or a too large `radius_min` may cause the result
     /// to be not zoomed out enough, or not zoomed in enough.
-    pub fn zoom_to_fit_sphere(&mut self, sphere_origin: &Point3<f32>, sphere_radius: f32) {
+    pub fn zoom_to_fit_visible_sphere(&mut self, sphere_origin: Point3<f32>, sphere_radius: f32) {
         const MARGIN_MULTIPLIER: f32 = 1.005;
-
-        let fovy = self.options.fovy;
-        let fovx = fovy * self.aspect_ratio;
-        let fov = fovy.min(fovx);
+        let alpha = self.compute_visible_sphere_alpha();
 
         // Compute the distance needed from the sphere for it to fit
         // inside the camera frustrum
-        let new_radius = MARGIN_MULTIPLIER * sphere_radius / (fov / 2.0).tan();
+        let new_radius = MARGIN_MULTIPLIER * sphere_radius / alpha.tan();
 
-        self.origin = *sphere_origin;
+        self.origin = sphere_origin;
         self.radius = clamp(new_radius, self.options.radius_min, self.options.radius_max);
     }
 
@@ -174,5 +183,13 @@ impl Camera {
         let z = self.radius * self.polar_angle.cos();
 
         self.origin + Vector3::new(x, y, z)
+    }
+
+    fn compute_visible_sphere_alpha(&self) -> f32 {
+        let fovy = self.options.fovy;
+        let fovx = fovy * self.aspect_ratio;
+        let fov = fovy.min(fovx);
+
+        fov / 2.0
     }
 }
