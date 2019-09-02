@@ -50,7 +50,7 @@ fn main() {
             radius_min: 1.0,
             radius_max: 10000.0,
             polar_angle_distance_min: 1f32.to_radians(),
-            speed_pan: 0.5,
+            speed_pan: 10.0,
             speed_rotate: 0.005,
             speed_zoom: 0.01,
             speed_zoom_step: 1.0,
