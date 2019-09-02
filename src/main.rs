@@ -45,7 +45,7 @@ fn main() {
             radius_min: 1.0,
             radius_max: 10000.0,
             polar_angle_distance_min: 1f32.to_radians(),
-            speed_pan: 0.5,
+            speed_pan: 10.0,
             speed_rotate: 0.005,
             speed_zoom: 0.01,
             speed_zoom_step: 1.0,
@@ -99,24 +99,32 @@ fn main() {
 
     // Temporary model list
 
-    let models_dir = env::var_os("MODELS_DIR")
-        .unwrap_or_else(|| env::current_dir().expect("Should load current dir").into());
-    let obj_path_results = fs::read_dir(models_dir).expect("Should read directory with obj files");
-    let mut obj_file_paths = HashMap::new();
+    let models_dir = env::var_os("MODELS_DIR").unwrap_or_else(|| {
+        env::current_dir()
+            .expect("Failed to load current dir")
+            .into()
+    });
+    let obj_dir_entry_results =
+        fs::read_dir(models_dir).expect("Failed to read directory with obj files");
+    let mut obj_file_paths: HashMap<String, String> = HashMap::new();
 
-    for obj_path_result in obj_path_results {
-        let obj_path = obj_path_result.expect("Should read directory entry");
-        let path = obj_path.path();
+    for obj_dir_entry_result in obj_dir_entry_results {
+        let obj_dir_entry = obj_dir_entry_result.expect("Failed to read directory entry");
+        let obj_path = obj_dir_entry.path();
 
-        if let Some(ext) = path.extension() {
+        if let Some(ext) = obj_path.extension() {
             if ext == "obj" {
-                let filename = path
+                let filename = obj_path
                     .file_stem()
                     .expect("Failed to extract obj file stem")
                     .to_str()
                     .expect("Filename UTF-8 conversion failed");
+                let filepath = obj_path
+                    .to_str()
+                    .expect("Failed to convert Path to str")
+                    .to_string();
 
-                obj_file_paths.insert(filename.to_uppercase(), path.clone());
+                obj_file_paths.insert(filename.to_uppercase(), filepath);
             }
         }
     }
@@ -269,15 +277,8 @@ fn main() {
         if let Some(clicked_model) =
             ui_frame.draw_model_window(&obj_filenames, &selected_model, import_progress)
         {
-            let clicked_model_path = obj_file_paths
-                .get(&clicked_model)
-                .expect("Should get clicked model path from hash map");
-
-            importer_worker.import_obj(
-                &clicked_model_path
-                    .to_str()
-                    .expect("Failed to convert obj Path to str"),
-            );
+            let clicked_model_path: &str = &obj_file_paths[&clicked_model];
+            importer_worker.import_obj(&clicked_model_path);
 
             selected_model = clicked_model;
             is_importing = true;
