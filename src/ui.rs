@@ -93,6 +93,10 @@ impl<'a> Ui<'a> {
             &self.font_ids,
         )
     }
+
+    pub fn set_delta_time(&mut self, duration_last_frame_s: f32) {
+        self.imgui_context.io_mut().delta_time = duration_last_frame_s;
+    }
 }
 
 /// This structure is responsible for drawing and rendering of a single UI

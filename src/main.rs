@@ -148,7 +148,7 @@ fn main() {
         let duration_last_frame_s = duration_last_frame.as_secs() as f32
             + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
 
-        ui.imgui_context().io_mut().delta_time = duration_last_frame_s;
+        ui.set_delta_time(duration_last_frame_s);
 
         import_progress = if !is_importing {
             1.0
