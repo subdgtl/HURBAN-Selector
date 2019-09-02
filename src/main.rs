@@ -278,13 +278,7 @@ fn main() {
 
         if let Some(interp) = camera_interpolation {
             if interp.target_time > time {
-                let duration_left = interp.duration_left(time);
-                let whole_duration = duration_as_secs_f32(CAMERA_INTERPOLATION_DURATION);
-                let t = cubic_bezier.apply(1.0 - duration_left / whole_duration);
-
-                let sphere_origin = interp.sphere_origin(t);
-                let sphere_radius = interp.sphere_radius(t);
-
+                let (sphere_origin, sphere_radius) = interp.update(time, &cubic_bezier);
                 camera.zoom_to_fit_visible_sphere(sphere_origin, sphere_radius);
             } else {
                 camera.zoom_to_fit_visible_sphere(interp.target_origin, interp.target_radius);
@@ -351,20 +345,19 @@ impl CameraInterpolation {
         }
     }
 
-    fn duration_left(&self, time: Instant) -> f32 {
-        duration_as_secs_f32(self.target_time.duration_since(time))
-    }
+    fn update(&self, time: Instant, easing: &math::CubicBezierEasing) -> (Point3<f32>, f32) {
+        let duration_left = duration_as_secs_f32(self.target_time.duration_since(time));
+        let whole_duration = duration_as_secs_f32(CAMERA_INTERPOLATION_DURATION);
+        let t = easing.apply(1.0 - duration_left / whole_duration);
 
-    fn sphere_origin(&self, t: f32) -> Point3<f32> {
-        Point3::from(
+        let sphere_origin = Point3::from(
             self.source_origin
                 .coords
                 .lerp(&self.target_origin.coords, t),
-        )
-    }
+        );
+        let sphere_radius = math::lerp(self.source_radius, self.target_radius, t);
 
-    fn sphere_radius(&self, t: f32) -> f32 {
-        math::lerp(self.source_radius, self.target_radius, t)
+        (sphere_origin, sphere_radius)
     }
 }
 
