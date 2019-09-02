@@ -204,16 +204,7 @@ fn main() {
         camera.zoom_step(input_state.camera_zoom_steps);
 
         if input_state.camera_reset_viewport {
-            let (source_origin, source_radius) = camera.visible_sphere();
-            let (target_origin, target_radius) =
-                geometry::compute_bounding_sphere(&scene_geometries[..]);
-            camera_interpolation = Some(CameraInterpolation {
-                source_origin,
-                source_radius,
-                target_origin,
-                target_radius,
-                target_time: time + CAMERA_INTERPOLATION_DURATION,
-            });
+            camera_interpolation = Some(CameraInterpolation::new(&camera, &scene_geometries, time));
         }
 
         #[cfg(debug_assertions)]
@@ -255,6 +246,9 @@ fn main() {
                         scene_geometries.push(geometry);
                         scene_renderer_geometry_ids.push(renderer_geometry_id);
                     }
+
+                    camera_interpolation =
+                        Some(CameraInterpolation::new(&camera, &scene_geometries, time));
                 }
                 Err(err) => {
                     tinyfiledialogs::message_box_ok(
@@ -286,17 +280,12 @@ fn main() {
 
         if let Some(interp) = camera_interpolation {
             if interp.target_time > time {
-                let duration_left = duration_as_secs_f32(interp.target_time.duration_since(time));
+                let duration_left = interp.duration_left(time);
                 let whole_duration = duration_as_secs_f32(CAMERA_INTERPOLATION_DURATION);
                 let t = cubic_bezier.apply(1.0 - duration_left / whole_duration);
 
-                let sphere_origin = Point3::from(
-                    interp
-                        .source_origin
-                        .coords
-                        .lerp(&interp.target_origin.coords, t),
-                );
-                let sphere_radius = math::lerp(interp.source_radius, interp.target_radius, t);
+                let sphere_origin = interp.sphere_origin(t);
+                let sphere_radius = interp.sphere_radius(t);
 
                 camera.zoom_to_fit_visible_sphere(sphere_origin, sphere_radius);
             } else {
@@ -348,6 +337,37 @@ struct CameraInterpolation {
     target_origin: Point3<f32>,
     target_radius: f32,
     target_time: Instant,
+}
+
+impl CameraInterpolation {
+    fn new(camera: &Camera, scene_geometries: &[geometry::Geometry], time: Instant) -> Self {
+        let (source_origin, source_radius) = camera.visible_sphere();
+        let (target_origin, target_radius) = geometry::compute_bounding_sphere(&scene_geometries);
+
+        CameraInterpolation {
+            source_origin,
+            source_radius,
+            target_origin,
+            target_radius,
+            target_time: time + CAMERA_INTERPOLATION_DURATION,
+        }
+    }
+
+    fn duration_left(&self, time: Instant) -> f32 {
+        duration_as_secs_f32(self.target_time.duration_since(time))
+    }
+
+    fn sphere_origin(&self, t: f32) -> Point3<f32> {
+        Point3::from(
+            self.source_origin
+                .coords
+                .lerp(&self.target_origin.coords, t),
+        )
+    }
+
+    fn sphere_radius(&self, t: f32) -> f32 {
+        math::lerp(self.source_radius, self.target_radius, t)
+    }
 }
 
 fn duration_as_secs_f32(duration: Duration) -> f32 {
