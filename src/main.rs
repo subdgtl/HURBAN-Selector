@@ -62,7 +62,7 @@ fn main() {
         &window,
         &camera.projection_matrix(),
         &camera.view_matrix(),
-        ui.imgui_context().fonts(),
+        ui.fonts(),
         RendererOptions {
             // FIXME: @Correctness Msaa X4 is the only value currently
             // working on all devices we tried. Once device

@@ -72,6 +72,10 @@ impl<'a> Ui<'a> {
         }
     }
 
+    pub fn fonts(&mut self) -> imgui::FontAtlasRefMut {
+        self.imgui_context.fonts()
+    }
+
     pub fn handle_event(&mut self, event: &winit::Event) {
         self.imgui_winit_platform
             .handle_event(self.imgui_context.io_mut(), &self.window, &event);
@@ -88,10 +92,6 @@ impl<'a> Ui<'a> {
             &self.imgui_winit_platform,
             &self.font_ids,
         )
-    }
-
-    pub fn imgui_context(&mut self) -> &mut imgui::Context {
-        &mut self.imgui_context
     }
 }
 
