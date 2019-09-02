@@ -5,15 +5,19 @@ const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regu
 const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Bold.ttf");
 const OPENSANS_LIGHT_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Light.ttf");
 
+pub struct FontIds {
+    _regular: imgui::FontId,
+    light: imgui::FontId,
+    bold: imgui::FontId,
+}
+
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
 /// is to create UI frames which draw the UI itself.
 pub struct Ui<'a> {
     window: &'a winit::Window,
     imgui_context: imgui::Context,
     imgui_winit_platform: WinitPlatform,
-    regular_font_id: imgui::FontId,
-    bold_font_id: imgui::FontId,
-    light_font_id: imgui::FontId,
+    font_ids: FontIds,
 }
 
 impl<'a> Ui<'a> {
@@ -60,9 +64,11 @@ impl<'a> Ui<'a> {
             window,
             imgui_context,
             imgui_winit_platform: platform,
-            regular_font_id,
-            bold_font_id,
-            light_font_id,
+            font_ids: FontIds {
+                _regular: regular_font_id,
+                bold: bold_font_id,
+                light: light_font_id,
+            },
         }
     }
 
@@ -80,9 +86,7 @@ impl<'a> Ui<'a> {
             &self.window,
             &mut self.imgui_context,
             &self.imgui_winit_platform,
-            &self.regular_font_id,
-            &self.bold_font_id,
-            &self.light_font_id,
+            &self.font_ids,
         )
     }
 
@@ -97,9 +101,7 @@ pub struct UiFrame<'a> {
     window: &'a winit::Window,
     imgui_winit_platform: &'a WinitPlatform,
     imgui_ui: imgui::Ui<'a>,
-    regular_font_id: &'a imgui::FontId,
-    bold_font_id: &'a imgui::FontId,
-    light_font_id: &'a imgui::FontId,
+    font_ids: &'a FontIds,
 }
 
 impl<'a> UiFrame<'a> {
@@ -107,17 +109,13 @@ impl<'a> UiFrame<'a> {
         window: &'a winit::Window,
         imgui_context: &'a mut imgui::Context,
         imgui_winit_platform: &'a WinitPlatform,
-        regular_font_id: &'a imgui::FontId,
-        bold_font_id: &'a imgui::FontId,
-        light_font_id: &'a imgui::FontId,
+        font_ids: &'a FontIds,
     ) -> Self {
         UiFrame {
             window,
             imgui_winit_platform,
             imgui_ui: imgui_context.frame(),
-            regular_font_id,
-            bold_font_id,
-            light_font_id,
+            font_ids,
         }
     }
 
@@ -158,7 +156,7 @@ impl<'a> UiFrame<'a> {
         let _button_style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([-1.0, 0.5]));
         let mut clicked_button = None;
 
-        let _regular_font_token = ui.push_font(*self.bold_font_id);
+        let _regular_font_token = ui.push_font(self.font_ids.bold);
 
         let _default_colors = self.imgui_ui.push_style_colors(&[
             (
@@ -186,7 +184,7 @@ impl<'a> UiFrame<'a> {
             .collapsible(false)
             .build(|| {
                 let inner_width = window_width - 20.0;
-                let _light_font_token = ui.push_font(*self.light_font_id);
+                let _light_font_token = ui.push_font(self.font_ids.light);
 
                 ui.child_frame(imgui::im_str!("progress bar"), [inner_width, 40.0])
                     .build(|| {
