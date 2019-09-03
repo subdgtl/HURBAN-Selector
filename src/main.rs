@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use nalgebra::geometry::Point3;
@@ -105,10 +106,15 @@ fn main() {
     // Temporary model list
 
     let models_dir = env::var_os("MODELS_DIR").unwrap_or_else(|| {
-        env::current_dir()
+        let mut dir = env::current_dir()
             .expect("Failed to load current dir")
-            .into()
+            .into_os_string();
+        let models_subdir = Path::new("./MODELS");
+        dir.push(&models_subdir);
+
+        dir
     });
+
     let obj_dir_entry_results =
         fs::read_dir(models_dir).expect("Failed to read directory with obj files");
     let mut obj_file_paths: HashMap<String, String> = HashMap::new();
