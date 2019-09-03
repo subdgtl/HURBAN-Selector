@@ -3,17 +3,20 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use nalgebra::geometry::Point3;
 use wgpu::winit;
 
 use hurban_selector::camera::{Camera, CameraOptions};
 use hurban_selector::geometry;
 use hurban_selector::importer::ImporterWorker;
 use hurban_selector::input::InputManager;
-use hurban_selector::math::decay;
+use hurban_selector::math;
 use hurban_selector::renderer::{Msaa, Renderer, RendererOptions, SceneRendererGeometry};
-use hurban_selector::ui;
+use hurban_selector::ui::Ui;
+
+const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 
 fn main() {
     env_logger::init();
@@ -22,7 +25,7 @@ fn main() {
     let monitor_id = event_loop.get_primary_monitor();
     let window = winit::WindowBuilder::new()
         .with_title("H.U.R.B.A.N. Selector")
-        // .with_fullscreen(Some(monitor_id))
+        .with_fullscreen(Some(monitor_id))
         // .with_maximized(true)
         // .with_multitouch()
         .build(&event_loop)
@@ -36,6 +39,8 @@ fn main() {
     let wgpu_instance = wgpu::Instance::new();
 
     let mut input_manager = InputManager::new();
+    let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
+
     let mut camera = Camera::new(
         window_size,
         5.0,
@@ -55,14 +60,14 @@ fn main() {
         },
     );
 
-    let (mut imgui_context, mut imgui_winit_platform) = ui::init(&window);
+    let mut ui = Ui::new(&window);
 
     let mut renderer = Renderer::new(
         &wgpu_instance,
         &window,
         &camera.projection_matrix(),
         &camera.view_matrix(),
-        imgui_context.fonts(),
+        ui.fonts(),
         RendererOptions {
             // FIXME: @Correctness Msaa X4 is the only value currently
             // working on all devices we tried. Once device
@@ -114,16 +119,17 @@ fn main() {
 
         if let Some(ext) = obj_path.extension() {
             if ext == "obj" {
-                let filename = obj_dir_entry
-                    .file_name()
-                    .into_string()
+                let filename = obj_path
+                    .file_stem()
+                    .expect("Failed to extract obj file stem")
+                    .to_str()
                     .expect("Filename UTF-8 conversion failed");
                 let filepath = obj_path
-                    .into_os_string()
-                    .into_string()
-                    .expect("File path UTF-8 conversion failed");
+                    .to_str()
+                    .expect("Failed to convert Path to str")
+                    .to_string();
 
-                obj_file_paths.insert(filename, filepath);
+                obj_file_paths.insert(filename.to_uppercase(), filepath);
             }
         }
     }
@@ -132,26 +138,32 @@ fn main() {
     obj_filenames.sort();
 
     let importer_worker = ImporterWorker::new();
+
     let mut is_importing = false;
     let mut import_progress = 1.0;
+    let mut selected_model = String::from("");
+
+    let mut camera_interpolation: Option<CameraInterpolation> = None;
+
     let mut running = true;
 
     while running {
-        let now = Instant::now();
-        let duration_last_frame = now.duration_since(time);
-        let _duration_running = now.duration_since(time_start);
-        time = now;
+        let (duration_last_frame, _duration_running) = {
+            let now = Instant::now();
+            let duration_last_frame = now.duration_since(time);
+            let duration_running = now.duration_since(time_start);
+            time = now;
 
-        // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
-        let duration_last_frame_s = duration_last_frame.as_secs() as f32
-            + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
+            (duration_last_frame, duration_running)
+        };
 
-        imgui_context.io_mut().delta_time = duration_last_frame_s;
+        let duration_last_frame_s = duration_as_secs_f32(duration_last_frame);
+        ui.set_delta_time(duration_last_frame_s);
 
         import_progress = if !is_importing {
             1.0
         } else {
-            decay(import_progress, 1.0, 0.5, duration_last_frame_s)
+            math::decay(import_progress, 1.0, 0.5, duration_last_frame_s)
         };
 
         // Since input manager needs to process events separately after imgui
@@ -160,22 +172,18 @@ fn main() {
 
         event_loop.poll_events(|event| {
             input_events.push(event.clone());
-            imgui_winit_platform.handle_event(imgui_context.io_mut(), &window, &event, time);
+            ui.handle_event(&event, time);
         });
 
         // Start UI and input manger frames
-        imgui_winit_platform
-            .prepare_frame(imgui_context.io_mut(), &window)
-            .expect("Failed to start imgui frame");
-        let imgui_ui = imgui_context.frame();
-        let imgui_io = imgui_ui.io();
+        let ui_frame = ui.prepare_frame();
 
         input_manager.start_frame();
 
         // Imgui's IO is updated after current frame starts, else it'd contain
         // outdated values.
-        let ui_captured_keyboard = imgui_io.want_capture_keyboard;
-        let ui_captured_mouse = imgui_io.want_capture_mouse;
+        let ui_captured_keyboard = ui_frame.want_capture_keyboard();
+        let ui_captured_mouse = ui_frame.want_capture_mouse();
 
         for event in input_events {
             input_manager.process_event(event, ui_captured_keyboard, ui_captured_mouse);
@@ -194,8 +202,7 @@ fn main() {
         camera.zoom_step(input_state.camera_zoom_steps);
 
         if input_state.camera_reset_viewport {
-            let (origin, radius) = geometry::compute_bounding_sphere(&scene_geometries[..]);
-            camera.zoom_to_fit_sphere(&origin, radius);
+            camera_interpolation = Some(CameraInterpolation::new(&camera, &scene_geometries, time));
         }
 
         #[cfg(debug_assertions)]
@@ -237,6 +244,9 @@ fn main() {
                         scene_geometries.push(geometry);
                         scene_renderer_geometry_ids.push(renderer_geometry_id);
                     }
+
+                    camera_interpolation =
+                        Some(CameraInterpolation::new(&camera, &scene_geometries, time));
                 }
                 Err(err) => {
                     tinyfiledialogs::message_box_ok(
@@ -266,28 +276,38 @@ fn main() {
             renderer.set_window_size(physical_size);
         }
 
+        if let Some(interp) = camera_interpolation {
+            if interp.target_time > time {
+                let (sphere_origin, sphere_radius) = interp.update(time, &cubic_bezier);
+                camera.zoom_to_fit_visible_sphere(sphere_origin, sphere_radius);
+            } else {
+                camera.zoom_to_fit_visible_sphere(interp.target_origin, interp.target_radius);
+                camera_interpolation = None;
+            }
+        }
+
         // Camera matrices have to be uploaded when either window
         // resizes or the camera moves. We do it every frame for
         // simplicity.
         renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
 
         #[cfg(debug_assertions)]
-        ui::draw_fps_window(&imgui_ui);
+        ui_frame.draw_fps_window();
 
         // Clicking any of the models in the list means clearing everything out
         // of the scene, importing given model and pushing it into scene.
         if let Some(clicked_model) =
-            ui::draw_model_window(&imgui_ui, &obj_filenames, import_progress)
+            ui_frame.draw_model_window(&obj_filenames, &selected_model, import_progress)
         {
             let clicked_model_path: &str = &obj_file_paths[&clicked_model];
             importer_worker.import_obj(&clicked_model_path);
 
+            selected_model = clicked_model;
             is_importing = true;
             import_progress = 0.0;
         }
 
-        imgui_winit_platform.prepare_render(&imgui_ui, &window);
-        let imgui_draw_data = imgui_ui.render();
+        let imgui_draw_data = ui_frame.render();
 
         let mut render_pass = renderer.begin_render_pass();
 
@@ -300,4 +320,48 @@ fn main() {
     for renderer_geometry_id in scene_renderer_geometry_ids {
         renderer.remove_scene_geometry(renderer_geometry_id);
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CameraInterpolation {
+    source_origin: Point3<f32>,
+    source_radius: f32,
+    target_origin: Point3<f32>,
+    target_radius: f32,
+    target_time: Instant,
+}
+
+impl CameraInterpolation {
+    fn new(camera: &Camera, scene_geometries: &[geometry::Geometry], time: Instant) -> Self {
+        let (source_origin, source_radius) = camera.visible_sphere();
+        let (target_origin, target_radius) = geometry::compute_bounding_sphere(&scene_geometries);
+
+        CameraInterpolation {
+            source_origin,
+            source_radius,
+            target_origin,
+            target_radius,
+            target_time: time + CAMERA_INTERPOLATION_DURATION,
+        }
+    }
+
+    fn update(&self, time: Instant, easing: &math::CubicBezierEasing) -> (Point3<f32>, f32) {
+        let duration_left = duration_as_secs_f32(self.target_time.duration_since(time));
+        let whole_duration = duration_as_secs_f32(CAMERA_INTERPOLATION_DURATION);
+        let t = easing.apply(1.0 - duration_left / whole_duration);
+
+        let sphere_origin = Point3::from(
+            self.source_origin
+                .coords
+                .lerp(&self.target_origin.coords, t),
+        );
+        let sphere_radius = math::lerp(self.source_radius, self.target_radius, t);
+
+        (sphere_origin, sphere_radius)
+    }
+}
+
+fn duration_as_secs_f32(duration: Duration) -> f32 {
+    // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
+    duration.as_secs() as f32 + duration.subsec_nanos() as f32 / 1_000_000_000.0
 }
