@@ -172,7 +172,7 @@ fn main() {
 
         event_loop.poll_events(|event| {
             input_events.push(event.clone());
-            ui.handle_event(&event);
+            ui.handle_event(&event, time);
         });
 
         // Start UI and input manger frames

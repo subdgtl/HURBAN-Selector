@@ -1,5 +1,8 @@
-use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use std::time::Instant;
+
 use wgpu::winit;
+
+use crate::imgui_input::{HiDpiMode, WinitPlatform};
 
 const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
 const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Bold.ttf");
@@ -76,9 +79,13 @@ impl<'a> Ui<'a> {
         self.imgui_context.fonts()
     }
 
-    pub fn handle_event(&mut self, event: &winit::Event) {
-        self.imgui_winit_platform
-            .handle_event(self.imgui_context.io_mut(), &self.window, &event);
+    pub fn handle_event(&mut self, event: &winit::Event, time: Instant) {
+        self.imgui_winit_platform.handle_event(
+            self.imgui_context.io_mut(),
+            &self.window,
+            &event,
+            time,
+        );
     }
 
     pub fn prepare_frame(&mut self) -> UiFrame {
