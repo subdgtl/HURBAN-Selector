@@ -9,15 +9,15 @@ use wgpu::winit::{
     TouchPhase, VirtualKeyCode, Window, WindowEvent,
 };
 
-const MOUSE_DISABLE_DELAY: Duration = Duration::from_millis(100);
+const MOUSE_ENABLE_DELAY: Duration = Duration::from_millis(100);
 
 /// winit backend platform state
 #[derive(Debug)]
 pub struct WinitPlatform {
     hidpi_mode: ActiveHiDpiMode,
     hidpi_factor: f64,
-    touch_pos: Option<(f64, f64)>,
-    touch_last: Option<Instant>,
+    touch_pos_last: Option<(f64, f64)>,
+    touch_time_last: Option<Instant>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -100,8 +100,8 @@ impl WinitPlatform {
         WinitPlatform {
             hidpi_mode: ActiveHiDpiMode::Default,
             hidpi_factor: 1.0,
-            touch_pos: None,
-            touch_last: None,
+            touch_pos_last: None,
+            touch_time_last: None,
         }
     }
     /// Attaches the platform instance to a winit window.
@@ -178,13 +178,11 @@ impl WinitPlatform {
     /// * keyboard state is updated
     /// * mouse state is updated
     pub fn handle_event(&mut self, io: &mut Io, window: &Window, event: &Event, time: Instant) {
-
-        if let Some(touch_last) = self.touch_last {
-            if time.duration_since(touch_last) > MOUSE_DISABLE_DELAY {
-                self.touch_last = None;
+        if let Some(touch_time_last) = self.touch_time_last {
+            if time.duration_since(touch_time_last) > MOUSE_ENABLE_DELAY {
+                self.touch_time_last = None;
             }
         }
-
 
         match *event {
             Event::WindowEvent {
@@ -216,7 +214,13 @@ impl WinitPlatform {
             _ => (),
         }
     }
-    fn handle_window_event(&mut self, io: &mut Io, window: &Window, event: &WindowEvent, time: Instant) {
+    fn handle_window_event(
+        &mut self,
+        io: &mut Io,
+        window: &Window,
+        event: &WindowEvent,
+        time: Instant,
+    ) {
         match *event {
             WindowEvent::Resized(logical_size) => {
                 let logical_size = self.scale_size_from_winit(window, logical_size);
@@ -265,9 +269,9 @@ impl WinitPlatform {
             }
             WindowEvent::ReceivedCharacter(ch) => io.add_input_character(ch),
             WindowEvent::CursorMoved { position, .. } => {
-                if self.touch_last.is_none() {
+                if self.touch_time_last.is_none() {
                     let position = self.scale_pos_from_winit(window, position);
-                    println!("MOUSE POS: {:?}", position);
+                    // println!("MOUSE POS: {:?}", position);
                     io.mouse_pos = [position.x as f32, position.y as f32];
                 }
             }
@@ -294,14 +298,14 @@ impl WinitPlatform {
                 }
             },
             WindowEvent::MouseInput { state, button, .. } => {
-                if self.touch_last.is_none() {
+                if self.touch_time_last.is_none() {
                     let pressed = state == ElementState::Pressed;
 
-                    if pressed {
-                        println!("MOUSE PRESSED {:?}", time);
-                    } else {
-                        println!("MOUSE RELEASED {:?}", time);
-                    }
+                    // if pressed {
+                    // println!("MOUSE PRESSED {:?}", time);
+                    // } else {
+                    // println!("MOUSE RELEASED {:?}", time);
+                    // }
 
                     match button {
                         MouseButton::Left => io.mouse_down[0] = pressed,
@@ -313,47 +317,54 @@ impl WinitPlatform {
                 }
             }
             WindowEvent::Touch(touch) => {
-                self.touch_last = Some(time);
-
-                let monitor_physical_size = window.get_current_monitor().get_dimensions();
-                let monitor_logical_size = monitor_physical_size.to_logical(self.hidpi_factor);
+                self.touch_time_last = Some(time);
 
                 if let Some(window_logical_position) = window.get_inner_position() {
                     if let Some(window_logical_size) = window.get_inner_size() {
                         let top_on_monitor = window_logical_position.y;
                         let left_on_monitor = window_logical_position.x;
-                        let bottom_on_monitor = window_logical_position.y + window_logical_size.width;
-                        let right_on_monitor = window_logical_position.x + window_logical_size.height;
+                        let bottom_on_monitor =
+                            window_logical_position.y + window_logical_size.width;
+                        let right_on_monitor =
+                            window_logical_position.x + window_logical_size.height;
 
                         let touch_position = self.scale_pos_from_winit(window, touch.location);
 
-                        if touch_position.x >= left_on_monitor && touch_position.x < right_on_monitor
-                            && touch_position.y >= top_on_monitor && touch_position.y < bottom_on_monitor {
-
-                            println!("TOUCH POS: {:?} {:?}", touch_position, time);
+                        if touch_position.x >= left_on_monitor
+                            && touch_position.x < right_on_monitor
+                            && touch_position.y >= top_on_monitor
+                            && touch_position.y < bottom_on_monitor
+                        {
+                            // println!("TOUCH POS: {:?} {:?}", touch_position, time);
                             let touch_position_wnd = LogicalPosition {
                                 x: touch_position.x - window_logical_position.x,
                                 y: touch_position.y - window_logical_position.y,
                             };
 
-                            println!("WINDOW TOUCH POS: {:?} {:?}", touch_position_wnd, time);
-                            io.mouse_pos = [touch_position_wnd.x as f32, touch_position_wnd.y as f32];
+                            // println!("WINDOW TOUCH POS: {:?} {:?}", touch_position_wnd, time);
+                            io.mouse_pos =
+                                [touch_position_wnd.x as f32, touch_position_wnd.y as f32];
                             match touch.phase {
                                 TouchPhase::Started => {
                                     io.mouse_down[0] = true;
-                                    self.touch_pos = Some((touch_position_wnd.x, touch_position_wnd.y));
-                                    println!("TOUCH PRESSED {:?}", time);
+                                    let pos = (touch_position_wnd.x, touch_position_wnd.y);
+                                    self.touch_pos_last = Some(pos);
+                                    // println!("TOUCH PRESSED {:?}", time);
                                 }
                                 TouchPhase::Ended => {
                                     io.mouse_down[0] = false;
-                                    self.touch_pos = None;
-                                    println!("TOUCH RELEASED {:?}", time);
+                                    self.touch_pos_last = None;
+                                    // println!("TOUCH RELEASED {:?}", time);
                                 }
                                 TouchPhase::Moved => {
                                     if io.mouse_down[0] {
-                                        if let Some((x, y)) = self.touch_pos {
-                                            let dpos = (touch_position_wnd.x - x, touch_position_wnd.y - y);
-                                            self.touch_pos = Some((touch_position_wnd.x, touch_position_wnd.y));
+                                        if let Some((x, y)) = self.touch_pos_last {
+                                            let dpos = (
+                                                touch_position_wnd.x - x,
+                                                touch_position_wnd.y - y,
+                                            );
+                                            self.touch_pos_last =
+                                                Some((touch_position_wnd.x, touch_position_wnd.y));
                                             io.mouse_wheel_h += dpos.0 as f32 * 0.01;
                                             io.mouse_wheel += dpos.1 as f32 * 0.01;
                                         }
@@ -361,9 +372,8 @@ impl WinitPlatform {
                                 }
                                 _ => (),
                             }
-
                         } else {
-                            println!("TOUCH POS OUTSIDE WINDOW");
+                            // println!("TOUCH POS OUTSIDE WINDOW");
                         }
                     }
                 }

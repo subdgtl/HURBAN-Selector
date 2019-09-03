@@ -80,8 +80,12 @@ impl<'a> Ui<'a> {
     }
 
     pub fn handle_event(&mut self, event: &winit::Event, time: Instant) {
-        self.imgui_winit_platform
-            .handle_event(self.imgui_context.io_mut(), &self.window, &event, time);
+        self.imgui_winit_platform.handle_event(
+            self.imgui_context.io_mut(),
+            &self.window,
+            &event,
+            time,
+        );
     }
 
     pub fn prepare_frame(&mut self) -> UiFrame {
