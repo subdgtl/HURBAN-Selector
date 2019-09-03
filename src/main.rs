@@ -19,7 +19,7 @@ fn main() {
     env_logger::init();
 
     let mut event_loop = winit::EventsLoop::new();
-    // let monitor_id = event_loop.get_primary_monitor();
+    let monitor_id = event_loop.get_primary_monitor();
     let window = winit::WindowBuilder::new()
         .with_title("H.U.R.B.A.N. Selector")
         // .with_fullscreen(Some(monitor_id))
@@ -160,7 +160,7 @@ fn main() {
 
         event_loop.poll_events(|event| {
             input_events.push(event.clone());
-            imgui_winit_platform.handle_event(imgui_context.io_mut(), &window, &event);
+            imgui_winit_platform.handle_event(imgui_context.io_mut(), &window, &event, time);
         });
 
         // Start UI and input manger frames

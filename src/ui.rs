@@ -1,5 +1,6 @@
-use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use wgpu::winit;
+
+use crate::imgui_input::{HiDpiMode, WinitPlatform};
 
 pub fn init(window: &winit::Window) -> (imgui::Context, WinitPlatform) {
     let mut imgui_context = imgui::Context::create();
