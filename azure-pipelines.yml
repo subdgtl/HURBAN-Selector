@@ -6,17 +6,15 @@ pr:
   - master
 
 jobs:
-  - job: Linux_Vulkan
+  - job: Linux
     pool:
       vmImage: ubuntu-16.04
     steps:
       - template: ci/azure-test-all.yml
-        parameters:
-          api: vulkan
     variables:
       TOOLCHAIN: 1.36.0
 
-  - job: macOS_Metal
+  - job: macOS
     strategy:
       matrix:
         macos-10_13:
@@ -27,12 +25,10 @@ jobs:
       vmImage: $(imageName)
     steps:
       - template: ci/azure-test-all.yml
-        parameters:
-          api: metal
     variables:
       TOOLCHAIN: 1.36.0
 
-  - job: Windows_D3D12
+  - job: Windows
     pool:
       vmImage: windows-2019
     steps:
@@ -43,23 +39,5 @@ jobs:
           addToPath: true
           architecture: "x64"
       - template: ci/azure-test-all.yml
-        parameters:
-          api: d3d12
-    variables:
-      TOOLCHAIN: 1.36.0
-
-  - job: Windows_Vulkan
-    pool:
-      vmImage: windows-2019
-    steps:
-      - script: choco install -y ninja
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: "3.7.4"
-          addToPath: true
-          architecture: "x64"
-      - template: ci/azure-test-all.yml
-        parameters:
-          api: vulkan
     variables:
       TOOLCHAIN: 1.36.0

@@ -30,7 +30,8 @@ pub struct ImguiRenderer {
 impl ImguiRenderer {
     pub fn new(
         mut imgui_font_atlas: imgui::FontAtlasRefMut,
-        device: &mut wgpu::Device,
+        device: &wgpu::Device,
+        queue: &mut wgpu::Queue,
         options: ImguiRendererOptions,
     ) -> Result<ImguiRenderer, ImguiRendererError> {
         // Link shaders
@@ -48,7 +49,7 @@ impl ImguiRenderer {
         let transform_buffer_size = wgpu_size_of::<TransformUniforms>();
         let transform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             size: transform_buffer_size,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::TRANSFER_DST,
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         });
 
         let transform_bind_group_layout =
@@ -56,7 +57,7 @@ impl ImguiRenderer {
                 bindings: &[wgpu::BindGroupLayoutBinding {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer,
+                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                 }],
             });
 
@@ -78,7 +79,10 @@ impl ImguiRenderer {
                     wgpu::BindGroupLayoutBinding {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::SampledTexture,
+                        ty: wgpu::BindingType::SampledTexture {
+                            multisampled: false,
+                            dimension: wgpu::TextureViewDimension::D2,
+                        },
                     },
                     wgpu::BindGroupLayoutBinding {
                         binding: 1,
@@ -99,22 +103,15 @@ impl ImguiRenderer {
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             layout: &pipeline_layout,
-            vertex_stage: wgpu::PipelineStageDescriptor {
+            vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &vs_module,
                 entry_point: "main",
             },
-            fragment_stage: Some(wgpu::PipelineStageDescriptor {
+            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
                 module: &fs_module,
                 entry_point: "main",
             }),
-            rasterization_state: wgpu::RasterizationStateDescriptor {
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: wgpu::CullMode::None,
-                // Depth test is disabled, no need for these to mean anything
-                depth_bias: 0,
-                depth_bias_clamp: 0.0,
-                depth_bias_slope_scale: 0.0,
-            },
+            rasterization_state: None,
             primitive_topology: wgpu::PrimitiveTopology::TriangleList,
             color_states: &[wgpu::ColorStateDescriptor {
                 format: options.output_color_attachment_format,
@@ -156,6 +153,8 @@ impl ImguiRenderer {
                 ],
             }],
             sample_count: options.sample_count,
+            sample_mask: !0,
+            alpha_to_coverage_enabled: false,
         });
 
         // Create the font texture and add it to the font atlas
@@ -172,11 +171,12 @@ impl ImguiRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::TRANSFER_DST,
+            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
         upload_texture_rgba8_unorm(
             device,
+            queue,
             &font_atlas_texture,
             font_atlas_image.width,
             font_atlas_image.height,
@@ -217,7 +217,8 @@ impl ImguiRenderer {
 
     pub fn add_texture_rgba8_unorm(
         &mut self,
-        device: &mut wgpu::Device,
+        device: &wgpu::Device,
+        queue: &mut wgpu::Queue,
         width: u32,
         height: u32,
         data: &[u8],
@@ -235,10 +236,10 @@ impl ImguiRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::TRANSFER_DST,
+            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
-        upload_texture_rgba8_unorm(device, &texture, width, height, data);
+        upload_texture_rgba8_unorm(device, queue, &texture, width, height, data);
 
         let texture_resource = Texture::new(
             device,
@@ -256,7 +257,7 @@ impl ImguiRenderer {
     pub fn draw_ui(
         &self,
         color_needs_clearing: bool,
-        device: &mut wgpu::Device,
+        device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
         msaa_attachment: Option<&wgpu::TextureView>,
@@ -285,7 +286,7 @@ impl ImguiRenderer {
         let transform_uniforms = TransformUniforms { translate, scale };
         let transform_uniforms_size = wgpu_size_of::<TransformUniforms>();
         let transform_transfer_buffer = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::TRANSFER_SRC)
+            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
             .fill_from_slice(&[transform_uniforms]);
 
         encoder.copy_buffer_to_buffer(
@@ -368,7 +369,7 @@ impl ImguiRenderer {
                 .create_buffer_mapped(idx_buffer.len(), wgpu::BufferUsage::INDEX)
                 .fill_from_slice(idx_buffer);
 
-            rpass.set_vertex_buffers(&[(&vertex_buffer, 0)]);
+            rpass.set_vertex_buffers(0, &[(&vertex_buffer, 0)]);
             rpass.set_index_buffer(&index_buffer, 0);
 
             let mut idx_start = 0;

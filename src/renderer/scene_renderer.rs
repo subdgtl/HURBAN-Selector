@@ -251,7 +251,8 @@ impl SceneRenderer {
     /// Initializes GPU resources and the rendering pipeline to draw
     /// to a texture of `output_color_attachment_format`.
     pub fn new(
-        device: &mut wgpu::Device,
+        device: &wgpu::Device,
+        queue: &mut wgpu::Queue,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
         options: SceneRendererOptions,
@@ -266,7 +267,7 @@ impl SceneRenderer {
         let global_matrix_buffer_size = wgpu_size_of::<GlobalMatrixUniforms>();
         let global_matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             size: global_matrix_buffer_size,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::TRANSFER_DST,
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         });
 
         let global_matrix_bind_group_layout =
@@ -274,7 +275,7 @@ impl SceneRenderer {
                 bindings: &[wgpu::BindGroupLayoutBinding {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer,
+                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                 }],
             });
         let global_matrix_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -320,12 +321,13 @@ impl SceneRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::TRANSFER_DST,
+            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
         let matcap_texture_view = matcap_texture.create_default_view();
 
         upload_texture_rgba8_unorm(
             device,
+            queue,
             &matcap_texture,
             matcap_texture_width,
             matcap_texture_height,
@@ -350,7 +352,10 @@ impl SceneRenderer {
                     wgpu::BindGroupLayoutBinding {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::SampledTexture,
+                        ty: wgpu::BindingType::SampledTexture {
+                            multisampled: false,
+                            dimension: wgpu::TextureViewDimension::D2,
+                        },
                     },
                     wgpu::BindGroupLayoutBinding {
                         binding: 1,
@@ -385,26 +390,19 @@ impl SceneRenderer {
         let matcap_render_pipeline =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 layout: &matcap_pipeline_layout,
-                vertex_stage: wgpu::PipelineStageDescriptor {
+                vertex_stage: wgpu::ProgrammableStageDescriptor {
                     module: &vs_module,
                     entry_point: "main",
                 },
-                fragment_stage: Some(wgpu::PipelineStageDescriptor {
+                fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
                     module: &fs_module,
                     entry_point: "main",
                 }),
-                rasterization_state: wgpu::RasterizationStateDescriptor {
-                    // We don't cull faces - even inner walls of 3d
-                    // models should be visible. That does not mean
-                    // the renderer is ok with non-CCW geometries. We
-                    // might implement a special rendering pass for
-                    // back faces one day.
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: wgpu::CullMode::None,
-                    depth_bias: 0,
-                    depth_bias_slope_scale: 0.0,
-                    depth_bias_clamp: 0.0,
-                },
+                // Default rasterization state means
+                // CullMode::None. We don't cull faces yet, because we
+                // work with potentially non-CCW geometries. We might
+                // implement special rendering for CW faces one day.
+                rasterization_state: None,
                 primitive_topology: wgpu::PrimitiveTopology::TriangleList,
                 color_states: &[wgpu::ColorStateDescriptor {
                     format: options.output_color_attachment_format,
@@ -439,13 +437,15 @@ impl SceneRenderer {
                     ],
                 }],
                 sample_count: options.sample_count,
+                sample_mask: !0,
+                alpha_to_coverage_enabled: false,
             });
 
         let global_matrix_uniforms = GlobalMatrixUniforms {
             projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
             view_matrix: view_matrix.clone().into(),
         };
-        upload_global_matrix_buffer(device, &global_matrix_buffer, global_matrix_uniforms);
+        upload_global_matrix_buffer(device, queue, &global_matrix_buffer, global_matrix_uniforms);
 
         Self {
             geometry_resources: HashMap::new(),
@@ -460,7 +460,8 @@ impl SceneRenderer {
     /// Update camera matrices (projection matrix and view matrix).
     pub fn set_camera_matrices(
         &mut self,
-        device: &mut wgpu::Device,
+        device: &wgpu::Device,
+        queue: &mut wgpu::Queue,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
     ) {
@@ -468,7 +469,12 @@ impl SceneRenderer {
             projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
             view_matrix: view_matrix.clone().into(),
         };
-        upload_global_matrix_buffer(device, &self.global_matrix_buffer, global_matrix_uniforms);
+        upload_global_matrix_buffer(
+            device,
+            queue,
+            &self.global_matrix_buffer,
+            global_matrix_uniforms,
+        );
     }
 
     /// Upload geometry on the GPU.
@@ -619,7 +625,7 @@ impl SceneRenderer {
         for id in ids {
             if let Some(geometry) = &self.geometry_resources.get(&id.0) {
                 let (vertex_buffer, vertex_count) = &geometry.vertices;
-                rpass.set_vertex_buffers(&[(vertex_buffer, 0)]);
+                rpass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
                 if let Some((index_buffer, index_count)) = &geometry.indices {
                     rpass.set_index_buffer(&index_buffer, 0);
                     rpass.draw_indexed(0..*index_count, 0, 0..1);
@@ -670,14 +676,15 @@ struct GlobalMatrixUniforms {
 }
 
 fn upload_global_matrix_buffer(
-    device: &mut wgpu::Device,
+    device: &wgpu::Device,
+    queue: &mut wgpu::Queue,
     global_matrix_buffer: &wgpu::Buffer,
     global_matrix_uniforms: GlobalMatrixUniforms,
 ) {
     let global_matrix_uniforms_size = wgpu_size_of::<GlobalMatrixUniforms>();
 
     let transfer_buffer = device
-        .create_buffer_mapped(1, wgpu::BufferUsage::TRANSFER_SRC)
+        .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
         .fill_from_slice(&[global_matrix_uniforms]);
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
@@ -688,7 +695,8 @@ fn upload_global_matrix_buffer(
         0,
         global_matrix_uniforms_size,
     );
-    device.get_queue().submit(&[encoder.finish()]);
+
+    queue.submit(&[encoder.finish()]);
 }
 
 /// Applies vulkan/wgpu correction matrix to the projection matrix.

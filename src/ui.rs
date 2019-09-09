@@ -1,5 +1,4 @@
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
-use wgpu::winit;
 
 const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
 const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Bold.ttf");
@@ -13,16 +12,15 @@ pub struct FontIds {
 
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
 /// is to create UI frames which draw the UI itself.
-pub struct Ui<'a> {
-    window: &'a winit::Window,
+pub struct Ui {
     imgui_context: imgui::Context,
     imgui_winit_platform: WinitPlatform,
     font_ids: FontIds,
 }
 
-impl<'a> Ui<'a> {
+impl Ui {
     /// Initializes imgui with default settings for our application.
-    pub fn new(window: &'a winit::Window) -> Self {
+    pub fn new(window: &winit::window::Window) -> Self {
         let mut imgui_context = imgui::Context::create();
         let mut style = imgui_context.style_mut();
         style.window_padding = [10.0, 10.0];
@@ -61,7 +59,6 @@ impl<'a> Ui<'a> {
         imgui_context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
         Ui {
-            window,
             imgui_context,
             imgui_winit_platform: platform,
             font_ids: FontIds {
@@ -76,18 +73,21 @@ impl<'a> Ui<'a> {
         self.imgui_context.fonts()
     }
 
-    pub fn handle_event(&mut self, event: &winit::Event) {
+    pub fn handle_event<T>(
+        &mut self,
+        window: &winit::window::Window,
+        event: &winit::event::Event<T>,
+    ) {
         self.imgui_winit_platform
-            .handle_event(self.imgui_context.io_mut(), &self.window, &event);
+            .handle_event(self.imgui_context.io_mut(), window, &event);
     }
 
-    pub fn prepare_frame(&mut self) -> UiFrame {
+    pub fn prepare_frame(&mut self, window: &winit::window::Window) -> UiFrame {
         self.imgui_winit_platform
-            .prepare_frame(self.imgui_context.io_mut(), &self.window)
+            .prepare_frame(self.imgui_context.io_mut(), window)
             .expect("Failed to start imgui frame");
 
         UiFrame::new(
-            &self.window,
             &mut self.imgui_context,
             &self.imgui_winit_platform,
             &self.font_ids,
@@ -102,7 +102,6 @@ impl<'a> Ui<'a> {
 /// This structure is responsible for drawing and rendering of a single UI
 /// frame.
 pub struct UiFrame<'a> {
-    window: &'a winit::Window,
     imgui_winit_platform: &'a WinitPlatform,
     imgui_ui: imgui::Ui<'a>,
     font_ids: &'a FontIds,
@@ -110,13 +109,11 @@ pub struct UiFrame<'a> {
 
 impl<'a> UiFrame<'a> {
     pub fn new(
-        window: &'a winit::Window,
         imgui_context: &'a mut imgui::Context,
         imgui_winit_platform: &'a WinitPlatform,
         font_ids: &'a FontIds,
     ) -> Self {
         UiFrame {
-            window,
             imgui_winit_platform,
             imgui_ui: imgui_context.frame(),
             font_ids,
@@ -131,18 +128,18 @@ impl<'a> UiFrame<'a> {
         self.imgui_ui.io().want_capture_mouse
     }
 
-    pub fn render(self) -> &'a imgui::DrawData {
+    pub fn render(self, window: &winit::window::Window) -> &'a imgui::DrawData {
         self.imgui_winit_platform
-            .prepare_render(&self.imgui_ui, &self.window);
+            .prepare_render(&self.imgui_ui, window);
         self.imgui_ui.render()
     }
 
     pub fn draw_fps_window(&self) {
         let ui = &self.imgui_ui;
 
-        ui.window(imgui::im_str!("FPS"))
+        imgui::Window::new(imgui::im_str!("FPS"))
             .position([450.0, 50.0], imgui::Condition::Always)
-            .build(|| {
+            .build(ui, || {
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
             });
     }
@@ -156,17 +153,14 @@ impl<'a> UiFrame<'a> {
         loading_progress: f32,
     ) -> Option<String> {
         let ui = &self.imgui_ui;
-        let _window_styles = ui.push_style_vars(&[
+        let window_style_token = ui.push_style_vars(&[
             imgui::StyleVar::WindowRounding(0.0),
             imgui::StyleVar::ScrollbarRounding(0.0),
             imgui::StyleVar::FramePadding([20.0, 15.0]),
+            imgui::StyleVar::ButtonTextAlign([-1.0, 0.5]),
         ]);
-        let _button_style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([-1.0, 0.5]));
-        let mut clicked_button = None;
-
-        let _regular_font_token = ui.push_font(self.font_ids.bold);
-
-        let _default_colors = self.imgui_ui.push_style_colors(&[
+        let regular_font_token = ui.push_font(self.font_ids.bold);
+        let default_color_token = self.imgui_ui.push_style_colors(&[
             (
                 imgui::StyleColor::WindowBg,
                 int_to_float_color(87, 90, 28, 128),
@@ -181,56 +175,66 @@ impl<'a> UiFrame<'a> {
             ),
         ]);
 
+        let mut clicked_button = None;
+
         let window_width = 350.0;
         let window_height = self.imgui_ui.io().display_size[1] - 100.0;
 
-        ui.window(imgui::im_str!("H.U.R.B.A.N. Selector"))
+        imgui::Window::new(imgui::im_str!("H.U.R.B.A.N. Selector"))
             .position([50.0, 50.0], imgui::Condition::Always)
             .size([window_width, window_height], imgui::Condition::Always)
             .movable(false)
             .resizable(false)
             .collapsible(false)
-            .build(|| {
+            .build(ui, || {
                 let inner_width = window_width - 20.0;
-                let _light_font_token = ui.push_font(self.font_ids.light);
+                let light_font_token = ui.push_font(self.font_ids.light);
 
-                ui.child_frame(imgui::im_str!("progress bar"), [inner_width, 40.0])
-                    .build(|| {
-                        let _progress_bar_text_color = ui.push_style_color(
+                imgui::ChildWindow::new(imgui::im_str!("progress bar"))
+                    .size([inner_width, 40.0])
+                    .build(ui, || {
+                        let progress_bar_text_color_token = ui.push_style_color(
                             imgui::StyleColor::Text,
                             int_to_float_color(0, 0, 0, 255),
                         );
 
-                        ui.progress_bar(loading_progress)
+                        imgui::ProgressBar::new(loading_progress)
                             .size([inner_width, 30.0])
                             .overlay_text(imgui::im_str!(""))
-                            .build();
+                            .build(ui);
+
+                        progress_bar_text_color_token.pop(ui);
                     });
 
-                ui.child_frame(
-                    imgui::im_str!("model list"),
-                    [inner_width, window_height - 115.0],
-                )
-                .build(|| {
-                    for filename in filenames {
-                        let mut _selected_button_colors: imgui::ColorStackToken;
+                imgui::ChildWindow::new(imgui::im_str!("model list"))
+                    .size([inner_width, window_height - 115.0])
+                    .build(ui, || {
+                        for filename in filenames {
+                            if selected_filename == filename {
+                                let selected_button_color_token =
+                                    self.imgui_ui.push_style_colors(&[
+                                        (
+                                            imgui::StyleColor::Button,
+                                            int_to_float_color(232, 210, 20, 255),
+                                        ),
+                                        (imgui::StyleColor::Text, int_to_float_color(0, 0, 0, 255)),
+                                    ]);
 
-                        if selected_filename == filename {
-                            _selected_button_colors = self.imgui_ui.push_style_colors(&[
-                                (
-                                    imgui::StyleColor::Button,
-                                    int_to_float_color(232, 210, 20, 255),
-                                ),
-                                (imgui::StyleColor::Text, int_to_float_color(0, 0, 0, 255)),
-                            ]);
-                        }
+                                selected_button_color_token.pop(ui);
+                            }
 
-                        if ui.button(&imgui::im_str!("{}", filename), [inner_width, 60.0]) {
-                            clicked_button = Some(filename.clone());
+                            if ui.button(&imgui::im_str!("{}", filename), [inner_width, 60.0]) {
+                                clicked_button = Some(filename.clone());
+                            }
                         }
-                    }
-                })
+                    });
+
+                light_font_token.pop(ui);
             });
+
+        default_color_token.pop(ui);
+        regular_font_token.pop(ui);
+        window_style_token.pop(ui);
 
         clicked_button
     }

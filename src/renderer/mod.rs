@@ -1,7 +1,8 @@
-use nalgebra::base::Matrix4;
-use wgpu::winit;
-
 pub use self::scene_renderer::{SceneRendererGeometry, SceneRendererGeometryId};
+
+use std::fmt;
+
+use nalgebra::base::Matrix4;
 
 use self::imgui_renderer::{ImguiRenderer, ImguiRendererOptions};
 use self::scene_renderer::{
@@ -15,16 +16,20 @@ mod imgui_renderer;
 mod scene_renderer;
 
 const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::D32Float;
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RendererOptions {
     pub msaa: Msaa,
+    pub present_mode: PresentMode,
+
+    /// If present, try to force a gpu backend for the renderer to use
+    pub backend: Option<Backend>,
 }
 
 /// Multi-sampling setting. Can be either disabled (1 sample per
 /// pixel), or 4/8/16 samples per pixel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Msaa {
     Disabled,
     X4,
@@ -50,6 +55,32 @@ impl Msaa {
     }
 }
 
+/// Whether the renderer should wait for the flip when submitting the
+/// render pass to the backbuffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PresentMode {
+    NoVsync,
+    Vsync,
+}
+
+/// The rendering backend used by `wgpu-rs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    Vulkan,
+    D3d12,
+    Metal,
+}
+
+impl fmt::Display for Backend {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Backend::Vulkan => write!(f, "Vulkan"),
+            Backend::D3d12 => write!(f, "D3D12"),
+            Backend::Metal => write!(f, "Metal"),
+        }
+    }
+}
+
 /// High level renderer abstraction over wgpu-rs.
 ///
 /// Handles GPU resources (swap chain, msaa buffer, depth buffer) and
@@ -63,6 +94,7 @@ impl Msaa {
 /// them.
 pub struct Renderer {
     device: wgpu::Device,
+    queue: wgpu::Queue,
     surface: wgpu::Surface,
     swap_chain: wgpu::SwapChain,
     msaa_texture_view: Option<wgpu::TextureView>,
@@ -74,31 +106,38 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(
-        instance: &wgpu::Instance,
-        window: &winit::Window,
+        window: &winit::window::Window,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
         imgui_font_atlas: imgui::FontAtlasRefMut,
         options: RendererOptions,
     ) -> Self {
-        let surface = instance.create_surface(window);
-        let adapter = instance.get_adapter(&wgpu::AdapterDescriptor {
+        let backends = match options.backend {
+            // FIXME: Vulkan on macOS does not actually work, the cargo feature does not enable it
+            Some(Backend::Vulkan) => wgpu::BackendBit::VULKAN,
+            Some(Backend::D3d12) => wgpu::BackendBit::DX12,
+            Some(Backend::Metal) => wgpu::BackendBit::METAL,
+            None => wgpu::BackendBit::PRIMARY,
+        };
+
+        let surface = wgpu::Surface::create(window);
+        let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
-        });
-        let mut device = adapter.request_device(&wgpu::DeviceDescriptor {
+            backends,
+        })
+        .expect("Failed to acquire GPU adapter");
+
+        let (device, mut queue) = adapter.request_device(&wgpu::DeviceDescriptor {
             extensions: wgpu::Extensions {
                 anisotropic_filtering: false,
             },
             limits: wgpu::Limits::default(),
         });
 
-        let window_size = window
-            .get_inner_size()
-            .expect("Failed to get window inner size")
-            .to_physical(window.get_hidpi_factor());
+        let window_size = window.inner_size().to_physical(window.hidpi_factor());
         let (width, height) = (window_size.width as u32, window_size.height as u32);
 
-        let swap_chain = create_swap_chain(&device, &surface, width, height);
+        let swap_chain = create_swap_chain(&device, &surface, width, height, options.present_mode);
         let msaa_texture = if options.msaa.enabled() {
             Some(create_msaa_texture(
                 &device,
@@ -113,7 +152,8 @@ impl Renderer {
             create_depth_texture(&device, width, height, options.msaa.sample_count());
 
         let scene_renderer = SceneRenderer::new(
-            &mut device,
+            &device,
+            &mut queue,
             projection_matrix,
             view_matrix,
             SceneRendererOptions {
@@ -125,7 +165,8 @@ impl Renderer {
 
         let imgui_renderer = ImguiRenderer::new(
             imgui_font_atlas,
-            &mut device,
+            &device,
+            &mut queue,
             ImguiRendererOptions {
                 sample_count: options.msaa.sample_count(),
                 output_color_attachment_format: SWAP_CHAIN_FORMAT,
@@ -135,6 +176,7 @@ impl Renderer {
 
         Self {
             device,
+            queue,
             surface,
             swap_chain,
             msaa_texture_view: msaa_texture.map(|texture| texture.create_default_view()),
@@ -151,8 +193,12 @@ impl Renderer {
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
     ) {
-        self.scene_renderer
-            .set_camera_matrices(&mut self.device, projection_matrix, view_matrix);
+        self.scene_renderer.set_camera_matrices(
+            &self.device,
+            &mut self.queue,
+            projection_matrix,
+            view_matrix,
+        );
     }
 
     /// Update window size. Recreate swap chain and all render target
@@ -163,7 +209,13 @@ impl Renderer {
             window_size.height.round() as u32,
         );
 
-        self.swap_chain = create_swap_chain(&self.device, &self.surface, width, height);
+        self.swap_chain = create_swap_chain(
+            &self.device,
+            &self.surface,
+            width,
+            height,
+            self.options.present_mode,
+        );
 
         if self.options.msaa.enabled() {
             let msaa_texture = create_msaa_texture(
@@ -208,8 +260,13 @@ impl Renderer {
         height: u32,
         data: &[u8],
     ) -> imgui::TextureId {
-        self.imgui_renderer
-            .add_texture_rgba8_unorm(&mut self.device, width, height, data)
+        self.imgui_renderer.add_texture_rgba8_unorm(
+            &self.device,
+            &mut self.queue,
+            width,
+            height,
+            data,
+        )
     }
 
     /// Remove texture from the GPU.
@@ -227,7 +284,8 @@ impl Renderer {
         RenderPass {
             color_needs_clearing: true,
             depth_needs_clearing: true,
-            device: &mut self.device,
+            device: &self.device,
+            queue: &mut self.queue,
             frame,
             encoder: Some(encoder),
             msaa_attachment: self.msaa_texture_view.as_ref(),
@@ -243,7 +301,8 @@ impl Renderer {
 pub struct RenderPass<'a> {
     color_needs_clearing: bool,
     depth_needs_clearing: bool,
-    device: &'a mut wgpu::Device,
+    device: &'a wgpu::Device,
+    queue: &'a mut wgpu::Queue,
     frame: wgpu::SwapChainOutput<'a>,
     encoder: Option<wgpu::CommandEncoder>,
     msaa_attachment: Option<&'a wgpu::TextureView>,
@@ -302,7 +361,7 @@ impl RenderPass<'_> {
     /// Submit the built command buffer for drawing.
     pub fn submit(mut self) {
         let encoder = self.encoder.take().expect("Can't finish rendering twice");
-        self.device.get_queue().submit(&[encoder.finish()]);
+        self.queue.submit(&[encoder.finish()]);
     }
 }
 
@@ -320,6 +379,7 @@ fn create_swap_chain(
     surface: &wgpu::Surface,
     width: u32,
     height: u32,
+    present_mode: PresentMode,
 ) -> wgpu::SwapChain {
     device.create_swap_chain(
         &surface,
@@ -328,7 +388,10 @@ fn create_swap_chain(
             format: SWAP_CHAIN_FORMAT,
             width,
             height,
-            present_mode: wgpu::PresentMode::Vsync,
+            present_mode: match present_mode {
+                PresentMode::NoVsync => wgpu::PresentMode::NoVsync,
+                PresentMode::Vsync => wgpu::PresentMode::Vsync,
+            },
         },
     )
 }
