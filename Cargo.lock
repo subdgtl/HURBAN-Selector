@@ -466,7 +466,7 @@ dependencies = [
  "png 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "shaderc 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tinyfiledialogs 3.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "tobj 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tobj 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "wgpu 0.3.0 (git+https://github.com/gfx-rs/wgpu-rs?rev=79b5342ee2972b219e1ba08173b4d6c88b191344)",
 ]
 
@@ -1212,8 +1212,11 @@ dependencies = [
 
 [[package]]
 name = "tobj"
-version = "0.1.8"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "typenum"
@@ -1643,7 +1646,7 @@ dependencies = [
 "checksum termcolor 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "96d6098003bde162e4277c70665bd87c326f5a0c3f3fbfb285787fa482d54e6e"
 "checksum thread_local 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)" = "c6b53e329000edc2b34dbe8545fd20e55a333362d0a321909685a19bd28c3f1b"
 "checksum tinyfiledialogs 3.3.5 (registry+https://github.com/rust-lang/crates.io-index)" = "d79833ca2c493c726ea6a7b651ba0ff8a790add5156cd11bf3743f346005c0c8"
-"checksum tobj 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)" = "504158281d725d0c99e4c4a4cebbe28619be9fad6bd6d1a3483a62a4de400459"
+"checksum tobj 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)" = "a3608198b5c2a119a5f05ae5d58a4b0f77ec5687a698efe574d95939605993cd"
 "checksum typenum 1.10.0 (registry+https://github.com/rust-lang/crates.io-index)" = "612d636f949607bdf9b123b4a6f6d966dedf3ff669f7f045890d3a4a73948169"
 "checksum ucd-util 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "fa9b3b49edd3468c0e6565d85783f51af95212b6fa3986a5500954f00b460874"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
