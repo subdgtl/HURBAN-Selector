@@ -28,16 +28,20 @@ variable.
 
 `RTY_GPU_BACKEND=<GPU-BACKEND> cargo run `, where `<GPU-BACKEND>` is one of:
 
-- `vulkan` on Windows, Linux, or (FIXME) macOS with VulkanSDK/MoltenVK,
+- `vulkan` on Windows, Linux, or macOS with VulkanSDK,
 - `d3d12` on Windows,
 - `metal` on macOS.
 
-If working on the renderer (on a platform supporting Vulkan), enabling
-the Vulkan validation layers is useful for having additional
-validation:
+If working on the renderer, enabling Vulkan validation layers is
+useful for additional validation:
 
 ``` shell
 VK_LAYER_PATH=/path/to/VulkanSDK/version/Bin \
 VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_VALIDATION \
 cargo run
 ```
+
+To run with Vulkan backend on macOS, you need to setup the VulkanSDK
+(see macOS guide in [ash](https://crates.io/crates/ash)), and possibly
+[disable
+SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection-mac-os-x/)

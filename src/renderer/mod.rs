@@ -113,7 +113,6 @@ impl Renderer {
         options: RendererOptions,
     ) -> Self {
         let backends = match options.backend {
-            // FIXME: Vulkan on macOS does not actually work, the cargo feature does not enable it
             Some(Backend::Vulkan) => wgpu::BackendBit::VULKAN,
             Some(Backend::D3d12) => wgpu::BackendBit::DX12,
             Some(Backend::Metal) => wgpu::BackendBit::METAL,
