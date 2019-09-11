@@ -6,8 +6,8 @@ const OPENSANS_LIGHT_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Light.
 
 pub struct FontIds {
     _regular: imgui::FontId,
-    light: imgui::FontId,
-    bold: imgui::FontId,
+    _light: imgui::FontId,
+    _bold: imgui::FontId,
 }
 
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
@@ -63,8 +63,8 @@ impl Ui {
             imgui_winit_platform: platform,
             font_ids: FontIds {
                 _regular: regular_font_id,
-                bold: bold_font_id,
-                light: light_font_id,
+                _bold: bold_font_id,
+                _light: light_font_id,
             },
         }
     }
@@ -104,7 +104,7 @@ impl Ui {
 pub struct UiFrame<'a> {
     imgui_winit_platform: &'a WinitPlatform,
     imgui_ui: imgui::Ui<'a>,
-    font_ids: &'a FontIds,
+    _font_ids: &'a FontIds,
 }
 
 impl<'a> UiFrame<'a> {
@@ -116,7 +116,7 @@ impl<'a> UiFrame<'a> {
         UiFrame {
             imgui_winit_platform,
             imgui_ui: imgui_context.frame(),
-            font_ids,
+            _font_ids: font_ids,
         }
     }
 
@@ -143,108 +143,4 @@ impl<'a> UiFrame<'a> {
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
             });
     }
-
-    /// Draws window with list of model filenames. If any of them is clicked, the
-    /// filename is returned for further processing.
-    pub fn draw_model_window(
-        &self,
-        filenames: &[String],
-        selected_filename: &str,
-        loading_progress: f32,
-    ) -> Option<String> {
-        let ui = &self.imgui_ui;
-        let window_style_token = ui.push_style_vars(&[
-            imgui::StyleVar::WindowRounding(0.0),
-            imgui::StyleVar::ScrollbarRounding(0.0),
-            imgui::StyleVar::FramePadding([20.0, 15.0]),
-            imgui::StyleVar::ButtonTextAlign([-1.0, 0.5]),
-        ]);
-        let regular_font_token = ui.push_font(self.font_ids.bold);
-        let default_color_token = self.imgui_ui.push_style_colors(&[
-            (
-                imgui::StyleColor::WindowBg,
-                int_to_float_color(87, 90, 28, 128),
-            ),
-            (
-                imgui::StyleColor::TitleBg,
-                int_to_float_color(25, 75, 113, 255),
-            ),
-            (
-                imgui::StyleColor::Button,
-                int_to_float_color(99, 129, 79, 255),
-            ),
-        ]);
-
-        let mut clicked_button = None;
-
-        let window_width = 350.0;
-        let window_height = self.imgui_ui.io().display_size[1] - 100.0;
-
-        imgui::Window::new(imgui::im_str!("H.U.R.B.A.N. Selector"))
-            .position([50.0, 50.0], imgui::Condition::Always)
-            .size([window_width, window_height], imgui::Condition::Always)
-            .movable(false)
-            .resizable(false)
-            .collapsible(false)
-            .build(ui, || {
-                let inner_width = window_width - 20.0;
-                let light_font_token = ui.push_font(self.font_ids.light);
-
-                imgui::ChildWindow::new(imgui::im_str!("progress bar"))
-                    .size([inner_width, 40.0])
-                    .build(ui, || {
-                        let progress_bar_text_color_token = ui.push_style_color(
-                            imgui::StyleColor::Text,
-                            int_to_float_color(0, 0, 0, 255),
-                        );
-
-                        imgui::ProgressBar::new(loading_progress)
-                            .size([inner_width, 30.0])
-                            .overlay_text(imgui::im_str!(""))
-                            .build(ui);
-
-                        progress_bar_text_color_token.pop(ui);
-                    });
-
-                imgui::ChildWindow::new(imgui::im_str!("model list"))
-                    .size([inner_width, window_height - 115.0])
-                    .build(ui, || {
-                        for filename in filenames {
-                            if selected_filename == filename {
-                                let selected_button_color_token =
-                                    self.imgui_ui.push_style_colors(&[
-                                        (
-                                            imgui::StyleColor::Button,
-                                            int_to_float_color(232, 210, 20, 255),
-                                        ),
-                                        (imgui::StyleColor::Text, int_to_float_color(0, 0, 0, 255)),
-                                    ]);
-
-                                selected_button_color_token.pop(ui);
-                            }
-
-                            if ui.button(&imgui::im_str!("{}", filename), [inner_width, 60.0]) {
-                                clicked_button = Some(filename.clone());
-                            }
-                        }
-                    });
-
-                light_font_token.pop(ui);
-            });
-
-        default_color_token.pop(ui);
-        regular_font_token.pop(ui);
-        window_style_token.pop(ui);
-
-        clicked_button
-    }
-}
-
-fn int_to_float_color(r: u8, g: u8, b: u8, a: u8) -> [f32; 4] {
-    [
-        f32::from(r) / 255.0,
-        f32::from(g) / 255.0,
-        f32::from(b) / 255.0,
-        f32::from(a) / 255.0,
-    ]
 }
