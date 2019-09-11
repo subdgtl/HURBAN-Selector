@@ -17,14 +17,15 @@ pub fn wgpu_size_of<T>() -> wgpu::BufferAddress {
 }
 
 pub fn upload_texture_rgba8_unorm(
-    device: &mut wgpu::Device,
+    device: &wgpu::Device,
+    queue: &mut wgpu::Queue,
     texture: &wgpu::Texture,
     width: u32,
     height: u32,
     data: &[u8],
 ) {
     let buffer = device
-        .create_buffer_mapped(data.len(), wgpu::BufferUsage::TRANSFER_SRC)
+        .create_buffer_mapped(data.len(), wgpu::BufferUsage::COPY_SRC)
         .fill_from_slice(data);
 
     let byte_count = cast_u32(data.len());
@@ -55,5 +56,5 @@ pub fn upload_texture_rgba8_unorm(
         },
     );
 
-    device.get_queue().submit(&[encoder.finish()]);
+    queue.submit(&[encoder.finish()]);
 }

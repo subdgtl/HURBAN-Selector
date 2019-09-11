@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 use std::f32;
 
 use nalgebra::{Matrix4, Point3, Rotation3, Vector3};
-use wgpu::winit;
 
 use crate::math::clamp;
 

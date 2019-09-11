@@ -6,14 +6,15 @@ use std::fs;
 use std::time::{Duration, Instant};
 
 use nalgebra::geometry::Point3;
-use wgpu::winit;
 
 use hurban_selector::camera::{Camera, CameraOptions};
 use hurban_selector::geometry;
 use hurban_selector::importer::ImporterWorker;
 use hurban_selector::input::InputManager;
 use hurban_selector::math;
-use hurban_selector::renderer::{Msaa, Renderer, RendererOptions, SceneRendererGeometry};
+use hurban_selector::renderer::{
+    Backend, Msaa, PresentMode, Renderer, RendererOptions, SceneRendererGeometry,
+};
 use hurban_selector::ui::Ui;
 
 const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
@@ -21,9 +22,9 @@ const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 fn main() {
     env_logger::init();
 
-    let mut event_loop = winit::EventsLoop::new();
-    // let monitor_id = event_loop.get_primary_monitor();
-    let window = winit::WindowBuilder::new()
+    let event_loop = winit::event_loop::EventLoop::new();
+    // let monitor_id = event_loop.primary_monitor();
+    let window = winit::window::WindowBuilder::new()
         .with_title("H.U.R.B.A.N. Selector")
         // .with_fullscreen(Some(monitor_id))
         // .with_maximized(true)
@@ -31,12 +32,7 @@ fn main() {
         .build(&event_loop)
         .expect("Failed to create window");
 
-    let window_size = window
-        .get_inner_size()
-        .expect("Failed to get window inner size")
-        .to_physical(window.get_hidpi_factor());
-
-    let wgpu_instance = wgpu::Instance::new();
+    let window_size = window.inner_size().to_physical(window.hidpi_factor());
 
     let mut input_manager = InputManager::new();
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
@@ -62,8 +58,22 @@ fn main() {
 
     let mut ui = Ui::new(&window);
 
+    let gpu_backend = env::var("RTY_GPU_BACKEND")
+        .ok()
+        .map(|backend| match backend.as_str() {
+            "vulkan" => Backend::Vulkan,
+            "d3d12" => Backend::D3d12,
+            "metal" => Backend::Metal,
+            _ => panic!("Unknown gpu backend requested"),
+        });
+
+    if let Some(backend) = gpu_backend {
+        log::info!("Selected {} GPU backend", backend);
+    } else {
+        log::info!("No GPU backend selected, will run on default backend");
+    }
+
     let mut renderer = Renderer::new(
-        &wgpu_instance,
         &window,
         &camera.projection_matrix(),
         &camera.view_matrix(),
@@ -75,6 +85,8 @@ fn main() {
             // should have a chain of options the renderer tries
             // before giving up.
             msaa: Msaa::X4,
+            present_mode: PresentMode::Vsync,
+            backend: gpu_backend,
         },
     );
 
@@ -98,9 +110,6 @@ fn main() {
             .expect("Failed to add geometry to renderer");
         scene_renderer_geometry_ids.push(renderer_geometry_id);
     }
-
-    let time_start = Instant::now();
-    let mut time = time_start;
 
     // Temporary model list
 
@@ -139,187 +148,200 @@ fn main() {
 
     let importer_worker = ImporterWorker::new();
 
+    let time_start = Instant::now();
+    let mut time = time_start;
+
     let mut is_importing = false;
     let mut import_progress = 1.0;
     let mut selected_model = String::from("");
-
     let mut camera_interpolation: Option<CameraInterpolation> = None;
 
-    let mut running = true;
+    // Since input manager needs to process events separately after imgui
+    // handles them, this buffer with copies of events is needed.
+    let mut input_events: Vec<winit::event::Event<_>> = Vec::new();
 
-    while running {
-        let (duration_last_frame, _duration_running) = {
-            let now = Instant::now();
-            let duration_last_frame = now.duration_since(time);
-            let duration_running = now.duration_since(time_start);
-            time = now;
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = winit::event_loop::ControlFlow::Poll;
 
-            (duration_last_frame, duration_running)
-        };
+        match event {
+            winit::event::Event::EventsCleared => {
+                let (duration_last_frame, _duration_running) = {
+                    let now = Instant::now();
+                    let duration_last_frame = now.duration_since(time);
+                    let duration_running = now.duration_since(time_start);
+                    time = now;
 
-        let duration_last_frame_s = duration_as_secs_f32(duration_last_frame);
-        ui.set_delta_time(duration_last_frame_s);
+                    (duration_last_frame, duration_running)
+                };
 
-        import_progress = if !is_importing {
-            1.0
-        } else {
-            math::decay(import_progress, 1.0, 0.5, duration_last_frame_s)
-        };
+                // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
+                let duration_last_frame_s = duration_last_frame.as_secs() as f32
+                    + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
 
-        // Since input manager needs to process events separately after imgui
-        // handles them, this buffer with copies of events is needed.
-        let mut input_events = vec![];
+                ui.set_delta_time(duration_last_frame_s);
 
-        event_loop.poll_events(|event| {
-            input_events.push(event.clone());
-            ui.handle_event(&event);
-        });
+                import_progress = if !is_importing {
+                    1.0
+                } else {
+                    math::decay(import_progress, 1.0, 0.5, duration_last_frame_s)
+                };
 
-        // Start UI and input manger frames
-        let ui_frame = ui.prepare_frame();
+                let ui_frame = ui.prepare_frame(&window);
+                input_manager.start_frame();
 
-        input_manager.start_frame();
-
-        // Imgui's IO is updated after current frame starts, else it'd contain
-        // outdated values.
-        let ui_captured_keyboard = ui_frame.want_capture_keyboard();
-        let ui_captured_mouse = ui_frame.want_capture_mouse();
-
-        for event in input_events {
-            input_manager.process_event(event, ui_captured_keyboard, ui_captured_mouse);
-        }
-
-        let input_state = input_manager.input_state();
-
-        let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
-        let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
-        let [rotate_x, rotate_y] = input_state.camera_rotate;
-
-        camera.pan_ground(pan_ground_x, pan_ground_y);
-        camera.pan_screen(pan_screen_x, pan_screen_y);
-        camera.rotate(rotate_x, rotate_y);
-        camera.zoom(input_state.camera_zoom);
-        camera.zoom_step(input_state.camera_zoom_steps);
-
-        if input_state.camera_reset_viewport {
-            camera_interpolation = Some(CameraInterpolation::new(&camera, &scene_geometries, time));
-        }
-
-        #[cfg(debug_assertions)]
-        {
-            if input_state.import_requested {
-                if let Some(path) = tinyfiledialogs::open_file_dialog(
-                    "Open",
-                    "",
-                    Some((&["*.obj"], "Wavefront (.obj)")),
-                ) {
-                    importer_worker.import_obj(&path);
-
-                    is_importing = true;
-                    import_progress = 0.0;
+                for event in input_events.drain(..) {
+                    input_manager.process_event(
+                        &event,
+                        ui_frame.want_capture_keyboard(),
+                        ui_frame.want_capture_mouse(),
+                    );
                 }
-            }
-        }
 
-        if let Some(parsed_models) = importer_worker.parsed_obj() {
-            is_importing = false;
-            import_progress = 1.0;
+                let input_state = input_manager.input_state();
 
-            match parsed_models {
-                Ok(models) => {
-                    // Clear existing scene first...
-                    scene_geometries.clear();
-                    for geometry in scene_renderer_geometry_ids.drain(..) {
-                        renderer.remove_scene_geometry(geometry);
+                let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
+                let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
+                let [rotate_x, rotate_y] = input_state.camera_rotate;
+
+                camera.pan_ground(pan_ground_x, pan_ground_y);
+                camera.pan_screen(pan_screen_x, pan_screen_y);
+                camera.rotate(rotate_x, rotate_y);
+                camera.zoom(input_state.camera_zoom);
+                camera.zoom_step(input_state.camera_zoom_steps);
+
+                if input_state.camera_reset_viewport {
+                    camera_interpolation =
+                        Some(CameraInterpolation::new(&camera, &scene_geometries, time));
+                }
+
+                #[cfg(debug_assertions)]
+                {
+                    if input_state.import_requested {
+                        if let Some(path) = tinyfiledialogs::open_file_dialog(
+                            "Open",
+                            "",
+                            Some((&["*.obj"], "Wavefront (.obj)")),
+                        ) {
+                            importer_worker.import_obj(&path);
+
+                            is_importing = true;
+                            import_progress = 0.0;
+                        }
                     }
+                }
 
-                    // ... and add everything we found to it
-                    for model in models {
-                        let geometry = model.geometry;
-                        let renderer_geometry = SceneRendererGeometry::from_geometry(&geometry);
-                        let renderer_geometry_id = renderer
-                            .add_scene_geometry(&renderer_geometry)
-                            .expect("Failed to add geometry to renderer");
+                if let Some(parsed_models) = importer_worker.parsed_obj() {
+                    is_importing = false;
+                    import_progress = 1.0;
 
-                        scene_geometries.push(geometry);
-                        scene_renderer_geometry_ids.push(renderer_geometry_id);
+                    match parsed_models {
+                        Ok(models) => {
+                            // Clear existing scene first...
+                            scene_geometries.clear();
+                            for geometry in scene_renderer_geometry_ids.drain(..) {
+                                renderer.remove_scene_geometry(geometry);
+                            }
+
+                            // ... and add everything we found to it
+                            for model in models {
+                                let geometry = model.geometry;
+                                let renderer_geometry =
+                                    SceneRendererGeometry::from_geometry(&geometry);
+                                let renderer_geometry_id = renderer
+                                    .add_scene_geometry(&renderer_geometry)
+                                    .expect("Failed to add geometry to renderer");
+
+                                scene_geometries.push(geometry);
+                                scene_renderer_geometry_ids.push(renderer_geometry_id);
+                            }
+                        }
+                        Err(err) => {
+                            tinyfiledialogs::message_box_ok(
+                                "Error",
+                                &format!("{}", err),
+                                tinyfiledialogs::MessageBoxIcon::Error,
+                            );
+                        }
                     }
 
                     camera_interpolation =
                         Some(CameraInterpolation::new(&camera, &scene_geometries, time));
                 }
-                Err(err) => {
-                    tinyfiledialogs::message_box_ok(
-                        "Error",
-                        &format!("{}", err),
-                        tinyfiledialogs::MessageBoxIcon::Error,
-                    );
+
+                if input_state.close_requested {
+                    *control_flow = winit::event_loop::ControlFlow::Exit;
                 }
+
+                if let Some(logical_size) = input_state.window_resized {
+                    let physical_size = logical_size.to_physical(window.hidpi_factor());
+                    log::debug!(
+                        "Window resized to new size: logical [{},{}], physical [{},{}]",
+                        logical_size.width,
+                        logical_size.height,
+                        physical_size.width,
+                        physical_size.height,
+                    );
+
+                    camera.set_window_size(physical_size);
+                    renderer.set_window_size(physical_size);
+                }
+
+                if let Some(interp) = camera_interpolation {
+                    if interp.target_time > time {
+                        let (sphere_origin, sphere_radius) = interp.update(time, &cubic_bezier);
+                        camera.zoom_to_fit_visible_sphere(sphere_origin, sphere_radius);
+                    } else {
+                        camera
+                            .zoom_to_fit_visible_sphere(interp.target_origin, interp.target_radius);
+                        camera_interpolation = None;
+                    }
+                }
+
+                // Camera matrices have to be uploaded when either window
+                // resizes or the camera moves. We do it every frame for
+                // simplicity.
+                renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
+
+                #[cfg(debug_assertions)]
+                ui_frame.draw_fps_window();
+
+                // Clicking any of the models in the list means clearing everything out
+                // of the scene, importing given model and pushing it into scene.
+                if let Some(clicked_model) =
+                    ui_frame.draw_model_window(&obj_filenames, &selected_model, import_progress)
+                {
+                    let clicked_model_path: &str = &obj_file_paths[&clicked_model];
+                    importer_worker.import_obj(&clicked_model_path);
+
+                    selected_model = clicked_model;
+                    is_importing = true;
+                    import_progress = 0.0;
+                }
+
+                let imgui_draw_data = ui_frame.render(&window);
+
+                let mut render_pass = renderer.begin_render_pass();
+
+                render_pass.draw_geometry(&scene_renderer_geometry_ids[..]);
+                render_pass.draw_ui(&imgui_draw_data);
+
+                render_pass.submit();
             }
-        }
-
-        if input_state.close_requested {
-            running = false;
-        }
-
-        if let Some(logical_size) = input_state.window_resized {
-            let physical_size = logical_size.to_physical(window.get_hidpi_factor());
-            log::debug!(
-                "Window resized to new size: logical [{},{}], physical [{},{}]",
-                logical_size.width,
-                logical_size.height,
-                physical_size.width,
-                physical_size.height,
-            );
-
-            camera.set_window_size(physical_size);
-            renderer.set_window_size(physical_size);
-        }
-
-        if let Some(interp) = camera_interpolation {
-            if interp.target_time > time {
-                let (sphere_origin, sphere_radius) = interp.update(time, &cubic_bezier);
-                camera.zoom_to_fit_visible_sphere(sphere_origin, sphere_radius);
-            } else {
-                camera.zoom_to_fit_visible_sphere(interp.target_origin, interp.target_radius);
-                camera_interpolation = None;
+            winit::event::Event::WindowEvent {
+                event: winit::event::WindowEvent::RedrawRequested,
+                ..
+            } => {
+                // V-SYNC makes it challenging to answer redraw
+                // requests. Instead we do rendering after processing
+                // piled up events.
             }
+            winit::event::Event::WindowEvent { .. } => {
+                ui.handle_event(&window, &event);
+                input_events.push(event.clone());
+            }
+            _ => (),
         }
-
-        // Camera matrices have to be uploaded when either window
-        // resizes or the camera moves. We do it every frame for
-        // simplicity.
-        renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
-
-        #[cfg(debug_assertions)]
-        ui_frame.draw_fps_window();
-
-        // Clicking any of the models in the list means clearing everything out
-        // of the scene, importing given model and pushing it into scene.
-        if let Some(clicked_model) =
-            ui_frame.draw_model_window(&obj_filenames, &selected_model, import_progress)
-        {
-            let clicked_model_path: &str = &obj_file_paths[&clicked_model];
-            importer_worker.import_obj(&clicked_model_path);
-
-            selected_model = clicked_model;
-            is_importing = true;
-            import_progress = 0.0;
-        }
-
-        let imgui_draw_data = ui_frame.render();
-
-        let mut render_pass = renderer.begin_render_pass();
-
-        render_pass.draw_geometry(&scene_renderer_geometry_ids[..]);
-        render_pass.draw_ui(&imgui_draw_data);
-
-        render_pass.submit();
-    }
-
-    for renderer_geometry_id in scene_renderer_geometry_ids {
-        renderer.remove_scene_geometry(renderer_geometry_id);
-    }
+    });
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -1,7 +1,5 @@
 use std::cmp::Ordering;
 
-use wgpu::winit;
-
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct InputState {
     pub camera_pan_ground: [f32; 2],
@@ -45,27 +43,27 @@ impl InputManager {
         self.input_state = InputState::default();
     }
 
-    pub fn process_event(
+    pub fn process_event<T>(
         &mut self,
-        ev: winit::Event,
+        event: &winit::event::Event<T>,
         ui_captured_keyboard: bool,
         ui_captured_mouse: bool,
     ) {
-        const MODIFIERS_NONE: winit::ModifiersState = winit::ModifiersState {
+        const MODIFIERS_NONE: winit::event::ModifiersState = winit::event::ModifiersState {
             logo: false,
             shift: false,
             ctrl: false,
             alt: false,
         };
 
-        if let winit::Event::WindowEvent { event, .. } = ev {
+        if let winit::event::Event::WindowEvent { event, .. } = event {
             match event {
-                winit::WindowEvent::CloseRequested => {
+                winit::event::WindowEvent::CloseRequested => {
                     self.input_state.close_requested = true;
                 }
 
-                winit::WindowEvent::KeyboardInput { input, .. } => {
-                    let winit::KeyboardInput {
+                winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                    let winit::event::KeyboardInput {
                         virtual_keycode,
                         state,
                         modifiers,
@@ -77,9 +75,9 @@ impl InputManager {
                         // Cmd+Q for macOS
                         #[cfg(target_os = "macos")]
                         (
-                            Some(winit::VirtualKeyCode::Q),
-                            winit::ElementState::Pressed,
-                            winit::ModifiersState {
+                            Some(winit::event::VirtualKeyCode::Q),
+                            winit::event::ElementState::Pressed,
+                            winit::event::ModifiersState {
                                 logo: true,
                                 shift: false,
                                 ctrl: false,
@@ -88,16 +86,32 @@ impl InputManager {
                         ) => {
                             self.input_state.close_requested = true;
                         }
-                        (Some(winit::VirtualKeyCode::LShift), winit::ElementState::Pressed, _) => {
+                        (
+                            Some(winit::event::VirtualKeyCode::LShift),
+                            winit::event::ElementState::Pressed,
+                            _,
+                        ) => {
                             self.shift_down = true;
                         }
-                        (Some(winit::VirtualKeyCode::LShift), winit::ElementState::Released, _) => {
+                        (
+                            Some(winit::event::VirtualKeyCode::LShift),
+                            winit::event::ElementState::Released,
+                            _,
+                        ) => {
                             self.shift_down = false;
                         }
-                        (Some(winit::VirtualKeyCode::RShift), winit::ElementState::Pressed, _) => {
+                        (
+                            Some(winit::event::VirtualKeyCode::RShift),
+                            winit::event::ElementState::Pressed,
+                            _,
+                        ) => {
                             self.shift_down = true;
                         }
-                        (Some(winit::VirtualKeyCode::RShift), winit::ElementState::Released, _) => {
+                        (
+                            Some(winit::event::VirtualKeyCode::RShift),
+                            winit::event::ElementState::Released,
+                            _,
+                        ) => {
                             self.shift_down = false;
                         }
                         _ => (),
@@ -107,16 +121,16 @@ impl InputManager {
                     if !ui_captured_keyboard {
                         match (virtual_keycode, state, modifiers) {
                             (
-                                Some(winit::VirtualKeyCode::A),
-                                winit::ElementState::Pressed,
-                                MODIFIERS_NONE,
+                                Some(winit::event::VirtualKeyCode::A),
+                                winit::event::ElementState::Pressed,
+                                &MODIFIERS_NONE,
                             ) => {
                                 self.input_state.camera_reset_viewport = true;
                             }
                             (
-                                Some(winit::VirtualKeyCode::O),
-                                winit::ElementState::Pressed,
-                                MODIFIERS_NONE,
+                                Some(winit::event::VirtualKeyCode::O),
+                                winit::event::ElementState::Pressed,
+                                &MODIFIERS_NONE,
                             ) => {
                                 self.input_state.import_requested = true;
                             }
@@ -125,23 +139,28 @@ impl InputManager {
                     }
                 }
 
-                winit::WindowEvent::MouseInput { state, button, .. } => match (state, button) {
-                    (winit::ElementState::Pressed, winit::MouseButton::Left) => {
-                        self.lmb_down = true;
+                winit::event::WindowEvent::MouseInput { state, button, .. } => {
+                    match (state, button) {
+                        (winit::event::ElementState::Pressed, winit::event::MouseButton::Left) => {
+                            self.lmb_down = true;
+                        }
+                        (winit::event::ElementState::Released, winit::event::MouseButton::Left) => {
+                            self.lmb_down = false;
+                        }
+                        (winit::event::ElementState::Pressed, winit::event::MouseButton::Right) => {
+                            self.rmb_down = true;
+                        }
+                        (
+                            winit::event::ElementState::Released,
+                            winit::event::MouseButton::Right,
+                        ) => {
+                            self.rmb_down = false;
+                        }
+                        (_, _) => (),
                     }
-                    (winit::ElementState::Released, winit::MouseButton::Left) => {
-                        self.lmb_down = false;
-                    }
-                    (winit::ElementState::Pressed, winit::MouseButton::Right) => {
-                        self.rmb_down = true;
-                    }
-                    (winit::ElementState::Released, winit::MouseButton::Right) => {
-                        self.rmb_down = false;
-                    }
-                    (_, _) => (),
-                },
+                }
 
-                winit::WindowEvent::CursorMoved { position, .. } => {
+                winit::event::WindowEvent::CursorMoved { position, .. } => {
                     if !ui_captured_mouse {
                         let x = position.x;
                         let y = position.y;
@@ -170,9 +189,10 @@ impl InputManager {
                     }
                 }
 
-                winit::WindowEvent::MouseWheel { delta, .. } => match delta {
-                    winit::MouseScrollDelta::PixelDelta(winit::dpi::LogicalPosition {
-                        y, ..
+                winit::event::WindowEvent::MouseWheel { delta, .. } => match delta {
+                    winit::event::MouseScrollDelta::PixelDelta(winit::dpi::LogicalPosition {
+                        y,
+                        ..
                     }) => {
                         if !ui_captured_mouse {
                             match y.partial_cmp(&0.0) {
@@ -183,7 +203,7 @@ impl InputManager {
                         }
                     }
 
-                    winit::MouseScrollDelta::LineDelta(_, y) => {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => {
                         if !ui_captured_mouse {
                             match y.partial_cmp(&0.0) {
                                 Some(Ordering::Greater) => self.input_state.camera_zoom_steps += 1,
@@ -194,10 +214,10 @@ impl InputManager {
                     }
                 },
 
-                winit::WindowEvent::Resized(logical_size) => {
+                winit::event::WindowEvent::Resized(logical_size) => {
                     // Even if the window resized multiple times, only
                     // take the last one into account.
-                    self.input_state.window_resized = Some(logical_size);
+                    self.input_state.window_resized = Some(*logical_size);
                 }
 
                 _ => (),
