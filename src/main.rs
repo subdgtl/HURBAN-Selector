@@ -27,8 +27,6 @@ fn main() {
     let window = winit::window::WindowBuilder::new()
         .with_title("H.U.R.B.A.N. Selector")
         // .with_fullscreen(Some(monitor_id))
-        // .with_maximized(true)
-        // .with_multitouch()
         .build(&event_loop)
         .expect("Failed to create window");
 
@@ -151,9 +149,6 @@ fn main() {
     let time_start = Instant::now();
     let mut time = time_start;
 
-    let mut is_importing = false;
-    let mut import_progress = 1.0;
-    let mut selected_model = String::from("");
     let mut camera_interpolation: Option<CameraInterpolation> = None;
 
     // Since input manager needs to process events separately after imgui
@@ -179,12 +174,6 @@ fn main() {
                     + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
 
                 ui.set_delta_time(duration_last_frame_s);
-
-                import_progress = if !is_importing {
-                    1.0
-                } else {
-                    math::decay(import_progress, 1.0, 0.5, duration_last_frame_s)
-                };
 
                 let ui_frame = ui.prepare_frame(&window);
                 input_manager.start_frame();
@@ -214,26 +203,17 @@ fn main() {
                         Some(CameraInterpolation::new(&camera, &scene_geometries, time));
                 }
 
-                #[cfg(debug_assertions)]
-                {
-                    if input_state.import_requested {
-                        if let Some(path) = tinyfiledialogs::open_file_dialog(
-                            "Open",
-                            "",
-                            Some((&["*.obj"], "Wavefront (.obj)")),
-                        ) {
-                            importer_worker.import_obj(&path);
-
-                            is_importing = true;
-                            import_progress = 0.0;
-                        }
+                if input_state.import_requested {
+                    if let Some(path) = tinyfiledialogs::open_file_dialog(
+                        "Open",
+                        "",
+                        Some((&["*.obj"], "Wavefront (.obj)")),
+                    ) {
+                        importer_worker.import_obj(&path);
                     }
                 }
 
                 if let Some(parsed_models) = importer_worker.parsed_obj() {
-                    is_importing = false;
-                    import_progress = 1.0;
-
                     match parsed_models {
                         Ok(models) => {
                             // Clear existing scene first...
@@ -254,6 +234,9 @@ fn main() {
                                 scene_geometries.push(geometry);
                                 scene_renderer_geometry_ids.push(renderer_geometry_id);
                             }
+
+                            camera_interpolation =
+                                Some(CameraInterpolation::new(&camera, &scene_geometries, time));
                         }
                         Err(err) => {
                             tinyfiledialogs::message_box_ok(
@@ -263,9 +246,6 @@ fn main() {
                             );
                         }
                     }
-
-                    camera_interpolation =
-                        Some(CameraInterpolation::new(&camera, &scene_geometries, time));
                 }
 
                 if input_state.close_requested {
@@ -304,19 +284,6 @@ fn main() {
 
                 #[cfg(debug_assertions)]
                 ui_frame.draw_fps_window();
-
-                // Clicking any of the models in the list means clearing everything out
-                // of the scene, importing given model and pushing it into scene.
-                if let Some(clicked_model) =
-                    ui_frame.draw_model_window(&obj_filenames, &selected_model, import_progress)
-                {
-                    let clicked_model_path: &str = &obj_file_paths[&clicked_model];
-                    importer_worker.import_obj(&clicked_model_path);
-
-                    selected_model = clicked_model;
-                    is_importing = true;
-                    import_progress = 0.0;
-                }
 
                 let imgui_draw_data = ui_frame.render(&window);
 
