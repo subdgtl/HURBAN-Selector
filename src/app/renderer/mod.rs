@@ -24,7 +24,7 @@ pub struct RendererOptions {
     pub present_mode: PresentMode,
 
     /// If present, try to force a gpu backend for the renderer to use
-    pub backend: Option<Backend>,
+    pub gpu_backend: Option<GpuBackend>,
 }
 
 /// Multi-sampling setting. Can be either disabled (1 sample per
@@ -65,18 +65,18 @@ pub enum PresentMode {
 
 /// The rendering backend used by `wgpu-rs`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Backend {
+pub enum GpuBackend {
     Vulkan,
     D3d12,
     Metal,
 }
 
-impl fmt::Display for Backend {
+impl fmt::Display for GpuBackend {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Backend::Vulkan => write!(f, "Vulkan"),
-            Backend::D3d12 => write!(f, "D3D12"),
-            Backend::Metal => write!(f, "Metal"),
+            GpuBackend::Vulkan => write!(f, "Vulkan"),
+            GpuBackend::D3d12 => write!(f, "D3D12"),
+            GpuBackend::Metal => write!(f, "Metal"),
         }
     }
 }
@@ -112,10 +112,16 @@ impl Renderer {
         imgui_font_atlas: imgui::FontAtlasRefMut,
         options: RendererOptions,
     ) -> Self {
-        let backends = match options.backend {
-            Some(Backend::Vulkan) => wgpu::BackendBit::VULKAN,
-            Some(Backend::D3d12) => wgpu::BackendBit::DX12,
-            Some(Backend::Metal) => wgpu::BackendBit::METAL,
+        if let Some(backend) = options.gpu_backend {
+            log::info!("Selected {} GPU backend", backend);
+        } else {
+            log::info!("No GPU backend selected, will run on default backend");
+        }
+
+        let backends = match options.gpu_backend {
+            Some(GpuBackend::Vulkan) => wgpu::BackendBit::VULKAN,
+            Some(GpuBackend::D3d12) => wgpu::BackendBit::DX12,
+            Some(GpuBackend::Metal) => wgpu::BackendBit::METAL,
             None => wgpu::BackendBit::PRIMARY,
         };
 
@@ -253,6 +259,7 @@ impl Renderer {
     /// Upload an RGBA8 texture to the GPU to be used in UI
     /// rendering. It will be available for drawing in the subsequent
     /// render passes.
+    #[allow(dead_code)]
     pub fn add_ui_texture_rgba8_unorm(
         &mut self,
         width: u32,
@@ -269,6 +276,7 @@ impl Renderer {
     }
 
     /// Remove texture from the GPU.
+    #[allow(dead_code)]
     pub fn remove_ui_texture(&mut self, id: imgui::TextureId) {
         self.imgui_renderer.remove_texture(id);
     }

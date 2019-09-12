@@ -16,7 +16,7 @@ use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
 const SHADER_MATCAP_VERT: &[u8] = include_shader!("matcap.vert.spv");
 const SHADER_MATCAP_FRAG: &[u8] = include_shader!("matcap.frag.spv");
 
-const MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../resources/matcap.png");
+const MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../../resources/matcap.png");
 
 /// The geometry containing index and vertex data in same-length
 /// format as will be uploaded on the GPU.
@@ -113,6 +113,7 @@ impl SceneRendererGeometry {
     /// Create geometry from vectors of positions and normals of same
     /// length. Does not run any validations except for length
     /// checking.
+    #[allow(dead_code)]
     pub fn from_positions_and_normals(
         vertex_positions: Vec<Point3<f32>>,
         vertex_normals: Vec<Vector3<f32>>,
@@ -146,6 +147,7 @@ impl SceneRendererGeometry {
     /// Create indexed geometry from vectors of positions and normals
     /// of same length. Does not run any validations except for length
     /// checking.
+    #[allow(dead_code)]
     pub fn from_positions_and_normals_indexed(
         indices: Vec<GeometryIndex>,
         vertex_positions: Vec<Point3<f32>>,
