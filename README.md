@@ -22,11 +22,13 @@ We use standard `cargo` workflows:
 - `cargo build` to build,
 - `cargo run` to run.
 
-A gpu backend is automatically selected, but optionally a non-default
-gpu backend can be specified with the `RTY_GPU_BACKEND` environment
-variable.
+### Environment Variables
 
-`RTY_GPU_BACKEND=<GPU-BACKEND> cargo run `, where `<GPU-BACKEND>` is one of:
+**HS_GPU_BACKEND (optional)**: Force a GPU backend.
+
+A gpu backend is automatically selected, but optionally a non-default
+gpu backend can be specified with `HS_GPU_BACKEND`. Can take the
+following values:
 
 - `vulkan` on Windows, Linux, or macOS with VulkanSDK,
 - `d3d12` on Windows,
@@ -36,7 +38,7 @@ If working on the renderer, enabling Vulkan validation layers is
 useful for additional validation:
 
 ``` shell
-VK_LAYER_PATH=/path/to/VulkanSDK/version/Bin \
+VK_LAYER_PATH=$VULKAN_SDK/bin \
 VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_VALIDATION \
 cargo run
 ```
@@ -45,3 +47,8 @@ To run with Vulkan backend on macOS, you need to setup the VulkanSDK
 (see macOS guide in [ash](https://crates.io/crates/ash)), and possibly
 [disable
 SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection-mac-os-x/)
+
+**HS_MSAA (optional)**: Force number of samples for multisampling, either 1,
+4, 8, or 16.
+
+**HS_VSYNC (optional)**: Explicitly enable (1) or disable (0) VSync.

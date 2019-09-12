@@ -113,6 +113,7 @@ impl SceneRendererGeometry {
     /// Create geometry from vectors of positions and normals of same
     /// length. Does not run any validations except for length
     /// checking.
+    #[allow(dead_code)]
     pub fn from_positions_and_normals(
         vertex_positions: Vec<Point3<f32>>,
         vertex_normals: Vec<Vector3<f32>>,
@@ -146,6 +147,7 @@ impl SceneRendererGeometry {
     /// Create indexed geometry from vectors of positions and normals
     /// of same length. Does not run any validations except for length
     /// checking.
+    #[allow(dead_code)]
     pub fn from_positions_and_normals_indexed(
         indices: Vec<GeometryIndex>,
         vertex_positions: Vec<Point3<f32>>,

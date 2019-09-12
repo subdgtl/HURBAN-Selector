@@ -60,6 +60,7 @@ impl Camera {
         self.aspect_ratio = (window_size.width / window_size.height) as f32;
     }
 
+    #[allow(dead_code)]
     pub fn reset_origin(&mut self) {
         self.origin = Point3::origin();
     }

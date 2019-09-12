@@ -20,11 +20,12 @@ const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RendererOptions {
+    /// Which multi-sampling setting to use.
     pub msaa: Msaa,
+    /// Whether to run with VSync or not.
     pub present_mode: PresentMode,
-
-    /// If present, try to force a gpu backend for the renderer to use
-    pub backend: Option<Backend>,
+    /// Whether to select an explicit gpu backend for the renderer to use.
+    pub gpu_backend: Option<GpuBackend>,
 }
 
 /// Multi-sampling setting. Can be either disabled (1 sample per
@@ -55,6 +56,17 @@ impl Msaa {
     }
 }
 
+impl fmt::Display for Msaa {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Msaa::Disabled => write!(f, "MSAA: off"),
+            Msaa::X4 => write!(f, "MSAA: 4x"),
+            Msaa::X8 => write!(f, "MSAA: 8x"),
+            Msaa::X16 => write!(f, "MSAA: 16x"),
+        }
+    }
+}
+
 /// Whether the renderer should wait for the flip when submitting the
 /// render pass to the backbuffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,20 +75,29 @@ pub enum PresentMode {
     Vsync,
 }
 
+impl fmt::Display for PresentMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PresentMode::NoVsync => write!(f, "Present Mode: No VSync"),
+            PresentMode::Vsync => write!(f, "Present Mode: VSync"),
+        }
+    }
+}
+
 /// The rendering backend used by `wgpu-rs`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Backend {
+pub enum GpuBackend {
     Vulkan,
     D3d12,
     Metal,
 }
 
-impl fmt::Display for Backend {
+impl fmt::Display for GpuBackend {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Backend::Vulkan => write!(f, "Vulkan"),
-            Backend::D3d12 => write!(f, "D3D12"),
-            Backend::Metal => write!(f, "Metal"),
+            GpuBackend::Vulkan => write!(f, "Vulkan"),
+            GpuBackend::D3d12 => write!(f, "D3D12"),
+            GpuBackend::Metal => write!(f, "Metal"),
         }
     }
 }
@@ -112,12 +133,18 @@ impl Renderer {
         imgui_font_atlas: imgui::FontAtlasRefMut,
         options: RendererOptions,
     ) -> Self {
-        let backends = match options.backend {
-            Some(Backend::Vulkan) => wgpu::BackendBit::VULKAN,
-            Some(Backend::D3d12) => wgpu::BackendBit::DX12,
-            Some(Backend::Metal) => wgpu::BackendBit::METAL,
+        let backends = match options.gpu_backend {
+            Some(GpuBackend::Vulkan) => wgpu::BackendBit::VULKAN,
+            Some(GpuBackend::D3d12) => wgpu::BackendBit::DX12,
+            Some(GpuBackend::Metal) => wgpu::BackendBit::METAL,
             None => wgpu::BackendBit::PRIMARY,
         };
+
+        if let Some(backend) = options.gpu_backend {
+            log::info!("Selected {} GPU backend", backend);
+        } else {
+            log::info!("No GPU backend selected, will run on default backend");
+        }
 
         let surface = wgpu::Surface::create(window);
         let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
@@ -137,6 +164,8 @@ impl Renderer {
         let (width, height) = (window_size.width as u32, window_size.height as u32);
 
         let swap_chain = create_swap_chain(&device, &surface, width, height, options.present_mode);
+
+        log::info!("Selected multisampling level: {}", options.msaa);
         let msaa_texture = if options.msaa.enabled() {
             Some(create_msaa_texture(
                 &device,
@@ -253,6 +282,7 @@ impl Renderer {
     /// Upload an RGBA8 texture to the GPU to be used in UI
     /// rendering. It will be available for drawing in the subsequent
     /// render passes.
+    #[allow(dead_code)]
     pub fn add_ui_texture_rgba8_unorm(
         &mut self,
         width: u32,
@@ -269,6 +299,7 @@ impl Renderer {
     }
 
     /// Remove texture from the GPU.
+    #[allow(dead_code)]
     pub fn remove_ui_texture(&mut self, id: imgui::TextureId) {
         self.imgui_renderer.remove_texture(id);
     }
@@ -380,6 +411,13 @@ fn create_swap_chain(
     height: u32,
     present_mode: PresentMode,
 ) -> wgpu::SwapChain {
+    log::debug!(
+        "Creating swapchain with dimensions [{},{}] and {}",
+        width,
+        height,
+        present_mode,
+    );
+
     device.create_swap_chain(
         &surface,
         &wgpu::SwapChainDescriptor {

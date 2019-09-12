@@ -14,6 +14,7 @@ pub fn clamp(x: f32, min: f32, max: f32) -> f32 {
 /// `delta` is previous frame's processing time in seconds.
 ///
 /// http://www.rorydriscoll.com/2016/03/07/frame-rate-independent-damping-using-lerp/
+#[allow(dead_code)]
 pub fn decay(source: f32, target: f32, smoothness: f32, delta: f32) -> f32 {
     lerp(
         source,
