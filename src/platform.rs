@@ -8,6 +8,9 @@ pub struct InputManager {
     shift_down: bool,
     ctrl_down: bool,
     alt_down: bool,
+    key_a_down: bool,
+    key_o_down: bool,
+    key_q_down: bool,
     lmb_down: bool,
     rmb_down: bool,
     mouse_x: f64,
@@ -22,6 +25,9 @@ impl InputManager {
             shift_down: false,
             ctrl_down: false,
             alt_down: false,
+            key_a_down: false,
+            key_o_down: false,
+            key_q_down: false,
             lmb_down: false,
             rmb_down: false,
             mouse_x: 0.0,
@@ -61,6 +67,7 @@ impl InputManager {
                     } = input;
 
                     match (virtual_keycode, state) {
+                        // META
                         (
                             Some(winit::event::VirtualKeyCode::LWin),
                             winit::event::ElementState::Pressed,
@@ -86,6 +93,7 @@ impl InputManager {
                             self.meta_down = false;
                         }
 
+                        // SHIFT
                         (
                             Some(winit::event::VirtualKeyCode::LShift),
                             winit::event::ElementState::Pressed,
@@ -111,6 +119,7 @@ impl InputManager {
                             self.shift_down = false;
                         }
 
+                        // CTRL
                         (
                             Some(winit::event::VirtualKeyCode::LControl),
                             winit::event::ElementState::Pressed,
@@ -136,6 +145,7 @@ impl InputManager {
                             self.ctrl_down = false;
                         }
 
+                        // ALT
                         (
                             Some(winit::event::VirtualKeyCode::LAlt),
                             winit::event::ElementState::Pressed,
@@ -161,24 +171,53 @@ impl InputManager {
                             self.alt_down = false;
                         }
 
+                        // A-Z keys, with repeat events filtered out
                         (
                             Some(winit::event::VirtualKeyCode::A),
                             winit::event::ElementState::Pressed,
                         ) => {
-                            self.input.key_a_pressed = true;
+                            if !self.key_a_down {
+                                self.input.key_a_pressed = true;
+                                self.key_a_down = true;
+                            }
+                        }
+                        (
+                            Some(winit::event::VirtualKeyCode::A),
+                            winit::event::ElementState::Released,
+                        ) => {
+                            self.key_a_down = false;
                         }
                         (
                             Some(winit::event::VirtualKeyCode::O),
                             winit::event::ElementState::Pressed,
                         ) => {
-                            self.input.key_o_pressed = true;
+                            if !self.key_o_down {
+                                self.input.key_o_pressed = true;
+                                self.key_o_down = true;
+                            }
+                        }
+                        (
+                            Some(winit::event::VirtualKeyCode::O),
+                            winit::event::ElementState::Released,
+                        ) => {
+                            self.key_o_down = false;
                         }
                         (
                             Some(winit::event::VirtualKeyCode::Q),
                             winit::event::ElementState::Pressed,
                         ) => {
-                            self.input.key_q_pressed = true;
+                            if !self.key_q_down {
+                                self.input.key_q_pressed = true;
+                                self.key_q_down = true;
+                            }
                         }
+                        (
+                            Some(winit::event::VirtualKeyCode::Q),
+                            winit::event::ElementState::Released,
+                        ) => {
+                            self.key_q_down = false;
+                        }
+
                         _ => (),
                     }
                 }
