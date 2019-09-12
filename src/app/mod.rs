@@ -21,15 +21,22 @@ mod ui;
 const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct UiInput {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Input {
-    pub camera_pan_ground: [f32; 2],
-    pub camera_pan_screen: [f32; 2],
-    pub camera_rotate: [f32; 2],
-    pub camera_zoom: f32,
-    pub camera_zoom_steps: i32,
-    pub camera_reset_viewport: bool,
+    pub mouse_move: [f64; 2],
+    pub mouse_wheel: i32,
+    pub lmb_down: bool,
+    pub rmb_down: bool,
+    pub meta_down: bool,
+    pub shift_down: bool,
+    pub ctrl_down: bool,
+    pub alt_down: bool,
+    pub key_a_pressed: bool,
+    pub key_o_pressed: bool,
+    pub key_q_pressed: bool,
     pub close_requested: bool,
-    pub import_requested: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,19 +176,19 @@ impl App {
 
         self.ui.set_delta_time(duration_last_frame_s);
 
-        let ui_frame = self.ui.prepare_frame(&self.window);
+        let app_input = self.process_input(&input);
 
-        let [pan_ground_x, pan_ground_y] = input.camera_pan_ground;
-        let [pan_screen_x, pan_screen_y] = input.camera_pan_screen;
-        let [rotate_x, rotate_y] = input.camera_rotate;
+        let [pan_ground_x, pan_ground_y] = app_input.camera_pan_ground;
+        let [pan_screen_x, pan_screen_y] = app_input.camera_pan_screen;
+        let [rotate_x, rotate_y] = app_input.camera_rotate;
 
         self.camera.pan_ground(pan_ground_x, pan_ground_y);
         self.camera.pan_screen(pan_screen_x, pan_screen_y);
         self.camera.rotate(rotate_x, rotate_y);
-        self.camera.zoom(input.camera_zoom);
-        self.camera.zoom_step(input.camera_zoom_steps);
+        self.camera.zoom(app_input.camera_zoom);
+        self.camera.zoom_step(app_input.camera_zoom_steps);
 
-        if input.camera_reset_viewport {
+        if app_input.camera_reset_viewport {
             self.active_camera_interpolation = Some(CameraInterpolation::new(
                 &self.camera,
                 &self.scene_geometries,
@@ -190,7 +197,7 @@ impl App {
         }
 
         {
-            if input.import_requested {
+            if app_input.import_requested {
                 if let Some(path) = tinyfiledialogs::open_file_dialog(
                     "Open",
                     "",
@@ -239,7 +246,7 @@ impl App {
             ));
         }
 
-        if input.close_requested {
+        if app_input.close_requested {
             self.wants_close = true;
         }
 
@@ -260,6 +267,8 @@ impl App {
         // simplicity.
         self.renderer
             .set_camera_matrices(&self.camera.projection_matrix(), &self.camera.view_matrix());
+
+        let ui_frame = self.ui.prepare_frame(&self.window);
 
         #[cfg(debug_assertions)]
         ui_frame.draw_fps_window();
@@ -291,6 +300,63 @@ impl App {
     pub fn wants_close(&self) -> bool {
         self.wants_close
     }
+
+    fn process_input(&mut self, input: &Input) -> AppInput {
+        let no_modifiers =
+            !input.meta_down && !input.shift_down && !input.ctrl_down && !input.alt_down;
+
+        #[cfg(target_os = "macos")]
+        let close_requested_macos =
+            input.key_q_pressed && input.meta_down && !input.shift_down && !input.ctrl_down;
+        #[cfg(not(target_os = "macos"))]
+        let close_requested_macos = false;
+
+        let mouse_move_x = input.mouse_move[0] as f32;
+        let mouse_move_y = input.mouse_move[1] as f32;
+
+        let mut camera_pan_ground = [0.0; 2];
+        let mut camera_pan_screen = [0.0; 2];
+        let mut camera_rotate = [0.0; 2];
+        let mut camera_zoom = 0.0;
+
+        if input.lmb_down && input.rmb_down {
+            camera_zoom = -mouse_move_y;
+        } else if input.lmb_down {
+            camera_rotate[0] = -mouse_move_x;
+            camera_rotate[1] = -mouse_move_y;
+        } else if input.rmb_down {
+            if input.shift_down {
+                camera_pan_ground[0] = mouse_move_x;
+                camera_pan_ground[1] = -mouse_move_y;
+            } else {
+                camera_pan_screen[0] = mouse_move_x;
+                camera_pan_screen[1] = -mouse_move_y;
+            }
+        }
+
+        AppInput {
+            // TODO: mouse/kbd captured by gui?
+            camera_pan_ground,
+            camera_pan_screen,
+            camera_rotate,
+            camera_zoom,
+            camera_zoom_steps: input.mouse_wheel,
+            camera_reset_viewport: input.key_a_pressed && no_modifiers,
+            import_requested: input.key_o_pressed && no_modifiers,
+            close_requested: input.close_requested || close_requested_macos,
+        }
+    }
+}
+
+struct AppInput {
+    camera_pan_ground: [f32; 2],
+    camera_pan_screen: [f32; 2],
+    camera_rotate: [f32; 2],
+    camera_zoom: f32,
+    camera_zoom_steps: i32,
+    camera_reset_viewport: bool,
+    import_requested: bool,
+    close_requested: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
