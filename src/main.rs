@@ -1,356 +1,47 @@
 #![windows_subsystem = "windows"]
 
-use std::collections::HashMap;
 use std::env;
-use std::fs;
-use std::time::{Duration, Instant};
 
-use nalgebra::geometry::Point3;
-
-use hurban_selector::camera::{Camera, CameraOptions};
-use hurban_selector::geometry;
-use hurban_selector::importer::ImporterWorker;
-use hurban_selector::input::InputManager;
-use hurban_selector::math;
-use hurban_selector::renderer::{
-    Backend, Msaa, PresentMode, Renderer, RendererOptions, SceneRendererGeometry,
-};
-use hurban_selector::ui::Ui;
-
-const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
+use hurban_selector as hs;
 
 fn main() {
     env_logger::init();
 
-    let event_loop = winit::event_loop::EventLoop::new();
-    // let monitor_id = event_loop.primary_monitor();
-    let window = winit::window::WindowBuilder::new()
-        .with_title("H.U.R.B.A.N. Selector")
-        // .with_fullscreen(Some(monitor_id))
-        .build(&event_loop)
-        .expect("Failed to create window");
+    let msaa = env::var("HS_MSAA")
+        .ok()
+        .map(|msaa| match msaa.as_str() {
+            "0" => hs::Msaa::Disabled,
+            "4" => hs::Msaa::X4,
+            "8" => hs::Msaa::X8,
+            "16" => hs::Msaa::X16,
+            unsupported_msaa => panic!("Unsupported MSAA value requested: {}", unsupported_msaa),
+        })
+        .unwrap_or(hs::Msaa::Disabled);
 
-    let window_size = window.inner_size().to_physical(window.hidpi_factor());
+    let present_mode = env::var("HS_VSYNC")
+        .ok()
+        .map(|vsync| match vsync.as_str() {
+            "1" => hs::PresentMode::Vsync,
+            "0" => hs::PresentMode::NoVsync,
+            unsupported_vsync => panic!(
+                "Unsupported vsync behavior requested: {}",
+                unsupported_vsync,
+            ),
+        })
+        .unwrap_or(hs::PresentMode::Vsync);
 
-    let mut input_manager = InputManager::new();
-    let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
-
-    let mut camera = Camera::new(
-        window_size,
-        5.0,
-        45f32.to_radians(),
-        60f32.to_radians(),
-        CameraOptions {
-            radius_min: 1.0,
-            radius_max: 10000.0,
-            polar_angle_distance_min: 1f32.to_radians(),
-            speed_pan: 10.0,
-            speed_rotate: 0.005,
-            speed_zoom: 0.01,
-            speed_zoom_step: 1.0,
-            fovy: 45f32.to_radians(),
-            znear: 0.01,
-            zfar: 1000.0,
-        },
-    );
-
-    let mut ui = Ui::new(&window);
-
-    let gpu_backend = env::var("RTY_GPU_BACKEND")
+    let gpu_backend = env::var("HS_GPU_BACKEND")
         .ok()
         .map(|backend| match backend.as_str() {
-            "vulkan" => Backend::Vulkan,
-            "d3d12" => Backend::D3d12,
-            "metal" => Backend::Metal,
+            "vulkan" => hs::GpuBackend::Vulkan,
+            "d3d12" => hs::GpuBackend::D3d12,
+            "metal" => hs::GpuBackend::Metal,
             _ => panic!("Unknown gpu backend requested"),
         });
 
-    if let Some(backend) = gpu_backend {
-        log::info!("Selected {} GPU backend", backend);
-    } else {
-        log::info!("No GPU backend selected, will run on default backend");
-    }
-
-    let mut renderer = Renderer::new(
-        &window,
-        &camera.projection_matrix(),
-        &camera.view_matrix(),
-        ui.fonts(),
-        RendererOptions {
-            // FIXME: @Correctness Msaa X4 is the only value currently
-            // working on all devices we tried. Once device
-            // capabilities are queryable with wgpu `Limits`, we
-            // should have a chain of options the renderer tries
-            // before giving up.
-            msaa: Msaa::X4,
-            present_mode: PresentMode::Vsync,
-            backend: gpu_backend,
-        },
-    );
-
-    let mut scene_geometries = vec![
-        // FIXME: This is just temporary code so that we can see
-        // something in the scene and know the renderer works.
-        geometry::uv_cube_var_len([0.0, 0.0, 0.0], 0.5),
-        geometry::uv_cube_same_len([0.0, 50.0, 0.0], 5.0),
-        geometry::uv_cube_same_len([50.0, 0.0, 0.0], 5.0),
-        geometry::cube_same_len([0.0, 5.0, 0.0], 0.9),
-        geometry::cube_same_len([0.0, 0.0, 5.0], 1.5),
-        geometry::plane_same_len([0.0, 0.0, 20.0], 10.0),
-        geometry::plane_var_len([0.0, 0.0, -20.0], 10.0),
-    ];
-
-    let mut scene_renderer_geometry_ids = Vec::with_capacity(scene_geometries.len());
-    for geometry in &scene_geometries {
-        let renderer_geometry = SceneRendererGeometry::from_geometry(geometry);
-        let renderer_geometry_id = renderer
-            .add_scene_geometry(&renderer_geometry)
-            .expect("Failed to add geometry to renderer");
-        scene_renderer_geometry_ids.push(renderer_geometry_id);
-    }
-
-    // Temporary model list
-
-    let models_dir = env::var_os("MODELS_DIR").unwrap_or_else(|| {
-        env::current_dir()
-            .expect("Failed to load current dir")
-            .into()
+    hs::init_and_run(hs::Options {
+        msaa,
+        present_mode,
+        gpu_backend,
     });
-    let obj_dir_entry_results =
-        fs::read_dir(models_dir).expect("Failed to read directory with obj files");
-    let mut obj_file_paths: HashMap<String, String> = HashMap::new();
-
-    for obj_dir_entry_result in obj_dir_entry_results {
-        let obj_dir_entry = obj_dir_entry_result.expect("Failed to read directory entry");
-        let obj_path = obj_dir_entry.path();
-
-        if let Some(ext) = obj_path.extension() {
-            if ext == "obj" {
-                let filename = obj_path
-                    .file_stem()
-                    .expect("Failed to extract obj file stem")
-                    .to_str()
-                    .expect("Filename UTF-8 conversion failed");
-                let filepath = obj_path
-                    .to_str()
-                    .expect("Failed to convert Path to str")
-                    .to_string();
-
-                obj_file_paths.insert(filename.to_uppercase(), filepath);
-            }
-        }
-    }
-
-    let mut obj_filenames: Vec<String> = obj_file_paths.keys().cloned().collect();
-    obj_filenames.sort();
-
-    let importer_worker = ImporterWorker::new();
-
-    let time_start = Instant::now();
-    let mut time = time_start;
-
-    let mut camera_interpolation: Option<CameraInterpolation> = None;
-
-    // Since input manager needs to process events separately after imgui
-    // handles them, this buffer with copies of events is needed.
-    let mut input_events: Vec<winit::event::Event<_>> = Vec::new();
-
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = winit::event_loop::ControlFlow::Poll;
-
-        match event {
-            winit::event::Event::EventsCleared => {
-                let (duration_last_frame, _duration_running) = {
-                    let now = Instant::now();
-                    let duration_last_frame = now.duration_since(time);
-                    let duration_running = now.duration_since(time_start);
-                    time = now;
-
-                    (duration_last_frame, duration_running)
-                };
-
-                // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
-                let duration_last_frame_s = duration_last_frame.as_secs() as f32
-                    + duration_last_frame.subsec_nanos() as f32 / 1_000_000_000.0;
-
-                ui.set_delta_time(duration_last_frame_s);
-
-                let ui_frame = ui.prepare_frame(&window);
-                input_manager.start_frame();
-
-                for event in input_events.drain(..) {
-                    input_manager.process_event(
-                        &event,
-                        ui_frame.want_capture_keyboard(),
-                        ui_frame.want_capture_mouse(),
-                    );
-                }
-
-                let input_state = input_manager.input_state();
-
-                let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
-                let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
-                let [rotate_x, rotate_y] = input_state.camera_rotate;
-
-                camera.pan_ground(pan_ground_x, pan_ground_y);
-                camera.pan_screen(pan_screen_x, pan_screen_y);
-                camera.rotate(rotate_x, rotate_y);
-                camera.zoom(input_state.camera_zoom);
-                camera.zoom_step(input_state.camera_zoom_steps);
-
-                if input_state.camera_reset_viewport {
-                    camera_interpolation =
-                        Some(CameraInterpolation::new(&camera, &scene_geometries, time));
-                }
-
-                if input_state.import_requested {
-                    if let Some(path) = tinyfiledialogs::open_file_dialog(
-                        "Open",
-                        "",
-                        Some((&["*.obj"], "Wavefront (.obj)")),
-                    ) {
-                        importer_worker.import_obj(&path);
-                    }
-                }
-
-                if let Some(parsed_models) = importer_worker.parsed_obj() {
-                    match parsed_models {
-                        Ok(models) => {
-                            // Clear existing scene first...
-                            scene_geometries.clear();
-                            for geometry in scene_renderer_geometry_ids.drain(..) {
-                                renderer.remove_scene_geometry(geometry);
-                            }
-
-                            // ... and add everything we found to it
-                            for model in models {
-                                let geometry = model.geometry;
-                                let renderer_geometry =
-                                    SceneRendererGeometry::from_geometry(&geometry);
-                                let renderer_geometry_id = renderer
-                                    .add_scene_geometry(&renderer_geometry)
-                                    .expect("Failed to add geometry to renderer");
-
-                                scene_geometries.push(geometry);
-                                scene_renderer_geometry_ids.push(renderer_geometry_id);
-                            }
-
-                            camera_interpolation =
-                                Some(CameraInterpolation::new(&camera, &scene_geometries, time));
-                        }
-                        Err(err) => {
-                            tinyfiledialogs::message_box_ok(
-                                "Error",
-                                &format!("{}", err),
-                                tinyfiledialogs::MessageBoxIcon::Error,
-                            );
-                        }
-                    }
-                }
-
-                if input_state.close_requested {
-                    *control_flow = winit::event_loop::ControlFlow::Exit;
-                }
-
-                if let Some(logical_size) = input_state.window_resized {
-                    let physical_size = logical_size.to_physical(window.hidpi_factor());
-                    log::debug!(
-                        "Window resized to new size: logical [{},{}], physical [{},{}]",
-                        logical_size.width,
-                        logical_size.height,
-                        physical_size.width,
-                        physical_size.height,
-                    );
-
-                    camera.set_window_size(physical_size);
-                    renderer.set_window_size(physical_size);
-                }
-
-                if let Some(interp) = camera_interpolation {
-                    if interp.target_time > time {
-                        let (sphere_origin, sphere_radius) = interp.update(time, &cubic_bezier);
-                        camera.zoom_to_fit_visible_sphere(sphere_origin, sphere_radius);
-                    } else {
-                        camera
-                            .zoom_to_fit_visible_sphere(interp.target_origin, interp.target_radius);
-                        camera_interpolation = None;
-                    }
-                }
-
-                // Camera matrices have to be uploaded when either window
-                // resizes or the camera moves. We do it every frame for
-                // simplicity.
-                renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
-
-                #[cfg(debug_assertions)]
-                ui_frame.draw_fps_window();
-
-                let imgui_draw_data = ui_frame.render(&window);
-
-                let mut render_pass = renderer.begin_render_pass();
-
-                render_pass.draw_geometry(&scene_renderer_geometry_ids[..]);
-                render_pass.draw_ui(&imgui_draw_data);
-
-                render_pass.submit();
-            }
-            winit::event::Event::WindowEvent {
-                event: winit::event::WindowEvent::RedrawRequested,
-                ..
-            } => {
-                // V-SYNC makes it challenging to answer redraw
-                // requests. Instead we do rendering after processing
-                // piled up events.
-            }
-            winit::event::Event::WindowEvent { .. } => {
-                ui.handle_event(&window, &event);
-                input_events.push(event.clone());
-            }
-            _ => (),
-        }
-    });
-}
-
-#[derive(Debug, Clone, Copy)]
-struct CameraInterpolation {
-    source_origin: Point3<f32>,
-    source_radius: f32,
-    target_origin: Point3<f32>,
-    target_radius: f32,
-    target_time: Instant,
-}
-
-impl CameraInterpolation {
-    fn new(camera: &Camera, scene_geometries: &[geometry::Geometry], time: Instant) -> Self {
-        let (source_origin, source_radius) = camera.visible_sphere();
-        let (target_origin, target_radius) = geometry::compute_bounding_sphere(&scene_geometries);
-
-        CameraInterpolation {
-            source_origin,
-            source_radius,
-            target_origin,
-            target_radius,
-            target_time: time + CAMERA_INTERPOLATION_DURATION,
-        }
-    }
-
-    fn update(&self, time: Instant, easing: &math::CubicBezierEasing) -> (Point3<f32>, f32) {
-        let duration_left = duration_as_secs_f32(self.target_time.duration_since(time));
-        let whole_duration = duration_as_secs_f32(CAMERA_INTERPOLATION_DURATION);
-        let t = easing.apply(1.0 - duration_left / whole_duration);
-
-        let sphere_origin = Point3::from(
-            self.source_origin
-                .coords
-                .lerp(&self.target_origin.coords, t),
-        );
-        let sphere_radius = math::lerp(self.source_radius, self.target_radius, t);
-
-        (sphere_origin, sphere_radius)
-    }
-}
-
-fn duration_as_secs_f32(duration: Duration) -> f32 {
-    // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
-    duration.as_secs() as f32 + duration.subsec_nanos() as f32 / 1_000_000_000.0
 }
