@@ -5,7 +5,7 @@ use std::env;
 use hurban_selector as hs;
 
 fn main() {
-    env_logger::init();
+    hs::logger::init();
 
     let msaa = env::var("HS_MSAA")
         .ok()

@@ -52,3 +52,7 @@ SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection
 4, 8, or 16.
 
 **HS_VSYNC (optional)**: Explicitly enable (1) or disable (0) VSync.
+
+**HS_LIBS_LOG_LEVEL (optional)**: Changes level of logging for external crates.
+It is `warn` by default. Options are `error`, `warn`, `info`, `debug`, `trace`
+and `off`. Invalid value is gracefully ignored.

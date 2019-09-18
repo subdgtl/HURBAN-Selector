@@ -20,11 +20,12 @@ tobj = { version = "0.1.10", features = ["log"] }
 crc32fast = "1.2.0"
 log = "0.4.8"
 nalgebra = "0.18.0"
-env_logger = "0.6.2"
 png = "0.15.0"
 crossbeam-channel = "0.3.9"
 bitflags = "1.1.0"
 approx = "0.3.2"
+fern = { version = "0.5.8", features = ["colored"] }
+chrono = "0.4.9"
 
 [build-dependencies]
 shaderc = "0.6.0"
