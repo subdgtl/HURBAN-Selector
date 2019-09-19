@@ -52,11 +52,12 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
 
 #[cfg(not(debug_assertions))]
 pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
+    use crate::fs::windows::localappdata_path;
     use std::fs;
     use std::path::Path;
 
     let path = if cfg!(target_os = "windows") {
-        let appdata = env::var("localappdata").expect("%localappdata% should be defined in env");
+        let appdata = localappdata_path().unwrap();
 
         Ok(Path::new(&appdata).join("HURBAN Selector/Logs"))
     } else if cfg!(target_os = "macos") {

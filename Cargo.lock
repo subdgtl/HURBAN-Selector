@@ -523,6 +523,7 @@ dependencies = [
  "tinyfiledialogs 3.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "tobj 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "wgpu 0.3.0 (git+https://github.com/gfx-rs/wgpu-rs?rev=5edb6ecf13c9b21c60e41477eb64837c5445dfd8)",
+ "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "winit 0.20.0-alpha3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

@@ -15,6 +15,7 @@ pub mod logger;
 
 mod camera;
 mod convert;
+mod fs;
 mod geometry;
 mod input;
 mod math;
