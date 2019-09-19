@@ -66,7 +66,6 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
     } else if cfg!(target_os = "linux") {
         Ok(Path::new("/var/log/HURBAN_Selector").to_path_buf())
     } else {
-        println!("nothing");
         Err(())
     };
 
