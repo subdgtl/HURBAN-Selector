@@ -13,7 +13,7 @@ use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 use tobj;
 
-use crate::geometry::{Geometry, TriangleFace};
+use crate::geometry::{Geometry, NormalStrategy, TriangleFace};
 
 #[derive(Debug, PartialEq)]
 pub enum ImporterError {
@@ -278,28 +278,25 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
             Some(normals)
         };
 
-        let faces = model
+        let faces_raw: Vec<(u32, u32, u32)> = model
             .mesh
             .indices
             .chunks_exact(3)
-            .map(|chunk| TriangleFace {
-                vertices: (chunk[0], chunk[1], chunk[2]),
-                normals: if vertex_normals.is_some() {
-                    Some((chunk[0], chunk[1], chunk[2]))
-                } else {
-                    None
-                },
-            })
+            .map(|chunk| (chunk[0], chunk[1], chunk[2]))
             .collect();
 
         let geometry = if let Some(vertex_normals) = vertex_normals {
             Geometry::from_triangle_faces_with_vertices_and_normals(
-                faces,
+                faces_raw.into_iter().map(TriangleFace::from).collect(),
                 vertex_positions,
                 vertex_normals,
             )
         } else {
-            Geometry::from_triangle_faces_with_vertices(faces, vertex_positions)
+            Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+                faces_raw,
+                vertex_positions,
+                NormalStrategy::Sharp,
+            )
         };
 
         models.push(Model {
@@ -350,10 +347,7 @@ mod tests {
             vec![Model {
                 name: tobj_model.name,
                 geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
-                    vec![TriangleFace {
-                        vertices: (0, 1, 2),
-                        normals: Some((0, 1, 2)),
-                    }],
+                    vec![TriangleFace::new(0, 1, 2)],
                     vec![
                         Point3::new(6.0, 5.0, 4.0),
                         Point3::new(3.0, 2.0, 1.0),
@@ -390,10 +384,7 @@ mod tests {
                 Model {
                     name: tobj_model_1.name,
                     geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
-                        vec![TriangleFace {
-                            vertices: (0, 1, 2),
-                            normals: Some((0, 1, 2)),
-                        }],
+                        vec![TriangleFace::new(0, 1, 2)],
                         vec![
                             Point3::new(6.0, 5.0, 4.0),
                             Point3::new(3.0, 2.0, 1.0),
@@ -409,10 +400,7 @@ mod tests {
                 Model {
                     name: tobj_model_2.name,
                     geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
-                        vec![TriangleFace {
-                            vertices: (0, 1, 2),
-                            normals: Some((0, 1, 2)),
-                        }],
+                        vec![TriangleFace::new(0, 1, 2)],
                         vec![
                             Point3::new(16.0, 15.0, 14.0),
                             Point3::new(13.0, 12.0, 11.0),

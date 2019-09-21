@@ -34,79 +34,72 @@ impl SceneRendererGeometry {
     /// times paired with different per-vertex data, e.g. normals.
     pub fn from_geometry(geometry: &Geometry) -> Self {
         let vertices = geometry.vertices();
-        if let Some(normals) = geometry.normals() {
-            let faces_len = geometry.triangle_faces_len();
-            let indices_len_estimate = faces_len * 3;
+        let normals = geometry.normals();
 
-            let mut indices = Vec::with_capacity(indices_len_estimate);
+        let faces_len = geometry.triangle_faces_len();
+        let indices_len_estimate = faces_len * 3;
 
-            // This capacity is a lower bound estimate. Given that
-            // `Geometry` contains no orphan vertices, there should be
-            // at least `vertices.len()` vertices present in the
-            // resulting `SceneRendererGeometry`.
-            let mut vertex_data = Vec::with_capacity(vertices.len());
+        let mut indices = Vec::with_capacity(indices_len_estimate);
 
-            // This capacity is an upper bound estimate and will
-            // overshoot if indices are re-used
-            let mut index_map = HashMap::with_capacity(indices_len_estimate);
-            let mut next_renderer_index = 0;
+        // This capacity is a lower bound estimate. Given that
+        // `Geometry` contains no orphan vertices, there should be
+        // at least `vertices.len()` vertices present in the
+        // resulting `SceneRendererGeometry`.
+        let mut vertex_data = Vec::with_capacity(vertices.len());
 
-            // Iterate over all faces, creating or re-using vertices
-            // as we go. Vertex data identity is defined by equality
-            // of the index that constructed the vertex.
-            for triangle_face in geometry.triangle_faces_iter() {
-                let v = triangle_face.vertices;
-                let n = triangle_face
-                    .normals
-                    .expect("Normal indices must be present if normals are");
+        // This capacity is an upper bound estimate and will
+        // overshoot if indices are re-used
+        let mut index_map = HashMap::with_capacity(indices_len_estimate);
+        let mut next_renderer_index = 0;
 
-                for &(vi, ni) in &[(v.0, n.0), (v.1, n.1), (v.2, n.2)] {
-                    match index_map.entry((vi, ni)) {
-                        Entry::Occupied(occupied) => {
-                            // This concrete vertex/normal combination
-                            // was used before, re-use the vertex it
-                            // created
-                            let renderer_index = *occupied.get();
+        // Iterate over all faces, creating or re-using vertices
+        // as we go. Vertex data identity is defined by equality
+        // of the index that constructed the vertex.
+        for triangle_face in geometry.triangle_faces_iter() {
+            let v = triangle_face.vertices;
+            let n = triangle_face.normals;
 
-                            indices.push(renderer_index);
-                        }
-                        Entry::Vacant(vacant) => {
-                            // We didn't see this vertex/normal
-                            // combination before, we need to create a
-                            // new vertex and remember the index we
-                            // assigned
-                            let renderer_index = next_renderer_index;
-                            let position = vertices[cast_usize(vi)];
-                            let normal = normals[cast_usize(ni)];
-                            let vertex = Self::vertex((position, normal));
+            for &(vertex_index, normal_index) in &[(v.0, n.0), (v.1, n.1), (v.2, n.2)] {
+                match index_map.entry((vertex_index, normal_index)) {
+                    Entry::Occupied(occupied) => {
+                        // This concrete vertex/normal combination
+                        // was used before, re-use the vertex it
+                        // created
+                        let renderer_index = *occupied.get();
 
-                            vacant.insert(renderer_index);
-                            next_renderer_index += 1;
+                        indices.push(renderer_index);
+                    }
+                    Entry::Vacant(vacant) => {
+                        // We didn't see this vertex/normal
+                        // combination before, we need to create a
+                        // new vertex and remember the index we
+                        // assigned
+                        let renderer_index = next_renderer_index;
+                        let position = vertices[cast_usize(vertex_index)];
+                        let normal = normals[cast_usize(normal_index)];
+                        let vertex = Self::vertex((position, normal));
 
-                            vertex_data.push(vertex);
-                            indices.push(renderer_index)
-                        }
-                    };
-                }
+                        vacant.insert(renderer_index);
+                        next_renderer_index += 1;
+
+                        vertex_data.push(vertex);
+                        indices.push(renderer_index)
+                    }
+                };
             }
+        }
 
-            assert_eq!(
-                indices.capacity(),
-                indices_len_estimate,
-                "Number of indices does not match estimate"
-            );
+        assert_eq!(
+            indices.capacity(),
+            indices_len_estimate,
+            "Number of indices does not match estimate"
+        );
 
-            vertex_data.shrink_to_fit();
+        vertex_data.shrink_to_fit();
 
-            SceneRendererGeometry {
-                indices: Some(indices),
-                vertex_data,
-            }
-        } else {
-            // FIXME: add ability to compute normals on demand if not
-            // present here
-
-            unimplemented!("Renderer geometry needs normals")
+        SceneRendererGeometry {
+            indices: Some(indices),
+            vertex_data,
         }
     }
 
@@ -770,7 +763,7 @@ mod tests {
 
         #[rustfmt::skip]
         let faces = vec![
-            TriangleFace { vertices: (0, 1, 2), normals: Some((0, 1, 2)) }
+            TriangleFace::new(0, 1, 2)
         ];
 
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
@@ -791,7 +784,7 @@ mod tests {
 
         #[rustfmt::skip]
         let faces = vec![
-            TriangleFace { vertices: (0, 1, 2), normals: Some((0, 0, 0)) }
+            TriangleFace::new_separate(0, 1, 2, 0, 0, 0)
         ];
 
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
