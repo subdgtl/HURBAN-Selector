@@ -59,20 +59,22 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
     let path = {
         use crate::platform::windows::localappdata_path;
 
-        let appdata = localappdata_path().unwrap();
-
-        Path::new(&appdata).join("HURBAN Selector/Logs")
+        match localappdata_path() {
+            Ok(appdata) => Path::new(&appdata).join("HURBAN Selector/Logs"),
+            Err(_) => return base_logger,
+        }
     };
 
     #[cfg(target_os = "macos")]
     let path = {
-        let home_dir = env::var("HOME").expect("$HOME should be defined in env");
-
-        Path::new(&home_dir).join("Library/Logs/HURBAN_Selector")
+        match env::var("HOME") {
+            Ok(home_dir) => Path::new(&home_dir).join("Library/Logs/HURBAN_Selector"),
+            Err(_) => return base_logger,
+        }
     };
 
     #[cfg(target_os = "linux")]
-    let path = { Path::new("/var/log/HURBAN_Selector").to_path_buf() };
+    let path = Path::new("/var/log/HURBAN_Selector").to_path_buf();
 
     if !path.exists() {
         let result = fs::create_dir_all(&path);
