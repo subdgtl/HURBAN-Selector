@@ -28,7 +28,7 @@ fern = { version = "0.5.8", features = ["colored"] }
 chrono = "0.4.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3.8", features = ["combaseapi", "knownfolders", "shlobj"] }
+winapi = { version = "0.3.8", features = ["combaseapi", "knownfolders", "shlobj", "winerror"] }
 
 [build-dependencies]
 shaderc = "0.6.0"

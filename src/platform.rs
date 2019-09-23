@@ -25,7 +25,7 @@ pub mod windows {
                 &mut path,
             );
 
-            if code == 0 {
+            if winapi::shared::winerror::SUCCEEDED(code) {
                 let mut length = 0usize;
 
                 while *path.add(length) != 0 {
