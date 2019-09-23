@@ -18,7 +18,7 @@ imgui-winit-support = { version = "0.2.0", default-features = false, features = 
 tinyfiledialogs = "3.3.5"
 tobj = { version = "0.1.10", features = ["log"] }
 crc32fast = "1.2.0"
-log = "0.4.8"
+log = { version = "0.4.8", features = ["release_max_level_info"] }
 nalgebra = "0.18.0"
 png = "0.15.0"
 crossbeam-channel = "0.3.9"
