@@ -57,7 +57,7 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
 
     #[cfg(target_os = "windows")]
     let path = {
-        use crate::fs::windows::localappdata_path;
+        use crate::platform::windows::localappdata_path;
 
         let appdata = localappdata_path().unwrap();
 
