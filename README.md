@@ -55,4 +55,4 @@ SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection
 
 **HS_LIBS_LOG_LEVEL (optional)**: Changes level of logging for external crates.
 It is `warn` by default. Options are `error`, `warn`, `info`, `debug`, `trace`
-and `off`. Invalid value is gracefully ignored.
+and `off`.

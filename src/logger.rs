@@ -40,7 +40,7 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
             "debug" => log::LevelFilter::Debug,
             "trace" => log::LevelFilter::Trace,
             "off" => log::LevelFilter::Off,
-            _ => LIBS_DEFAULT_LOG_LEVEL,
+            _ => panic!("Unknown library log level requested"),
         })
         .unwrap_or(LIBS_DEFAULT_LOG_LEVEL);
 
