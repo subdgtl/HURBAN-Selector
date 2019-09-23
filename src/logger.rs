@@ -1,5 +1,3 @@
-use std::env;
-
 const LIBS_DEFAULT_LOG_LEVEL: log::LevelFilter = log::LevelFilter::Warn;
 
 /// Initializes logger for current environment.
@@ -15,6 +13,8 @@ pub fn init() {
 
 #[cfg(debug_assertions)]
 pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
+    use std::env;
+
     use fern::colors::{Color, ColoredLevelConfig};
 
     let colors = ColoredLevelConfig::new()
@@ -67,6 +67,8 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
 
     #[cfg(target_os = "macos")]
     let path = {
+        use std::env;
+
         match env::var("HOME") {
             Ok(home_dir) => Path::new(&home_dir).join("Library/Logs/HURBAN_Selector"),
             Err(_) => return base_logger,
