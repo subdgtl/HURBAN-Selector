@@ -52,31 +52,30 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
 
 #[cfg(not(debug_assertions))]
 pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
-    use crate::fs::windows::localappdata_path;
     use std::fs;
     use std::path::Path;
 
-    let path = if cfg!(target_os = "windows") {
+    #[cfg(target_os = "windows")]
+    let path = {
+        use crate::fs::windows::localappdata_path;
+
         let appdata = localappdata_path().unwrap();
 
-        Ok(Path::new(&appdata).join("HURBAN Selector/Logs"))
-    } else if cfg!(target_os = "macos") {
+        Path::new(&appdata).join("HURBAN Selector/Logs")
+    };
+
+    #[cfg(target_os = "macos")]
+    let path = {
         let home_dir = env::var("HOME").expect("$HOME should be defined in env");
 
-        Ok(Path::new(&home_dir).join("Library/Logs/HURBAN_Selector"))
-    } else if cfg!(target_os = "linux") {
-        Ok(Path::new("/var/log/HURBAN_Selector").to_path_buf())
-    } else {
-        Err(())
+        Path::new(&home_dir).join("Library/Logs/HURBAN_Selector")
     };
 
-    let path_buf = match path {
-        Ok(path_buf) => path_buf,
-        Err(_) => return base_logger,
-    };
+    #[cfg(target_os = "linux")]
+    let path = { Path::new("/var/log/HURBAN_Selector").to_path_buf() };
 
-    if !path_buf.exists() {
-        let result = fs::create_dir_all(&path_buf);
+    if !path.exists() {
+        let result = fs::create_dir_all(&path);
 
         if result.is_err() {
             return base_logger;
@@ -84,7 +83,7 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
     }
 
     let today_format = chrono::Local::today().format("%Y-%m-%d");
-    let file_name = path_buf.join(format!("{}.log", today_format));
+    let file_name = path.join(format!("{}.log", today_format));
     let file = match fern::log_file(file_name) {
         Ok(file) => file,
         Err(_) => return base_logger,
