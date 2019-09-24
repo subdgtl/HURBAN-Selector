@@ -92,13 +92,20 @@ pub fn init_and_run(options: Options) -> ! {
     let mut scene_geometries = vec![
         // FIXME: This is just temporary code so that we can see
         // something in the scene and know the renderer works.
-        geometry::uv_cube_var_len([0.0, 0.0, 0.0], 0.5),
-        geometry::uv_cube_same_len([0.0, 50.0, 0.0], 5.0),
-        geometry::uv_cube_same_len([50.0, 0.0, 0.0], 5.0),
-        geometry::cube_same_len([0.0, 5.0, 0.0], 0.9),
-        geometry::cube_same_len([0.0, 0.0, 5.0], 1.5),
-        geometry::plane_same_len([0.0, 0.0, 20.0], 10.0),
-        geometry::plane_var_len([0.0, 0.0, -20.0], 10.0),
+        geometry::uv_sphere([0.0, 0.0, 0.0], 5.0, 2, 3),
+        geometry::uv_sphere([20.0, 0.0, 0.0], 5.0, 3, 3),
+        geometry::uv_sphere([40.0, 0.0, 0.0], 5.0, 4, 4),
+        geometry::uv_sphere([60.0, 0.0, 0.0], 5.0, 5, 5),
+        geometry::uv_sphere([80.0, 0.0, 0.0], 5.0, 6, 6),
+        geometry::uv_sphere([100.0, 0.0, 0.0], 5.0, 7, 7),
+        geometry::uv_sphere([120.0, 0.0, 0.0], 5.0, 8, 8),
+        geometry::uv_sphere([170.0, 0.0, 0.0], 20.0, 20, 20),
+        geometry::cube_sharp_var_len([220.0, 0.0, 0.0], 5.0),
+        geometry::cube_sharp_same_len([240.0, 0.0, 0.0], 5.0),
+        geometry::cube_smooth_same_len([260.0, 0.0, 0.0], 5.0),
+        geometry::cube_smooth_same_len([280.0, 0.0, 0.0], 5.0),
+        geometry::plane_same_len([300.0, 0.0, 0.0], 5.0),
+        geometry::plane_var_len([320.0, 0.0, 0.0], 5.0),
     ];
 
     let mut scene_renderer_geometry_ids = Vec::with_capacity(scene_geometries.len());
