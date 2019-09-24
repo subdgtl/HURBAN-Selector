@@ -2,7 +2,7 @@ steps:
 - checkout: self
   fetchDepth: 1
 
-- template: azure-install-rust.yml
+- template: install-rust.yml
 
 - bash: cargo fmt -- --check
   displayName: "cargo fmt"
