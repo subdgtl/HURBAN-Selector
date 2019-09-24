@@ -11,12 +11,14 @@ use crate::renderer::{Renderer, RendererOptions, SceneRendererGeometry};
 use crate::ui::Ui;
 
 pub mod importer;
+pub mod logger;
 
 mod camera;
 mod convert;
 mod geometry;
 mod input;
 mod math;
+mod platform;
 mod renderer;
 mod ui;
 
