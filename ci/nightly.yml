@@ -1,0 +1,43 @@
+schedules:
+  - cron: "0 0 * * *"
+    displayName: Nightly build
+    branches:
+      include:
+      - master
+
+jobs:
+  - job: Linux
+    pool:
+      vmImage: ubuntu-16.04
+    steps:
+      - template: ci/test-all-release.yml
+    variables:
+      TOOLCHAIN: 1.36.0
+
+  - job: macOS
+    strategy:
+      matrix:
+        macos-10_13:
+          imageName: macos-10.13
+        macos-10_14:
+          imageName: macos-10.14
+    pool:
+      vmImage: $(imageName)
+    steps:
+      - template: ci/test-all-release.yml
+    variables:
+      TOOLCHAIN: 1.36.0
+
+  - job: Windows
+    pool:
+      vmImage: windows-2019
+    steps:
+      - script: choco install -y ninja
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: "3.7.4"
+          addToPath: true
+          architecture: "x64"
+      - template: ci/test-all-release.yml
+    variables:
+      TOOLCHAIN: 1.36.0
