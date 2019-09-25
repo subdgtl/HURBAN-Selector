@@ -1,14 +1,16 @@
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error;
 use std::fmt;
 use std::fs;
 use std::io::{self, Read};
 use std::thread;
+use std::time::SystemTime;
 
 use crc32fast;
 use crossbeam_channel::unbounded;
 use log;
+#[cfg(test)]
+use mockall::automock;
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 use tobj;
@@ -58,26 +60,82 @@ pub struct Model {
     pub geometry: Geometry,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileMetadata {
     checksum: u32,
-    last_modified: std::time::SystemTime,
+    last_modified: SystemTime,
 }
 
 pub type ImporterResult = Result<Vec<Model>, ImporterError>;
 
-/// `Importer` takes care of importing of obj files and caching of their
-/// internal representations. It holds paths to files, their metadata
-/// (checksums, timestamps) and models of parsed obj files.
+#[cfg_attr(test, automock)]
+/// An interface for caching of obj files.
+///
+/// The source is expected to be file with path and FileMetadata.
+pub trait ObjCache {
+    /// Returns models if modified timestamp of file on given `path` didn't
+    /// change.
+    fn get_if_not_modified(&self, path: &str, modified: SystemTime) -> Option<Vec<Model>>;
+
+    /// Returns models if checksum of source file is already cached.
+    ///
+    /// This means contents of file were cached, however it could have been
+    /// from a different path. Therefore file path and metadata should be
+    /// cached again.
+    fn get_by_checksum(&self, checksum: u32) -> Option<Vec<Model>>;
+
+    /// Sets given data in cache.
+    ///
+    /// Most likely there is going to be multiple caching structures present, so
+    /// this method accepts all available data and picks only whatever makes
+    /// sense to cache.
+    fn set(&mut self, path: String, metadata: FileMetadata, models: &[Model]);
+}
+
+/// Cache with no size limits. Anything set is kept until the application exits.
 #[derive(Debug, Default)]
-pub struct Importer {
+pub struct EndlessCache {
     path_metadata: HashMap<String, FileMetadata>,
     loaded_models: HashMap<u32, Vec<Model>>,
 }
 
-impl Importer {
-    pub fn new() -> Self {
-        Default::default()
+impl ObjCache for EndlessCache {
+    fn get_if_not_modified(&self, path: &str, modified: SystemTime) -> Option<Vec<Model>> {
+        if let Some(path_metadata) = self.path_metadata.get(path) {
+            if path_metadata.last_modified == modified {
+                return Some(
+                    self.loaded_models
+                        .get(&path_metadata.checksum)
+                        .expect("Should get loaded models by obj file's checksum")
+                        .clone(),
+                );
+            }
+        }
+
+        None
+    }
+
+    fn get_by_checksum(&self, checksum: u32) -> Option<Vec<Model>> {
+        self.loaded_models.get(&checksum).cloned()
+    }
+
+    fn set(&mut self, path: String, metadata: FileMetadata, models: &[Model]) {
+        self.path_metadata.insert(path, metadata);
+        self.loaded_models
+            .entry(metadata.checksum)
+            .or_insert_with(|| models.to_vec());
+    }
+}
+
+/// `Importer` takes care of importing of obj files and caching of their
+/// internal representations.
+pub struct Importer<C> {
+    cache: C,
+}
+
+impl<C: ObjCache> Importer<C> {
+    pub fn new(cache: C) -> Self {
+        Self { cache }
     }
 
     /// Tries to import obj file from given `path`. If file was already imported
@@ -87,66 +145,43 @@ impl Importer {
     /// cached.
     pub fn import_obj(&mut self, path: &str) -> ImporterResult {
         let mut file = fs::File::open(path)?;
-        let file_modified = file.metadata().and_then(|metadata| metadata.modified())?;
+        let file_metadata = file.metadata().expect("Failed to load obj file metadata");
+        let file_modified = file_metadata
+            .modified()
+            .expect("Failed to load modified timestamp of obj file");
 
-        // If paths and timestamps match, we can just return cached models.
-        if let Some(path_metadata) = self.path_metadata.get(path) {
-            if path_metadata.last_modified == file_modified {
-                return Ok(self
-                    .loaded_models
-                    .get(&path_metadata.checksum)
-                    .expect("Should get loaded models by obj file's checksum")
-                    .clone());
-            }
-        }
+        let models = match self.cache.get_if_not_modified(path, file_modified) {
+            Some(models) => return Ok(models),
+            None => {
+                let file_size = file_metadata.len() as usize;
+                // Allocate one extra byte so the buffer doesn't need to grow before the
+                // final `read` call at the end of the file.
+                let mut file_contents = Vec::with_capacity(file_size + 1);
+                file.read_to_end(&mut file_contents)?;
+                let checksum = calculate_checksum(&file_contents);
 
-        let file_size = file.metadata().map(|m| m.len() as usize + 1).unwrap_or(0);
-        let mut file_contents = Vec::with_capacity(file_size);
-        file.read_to_end(&mut file_contents)?;
-        let checksum = calculate_checksum(&file_contents);
+                let models = match self.cache.get_by_checksum(checksum) {
+                    Some(models) => models.clone(),
+                    None => {
+                        let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
+                        tobj_to_internal(tobj_models)
+                    }
+                };
 
-        let models = match self.loaded_models.entry(checksum) {
-            Entry::Occupied(loaded_model) => {
-                self.path_metadata.insert(
+                self.cache.set(
                     path.to_string(),
                     FileMetadata {
                         checksum,
                         last_modified: file_modified,
                     },
+                    &models,
                 );
-
-                loaded_model.get().clone()
-            }
-            Entry::Vacant(loaded_model) => {
-                let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
-                let models = tobj_to_internal(tobj_models);
-
-                self.path_metadata.insert(
-                    path.to_string(),
-                    FileMetadata {
-                        checksum,
-                        last_modified: file_modified,
-                    },
-                );
-                loaded_model.insert(models.clone());
 
                 models
             }
         };
 
         Ok(models)
-    }
-
-    /// FIXME: This is a poor man's testing method for cache contents. It should
-    /// be removed once cacher is removed from this structure and proper unit
-    /// tests are written for it.
-    pub fn is_cached(&self, path: &str, checksum: u32) -> bool {
-        if let Some(path_metadata) = self.path_metadata.get(path) {
-            return path_metadata.checksum == checksum
-                && self.loaded_models.contains_key(&checksum);
-        }
-
-        false
     }
 }
 
@@ -176,7 +211,8 @@ impl ImporterWorker {
         let thread = thread::spawn(move || {
             log::info!("Spawned importer worker.");
 
-            let mut importer = Importer::new();
+            let cache = EndlessCache::default();
+            let mut importer = Importer::new(cache);
 
             while let ImporterWorkerRequest::NewImport(path) = request_receiver
                 .recv()
@@ -317,6 +353,8 @@ pub fn calculate_checksum(string: &[u8]) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     fn create_tobj_model(indices: Vec<u32>, positions: Vec<f32>, normals: Vec<f32>) -> tobj::Model {
@@ -415,5 +453,249 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn test_obj_cache_set_caches_new_path_with_metadata() {
+        let mut cache = EndlessCache::default();
+        let path = "/path/to/some.obj".to_string();
+        let metadata = FileMetadata {
+            checksum: 1u32,
+            last_modified: SystemTime::now(),
+        };
+
+        cache.set(path.clone(), metadata, &[]);
+
+        assert_eq!(cache.path_metadata.len(), 1);
+        assert_eq!(
+            cache
+                .path_metadata
+                .get(&path)
+                .expect("Path should be present in cache"),
+            &metadata
+        );
+    }
+
+    #[test]
+    fn test_obj_cache_set_overrides_existing_path_with_new_metadata() {
+        let mut cache = EndlessCache::default();
+        let path = "/path/to/some.obj".to_string();
+        let metadata = FileMetadata {
+            checksum: 1u32,
+            last_modified: SystemTime::now(),
+        };
+
+        cache.set(path.clone(), metadata, &[]);
+
+        let new_metadata = FileMetadata {
+            checksum: 2u32,
+            last_modified: SystemTime::now(),
+        };
+
+        cache.set(path.clone(), new_metadata, &[]);
+
+        assert_eq!(cache.path_metadata.len(), 1);
+        assert_eq!(
+            cache
+                .path_metadata
+                .get(&path)
+                .expect("Path should be present in cache"),
+            &new_metadata
+        );
+    }
+
+    #[test]
+    fn test_obj_cache_set_caches_new_checksum_with_models() {
+        let mut cache = EndlessCache::default();
+        let path = "/path/to/some.obj".to_string();
+        let checksum = 1u32;
+        let metadata = FileMetadata {
+            checksum,
+            last_modified: SystemTime::now(),
+        };
+        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+
+        cache.set(path.clone(), metadata, &models);
+
+        assert_eq!(cache.loaded_models.len(), 1);
+        assert_eq!(
+            cache
+                .loaded_models
+                .get(&checksum)
+                .expect("Checksum should be present in cache"),
+            &models
+        );
+    }
+
+    #[test]
+    fn test_obj_cache_set_does_not_override_checksum_with_different_models() {
+        let mut cache = EndlessCache::default();
+        let path = "/path/to/some.obj".to_string();
+        let checksum = 1u32;
+        let metadata = FileMetadata {
+            checksum,
+            last_modified: SystemTime::now(),
+        };
+        let models = tobj_to_internal(vec![create_tobj_model(
+            vec![0],
+            vec![4.0, 5.0, 6.0],
+            vec![1.0, 1.0, 1.0],
+        )]);
+
+        cache.set(path.clone(), metadata, &models);
+
+        let new_models = tobj_to_internal(vec![create_tobj_model(
+            vec![0],
+            vec![4.0, 5.0, 6.0],
+            vec![0.0, 0.0, 0.0],
+        )]);
+
+        cache.set(path.clone(), metadata, &new_models);
+
+        assert_eq!(cache.loaded_models.len(), 1);
+        assert_eq!(
+            cache
+                .loaded_models
+                .get(&checksum)
+                .expect("Checksum should be present in cache"),
+            &models
+        );
+    }
+
+    #[test]
+    fn test_obj_cache_get_if_not_modified_returns_models_if_timestamp_is_unchanged() {
+        let mut cache = EndlessCache::default();
+        let path = "/path/to/some.obj".to_string();
+        let now = SystemTime::now();
+        let metadata = FileMetadata {
+            checksum: 1u32,
+            last_modified: now,
+        };
+        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+        cache.set(path.clone(), metadata, &models);
+
+        let loaded_models = cache.get_if_not_modified(&path, now);
+
+        assert_eq!(loaded_models.expect("Models should be loaded"), models);
+    }
+
+    #[test]
+    fn test_obj_cache_get_if_not_modified_returns_none_if_timestamp_changed() {
+        let mut cache = EndlessCache::default();
+        let path = "/path/to/some.obj".to_string();
+        let now = SystemTime::now();
+        let metadata = FileMetadata {
+            checksum: 1u32,
+            last_modified: now,
+        };
+        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+        cache.set(path.clone(), metadata, &models);
+
+        let loaded_models = cache.get_if_not_modified(
+            &path,
+            now.checked_add(Duration::from_secs(1))
+                .expect("Duration should be added"),
+        );
+
+        assert!(loaded_models.is_none());
+    }
+
+    #[test]
+    fn test_obj_cache_get_by_checksum_returns_models_if_checksum_does_match() {
+        let mut cache = EndlessCache::default();
+        let path = "/path/to/some.obj".to_string();
+        let checksum = 1u32;
+        let metadata = FileMetadata {
+            checksum,
+            last_modified: SystemTime::now(),
+        };
+        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+        cache.set(path.clone(), metadata, &models);
+
+        let loaded_models = cache.get_by_checksum(checksum);
+
+        assert_eq!(loaded_models.expect("Models should be loaded"), models);
+    }
+
+    #[test]
+    fn test_obj_cache_get_by_checksum_returns_none_if_checksum_does_not_match() {
+        let mut cache = EndlessCache::default();
+        let path = "/path/to/some.obj".to_string();
+        let checksum = 1u32;
+        let metadata = FileMetadata {
+            checksum,
+            last_modified: SystemTime::now(),
+        };
+        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+        cache.set(path.clone(), metadata, &models);
+
+        let loaded_models = cache.get_by_checksum(checksum + 1);
+
+        assert!(loaded_models.is_none());
+    }
+
+    // The following tests with mocked cache are technically integration tests
+    // and they use fixture data. They're kept here to prevent complications
+    // with automocks not being present in debug build, as it is built without
+    // code marked as `cfg(test)`.
+    //
+    // FIXME: Ideal scenario would be if filesystem was mocked and passed into
+    // this method as well. It'd become proper unit test that way.
+
+    #[test]
+    fn test_importer_import_obj_cache_sets_models_if_file_was_not_cached_before() {
+        let mut cache = MockObjCache::new();
+        cache
+            .expect_get_if_not_modified()
+            .returning(|_, _| None)
+            .times(1);
+        cache.expect_get_by_checksum().returning(|_| None).times(1);
+        cache.expect_set().returning(|_, _, _| ()).times(1);
+
+        let mut importer = Importer::new(cache);
+        let path = "tests/fixtures/valid.obj";
+
+        importer
+            .import_obj(&path)
+            .expect("Valid obj should be loaded");
+    }
+
+    #[test]
+    fn test_importer_import_obj_cache_returns_unmodified_file() {
+        let mut cache = MockObjCache::default();
+        cache
+            .expect_get_if_not_modified()
+            .returning(|_, _| Some(vec![]))
+            .times(1);
+        cache.expect_get_by_checksum().returning(|_| None).times(0);
+        cache.expect_set().returning(|_, _, _| ()).times(0);
+
+        let mut importer = Importer::new(cache);
+        let path = "tests/fixtures/valid.obj";
+
+        importer
+            .import_obj(&path)
+            .expect("Valid obj should be loaded");
+    }
+
+    #[test]
+    fn test_importer_import_obj_cache_returns_the_same_cached_data_from_different_file() {
+        let mut cache = MockObjCache::new();
+        cache
+            .expect_get_if_not_modified()
+            .returning(|_, _| None)
+            .times(1);
+        cache
+            .expect_get_by_checksum()
+            .returning(|_| Some(vec![]))
+            .times(1);
+        cache.expect_set().returning(|_, _, _| ()).times(1);
+
+        let mut importer = Importer::new(cache);
+        let path = "tests/fixtures/valid.obj";
+
+        importer
+            .import_obj(&path)
+            .expect("Valid obj should be loaded");
     }
 }
