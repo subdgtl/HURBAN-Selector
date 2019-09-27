@@ -166,6 +166,16 @@ impl Geometry {
     pub fn normals(&self) -> &[Vector3<f32>] {
         &self.normals
     }
+
+    pub fn edges(&self) -> Vec<Edge> {
+        self.faces
+        .iter()
+        .flat_map(|face| 
+            match face {
+                Face::Triangle(triangle_face) => triangle_face.to_edges()
+            }
+        ).collect()
+    }
 }
 
 /// A geometry index. Describes topology of geometry data.
@@ -209,11 +219,40 @@ impl TriangleFace {
             normals: (ni1, ni2, ni3),
         }
     }
+
+    /// Generates 3 edges from the respective triangular face
+    pub fn to_edges(&self) -> Vec<Edge> {
+        vec![
+            Edge::new(self.vertices.0, self.vertices.1),
+            Edge::new(self.vertices.1, self.vertices.2),
+            Edge::new(self.vertices.2, self.vertices.0),
+        ]
+    }
 }
 
 impl From<(u32, u32, u32)> for TriangleFace {
     fn from((i1, i2, i3): (u32, u32, u32)) -> TriangleFace {
         TriangleFace::new(i1, i2, i3)
+    }
+}
+
+/// A face edge. Contains indices to other geometry data - vertices
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Edge {
+    pub vertices: (u32, u32),
+}
+
+impl Edge {
+    pub fn new(i1: u32, i2: u32) -> Self {
+        Edge {
+            vertices: (i1, i2),
+        }
+    }
+}
+
+impl From<(u32, u32)> for Edge {
+    fn from((i1, i2): (u32, u32)) -> Edge {
+        Edge::new(i1, i2)
     }
 }
 
