@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use nalgebra as na;
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
@@ -169,7 +170,7 @@ impl Geometry {
 
     pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = Edge> + 'a {
         self.triangle_faces_iter()
-            .flat_map(|face| face.to_edges().iter())
+            .flat_map(|face| ArrayVec::from(face.to_edges()).into_iter())
     }
 }
 
