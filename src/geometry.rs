@@ -167,17 +167,10 @@ impl Geometry {
         &self.normals
     }
 
-    pub fn edges(&self) -> Vec<Edge> {
+    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = Edge> + 'a {
         self.triangle_faces_iter()
-            .copied()
             .flat_map(|face| face.to_edges().iter())
     }
-
-    // pub fn edges(&'a self) -> impl Iterator<Item = Edge> + 'a {
-    //     self.faces.iter().copied().flat_map(|face| match face {
-    //         Face::Triangle(triangle_face) => triangle_face.to_edges(),
-    //     })
-    // }
 }
 
 /// A geometry index. Describes topology of geometry data.
