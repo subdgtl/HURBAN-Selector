@@ -168,14 +168,16 @@ impl Geometry {
     }
 
     pub fn edges(&self) -> Vec<Edge> {
-        self.faces
-        .iter()
-        .flat_map(|face| 
-            match face {
-                Face::Triangle(triangle_face) => triangle_face.to_edges()
-            }
-        ).collect()
+        self.triangle_faces_iter()
+            .copied()
+            .flat_map(|face| face.to_edges().iter())
     }
+
+    // pub fn edges(&'a self) -> impl Iterator<Item = Edge> + 'a {
+    //     self.faces.iter().copied().flat_map(|face| match face {
+    //         Face::Triangle(triangle_face) => triangle_face.to_edges(),
+    //     })
+    // }
 }
 
 /// A geometry index. Describes topology of geometry data.
@@ -221,8 +223,8 @@ impl TriangleFace {
     }
 
     /// Generates 3 edges from the respective triangular face
-    pub fn to_edges(&self) -> Vec<Edge> {
-        vec![
+    pub fn to_edges(&self) -> [Edge; 3] {
+        [
             Edge::new(self.vertices.0, self.vertices.1),
             Edge::new(self.vertices.1, self.vertices.2),
             Edge::new(self.vertices.2, self.vertices.0),
@@ -244,13 +246,11 @@ pub struct Edge {
 
 impl Edge {
     pub fn new(i1: u32, i2: u32) -> Self {
-        Edge {
-            vertices: (i1, i2),
-        }
+        Edge { vertices: (i1, i2) }
     }
-    pub fn equal_bidi(&self, &other: Edge) -> bool {
+    pub fn equal_bidi(&self, other: &Edge) -> bool {
         (self.vertices.0 == other.vertices.0 && self.vertices.1 == other.vertices.1)
-        || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
+            || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
     }
 }
 
