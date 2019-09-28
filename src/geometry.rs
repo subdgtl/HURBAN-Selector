@@ -1,4 +1,6 @@
 use arrayvec::ArrayVec;
+use std::cmp;
+
 use nalgebra as na;
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
@@ -232,7 +234,7 @@ impl From<(u32, u32, u32)> for TriangleFace {
     }
 }
 
-/// A face edge. Contains indices to other geometry data - vertices
+/// Oriented face edge. Contains indices to other geometry data - vertices
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HalfEdge {
     pub vertices: (u32, u32),
@@ -251,6 +253,34 @@ impl HalfEdge {
 impl From<(u32, u32)> for HalfEdge {
     fn from((i1, i2): (u32, u32)) -> HalfEdge {
         HalfEdge::new(i1, i2)
+    }
+}
+
+/// Unoriented face edge.
+/// Contains indices to other geometry data - vertices.
+/// Lower index first, higher index second.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Edge {
+    pub vertices: (u32, u32),
+}
+
+impl Edge {
+    pub fn new(i1: u32, i2: u32) -> Self {
+        Edge {
+            vertices: (cmp::min(i1, i2), cmp::max(i1, i2)),
+        }
+    }
+}
+
+impl From<(u32, u32)> for Edge {
+    fn from((i1, i2): (u32, u32)) -> Edge {
+        Edge::new(i1, i2)
+    }
+}
+
+impl From<HalfEdge> for Edge {
+    fn from(half_edge: HalfEdge) -> Edge {
+        Edge::new(half_edge.vertices.0, half_edge.vertices.1)
     }
 }
 
