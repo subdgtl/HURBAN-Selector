@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::geometry::Geometry;
 
 /// Check if all the vertices of geometry are referenced in geometry's faces
+#[allow(dead_code)]
 pub fn has_no_orphans(geo: &Geometry) -> bool {
     let mut used_vertices = HashSet::new();
     for face in geo.triangle_faces_iter() {
