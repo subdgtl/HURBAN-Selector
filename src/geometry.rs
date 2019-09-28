@@ -242,7 +242,7 @@ impl Edge {
     pub fn new(i1: u32, i2: u32) -> Self {
         Edge { vertices: (i1, i2) }
     }
-    pub fn equal_bidi(&self, other: &Edge) -> bool {
+    pub fn equal_bidi(self, other: Edge) -> bool {
         (self.vertices.0 == other.vertices.0 && self.vertices.1 == other.vertices.1)
             || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
     }
