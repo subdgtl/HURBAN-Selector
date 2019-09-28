@@ -168,7 +168,7 @@ impl Geometry {
         &self.normals
     }
 
-    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = Edge> + 'a {
+    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item =HalfEdge> + 'a {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_edges()).into_iter())
     }
@@ -217,11 +217,11 @@ impl TriangleFace {
     }
 
     /// Generates 3 edges from the respective triangular face
-    pub fn to_edges(&self) -> [Edge; 3] {
+    pub fn to_edges(&self) -> [HalfEdge; 3] {
         [
-            Edge::new(self.vertices.0, self.vertices.1),
-            Edge::new(self.vertices.1, self.vertices.2),
-            Edge::new(self.vertices.2, self.vertices.0),
+            HalfEdge::new(self.vertices.0, self.vertices.1),
+            HalfEdge::new(self.vertices.1, self.vertices.2),
+            HalfEdge::new(self.vertices.2, self.vertices.0),
         ]
     }
 }
@@ -234,23 +234,23 @@ impl From<(u32, u32, u32)> for TriangleFace {
 
 /// A face edge. Contains indices to other geometry data - vertices
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Edge {
+pub struct HalfEdge {
     pub vertices: (u32, u32),
 }
 
-impl Edge {
+impl HalfEdge {
     pub fn new(i1: u32, i2: u32) -> Self {
-        Edge { vertices: (i1, i2) }
+        HalfEdge { vertices: (i1, i2) }
     }
-    pub fn equal_bidi(self, other: Edge) -> bool {
+    pub fn equal_bidi(self, other: HalfEdge) -> bool {
         (self.vertices.0 == other.vertices.0 && self.vertices.1 == other.vertices.1)
             || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
     }
 }
 
-impl From<(u32, u32)> for Edge {
-    fn from((i1, i2): (u32, u32)) -> Edge {
-        Edge::new(i1, i2)
+impl From<(u32, u32)> for HalfEdge {
+    fn from((i1, i2): (u32, u32)) -> HalfEdge {
+        HalfEdge::new(i1, i2)
     }
 }
 
