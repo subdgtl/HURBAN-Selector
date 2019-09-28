@@ -235,7 +235,7 @@ impl From<(u32, u32, u32)> for TriangleFace {
 }
 
 /// Oriented face edge. Contains indices to other geometry data - vertices
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HalfEdge {
     pub vertices: (u32, u32),
 }
@@ -259,7 +259,7 @@ impl From<(u32, u32)> for HalfEdge {
 /// Unoriented face edge.
 /// Contains indices to other geometry data - vertices.
 /// Lower index first, higher index second.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Edge {
     pub vertices: (u32, u32),
 }
