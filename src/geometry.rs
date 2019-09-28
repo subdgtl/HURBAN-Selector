@@ -168,7 +168,7 @@ impl Geometry {
         &self.normals
     }
 
-    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item =HalfEdge> + 'a {
+    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = HalfEdge> + 'a {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_edges()).into_iter())
     }
