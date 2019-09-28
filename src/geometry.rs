@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use nalgebra as na;
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
@@ -21,7 +22,7 @@ pub enum NormalStrategy {
 /// are not supported currently, but might be in the future.
 ///
 /// The geometry data lives in right-handed coordinate space with the
-/// XY plance being the ground and Z axis growing upwards.
+/// XY plane being the ground and Z axis growing upwards.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Geometry {
     faces: Vec<Face>,
@@ -166,6 +167,11 @@ impl Geometry {
     pub fn normals(&self) -> &[Vector3<f32>] {
         &self.normals
     }
+
+    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = HalfEdge> + 'a {
+        self.triangle_faces_iter()
+            .flat_map(|face| ArrayVec::from(face.to_edges()).into_iter())
+    }
 }
 
 /// A geometry index. Describes topology of geometry data.
@@ -209,11 +215,42 @@ impl TriangleFace {
             normals: (ni1, ni2, ni3),
         }
     }
+
+    /// Generates 3 edges from the respective triangular face
+    pub fn to_edges(&self) -> [HalfEdge; 3] {
+        [
+            HalfEdge::new(self.vertices.0, self.vertices.1),
+            HalfEdge::new(self.vertices.1, self.vertices.2),
+            HalfEdge::new(self.vertices.2, self.vertices.0),
+        ]
+    }
 }
 
 impl From<(u32, u32, u32)> for TriangleFace {
     fn from((i1, i2, i3): (u32, u32, u32)) -> TriangleFace {
         TriangleFace::new(i1, i2, i3)
+    }
+}
+
+/// A face edge. Contains indices to other geometry data - vertices
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HalfEdge {
+    pub vertices: (u32, u32),
+}
+
+impl HalfEdge {
+    pub fn new(i1: u32, i2: u32) -> Self {
+        HalfEdge { vertices: (i1, i2) }
+    }
+    pub fn equal_bidi(self, other: HalfEdge) -> bool {
+        (self.vertices.0 == other.vertices.0 && self.vertices.1 == other.vertices.1)
+            || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
+    }
+}
+
+impl From<(u32, u32)> for HalfEdge {
+    fn from((i1, i2): (u32, u32)) -> HalfEdge {
+        HalfEdge::new(i1, i2)
     }
 }
 

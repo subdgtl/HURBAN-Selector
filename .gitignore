@@ -3,3 +3,7 @@
 
 # VS Code
 .vscode/
+
+.idea/
+
+HURBAN-Selector.iml

@@ -18,6 +18,7 @@ mod convert;
 mod geometry;
 mod input;
 mod math;
+mod mesh_analysis;
 mod platform;
 mod renderer;
 mod ui;
