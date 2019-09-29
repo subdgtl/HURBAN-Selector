@@ -172,7 +172,7 @@ impl Geometry {
 
     pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = HalfEdge> + 'a {
         self.triangle_faces_iter()
-            .flat_map(|face| ArrayVec::from(face.to_edges()).into_iter())
+            .flat_map(|face| ArrayVec::from(face.to_half_edges()).into_iter())
     }
 }
 
@@ -218,12 +218,21 @@ impl TriangleFace {
         }
     }
 
-    /// Generates 3 edges from the respective triangular face
-    pub fn to_edges(&self) -> [HalfEdge; 3] {
+    /// Generates 3 half-edges from the respective triangular face
+    pub fn to_half_edges(&self) -> [HalfEdge; 3] {
         [
             HalfEdge::new(self.vertices.0, self.vertices.1),
             HalfEdge::new(self.vertices.1, self.vertices.2),
             HalfEdge::new(self.vertices.2, self.vertices.0),
+        ]
+    }
+
+    /// Generates 3 edges from the respective triangular face
+    pub fn to_edges(&self) -> [Edge; 3] {
+        [
+            Edge::new(self.vertices.0, self.vertices.1),
+            Edge::new(self.vertices.1, self.vertices.2),
+            Edge::new(self.vertices.2, self.vertices.0),
         ]
     }
 }
