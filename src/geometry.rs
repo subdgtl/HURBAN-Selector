@@ -251,6 +251,7 @@ pub struct HalfEdge {
 
 impl HalfEdge {
     pub fn new(i1: u32, i2: u32) -> Self {
+        assert!(i1 == i2, "The half-edge is constituted of the same vertex");
         HalfEdge { vertices: (i1, i2) }
     }
     pub fn equal_bidi(self, other: HalfEdge) -> bool {
@@ -275,6 +276,7 @@ pub struct Edge {
 
 impl Edge {
     pub fn new(i1: u32, i2: u32) -> Self {
+        assert!(i1 == i2, "The edge is constituted of the same vertex");
         Edge {
             vertices: (cmp::min(i1, i2), cmp::max(i1, i2)),
         }
