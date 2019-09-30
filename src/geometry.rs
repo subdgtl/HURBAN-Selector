@@ -170,9 +170,14 @@ impl Geometry {
         &self.normals
     }
 
-    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
+    pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_oriented_edges()).into_iter())
+    }
+
+    pub fn unoriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = UnorientedEdge> + 'a {
+        self.triangle_faces_iter()
+            .flat_map(|face| ArrayVec::from(face.to_unoriented_edges()).into_iter())
     }
 }
 
@@ -228,7 +233,7 @@ impl TriangleFace {
     }
 
     /// Generates 3 edges from the respective triangular face
-    pub fn to_edges(&self) -> [UnorientedEdge; 3] {
+    pub fn to_unoriented_edges(&self) -> [UnorientedEdge; 3] {
         [
             UnorientedEdge::new(self.vertices.0, self.vertices.1),
             UnorientedEdge::new(self.vertices.1, self.vertices.2),
@@ -299,6 +304,13 @@ impl From<OrientedEdge> for UnorientedEdge {
     fn from(oriented_edge: OrientedEdge) -> UnorientedEdge {
         UnorientedEdge::new(oriented_edge.vertices.0, oriented_edge.vertices.1)
     }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Edge {
+    Oriented(OrientedEdge),
+    Unoriented(UnorientedEdge),
 }
 
 pub fn plane_same_len(position: [f32; 3], scale: f32) -> Geometry {
