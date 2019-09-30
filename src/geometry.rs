@@ -133,7 +133,7 @@ impl Geometry {
                 "Faces reference out of bounds normal data"
             );
             assert!(
-                v.0 == v.1 || v.0 == v.2 || v.1 == v.2,
+                v.0 != v.1 && v.0 != v.2 && v.1 != v.2,
                 "One or more face edges consists of the same vertex"
             );
         }
