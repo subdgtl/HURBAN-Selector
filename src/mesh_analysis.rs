@@ -14,14 +14,20 @@ pub fn has_no_orphans(geo: &Geometry) -> bool {
     used_vertices.len() == geo.vertices().len()
 }
 
+/// Finds edges with a certain valency in a mesh edge collection
+/// Valency indicated how many faces share the edge
+fn find_edge_with_valency(edge_valencies: HashMap<Edge, u32>, valency: u32) -> Vec<Edge> {
+    let keys = edge_valencies.keys();
+    keys.filter(|key| edge_valencies[key] == valency)
+        .copied()
+        .collect()
+}
+
 /// Finds border edges in a mesh edge collection
 /// An edge is border when its valency is 1
 #[allow(dead_code)]
-pub fn border_edges(edge_valencies: HashMap<Edge, usize>) -> Vec<Edge> {
-    let keys = edge_valencies.keys();
-    keys.filter(|key| edge_valencies[key] == 1)
-        .copied()
-        .collect()
+pub fn border_edges(edge_valencies: HashMap<Edge, u32>) -> Vec<Edge> {
+    find_edge_with_valency(edge_valencies, 1)
 }
 
 /// Finds border vertex indices in a mesh edge collection
@@ -40,4 +46,33 @@ pub fn border_vertex_indices_from_edges(edge_valencies: HashMap<Edge, usize>) ->
             border_vertices.insert(vertices.1);
         });
     border_vertices.iter().copied().collect()
+}
+
+/// Finds manifold (inner) edges in a mesh edge collection
+/// An edge is manifold when its valency is 2
+#[allow(dead_code)]
+pub fn manifold_edges(edge_valencies: HashMap<Edge, u32>) -> Vec<Edge> {
+    find_edge_with_valency(edge_valencies, 2)
+}
+
+/// Finds non-manifold (errorneous) edges in a mesh edge collection
+#[allow(dead_code)]
+pub fn non_manifold_edges(edge_valencies: HashMap<Edge, u32>) -> Vec<Edge> {
+    let keys = edge_valencies.keys();
+    keys.filter(|key| edge_valencies[key] > 2)
+        .copied()
+        .collect()
+}
+
+/// Finds manifold (inner) edges in a mesh edge collection
+/// An edge is manifold when its valency is 2
+#[allow(dead_code)]
+pub fn is_mesh_orientable(edges: &[Edge]) -> bool {
+    edges.iter().all(|edge| match edge {
+        Edge::Oriented(oriented_edge) => edges.iter().any(|test_edge| match test_edge {
+            Edge::Oriented(oriented_test_edge) => oriented_test_edge.is_reverted(*oriented_edge),
+            Edge::Unoriented(_) => false,
+        }),
+        Edge::Unoriented(_) => false,
+    })
 }

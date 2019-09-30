@@ -266,6 +266,14 @@ impl OrientedEdge {
         (self.vertices.0 == other.vertices.0 && self.vertices.1 == other.vertices.1)
             || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
     }
+
+    pub fn is_reverted(self, other: OrientedEdge) -> bool {
+        self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0
+    }
+
+    pub fn reverted(self) -> Self {
+        OrientedEdge::new(self.vertices.1, self.vertices.0)
+    }
 }
 
 impl From<(u32, u32)> for OrientedEdge {
