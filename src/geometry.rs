@@ -170,9 +170,9 @@ impl Geometry {
         &self.normals
     }
 
-    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = HalfEdge> + 'a {
+    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
         self.triangle_faces_iter()
-            .flat_map(|face| ArrayVec::from(face.to_half_edges()).into_iter())
+            .flat_map(|face| ArrayVec::from(face.to_oriented_edges()).into_iter())
     }
 }
 
@@ -218,21 +218,21 @@ impl TriangleFace {
         }
     }
 
-    /// Generates 3 half-edges from the respective triangular face
-    pub fn to_half_edges(&self) -> [HalfEdge; 3] {
+    /// Generates 3 oriented edges from the respective triangular face
+    pub fn to_oriented_edges(&self) -> [OrientedEdge; 3] {
         [
-            HalfEdge::new(self.vertices.0, self.vertices.1),
-            HalfEdge::new(self.vertices.1, self.vertices.2),
-            HalfEdge::new(self.vertices.2, self.vertices.0),
+            OrientedEdge::new(self.vertices.0, self.vertices.1),
+            OrientedEdge::new(self.vertices.1, self.vertices.2),
+            OrientedEdge::new(self.vertices.2, self.vertices.0),
         ]
     }
 
     /// Generates 3 edges from the respective triangular face
-    pub fn to_edges(&self) -> [Edge; 3] {
+    pub fn to_edges(&self) -> [UnorientedEdge; 3] {
         [
-            Edge::new(self.vertices.0, self.vertices.1),
-            Edge::new(self.vertices.1, self.vertices.2),
-            Edge::new(self.vertices.2, self.vertices.0),
+            UnorientedEdge::new(self.vertices.0, self.vertices.1),
+            UnorientedEdge::new(self.vertices.1, self.vertices.2),
+            UnorientedEdge::new(self.vertices.2, self.vertices.0),
         ]
     }
 }
@@ -243,26 +243,29 @@ impl From<(u32, u32, u32)> for TriangleFace {
     }
 }
 
-/// Oriented face edge. Contains indices to other geometry data - vertices
+/// Oriented face unoriented edge. Contains indices to other geometry data - vertices
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct HalfEdge {
+pub struct OrientedEdge {
     pub vertices: (u32, u32),
 }
 
-impl HalfEdge {
+impl OrientedEdge {
     pub fn new(i1: u32, i2: u32) -> Self {
-        assert!(i1 == i2, "The half-edge is constituted of the same vertex");
-        HalfEdge { vertices: (i1, i2) }
+        assert!(
+            i1 == i2,
+            "The oriented edge is constituted of the same vertex"
+        );
+        OrientedEdge { vertices: (i1, i2) }
     }
-    pub fn equal_bidi(self, other: HalfEdge) -> bool {
+    pub fn equal_bidi(self, other: OrientedEdge) -> bool {
         (self.vertices.0 == other.vertices.0 && self.vertices.1 == other.vertices.1)
             || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
     }
 }
 
-impl From<(u32, u32)> for HalfEdge {
-    fn from((i1, i2): (u32, u32)) -> HalfEdge {
-        HalfEdge::new(i1, i2)
+impl From<(u32, u32)> for OrientedEdge {
+    fn from((i1, i2): (u32, u32)) -> OrientedEdge {
+        OrientedEdge::new(i1, i2)
     }
 }
 
@@ -270,28 +273,31 @@ impl From<(u32, u32)> for HalfEdge {
 /// Contains indices to other geometry data - vertices.
 /// Lower index first, higher index second.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Edge {
+pub struct UnorientedEdge {
     pub vertices: (u32, u32),
 }
 
-impl Edge {
+impl UnorientedEdge {
     pub fn new(i1: u32, i2: u32) -> Self {
-        assert!(i1 == i2, "The edge is constituted of the same vertex");
-        Edge {
+        assert!(
+            i1 == i2,
+            "The unoriented edge is constituted of the same vertex"
+        );
+        UnorientedEdge {
             vertices: (cmp::min(i1, i2), cmp::max(i1, i2)),
         }
     }
 }
 
-impl From<(u32, u32)> for Edge {
-    fn from((i1, i2): (u32, u32)) -> Edge {
-        Edge::new(i1, i2)
+impl From<(u32, u32)> for UnorientedEdge {
+    fn from((i1, i2): (u32, u32)) -> UnorientedEdge {
+        UnorientedEdge::new(i1, i2)
     }
 }
 
-impl From<HalfEdge> for Edge {
-    fn from(half_edge: HalfEdge) -> Edge {
-        Edge::new(half_edge.vertices.0, half_edge.vertices.1)
+impl From<OrientedEdge> for UnorientedEdge {
+    fn from(oriented_edge: OrientedEdge) -> UnorientedEdge {
+        UnorientedEdge::new(oriented_edge.vertices.0, oriented_edge.vertices.1)
     }
 }
 
