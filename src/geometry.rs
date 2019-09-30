@@ -257,7 +257,7 @@ pub struct OrientedEdge {
 impl OrientedEdge {
     pub fn new(i1: u32, i2: u32) -> Self {
         assert!(
-            i1 == i2,
+            i1 != i2,
             "The oriented edge is constituted of the same vertex"
         );
         OrientedEdge { vertices: (i1, i2) }
@@ -285,7 +285,7 @@ pub struct UnorientedEdge {
 impl UnorientedEdge {
     pub fn new(i1: u32, i2: u32) -> Self {
         assert!(
-            i1 == i2,
+            i1 != i2,
             "The unoriented edge is constituted of the same vertex"
         );
         UnorientedEdge {
