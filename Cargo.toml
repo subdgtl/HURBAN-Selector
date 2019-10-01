@@ -10,6 +10,10 @@ authors = [
 ]
 license = "GPL-3.0-only"
 
+[[bench]]
+name = "shrink_wrap"
+harness = false
+
 [dependencies]
 wgpu = { git = "https://github.com/gfx-rs/wgpu-rs", rev = "5edb6ecf13c9b21c60e41477eb64837c5445dfd8", features = ["vulkan"] }
 winit = "0.20.0-alpha3"
@@ -30,6 +34,9 @@ arrayvec = "0.5.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.8", features = ["combaseapi", "knownfolders", "shlobj", "winerror"] }
+
+[dev-dependencies]
+criterion = "0.3.0"
 
 [build-dependencies]
 shaderc = "0.6.0"

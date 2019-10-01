@@ -168,6 +168,10 @@ impl Geometry {
         &self.vertices
     }
 
+    pub fn vertices_mut(&mut self) -> &mut [Point3<f32>] {
+        &mut self.vertices
+    }
+
     pub fn normals(&self) -> &[Vector3<f32>] {
         &self.normals
     }
@@ -642,6 +646,27 @@ pub fn compute_centroid(geometries: &[Geometry]) -> Point3<f32> {
     }
 
     centroid / (vertex_count as f32)
+}
+
+pub fn find_closest_point(position: &Point3<f32>, geometry: &Geometry) -> Option<Point3<f32>> {
+    let vertices = geometry.vertices();
+    if vertices.is_empty() {
+        return None;
+    }
+
+    let mut closest = vertices[0];
+    // FIXME: @Optimization benchmark `distance` vs `distance_squared`
+    // with branching (0..1, 1..inf)
+    let mut closest_distance = na::distance(position, &closest);
+    for point in &vertices[1..] {
+        let distance = na::distance(position, &point);
+        if distance < closest_distance {
+            closest = *point;
+            closest_distance = distance;
+        }
+    }
+
+    Some(closest)
 }
 
 fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
