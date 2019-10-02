@@ -76,3 +76,10 @@ pub fn is_mesh_orientable(edges: &[Edge]) -> bool {
         Edge::Unoriented(_) => false,
     })
 }
+
+/// The mesh is watertight if there is no border or non-manifold edge,
+/// in other words, all edge valencies are 2
+#[allow(dead_code)]
+pub fn is_mesh_watertight(edge_valencies: HashMap<Edge, u32>) -> bool {
+    edge_valencies.values().all(|valency| *valency == 2)
+}
