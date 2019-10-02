@@ -3,6 +3,14 @@ use std::collections::HashMap;
 
 use crate::geometry::Edge;
 
+//struct EdgeWrapper (OrientedEdge);
+//struct EdgeInfo {
+//    one_way_count: u32,
+//    other_way_count: u32,
+//};
+//
+//let map: HashMap<EdgeWrapper, EdgeInfo>;
+
 /// Calculate edge valencies = number of faces sharing an edge
 /// 1 -> border edge = acceptable but mesh is not watertight
 /// 2 -> manifold edge = correct

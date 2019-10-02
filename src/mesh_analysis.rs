@@ -16,17 +16,21 @@ pub fn has_no_orphans(geo: &Geometry) -> bool {
 
 /// Finds edges with a certain valency in a mesh edge collection
 /// Valency indicated how many faces share the edge
-fn find_edge_with_valency(edge_valencies: HashMap<Edge, u32>, valency: u32) -> Vec<Edge> {
-    let keys = edge_valencies.keys();
-    keys.filter(|key| edge_valencies[key] == valency)
+fn find_edge_with_valency<'a>(
+    edge_valencies: &'a HashMap<Edge, u32>,
+    valency: u32,
+) -> impl Iterator<Item = Edge> + 'a {
+    edge_valencies
+        .iter()
+        .filter(move |(_key, value)| **value == valency)
+        .map(|(key, _value)| key)
         .copied()
-        .collect()
 }
 
 /// Finds border edges in a mesh edge collection
 /// An edge is border when its valency is 1
 #[allow(dead_code)]
-pub fn border_edges(edge_valencies: HashMap<Edge, u32>) -> Vec<Edge> {
+pub fn border_edges<'a>(edge_valencies: &'a HashMap<Edge, u32>) -> impl Iterator<Item = Edge> + 'a {
     find_edge_with_valency(edge_valencies, 1)
 }
 
@@ -51,7 +55,9 @@ pub fn border_vertex_indices_from_edges(edge_valencies: HashMap<Edge, usize>) ->
 /// Finds manifold (inner) edges in a mesh edge collection
 /// An edge is manifold when its valency is 2
 #[allow(dead_code)]
-pub fn manifold_edges(edge_valencies: HashMap<Edge, u32>) -> Vec<Edge> {
+pub fn manifold_edges<'a>(
+    edge_valencies: &'a HashMap<Edge, u32>,
+) -> impl Iterator<Item = Edge> + 'a {
     find_edge_with_valency(edge_valencies, 2)
 }
 
@@ -64,8 +70,11 @@ pub fn non_manifold_edges(edge_valencies: HashMap<Edge, u32>) -> Vec<Edge> {
         .collect()
 }
 
-/// Finds manifold (inner) edges in a mesh edge collection
-/// An edge is manifold when its valency is 2
+/// Check if all the face normals point the same way.
+/// In a proper watertight mesh each oriented edge
+/// should have a counterpart in a reverted oriented edge
+
+// TODO: make this work for open meshes
 #[allow(dead_code)]
 pub fn is_mesh_orientable(edges: &[Edge]) -> bool {
     edges.iter().all(|edge| match edge {

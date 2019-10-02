@@ -248,7 +248,7 @@ impl From<(u32, u32, u32)> for TriangleFace {
     }
 }
 
-/// Oriented face unoriented edge. Contains indices to other geometry data - vertices
+/// Oriented face edge. Contains indices to other geometry data - vertices
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OrientedEdge {
     pub vertices: (u32, u32),
@@ -262,6 +262,8 @@ impl OrientedEdge {
         );
         OrientedEdge { vertices: (i1, i2) }
     }
+
+    // TODO: might be unnecessary
     pub fn equal_bidi(self, other: OrientedEdge) -> bool {
         (self.vertices.0 == other.vertices.0 && self.vertices.1 == other.vertices.1)
             || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
@@ -271,6 +273,7 @@ impl OrientedEdge {
         self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0
     }
 
+    // TODO: might be unnecessary
     pub fn reverted(self) -> Self {
         OrientedEdge::new(self.vertices.1, self.vertices.0)
     }
