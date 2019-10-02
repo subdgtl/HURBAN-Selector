@@ -258,16 +258,16 @@ impl OrientedEdge {
 
 /// Implements orientation indifferent hash and equal methods
 #[derive(Debug, Clone, Copy, Eq)]
-pub struct EdgeWrapper(pub OrientedEdge);
+pub struct UnorientedEdge(pub OrientedEdge);
 
-impl PartialEq for EdgeWrapper {
+impl PartialEq for UnorientedEdge {
     fn eq(&self, other: &Self) -> bool {
         (self.0.vertices.0 == other.0.vertices.0 && self.0.vertices.1 == other.0.vertices.1)
             || (self.0.vertices.0 == other.0.vertices.1 && self.0.vertices.1 == other.0.vertices.0)
     }
 }
 
-impl Hash for EdgeWrapper {
+impl Hash for UnorientedEdge {
     fn hash<H: Hasher>(&self, state: &mut H) {
         cmp::min(self.0.vertices.0, self.0.vertices.1).hash(state);
         cmp::max(self.0.vertices.0, self.0.vertices.1).hash(state);
@@ -282,7 +282,7 @@ pub struct EdgeCount {
     pub descending_count: u32,
 }
 
-pub type EdgeCountMap = HashMap<EdgeWrapper, EdgeCount>;
+pub type EdgeCountMap = HashMap<UnorientedEdge, EdgeCount>;
 
 impl From<(u32, u32)> for OrientedEdge {
     fn from((i1, i2): (u32, u32)) -> OrientedEdge {

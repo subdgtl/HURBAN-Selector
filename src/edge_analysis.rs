@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::geometry::{EdgeCount, EdgeCountMap, EdgeWrapper, OrientedEdge};
+use crate::geometry::{EdgeCount, EdgeCountMap, UnorientedEdge, OrientedEdge};
 
 //let map: HashMap<EdgeWrapper, EdgeInfo>;
 
@@ -12,7 +12,7 @@ use crate::geometry::{EdgeCount, EdgeCountMap, EdgeWrapper, OrientedEdge};
 pub fn edge_valencies(edges: &[OrientedEdge]) -> EdgeCountMap {
     let mut edge_valency_map: EdgeCountMap = HashMap::new();
     for edge in edges {
-        let edge_wrapped = EdgeWrapper(*edge);
+        let edge_wrapped = UnorientedEdge(*edge);
         let mut ascending_count: u32 = 0;
         let mut descending_count: u32 = 0;
         if edge.vertices.0 < edge.vertices.1 {
