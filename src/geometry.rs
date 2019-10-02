@@ -7,6 +7,7 @@ use nalgebra::geometry::Point3;
 
 use crate::convert::{cast_u32, cast_usize};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Copy)]
@@ -175,6 +176,12 @@ impl Geometry {
     pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_oriented_edges()).into_iter())
+    }
+
+    /// Genus of a mesh is the number of holes in topology / conectivity
+    /// V - E + F = 2 (1 - G)
+    pub fn mesh_genus(&self, edges: &[OrientedEdge]) -> u32 {
+        u32::try_from(1 - (self.vertices.len() - edges.len() + self.faces.len()) / 2).unwrap()
     }
 }
 
