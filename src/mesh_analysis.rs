@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use crate::geometry::{Edge, Geometry};
+use crate::geometry::{EdgeCountMap, Geometry, OrientedEdge};
 
 /// Check if all the vertices of geometry are referenced in geometry's faces
 #[allow(dead_code)]
@@ -17,78 +17,77 @@ pub fn has_no_orphans(geo: &Geometry) -> bool {
 /// Finds edges with a certain valency in a mesh edge collection
 /// Valency indicated how many faces share the edge
 fn find_edge_with_valency<'a>(
-    edge_valencies: &'a HashMap<Edge, u32>,
+    edge_valencies: &'a EdgeCountMap,
     valency: u32,
-) -> impl Iterator<Item = Edge> + 'a {
+) -> impl Iterator<Item = OrientedEdge> + 'a {
     edge_valencies
         .iter()
-        .filter(move |(_key, value)| **value == valency)
-        .map(|(key, _value)| key)
-        .copied()
+        .filter(move |(_edge_wrapper, edge_count)| {
+            edge_count.ascending_count + edge_count.descending_count == valency
+        })
+        .map(|(edge_wrapper, _value)| edge_wrapper.0)
 }
 
 /// Finds border edges in a mesh edge collection
 /// An edge is border when its valency is 1
 #[allow(dead_code)]
-pub fn border_edges<'a>(edge_valencies: &'a HashMap<Edge, u32>) -> impl Iterator<Item = Edge> + 'a {
+pub fn border_edges<'a>(
+    edge_valencies: &'a EdgeCountMap,
+) -> impl Iterator<Item = OrientedEdge> + 'a {
     find_edge_with_valency(edge_valencies, 1)
-}
-
-/// Finds border vertex indices in a mesh edge collection
-/// A vertex is border when its edge's valency is 1
-#[allow(dead_code)]
-pub fn border_vertex_indices_from_edges(edge_valencies: HashMap<Edge, usize>) -> Vec<u32> {
-    let keys = edge_valencies.keys();
-    let mut border_vertices = HashSet::new();
-    keys.filter(|key| edge_valencies[key] == 1)
-        .for_each(|edge| {
-            let vertices = match edge {
-                Edge::Oriented(oriented_edge) => oriented_edge.vertices,
-                Edge::Unoriented(unoriented_edge) => unoriented_edge.vertices,
-            };
-            border_vertices.insert(vertices.0);
-            border_vertices.insert(vertices.1);
-        });
-    border_vertices.iter().copied().collect()
 }
 
 /// Finds manifold (inner) edges in a mesh edge collection
 /// An edge is manifold when its valency is 2
 #[allow(dead_code)]
 pub fn manifold_edges<'a>(
-    edge_valencies: &'a HashMap<Edge, u32>,
-) -> impl Iterator<Item = Edge> + 'a {
+    edge_valencies: &'a EdgeCountMap,
+) -> impl Iterator<Item = OrientedEdge> + 'a {
     find_edge_with_valency(edge_valencies, 2)
 }
 
 /// Finds non-manifold (errorneous) edges in a mesh edge collection
 #[allow(dead_code)]
-pub fn non_manifold_edges(edge_valencies: HashMap<Edge, u32>) -> Vec<Edge> {
-    let keys = edge_valencies.keys();
-    keys.filter(|key| edge_valencies[key] > 2)
-        .copied()
-        .collect()
+pub fn non_manifold_edges<'a>(
+    edge_valencies: &'a EdgeCountMap,
+) -> impl Iterator<Item = OrientedEdge> + 'a {
+    edge_valencies
+        .iter()
+        .filter(move |(_edge_wrapper, edge_count)| {
+            edge_count.ascending_count + edge_count.descending_count > 2
+        })
+        .map(|(edge_wrapper, _value)| edge_wrapper.0)
+}
+
+/// Finds border vertex indices in a mesh edge collection
+/// A vertex is border when its edge's valency is 1
+#[allow(dead_code)]
+pub fn border_vertex_indices_from_edges(edge_valencies: &EdgeCountMap) -> HashSet<u32> {
+    let mut border_vertices = HashSet::new();
+
+    border_edges(edge_valencies).for_each(|edge| {
+        border_vertices.insert(edge.vertices.0);
+        border_vertices.insert(edge.vertices.1);
+    });
+    border_vertices
 }
 
 /// Check if all the face normals point the same way.
 /// In a proper watertight mesh each oriented edge
 /// should have a counterpart in a reverted oriented edge
-
 // TODO: make this work for open meshes
 #[allow(dead_code)]
-pub fn is_mesh_orientable(edges: &[Edge]) -> bool {
-    edges.iter().all(|edge| match edge {
-        Edge::Oriented(oriented_edge) => edges.iter().any(|test_edge| match test_edge {
-            Edge::Oriented(oriented_test_edge) => oriented_test_edge.is_reverted(*oriented_edge),
-            Edge::Unoriented(_) => false,
-        }),
-        Edge::Unoriented(_) => false,
+pub fn is_mesh_orientable(edge_valencies: &EdgeCountMap) -> bool {
+    edge_valencies.iter().all(|(_edge_wrapper, edge_count)| {
+        edge_count.ascending_count == 1 && edge_count.descending_count == 1
     })
 }
 
 /// The mesh is watertight if there is no border or non-manifold edge,
 /// in other words, all edge valencies are 2
 #[allow(dead_code)]
-pub fn is_mesh_watertight(edge_valencies: HashMap<Edge, u32>) -> bool {
-    edge_valencies.values().all(|valency| *valency == 2)
+pub fn is_mesh_watertight(edge_valencies: &EdgeCountMap) -> bool {
+    edge_valencies.iter().all(|(_edge_wrapper, edge_count)| {
+        edge_count.ascending_count + edge_count.descending_count == 2
+    })
 }

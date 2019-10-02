@@ -6,6 +6,8 @@ use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 
 use crate::convert::{cast_u32, cast_usize};
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Copy)]
 pub enum NormalStrategy {
@@ -174,11 +176,6 @@ impl Geometry {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_oriented_edges()).into_iter())
     }
-
-    pub fn unoriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = UnorientedEdge> + 'a {
-        self.triangle_faces_iter()
-            .flat_map(|face| ArrayVec::from(face.to_unoriented_edges()).into_iter())
-    }
 }
 
 /// A geometry index. Describes topology of geometry data.
@@ -231,15 +228,6 @@ impl TriangleFace {
             OrientedEdge::new(self.vertices.2, self.vertices.0),
         ]
     }
-
-    /// Generates 3 edges from the respective triangular face
-    pub fn to_unoriented_edges(&self) -> [UnorientedEdge; 3] {
-        [
-            UnorientedEdge::new(self.vertices.0, self.vertices.1),
-            UnorientedEdge::new(self.vertices.1, self.vertices.2),
-            UnorientedEdge::new(self.vertices.2, self.vertices.0),
-        ]
-    }
 }
 
 impl From<(u32, u32, u32)> for TriangleFace {
@@ -263,65 +251,43 @@ impl OrientedEdge {
         OrientedEdge { vertices: (i1, i2) }
     }
 
-    // TODO: might be unnecessary
-    pub fn equal_bidi(self, other: OrientedEdge) -> bool {
-        (self.vertices.0 == other.vertices.0 && self.vertices.1 == other.vertices.1)
-            || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
-    }
-
     pub fn is_reverted(self, other: OrientedEdge) -> bool {
         self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0
     }
+}
 
-    // TODO: might be unnecessary
-    pub fn reverted(self) -> Self {
-        OrientedEdge::new(self.vertices.1, self.vertices.0)
+/// Implements orientation indifferent hash and equal methods
+#[derive(Debug, Clone, Copy, Eq)]
+pub struct EdgeWrapper(pub OrientedEdge);
+
+impl PartialEq for EdgeWrapper {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0.vertices.0 == other.0.vertices.0 && self.0.vertices.1 == other.0.vertices.1)
+            || (self.0.vertices.0 == other.0.vertices.1 && self.0.vertices.1 == other.0.vertices.0)
     }
 }
+
+impl Hash for EdgeWrapper {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        cmp::min(self.0.vertices.0, self.0.vertices.1).hash(state);
+        cmp::max(self.0.vertices.0, self.0.vertices.1).hash(state);
+    }
+}
+
+/// Used in EdgeCountMap
+/// ascending_count contains number of edges oriented from lower index to higher
+/// descending_count contains number of edges oriented from higher index to lower
+pub struct EdgeCount {
+    pub ascending_count: u32,
+    pub descending_count: u32,
+}
+
+pub type EdgeCountMap = HashMap<EdgeWrapper, EdgeCount>;
 
 impl From<(u32, u32)> for OrientedEdge {
     fn from((i1, i2): (u32, u32)) -> OrientedEdge {
         OrientedEdge::new(i1, i2)
     }
-}
-
-/// Unoriented face edge.
-/// Contains indices to other geometry data - vertices.
-/// Lower index first, higher index second.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct UnorientedEdge {
-    pub vertices: (u32, u32),
-}
-
-impl UnorientedEdge {
-    pub fn new(i1: u32, i2: u32) -> Self {
-        assert!(
-            i1 != i2,
-            "The unoriented edge is constituted of the same vertex"
-        );
-        UnorientedEdge {
-            vertices: (cmp::min(i1, i2), cmp::max(i1, i2)),
-        }
-    }
-}
-
-impl From<(u32, u32)> for UnorientedEdge {
-    fn from((i1, i2): (u32, u32)) -> UnorientedEdge {
-        UnorientedEdge::new(i1, i2)
-    }
-}
-
-impl From<OrientedEdge> for UnorientedEdge {
-    fn from(oriented_edge: OrientedEdge) -> UnorientedEdge {
-        UnorientedEdge::new(oriented_edge.vertices.0, oriented_edge.vertices.1)
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Edge {
-    Oriented(OrientedEdge),
-    Unoriented(UnorientedEdge),
 }
 
 pub fn plane_same_len(position: [f32; 3], scale: f32) -> Geometry {
