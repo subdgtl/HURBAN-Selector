@@ -10,16 +10,17 @@ use crate::input::InputManager;
 use crate::renderer::{Renderer, RendererOptions, SceneRendererGeometry};
 use crate::ui::Ui;
 
+pub mod geometry;
 pub mod importer;
 pub mod logger;
+pub mod operations;
+pub mod renderer;
 
 mod camera;
 mod convert;
-mod geometry;
 mod input;
 mod math;
 mod platform;
-mod renderer;
 mod ui;
 
 const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
