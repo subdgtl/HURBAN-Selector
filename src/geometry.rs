@@ -175,7 +175,7 @@ impl Geometry {
             .flat_map(|face| ArrayVec::from(face.to_edges()).into_iter())
     }
 
-    pub fn has_no_orphans(&self) -> bool {
+    pub fn has_no_orphan_vertices(&self) -> bool {
         let mut used_vertices = HashSet::new();
         for face in self.triangle_faces_iter() {
             used_vertices.insert(face.vertices.0);
@@ -183,6 +183,16 @@ impl Geometry {
             used_vertices.insert(face.vertices.2);
         }
         used_vertices.len() == self.vertices().len()
+    }
+
+    pub fn has_no_orphan_normals(&self) -> bool {
+        let mut used_normals = HashSet::new();
+        for face in self.triangle_faces_iter() {
+            used_normals.insert(face.normals.0);
+            used_normals.insert(face.normals.1);
+            used_normals.insert(face.normals.2);
+        }
+        used_normals.len() == self.normals().len()
     }
 }
 
@@ -805,7 +815,28 @@ mod tests {
             normals.clone(),
         );
 
-        assert!(geometry_without_orphans.has_no_orphans());
-        assert!(!geometry_with_orphans.has_no_orphans());
+        assert!(geometry_without_orphans.has_no_orphan_vertices());
+        assert!(!geometry_with_orphans.has_no_orphan_vertices());
+    }
+
+    #[test]
+    fn test_orphan_normal_detection() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let extra_normal = vec![n(0.0, 0.0, 0.0)];
+        let normals_extended = [&normals[..], &extra_normal[..]].concat();
+        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals_extended.clone(),
+        );
+
+        let geometry_without_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals.clone(),
+        );
+
+        assert!(geometry_without_orphans.has_no_orphan_normals());
+        assert!(!geometry_with_orphans.has_no_orphan_normals());
     }
 }
