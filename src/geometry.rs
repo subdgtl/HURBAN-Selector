@@ -132,10 +132,6 @@ impl Geometry {
                 normals_range.contains(&n.2),
                 "Faces reference out of bounds normal data"
             );
-            assert!(
-                v.0 != v.1 && v.0 != v.2 && v.1 != v.2,
-                "One or more face edges consists of the same vertex"
-            );
         }
 
         Self {
@@ -204,6 +200,10 @@ pub struct TriangleFace {
 
 impl TriangleFace {
     pub fn new(i1: u32, i2: u32, i3: u32) -> TriangleFace {
+        assert!(
+            i1 != i2 && i1 != i3 && i2 != i3,
+            "One or more face edges consists of the same vertex"
+        );
         TriangleFace {
             vertices: (i1, i2, i3),
             normals: (i1, i2, i3),
@@ -218,6 +218,10 @@ impl TriangleFace {
         ni2: u32,
         ni3: u32,
     ) -> TriangleFace {
+        assert!(
+            vi1 != vi2 && vi1 != vi3 && vi2 != vi3,
+            "One or more face edges consists of the same vertex"
+        );
         TriangleFace {
             vertices: (vi1, vi2, vi3),
             normals: (ni1, ni2, ni3),
@@ -803,5 +807,23 @@ mod tests {
             vertices.clone(),
             normals.clone(),
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_creating_face_with_invalid_vertex_indices_0_1() {
+        let _invalid_face_1 = TriangleFace::new(0, 0, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_creating_face_with_invalid_vertex_indices_1_2() {
+        let _invalid_face_2 = TriangleFace::new(0, 2, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_creating_face_with_invalid_vertex_indices_0_2() {
+        let _invalid_face_3 = TriangleFace::new(0, 2, 0);
     }
 }
