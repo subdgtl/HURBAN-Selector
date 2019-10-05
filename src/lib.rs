@@ -20,7 +20,6 @@ mod camera;
 mod convert;
 mod input;
 mod math;
-mod mesh_analysis;
 mod platform;
 mod ui;
 
