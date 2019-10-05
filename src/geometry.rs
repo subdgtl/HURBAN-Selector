@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use arrayvec::ArrayVec;
 use nalgebra as na;
 use nalgebra::base::Vector3;
@@ -175,6 +177,26 @@ impl Geometry {
     pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = HalfEdge> + 'a {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_edges()).into_iter())
+    }
+
+    pub fn has_no_orphan_vertices(&self) -> bool {
+        let mut used_vertices = HashSet::new();
+        for face in self.triangle_faces_iter() {
+            used_vertices.insert(face.vertices.0);
+            used_vertices.insert(face.vertices.1);
+            used_vertices.insert(face.vertices.2);
+        }
+        used_vertices.len() == self.vertices().len()
+    }
+
+    pub fn has_no_orphan_normals(&self) -> bool {
+        let mut used_normals = HashSet::new();
+        for face in self.triangle_faces_iter() {
+            used_normals.insert(face.normals.0);
+            used_normals.insert(face.normals.1);
+            used_normals.insert(face.normals.2);
+        }
+        used_normals.len() == self.normals().len()
     }
 }
 
