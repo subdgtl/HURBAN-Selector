@@ -826,4 +826,22 @@ mod tests {
     fn test_creating_face_with_invalid_vertex_indices_0_2() {
         let _invalid_face_3 = TriangleFace::new(0, 2, 0);
     }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_creating_face_separate_with_invalid_vertex_indices_0_1() {
+        let _invalid_face_1 = TriangleFace::new_separate(0, 0, 2, 0, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_creating_face_separate_with_invalid_vertex_indices_1_2() {
+        let _invalid_face_2 = TriangleFace::new_separate(0, 2, 2, 0, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_creating_face_separate_with_invalid_vertex_indices_0_2() {
+        let _invalid_face_3 = TriangleFace::new_separate(0, 2, 0, 0, 0, 0);
+    }
 }
