@@ -818,4 +818,37 @@ mod tests {
             normals.clone(),
         );
     }
+
+    #[test]
+    #[should_panic(expected = "The oriented edge is constituted of the same vertex")]
+    fn test_oriented_edge_constructor_consists_of_the_same_vertex_should_panic() {
+        let _oriented_edge = OrientedEdge::new(0, 0);
+    }
+
+    #[test]
+    fn test_oriented_edge_constructor_doesnnt_consist_of_the_same_vertex_should_pass() {
+        let _oriented_edge = OrientedEdge::new(0, 1);
+    }
+
+    #[test]
+    fn test_oriented_edge_is_reverted_returns_true() {
+        let oriented_edge_one_way = OrientedEdge::new(0, 1);
+        let oriented_edge_other_way = OrientedEdge::new(1, 0);
+        assert!(oriented_edge_one_way.is_reverted(oriented_edge_other_way));
+    }
+
+    #[test]
+    fn test_oriented_edge_is_reverted_returns_false_because_is_same() {
+        let oriented_edge_one_way = OrientedEdge::new(0, 1);
+        let oriented_edge_other_way = OrientedEdge::new(0, 1);
+        assert!(!oriented_edge_one_way.is_reverted(oriented_edge_other_way));
+    }
+
+    #[test]
+    fn test_oriented_edge_is_reverted_returns_false_because_is_different() {
+        let oriented_edge_one_way = OrientedEdge::new(0, 1);
+        let oriented_edge_other_way = OrientedEdge::new(2, 1);
+        assert!(!oriented_edge_one_way.is_reverted(oriented_edge_other_way));
+    }
+
 }
