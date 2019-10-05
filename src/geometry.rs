@@ -824,15 +824,8 @@ mod tests {
     }
 
     #[test]
-    fn test_orphan_vertex_detection() {
+    fn test_has_no_orphan_vertices_returns_true_if_there_are_some() {
         let (faces, vertices, normals) = quad_with_normals();
-        let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
-        let vertices_extended = [&vertices[..], &extra_vertex[..]].concat();
-        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces.clone(),
-            vertices_extended.clone(),
-            normals.clone(),
-        );
 
         let geometry_without_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
             faces.clone(),
@@ -841,19 +834,26 @@ mod tests {
         );
 
         assert!(geometry_without_orphans.has_no_orphan_vertices());
+    }
+
+    #[test]
+    fn test_has_no_orphan_vertices_returns_false_if_there_are_none() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
+        let vertices_extended = [&vertices[..], &extra_vertex[..]].concat();
+
+        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices_extended.clone(),
+            normals.clone(),
+        );
+
         assert!(!geometry_with_orphans.has_no_orphan_vertices());
     }
 
     #[test]
-    fn test_orphan_normal_detection() {
+    fn test_has_no_orphan_normals_returns_true_if_there_are_some() {
         let (faces, vertices, normals) = quad_with_normals();
-        let extra_normal = vec![n(0.0, 0.0, 0.0)];
-        let normals_extended = [&normals[..], &extra_normal[..]].concat();
-        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces.clone(),
-            vertices.clone(),
-            normals_extended.clone(),
-        );
 
         let geometry_without_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
             faces.clone(),
@@ -862,6 +862,20 @@ mod tests {
         );
 
         assert!(geometry_without_orphans.has_no_orphan_normals());
+    }
+
+    #[test]
+    fn test_has_no_orphan_normals_returns_false_if_there_are_none() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let extra_normal = vec![n(0.0, 0.0, 0.0)];
+        let normals_extended = [&normals[..], &extra_normal[..]].concat();
+
+        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals_extended.clone(),
+        );
+
         assert!(!geometry_with_orphans.has_no_orphan_normals());
     }
 }
