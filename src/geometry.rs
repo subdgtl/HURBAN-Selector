@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use arrayvec::ArrayVec;
 use std::cmp;
 
@@ -168,6 +170,10 @@ impl Geometry {
         &self.vertices
     }
 
+    pub fn vertices_mut(&mut self) -> &mut [Point3<f32>] {
+        &mut self.vertices
+    }
+
     pub fn normals(&self) -> &[Vector3<f32>] {
         &self.normals
     }
@@ -186,6 +192,26 @@ impl Geometry {
     /// V - E + F = 2 (1 - G)
     pub fn mesh_genus(&self, edges: &[OrientedEdge]) -> u32 {
         u32::try_from(1 - (self.vertices.len() - edges.len() + self.faces.len()) / 2).unwrap()
+    }
+
+    pub fn has_no_orphan_vertices(&self) -> bool {
+        let mut used_vertices = HashSet::new();
+        for face in self.triangle_faces_iter() {
+            used_vertices.insert(face.vertices.0);
+            used_vertices.insert(face.vertices.1);
+            used_vertices.insert(face.vertices.2);
+        }
+        used_vertices.len() == self.vertices().len()
+    }
+
+    pub fn has_no_orphan_normals(&self) -> bool {
+        let mut used_normals = HashSet::new();
+        for face in self.triangle_faces_iter() {
+            used_normals.insert(face.normals.0);
+            used_normals.insert(face.normals.1);
+            used_normals.insert(face.normals.2);
+        }
+        used_normals.len() == self.normals().len()
     }
 }
 
@@ -761,6 +787,27 @@ pub fn compute_centroid(geometries: &[Geometry]) -> Point3<f32> {
     centroid / (vertex_count as f32)
 }
 
+pub fn find_closest_point(position: &Point3<f32>, geometry: &Geometry) -> Option<Point3<f32>> {
+    let vertices = geometry.vertices();
+    if vertices.is_empty() {
+        return None;
+    }
+
+    let mut closest = vertices[0];
+    // FIXME: @Optimization benchmark `distance` vs `distance_squared`
+    // with branching (0..1, 1..inf)
+    let mut closest_distance = na::distance(position, &closest);
+    for point in &vertices[1..] {
+        let distance = na::distance(position, &point);
+        if distance < closest_distance {
+            closest = *point;
+            closest_distance = distance;
+        }
+    }
+
+    Some(closest)
+}
+
 fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
     Point3::new(
         scale * x + translation[0],
@@ -1040,34 +1087,44 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_oriented_edges_iter() {
+    fn test_has_no_orphan_vertices_returns_true_if_there_are_some() {
         let (faces, vertices, normals) = quad_with_normals();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
+
+        let geometry_without_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
             faces.clone(),
             vertices.clone(),
             normals.clone(),
         );
-        let oriented_edges_correct = vec![
-            OrientedEdge::new(0, 1),
-            OrientedEdge::new(1, 2),
-            OrientedEdge::new(2, 0),
-            OrientedEdge::new(2, 3),
-            OrientedEdge::new(3, 0),
-            OrientedEdge::new(0, 2),
-        ];
-        let oriented_edges_to_check: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
 
-        assert!(oriented_edges_to_check
-            .iter()
-            .all(|o_e| oriented_edges_correct.iter().any(|e| e == o_e)));
+        assert!(geometry_without_orphans.has_no_orphan_vertices());
+    }
 
-        let len_1 = oriented_edges_to_check.len();
-        let len_2 = oriented_edges_correct.len();
-        assert_eq!(
-            len_1, len_2,
-            "oriented_edges_to_check.len() = {}, oriented_edges_correct.len() = {}",
-            len_1, len_2
+    #[test]
+    fn test_has_no_orphan_vertices_returns_false_if_there_are_none() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
+        let vertices_extended = [&vertices[..], &extra_vertex[..]].concat();
+
+        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices_extended.clone(),
+            normals.clone(),
         );
+
+        assert!(!geometry_with_orphans.has_no_orphan_vertices());
+    }
+
+    #[test]
+    fn test_has_no_orphan_normals_returns_true_if_there_are_some() {
+        let (faces, vertices, normals) = quad_with_normals();
+
+        let geometry_without_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals.clone(),
+        );
+
+        assert!(geometry_without_orphans.has_no_orphan_normals());
     }
 
     #[test]
@@ -1102,4 +1159,51 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_geometry_oriented_edges_iter() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals.clone(),
+        );
+
+        let oriented_edges_correct = vec![
+            OrientedEdge::new(0, 1),
+            OrientedEdge::new(1, 2),
+            OrientedEdge::new(2, 0),
+            OrientedEdge::new(2, 3),
+            OrientedEdge::new(3, 0),
+            OrientedEdge::new(0, 2),
+        ];
+        let oriented_edges_to_check: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+
+        assert!(oriented_edges_to_check
+            .iter()
+            .all(|o_e| oriented_edges_correct.iter().any(|e| e == o_e)));
+
+        let len_1 = oriented_edges_to_check.len();
+        let len_2 = oriented_edges_correct.len();
+
+        assert_eq!(
+            len_1, len_2,
+            "oriented_edges_to_check.len() = {}, oriented_edges_correct.len() = {}",
+            len_1, len_2
+        );
+    }
+
+    #[test]
+    fn test_has_no_orphan_normals_returns_false_if_there_are_none() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let extra_normal = vec![n(0.0, 0.0, 0.0)];
+        let normals_extended = [&normals[..], &extra_normal[..]].concat();
+
+        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals_extended.clone(),
+        );
+
+        assert!(!geometry_with_orphans.has_no_orphan_normals());
+    }
 }
