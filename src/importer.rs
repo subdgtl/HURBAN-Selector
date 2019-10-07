@@ -68,10 +68,10 @@ pub struct FileMetadata {
 
 pub type ImporterResult = Result<Vec<Model>, ImporterError>;
 
-#[cfg_attr(test, automock)]
 /// An interface for caching of obj files.
 ///
 /// The source is expected to be file with path and FileMetadata.
+#[cfg_attr(test, automock)]
 pub trait ObjCache {
     /// Returns models if modified timestamp of file on given `path` didn't
     /// change.
