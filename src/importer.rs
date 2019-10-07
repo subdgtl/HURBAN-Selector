@@ -10,7 +10,7 @@ use crc32fast;
 use crossbeam_channel::unbounded;
 use log;
 #[cfg(test)]
-use mockall::automock;
+use mockall::{automock, lazy_static, predicate};
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 use tobj;
@@ -642,6 +642,24 @@ mod tests {
     // FIXME: Ideal scenario would be if filesystem was mocked and passed into
     // this method as well. It'd become proper unit test that way.
 
+    fn file_metadata(path: &str) -> FileMetadata {
+        let mut file = fs::File::open(path).expect("Failed to open file");
+        let file_metadata = file.metadata().expect("Failed to load obj file metadata");
+        let last_modified = file_metadata
+            .modified()
+            .expect("Failed to load modified timestamp of obj file");
+        let file_size = file_metadata.len() as usize;
+        let mut file_contents = Vec::with_capacity(file_size + 1);
+        file.read_to_end(&mut file_contents)
+            .expect("Failed to read contents of file");
+        let checksum = calculate_checksum(&file_contents);
+
+        FileMetadata {
+            checksum,
+            last_modified,
+        }
+    }
+
     #[test]
     fn test_importer_import_obj_cache_sets_models_if_file_was_not_cached_before() {
         let mut cache = MockObjCache::new();
@@ -680,6 +698,26 @@ mod tests {
 
     #[test]
     fn test_importer_import_obj_cache_returns_the_same_cached_data_from_different_file() {
+        lazy_static! {
+            static ref MODELS: Vec<Model> = vec![Model {
+                name: "test".to_string(),
+                geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
+                    vec![TriangleFace::new(0, 1, 2)],
+                    vec![
+                        Point3::new(6.0, 5.0, 4.0),
+                        Point3::new(3.0, 2.0, 1.0),
+                        Point3::new(0.0, 1.0, 2.0),
+                    ],
+                    vec![
+                        Vector3::new(1.0, 0.0, 0.0),
+                        Vector3::new(1.0, 0.0, 0.0),
+                        Vector3::new(1.0, 0.0, 0.0),
+                    ],
+                ),
+            }];
+        }
+        let path = "tests/fixtures/valid.obj";
+        let file_metadata = file_metadata(&path);
         let mut cache = MockObjCache::new();
         cache
             .expect_get_if_not_modified()
@@ -687,12 +725,19 @@ mod tests {
             .times(1);
         cache
             .expect_get_by_checksum()
-            .returning(|_| Some(vec![]))
+            .returning(|_| Some(MODELS.to_vec()))
             .times(1);
-        cache.expect_set().returning(|_, _, _| ()).times(1);
+        cache
+            .expect_set()
+            .with(
+                predicate::eq(path.to_string()),
+                predicate::eq(file_metadata),
+                predicate::eq(&MODELS[..]),
+            )
+            .returning(|_, _, _| ())
+            .times(1);
 
         let mut importer = Importer::new(cache);
-        let path = "tests/fixtures/valid.obj";
 
         importer
             .import_obj(&path)
