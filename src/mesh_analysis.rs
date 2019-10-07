@@ -392,5 +392,4 @@ mod tests {
 
         assert!(!is_mesh_watertight(&edge_valency_map));
     }
-
 }

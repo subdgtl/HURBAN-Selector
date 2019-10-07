@@ -124,5 +124,4 @@ mod tests {
             assert_eq!(edge_valency_map.get(&u_e), Some(&test_edge_count_two_ways));
         }
     }
-
 }

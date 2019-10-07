@@ -19,9 +19,9 @@ pub mod renderer;
 mod camera;
 mod convert;
 mod edge_analysis;
-mod mesh_analysis;
 mod input;
 mod math;
+mod mesh_analysis;
 mod platform;
 mod ui;
 
