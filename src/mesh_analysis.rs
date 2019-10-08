@@ -76,11 +76,10 @@ pub fn border_vertex_indices(edge_valencies: &EdgeCountMap) -> HashSet<u32> {
 /// Check if all the face normals point the same way.
 /// In a proper watertight mesh each oriented edge
 /// should have a counterpart in a reverted oriented edge
-// TODO: make this work for open meshes
 #[allow(dead_code)]
 pub fn is_mesh_orientable(edge_valencies: &EdgeCountMap) -> bool {
     edge_valencies.iter().all(|(_edge_wrapper, edge_count)| {
-        edge_count.ascending_count == 1 && edge_count.descending_count == 1
+        edge_count.ascending_count <= 1 && edge_count.descending_count <= 1
     })
 }
 
@@ -98,7 +97,7 @@ mod tests {
     use super::*;
     use crate::edge_analysis::edge_valencies;
     use crate::geometry;
-    use crate::geometry::{ NormalStrategy, TriangleFace};
+    use crate::geometry::{NormalStrategy, TriangleFace};
     use nalgebra::{Point3, Vector3};
 
     fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
@@ -358,6 +357,20 @@ mod tests {
     #[test]
     fn test_mesh_analysis_is_mesh_orientable_returns_true() {
         let geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
+        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let edge_valency_map = edge_valencies(&oriented_edges);
+
+        assert!(is_mesh_orientable(&edge_valency_map));
+    }
+
+    #[test]
+    fn test_mesh_analysis_is_mesh_orientable_returns_true_open_mesh() {
+        let (faces, vertices) = quad();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
         let edge_valency_map = edge_valencies(&oriented_edges);
 
