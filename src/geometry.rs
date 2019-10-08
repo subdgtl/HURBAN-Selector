@@ -222,6 +222,10 @@ pub struct TriangleFace {
 
 impl TriangleFace {
     pub fn new(i1: u32, i2: u32, i3: u32) -> TriangleFace {
+        assert!(
+            i1 != i2 && i1 != i3 && i2 != i3,
+            "One or more face edges consists of the same vertex"
+        );
         TriangleFace {
             vertices: (i1, i2, i3),
             normals: (i1, i2, i3),
@@ -236,6 +240,10 @@ impl TriangleFace {
         ni2: u32,
         ni3: u32,
     ) -> TriangleFace {
+        assert!(
+            vi1 != vi2 && vi1 != vi3 && vi2 != vi3,
+            "One or more face edges consists of the same vertex"
+        );
         TriangleFace {
             vertices: (vi1, vi2, vi3),
             normals: (ni1, ni2, ni3),
@@ -784,7 +792,7 @@ mod tests {
             (2, 3, 4),
         ];
 
-        let _geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        Geometry::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
             vertices,
             NormalStrategy::Sharp,
@@ -816,11 +824,47 @@ mod tests {
             TriangleFace::new(2, 3, 4),
         ];
 
-        let _geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
+        Geometry::from_triangle_faces_with_vertices_and_normals(
             faces.clone(),
             vertices.clone(),
             normals.clone(),
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_with_invalid_vertex_indices_0_1_should_panic() {
+        TriangleFace::new(0, 0, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_with_invalid_vertex_indices_1_2_should_panic() {
+        TriangleFace::new(0, 2, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_with_invalid_vertex_indices_0_2_should_panic() {
+        TriangleFace::new(0, 2, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_separate_with_invalid_vertex_indices_0_1_should_panic() {
+        TriangleFace::new_separate(0, 0, 2, 0, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_separate_with_invalid_vertex_indices_1_2_should_panic() {
+        TriangleFace::new_separate(0, 2, 2, 0, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_separate_with_invalid_vertex_indices_0_2_should_panic() {
+        TriangleFace::new_separate(0, 2, 0, 0, 0, 0);
     }
 
     #[test]
