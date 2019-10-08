@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use arrayvec::ArrayVec;
 use nalgebra as na;
 use nalgebra::base::Vector3;
@@ -176,6 +178,26 @@ impl Geometry {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_edges()).into_iter())
     }
+
+    pub fn has_no_orphan_vertices(&self) -> bool {
+        let mut used_vertices = HashSet::new();
+        for face in self.triangle_faces_iter() {
+            used_vertices.insert(face.vertices.0);
+            used_vertices.insert(face.vertices.1);
+            used_vertices.insert(face.vertices.2);
+        }
+        used_vertices.len() == self.vertices().len()
+    }
+
+    pub fn has_no_orphan_normals(&self) -> bool {
+        let mut used_normals = HashSet::new();
+        for face in self.triangle_faces_iter() {
+            used_normals.insert(face.normals.0);
+            used_normals.insert(face.normals.1);
+            used_normals.insert(face.normals.2);
+        }
+        used_normals.len() == self.normals().len()
+    }
 }
 
 /// A geometry index. Describes topology of geometry data.
@@ -200,6 +222,10 @@ pub struct TriangleFace {
 
 impl TriangleFace {
     pub fn new(i1: u32, i2: u32, i3: u32) -> TriangleFace {
+        assert!(
+            i1 != i2 && i1 != i3 && i2 != i3,
+            "One or more face edges consists of the same vertex"
+        );
         TriangleFace {
             vertices: (i1, i2, i3),
             normals: (i1, i2, i3),
@@ -214,6 +240,10 @@ impl TriangleFace {
         ni2: u32,
         ni3: u32,
     ) -> TriangleFace {
+        assert!(
+            vi1 != vi2 && vi1 != vi3 && vi2 != vi3,
+            "One or more face edges consists of the same vertex"
+        );
         TriangleFace {
             vertices: (vi1, vi2, vi3),
             normals: (ni1, ni2, ni3),
@@ -762,7 +792,7 @@ mod tests {
             (2, 3, 4),
         ];
 
-        let _geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        Geometry::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
             vertices,
             NormalStrategy::Sharp,
@@ -794,10 +824,102 @@ mod tests {
             TriangleFace::new(2, 3, 4),
         ];
 
-        let _geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
+        Geometry::from_triangle_faces_with_vertices_and_normals(
             faces.clone(),
             vertices.clone(),
             normals.clone(),
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_with_invalid_vertex_indices_0_1_should_panic() {
+        TriangleFace::new(0, 0, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_with_invalid_vertex_indices_1_2_should_panic() {
+        TriangleFace::new(0, 2, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_with_invalid_vertex_indices_0_2_should_panic() {
+        TriangleFace::new(0, 2, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_separate_with_invalid_vertex_indices_0_1_should_panic() {
+        TriangleFace::new_separate(0, 0, 2, 0, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_separate_with_invalid_vertex_indices_1_2_should_panic() {
+        TriangleFace::new_separate(0, 2, 2, 0, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_separate_with_invalid_vertex_indices_0_2_should_panic() {
+        TriangleFace::new_separate(0, 2, 0, 0, 0, 0);
+    }
+
+    #[test]
+    fn test_has_no_orphan_vertices_returns_true_if_there_are_some() {
+        let (faces, vertices, normals) = quad_with_normals();
+
+        let geometry_without_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals.clone(),
+        );
+
+        assert!(geometry_without_orphans.has_no_orphan_vertices());
+    }
+
+    #[test]
+    fn test_has_no_orphan_vertices_returns_false_if_there_are_none() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
+        let vertices_extended = [&vertices[..], &extra_vertex[..]].concat();
+
+        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices_extended.clone(),
+            normals.clone(),
+        );
+
+        assert!(!geometry_with_orphans.has_no_orphan_vertices());
+    }
+
+    #[test]
+    fn test_has_no_orphan_normals_returns_true_if_there_are_some() {
+        let (faces, vertices, normals) = quad_with_normals();
+
+        let geometry_without_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals.clone(),
+        );
+
+        assert!(geometry_without_orphans.has_no_orphan_normals());
+    }
+
+    #[test]
+    fn test_has_no_orphan_normals_returns_false_if_there_are_none() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let extra_normal = vec![n(0.0, 0.0, 0.0)];
+        let normals_extended = [&normals[..], &extra_normal[..]].concat();
+
+        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals_extended.clone(),
+        );
+
+        assert!(!geometry_with_orphans.has_no_orphan_normals());
     }
 }

@@ -20,7 +20,6 @@ mod camera;
 mod convert;
 mod input;
 mod math;
-mod mesh_analysis;
 mod platform;
 mod ui;
 
@@ -144,7 +143,7 @@ pub fn init_and_run(options: Options) -> ! {
                     (duration_last_frame, duration_running)
                 };
 
-                ui.set_delta_time(duration_as_secs_f32(duration_last_frame));
+                ui.set_delta_time(duration_last_frame.as_secs_f32());
 
                 let ui_frame = ui.prepare_frame(&window);
                 input_manager.start_frame();
@@ -326,8 +325,8 @@ impl CameraInterpolation {
     }
 
     fn update(&self, time: Instant, easing: &math::CubicBezierEasing) -> (Point3<f32>, f32) {
-        let duration_left = duration_as_secs_f32(self.target_time.duration_since(time));
-        let whole_duration = duration_as_secs_f32(CAMERA_INTERPOLATION_DURATION);
+        let duration_left = self.target_time.duration_since(time).as_secs_f32();
+        let whole_duration = CAMERA_INTERPOLATION_DURATION.as_secs_f32();
         let t = easing.apply(1.0 - duration_left / whole_duration);
 
         let sphere_origin = Point3::from(
@@ -339,9 +338,4 @@ impl CameraInterpolation {
 
         (sphere_origin, sphere_radius)
     }
-}
-
-fn duration_as_secs_f32(duration: Duration) -> f32 {
-    // FIXME: Use `Duration::as_secs_f32` instead once it's stabilized.
-    duration.as_secs() as f32 + duration.subsec_nanos() as f32 / 1_000_000_000.0
 }
