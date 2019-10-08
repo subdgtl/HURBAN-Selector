@@ -150,7 +150,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn cube_sharp_same_len_broken_winding(position: [f32; 3], scale: f32) -> Geometry {
+    fn cube_sharp_broken_winding(position: [f32; 3], scale: f32) -> Geometry {
         #[rustfmt::skip]
             let vertex_positions = vec![
             // back
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_mesh_analysis_is_mesh_orientable_returns_false_because_is_wrong() {
-        let geometry = cube_sharp_same_len_broken_winding([0.0, 0.0, 0.0], 1.0);
+        let geometry = cube_sharp_broken_winding([0.0, 0.0, 0.0], 1.0);
 
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
         let edge_valency_map = edge_valencies(&oriented_edges);
