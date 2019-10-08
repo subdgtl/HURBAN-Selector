@@ -13,6 +13,18 @@ where
     n.try_into().expect("Expected N to fit in u32")
 }
 
+/// Convert `n` to `i32` using `TryFrom` or panic.
+///
+/// # Panics
+/// Panics if the conversion returns an error.
+pub fn cast_i32<T>(n: T) -> i32
+where
+    T: TryInto<i32>,
+    <T as TryInto<i32>>::Error: Debug,
+{
+    n.try_into().expect("Expected N to fit in i32")
+}
+
 /// Convert `n` to `usize` using `TryFrom` or panic.
 ///
 /// # Panics

@@ -7,8 +7,7 @@ use nalgebra as na;
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 
-use crate::convert::{cast_u32, cast_usize};
-use std::convert::TryFrom;
+use crate::convert::{cast_i32, cast_u32, cast_usize};
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Copy)]
@@ -189,9 +188,14 @@ impl Geometry {
     }
 
     /// Genus of a mesh is the number of holes in topology / conectivity
+    /// The mesh must be triangular and watertight
     /// V - E + F = 2 (1 - G)
-    pub fn mesh_genus(&self, edges: &[OrientedEdge]) -> u32 {
-        u32::try_from(1 - (self.vertices.len() - edges.len() + self.faces.len()) / 2).unwrap()
+    pub fn mesh_genus(&self, edges: &HashSet<UnorientedEdge>) -> i32 {
+        let vertex_count = cast_i32(self.vertices.len());
+        let edge_count = cast_i32(edges.len());
+        let face_count = cast_i32(self.faces.len());
+
+        1 - (vertex_count - edge_count + face_count) / 2
     }
 
     pub fn has_no_orphan_vertices(&self) -> bool {
@@ -439,7 +443,9 @@ pub fn cube_smooth_same_len(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn cube_sharp_same_len_open(position: [f32; 3], scale: f32) -> Geometry {
+#[deprecated(note = "Don't use, generates open geometry")]
+// FIXME: Remove eventually
+pub fn cube_sharp_same_len(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
         // back
@@ -801,6 +807,234 @@ mod tests {
         (faces, vertices, normals)
     }
 
+    fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+        #[rustfmt::skip]
+            let vertices = vec![
+            Point3::new(1.0, 0.0, 0.25),
+            Point3::new(0.821486, 0.0, 0.175022),
+            Point3::new(0.75, 0.0, 0.0),
+            Point3::new(0.824978, 0.0, -0.178514),
+            Point3::new(1.0, 0.0, -0.25),
+            Point3::new(0.891778, 0.76512, 0.178514),
+            Point3::new(0.758946, 0.651154, 0.25),
+            Point3::new(0.623464, 0.534914, 0.175022),
+            Point3::new(0.569209, 0.488365, 0.0),
+            Point3::new(0.626113, 0.537187, -0.178514),
+            Point3::new(0.758946, 0.651154, -0.25),
+            Point3::new(0.894428, 0.767394, -0.175022),
+            Point3::new(0.948682, 0.813942, 0.0),
+            Point3::new(0.201501, 1.157616, 0.178514),
+            Point3::new(0.171487, 0.985186, 0.25),
+            Point3::new(0.140874, 0.809317, 0.175022),
+            Point3::new(0.128615, 0.73889, 0.0),
+            Point3::new(0.141473, 0.812757, -0.178514),
+            Point3::new(0.171487, 0.985186, -0.25),
+            Point3::new(0.202099, 1.161056, -0.175022),
+            Point3::new(0.214358, 1.231483, 0.0),
+            Point3::new(-0.600858, 1.009776, 0.178514),
+            Point3::new(-0.511359, 0.859367, 0.25),
+            Point3::new(-0.420074, 0.705959, 0.175022),
+            Point3::new(-0.383519, 0.644526, 0.0),
+            Point3::new(-0.421859, 0.708959, -0.178514),
+            Point3::new(-0.511359, 0.859367, -0.25),
+            Point3::new(-0.602643, 1.012776, -0.175022),
+            Point3::new(-0.639198, 1.074209, 0.0),
+            Point3::new(-1.105913, 0.397032, 0.178514),
+            Point3::new(-0.941185, 0.337893, 0.25),
+            Point3::new(-0.77317, 0.277574, 0.175022),
+            Point3::new(-0.705888, 0.25342, 0.0),
+            Point3::new(-0.776456, 0.278754, -0.178514),
+            Point3::new(-0.941185, 0.337893, -0.25),
+            Point3::new(-1.109199, 0.398211, -0.175022),
+            Point3::new(-1.176481, 0.422366, 0.0),
+            Point3::new(-1.099292, -0.415012, 0.178514),
+            Point3::new(-0.93555, -0.353195, 0.25),
+            Point3::new(-0.768541, -0.290145, 0.175022),
+            Point3::new(-0.701662, -0.264896, 0.0),
+            Point3::new(-0.771807, -0.291378, -0.178514),
+            Point3::new(-0.93555, -0.353195, -0.25),
+            Point3::new(-1.102558, -0.416245, -0.175022),
+            Point3::new(-1.169437, -0.441494, 0.0),
+            Point3::new(-0.5808, -1.021445, 0.178514),
+            Point3::new(-0.494288, -0.869298, 0.25),
+            Point3::new(-0.406051, -0.714117, 0.175022),
+            Point3::new(-0.370716, -0.651974, 0.0),
+            Point3::new(-0.407777, -0.717151, -0.178514),
+            Point3::new(-0.494288, -0.869298, -0.25),
+            Point3::new(-0.582525, -1.02448, -0.175022),
+            Point3::new(-0.61786, -1.086623, 0.0),
+            Point3::new(0.21476, -1.15523, 0.178514),
+            Point3::new(0.182771, -0.983156, 0.25),
+            Point3::new(0.150144, -0.807649, 0.175022),
+            Point3::new(0.137078, -0.737367, 0.0),
+            Point3::new(0.150782, -0.811081, -0.178514),
+            Point3::new(0.182771, -0.983156, -0.25),
+            Point3::new(0.215398, -1.158662, -0.175022),
+            Point3::new(0.228463, -1.228944, 0.0),
+            Point3::new(0.964571, -0.795049, 0.0),
+            Point3::new(0.906714, -0.74736, 0.178514),
+            Point3::new(0.771657, -0.636039, 0.25),
+            Point3::new(0.633906, -0.522497, 0.175022),
+            Point3::new(0.578743, -0.477029, 0.0),
+            Point3::new(0.6366, -0.524718, -0.178514),
+            Point3::new(0.771657, -0.636039, -0.25),
+            Point3::new(0.909408, -0.749581, -0.175022),
+            Point3::new(1.25, 0.0, 0.0),
+            Point3::new(1.175022, 0.0, 0.178514),
+            Point3::new(1.178514, 0.0, -0.175022),
+        ];
+
+        #[rustfmt::skip]
+            let faces = vec![
+            (5, 70, 69),
+            (6, 0, 5),
+            (7, 1, 6),
+            (8, 2, 1),
+            (9, 3, 8),
+            (10, 4, 3),
+            (11, 71, 10),
+            (12, 69, 11),
+            (13, 5, 20),
+            (14, 6, 5),
+            (15, 7, 14),
+            (16, 8, 7),
+            (17, 9, 16),
+            (18, 10, 9),
+            (19, 11, 10),
+            (20, 12, 11),
+            (21, 13, 20),
+            (22, 14, 21),
+            (23, 15, 22),
+            (24, 16, 15),
+            (25, 17, 24),
+            (26, 18, 17),
+            (27, 19, 18),
+            (28, 20, 27),
+            (29, 21, 28),
+            (30, 22, 29),
+            (31, 23, 22),
+            (32, 24, 23),
+            (33, 25, 32),
+            (34, 26, 25),
+            (35, 27, 26),
+            (36, 28, 35),
+            (37, 29, 44),
+            (38, 30, 37),
+            (39, 31, 30),
+            (40, 32, 39),
+            (41, 33, 32),
+            (42, 34, 33),
+            (43, 35, 34),
+            (44, 36, 35),
+            (45, 37, 52),
+            (46, 38, 37),
+            (47, 39, 38),
+            (48, 40, 47),
+            (49, 41, 40),
+            (50, 42, 49),
+            (51, 43, 42),
+            (52, 44, 43),
+            (53, 45, 60),
+            (54, 46, 45),
+            (55, 47, 54),
+            (56, 48, 55),
+            (57, 49, 48),
+            (58, 50, 49),
+            (59, 51, 58),
+            (60, 52, 59),
+            (62, 53, 60),
+            (63, 54, 62),
+            (64, 55, 63),
+            (65, 56, 64),
+            (66, 57, 65),
+            (67, 58, 57),
+            (68, 59, 67),
+            (61, 60, 68),
+            (70, 62, 61),
+            (0, 63, 62),
+            (1, 64, 0),
+            (2, 65, 1),
+            (3, 66, 2),
+            (4, 67, 66),
+            (71, 68, 4),
+            (69, 61, 71),
+            (5, 69, 12),
+            (0, 70, 5),
+            (1, 0, 6),
+            (8, 1, 7),
+            (3, 2, 8),
+            (10, 3, 9),
+            (71, 4, 10),
+            (69, 71, 11),
+            (5, 12, 20),
+            (14, 5, 13),
+            (7, 6, 14),
+            (16, 7, 15),
+            (9, 8, 16),
+            (18, 9, 17),
+            (19, 10, 18),
+            (20, 11, 19),
+            (21, 20, 28),
+            (14, 13, 21),
+            (15, 14, 22),
+            (24, 15, 23),
+            (17, 16, 24),
+            (26, 17, 25),
+            (27, 18, 26),
+            (20, 19, 27),
+            (29, 28, 36),
+            (22, 21, 29),
+            (31, 22, 30),
+            (32, 23, 31),
+            (25, 24, 32),
+            (34, 25, 33),
+            (35, 26, 34),
+            (28, 27, 35),
+            (29, 36, 44),
+            (30, 29, 37),
+            (39, 30, 38),
+            (32, 31, 39),
+            (41, 32, 40),
+            (42, 33, 41),
+            (43, 34, 42),
+            (44, 35, 43),
+            (37, 44, 52),
+            (46, 37, 45),
+            (47, 38, 46),
+            (40, 39, 47),
+            (49, 40, 48),
+            (42, 41, 49),
+            (51, 42, 50),
+            (52, 43, 51),
+            (45, 52, 60),
+            (54, 45, 53),
+            (47, 46, 54),
+            (48, 47, 55),
+            (57, 48, 56),
+            (58, 49, 57),
+            (51, 50, 58),
+            (52, 51, 59),
+            (62, 60, 61),
+            (54, 53, 62),
+            (55, 54, 63),
+            (56, 55, 64),
+            (57, 56, 65),
+            (67, 57, 66),
+            (59, 58, 67),
+            (60, 59, 68),
+            (70, 61, 69),
+            (0, 62, 70),
+            (64, 63, 0),
+            (65, 64, 1),
+            (66, 65, 2),
+            (4, 66, 3),
+            (68, 67, 4),
+            (61, 68, 71),
+        ];
+
+        (faces, vertices)
+    }
+
     #[test]
     fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals() {
         let (faces, vertices) = quad();
@@ -1131,4 +1365,28 @@ mod tests {
 
         assert!(!geometry_with_orphans.has_no_orphan_normals());
     }
+
+    #[test]
+    fn test_geometry_mesh_genus_box_should_be_0() {
+        let geometry = cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
+        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+
+        let genus = geometry.mesh_genus(&edges);
+        assert_eq!(genus, 0);
+    }
+
+    #[test]
+    fn test_geometry_mesh_genus_torus_should_be_1() {
+        let (faces, vertices) = torus();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+
+        let genus = geometry.mesh_genus(&edges);
+        assert_eq!(genus, 1);
+    }
+
 }

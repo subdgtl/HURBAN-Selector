@@ -104,7 +104,7 @@ pub fn init_and_run(options: Options) -> ! {
         geometry::uv_sphere([120.0, 0.0, 0.0], 5.0, 8, 8),
         geometry::uv_sphere([170.0, 0.0, 0.0], 20.0, 20, 20),
         geometry::cube_sharp_var_len([220.0, 0.0, 0.0], 5.0),
-        geometry::cube_sharp_same_len_open([240.0, 0.0, 0.0], 5.0),
+        geometry::cube_sharp_same_len([240.0, 0.0, 0.0], 5.0),
         geometry::cube_smooth_same_len([260.0, 0.0, 0.0], 5.0),
         geometry::cube_smooth_same_len([280.0, 0.0, 0.0], 5.0),
         geometry::plane_same_len([300.0, 0.0, 0.0], 5.0),
