@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use arrayvec::ArrayVec;
 use std::cmp;
@@ -177,11 +177,13 @@ impl Geometry {
         &self.normals
     }
 
+    /// Extracts oriented edges from all mesh faces
     pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_oriented_edges()).into_iter())
     }
 
+    /// Extracts unoriented edges from all mesh faces
     pub fn unoriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = UnorientedEdge> + 'a {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_unoriented_edges()).into_iter())
@@ -198,6 +200,7 @@ impl Geometry {
         1 - (vertex_count - edge_count + face_count) / 2
     }
 
+    /// Does the mesh contain unused (not referenced in faces) vertices
     pub fn has_no_orphan_vertices(&self) -> bool {
         let mut used_vertices = HashSet::new();
         for face in self.triangle_faces_iter() {
@@ -208,6 +211,7 @@ impl Geometry {
         used_vertices.len() == self.vertices().len()
     }
 
+    /// Does the mesh contain unused (not referenced in faces) normals
     pub fn has_no_orphan_normals(&self) -> bool {
         let mut used_normals = HashSet::new();
         for face in self.triangle_faces_iter() {
@@ -216,6 +220,25 @@ impl Geometry {
             used_normals.insert(face.normals.2);
         }
         used_normals.len() == self.normals().len()
+    }
+
+    /// Calculates topological relations (neighborhood) of mesh faces.
+    /// Returns a Map (key: face index, value: list of its neighboring faces indices)
+    pub fn face_to_face_topology(&self) -> HashMap<usize, Vec<usize>> {
+        let mut f2f: HashMap<usize, Vec<usize>> = HashMap::new();
+        for (from_counter, f) in self.triangle_faces_iter().enumerate() {
+            let [f_e_0, f_e_1, f_e_2] = f.to_unoriented_edges();
+            for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
+                if from_counter != to_counter && t_f.contains_unoriented_edge(f_e_0)
+                    || t_f.contains_unoriented_edge(f_e_1)
+                    || t_f.contains_unoriented_edge(f_e_2)
+                {
+                    let neighbors = f2f.entry(from_counter).or_insert_with(|| vec![]);
+                    neighbors.push(to_counter);
+                }
+            }
+        }
+        f2f
     }
 }
 
@@ -277,6 +300,12 @@ impl TriangleFace {
             UnorientedEdge(OrientedEdge::new(self.vertices.1, self.vertices.2)),
             UnorientedEdge(OrientedEdge::new(self.vertices.2, self.vertices.0)),
         ]
+    }
+
+    /// Does the face contain the specific unoriented edge
+    pub fn contains_unoriented_edge(&self, unoriented_edge: UnorientedEdge) -> bool {
+        let [o_e_0, o_e_1, o_e_2] = &self.to_unoriented_edges();
+        o_e_0 == &unoriented_edge || o_e_1 == &unoriented_edge || o_e_2 == &unoriented_edge
     }
 }
 
