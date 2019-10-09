@@ -836,6 +836,28 @@ mod tests {
         (faces, vertices, normals)
     }
 
+    fn tessellated_triangle() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+        #[rustfmt::skip]
+            let vertices = vec![
+            Point3::new(-2.0, -2.0, 0.0),
+            Point3::new(0.0, -2.0, 0.0),
+            Point3::new(2.0, -2.0, 0.0),
+            Point3::new(-1.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+        ];
+
+        #[rustfmt::skip]
+            let faces = vec![
+            (0, 3, 1),
+            (1, 3, 4),
+            (1, 4, 2),
+            (3, 5, 4),
+        ];
+
+        (faces, vertices)
+    }
+
     fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         #[rustfmt::skip]
             let vertices = vec![
@@ -3246,5 +3268,35 @@ mod tests {
 
         let genus = geometry.mesh_genus(&edges);
         assert_eq!(genus, 3);
+    }
+
+    #[test]
+    fn test_geometry_face_to_face_topology_from_tessellated_triangle() {
+        let (faces, vertices) = tessellated_triangle();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+        let mut face_to_face_topology_correct: HashMap<usize, Vec<usize>> = HashMap::new();
+        face_to_face_topology_correct.insert(0, vec![1]);
+        face_to_face_topology_correct.insert(1, vec![0, 2, 3]);
+        face_to_face_topology_correct.insert(2, vec![1]);
+        face_to_face_topology_correct.insert(3, vec![1]);
+
+        let face_to_face_topology_calculated = geometry.face_to_face_topology();
+
+        assert!(face_to_face_topology_correct
+            .iter()
+            .all(|(face_index, neighbors)| {
+                if let Some(neighbors_calculated) = face_to_face_topology_calculated.get(face_index)
+                {
+                    neighbors
+                        .iter()
+                        .all(|n| neighbors_calculated.iter().any(|n_c| n_c == n))
+                } else {
+                    false
+                }
+            }));
     }
 }
