@@ -18,7 +18,9 @@ pub type EdgeCountMap = HashMap<UnorientedEdge, EdgeCount>;
 /// 2 -> manifold edge = correct
 /// 3 or more -> non-manifold edge = corrupted mesh
 #[allow(dead_code)]
-pub fn edge_valencies(oriented_edges: &[OrientedEdge]) -> EdgeCountMap {
+pub fn edge_valencies<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
+    oriented_edges: I,
+) -> EdgeCountMap {
     let mut edge_valency_map: EdgeCountMap = HashMap::new();
     for edge in oriented_edges {
         let unoriented_edge = UnorientedEdge(*edge);
@@ -29,16 +31,15 @@ pub fn edge_valencies(oriented_edges: &[OrientedEdge]) -> EdgeCountMap {
         } else {
             descending_count += 1;
         }
-        if let Some(edge_count) = edge_valency_map.get(&unoriented_edge) {
-            ascending_count += edge_count.ascending_count;
-            descending_count += edge_count.descending_count;
-        }
 
-        let edge_count = EdgeCount {
-            ascending_count,
-            descending_count,
-        };
-        edge_valency_map.insert(unoriented_edge, edge_count);
+        let edge_count = edge_valency_map
+            .entry(unoriented_edge)
+            .or_insert(EdgeCount {
+                ascending_count: 0,
+                descending_count: 0,
+            });
+        edge_count.ascending_count += ascending_count;
+        edge_count.descending_count += descending_count;
     }
 
     edge_valency_map
@@ -46,9 +47,11 @@ pub fn edge_valencies(oriented_edges: &[OrientedEdge]) -> EdgeCountMap {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::geometry::{Geometry, NormalStrategy};
     use nalgebra::Point3;
+
+    use crate::geometry::{Geometry, NormalStrategy};
+
+    use super::*;
 
     fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
         Point3::new(
@@ -60,15 +63,15 @@ mod tests {
 
     fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         #[rustfmt::skip]
-            let vertices = vec![
-            v(-1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
+        let vertices = vec![
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
         ];
 
         #[rustfmt::skip]
-            let faces = vec![
+        let faces = vec![
             (0, 1, 2),
             (2, 3, 0),
         ];

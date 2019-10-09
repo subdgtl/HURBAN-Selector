@@ -760,8 +760,9 @@ fn compute_triangle_normal(p1: &Point3<f32>, p2: &Point3<f32>, p3: &Point3<f32>)
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::hash_map::DefaultHasher;
+
+    use super::*;
 
     fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         #[rustfmt::skip]

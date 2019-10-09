@@ -16,17 +16,17 @@ pub fn has_no_orphans(geo: &Geometry) -> bool {
 }
 
 /// Finds edges with a certain valency in a mesh edge collection
-/// Valency indicated how many faces share the edge
+/// Valency indicates how many faces share the edge
 fn find_edges_with_valency<'a>(
     edge_valencies: &'a EdgeCountMap,
     valency: u32,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
     edge_valencies
         .iter()
-        .filter(move |(_edge_wrapper, edge_count)| {
+        .filter(move |(_, edge_count)| {
             edge_count.ascending_count + edge_count.descending_count == valency
         })
-        .map(|(edge_wrapper, _value)| edge_wrapper.0)
+        .map(|(unoriented_edge, _)| unoriented_edge.0)
 }
 
 /// Finds border edges in a mesh edge collection
@@ -54,10 +54,8 @@ pub fn non_manifold_edges<'a>(
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
     edge_valencies
         .iter()
-        .filter(move |(_edge_wrapper, edge_count)| {
-            edge_count.ascending_count + edge_count.descending_count > 2
-        })
-        .map(|(edge_wrapper, _value)| edge_wrapper.0)
+        .filter(|(_, edge_count)| edge_count.ascending_count + edge_count.descending_count > 2)
+        .map(|(unoriented_edge, _)| unoriented_edge.0)
 }
 
 /// Finds border vertex indices in a mesh edge collection
@@ -74,11 +72,19 @@ pub fn border_vertex_indices(edge_valencies: &EdgeCountMap) -> HashSet<u32> {
 }
 
 /// Check if all the face normals point the same way.
-/// In a proper watertight mesh each oriented edge
-/// should have a counterpart in a reverted oriented edge
+/// In a proper watertight orientable mesh each oriented edge
+/// should have a single counterpart in a reverted oriented edge.
+/// In an open orientable mesh each internal edge has its counterpart
+/// in a single reverted oriented edge and
+/// the border edges don't have any counterpart.
 #[allow(dead_code)]
 pub fn is_mesh_orientable(edge_valencies: &EdgeCountMap) -> bool {
-    edge_valencies.iter().all(|(_edge_wrapper, edge_count)| {
+    edge_valencies.iter().all(|(_, edge_count)| {
+        // Ascending_count and descending_count can never be both 0
+        // at the same time because there is never a case that the
+        // edge doesn't exist in any direction.
+        // Even if this happens, it means that the tested edge
+        // is non-existing and therefore doesn't affect edge winding.
         edge_count.ascending_count <= 1 && edge_count.descending_count <= 1
     })
 }
@@ -87,18 +93,19 @@ pub fn is_mesh_orientable(edge_valencies: &EdgeCountMap) -> bool {
 /// in other words, all edge valencies are 2
 #[allow(dead_code)]
 pub fn is_mesh_watertight(edge_valencies: &EdgeCountMap) -> bool {
-    edge_valencies.iter().all(|(_edge_wrapper, edge_count)| {
-        edge_count.ascending_count + edge_count.descending_count == 2
-    })
+    edge_valencies
+        .iter()
+        .all(|(_, edge_count)| edge_count.ascending_count == 1 && edge_count.descending_count == 1)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::edge_analysis::edge_valencies;
-    use crate::geometry;
-    use crate::geometry::{NormalStrategy, TriangleFace};
     use nalgebra::{Point3, Vector3};
+
+    use crate::edge_analysis::edge_valencies;
+    use crate::geometry::{self, NormalStrategy, TriangleFace};
+
+    use super::*;
 
     fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
         Point3::new(
@@ -114,15 +121,15 @@ mod tests {
 
     fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         #[rustfmt::skip]
-            let vertices = vec![
-            v(-1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
+        let vertices = vec![
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
         ];
 
         #[rustfmt::skip]
-            let faces = vec![
+        let faces = vec![
             (0, 1, 2),
             (2, 3, 0),
         ];
@@ -132,16 +139,16 @@ mod tests {
 
     fn non_manifold_shape() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         #[rustfmt::skip]
-            let vertices = vec![
-            v(-1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v(0.0,  0.0,  1.0, [0.0, 0.0, 0.0], 1.0),
+        let vertices = vec![
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(0.0, 0.0, 1.0, [0.0, 0.0, 0.0], 1.0),
         ];
 
         #[rustfmt::skip]
-            let faces = vec![
+        let faces = vec![
             (0, 1, 2),
             (2, 3, 0),
             (2, 4, 0),
@@ -150,57 +157,54 @@ mod tests {
         (faces, vertices)
     }
 
-    fn cube_sharp_broken_winding(position: [f32; 3], scale: f32) -> Geometry {
-        #[rustfmt::skip]
-            let vertex_positions = vec![
+    fn cube_sharp_mismatching_winding(position: [f32; 3], scale: f32) -> Geometry {
+        let vertex_positions = vec![
             // back
-            v(-1.0,  1.0, -1.0, position, scale),
-            v(-1.0,  1.0,  1.0, position, scale),
-            v( 1.0,  1.0,  1.0, position, scale),
-            v( 1.0,  1.0, -1.0, position, scale),
+            v(-1.0, 1.0, -1.0, position, scale),
+            v(-1.0, 1.0, 1.0, position, scale),
+            v(1.0, 1.0, 1.0, position, scale),
+            v(1.0, 1.0, -1.0, position, scale),
             // front
             v(-1.0, -1.0, -1.0, position, scale),
-            v( -1.0, -1.0, 1.0, position, scale),
-            v( 1.0, -1.0,  1.0, position, scale),
-            v(1.0, -1.0,  -1.0, position, scale),
+            v(-1.0, -1.0, 1.0, position, scale),
+            v(1.0, -1.0, 1.0, position, scale),
+            v(1.0, -1.0, -1.0, position, scale),
         ];
 
-        #[rustfmt::skip]
-            let vertex_normals = vec![
+        let vertex_normals = vec![
             // back
-            n( 0.0,  1.0,  0.0),
-            n( 0.0,  1.0,  0.0),
-            n( 0.0,  1.0,  0.0),
-            n( 0.0,  1.0,  0.0),
+            n(0.0, 1.0, 0.0),
+            n(0.0, 1.0, 0.0),
+            n(0.0, 1.0, 0.0),
+            n(0.0, 1.0, 0.0),
             // front
-            n( 0.0, -1.0,  0.0),
-            n( 0.0, -1.0,  0.0),
-            n( 0.0, -1.0,  0.0),
-            n( 0.0, -1.0,  0.0),
+            n(0.0, -1.0, 0.0),
+            n(0.0, -1.0, 0.0),
+            n(0.0, -1.0, 0.0),
+            n(0.0, -1.0, 0.0),
             // top
-            n( 0.0,  0.0,  1.0),
-            n( 0.0,  0.0,  1.0),
-            n( 0.0,  0.0,  1.0),
-            n( 0.0,  0.0,  1.0),
+            n(0.0, 0.0, 1.0),
+            n(0.0, 0.0, 1.0),
+            n(0.0, 0.0, 1.0),
+            n(0.0, 0.0, 1.0),
             // bottom
-            n( 0.0,  0.0, -1.0),
-            n( 0.0,  0.0, -1.0),
-            n( 0.0,  0.0, -1.0),
-            n( 0.0,  0.0, -1.0),
+            n(0.0, 0.0, -1.0),
+            n(0.0, 0.0, -1.0),
+            n(0.0, 0.0, -1.0),
+            n(0.0, 0.0, -1.0),
             // right
-            n( 1.0,  0.0,  0.0),
-            n( 1.0,  0.0,  0.0),
-            n( 1.0,  0.0,  0.0),
-            n( 1.0,  0.0,  0.0),
+            n(1.0, 0.0, 0.0),
+            n(1.0, 0.0, 0.0),
+            n(1.0, 0.0, 0.0),
+            n(1.0, 0.0, 0.0),
             // left
-            n(-1.0,  0.0,  0.0),
-            n(-1.0,  0.0,  0.0),
-            n(-1.0,  0.0,  0.0),
-            n(-1.0,  0.0,  0.0),
+            n(-1.0, 0.0, 0.0),
+            n(-1.0, 0.0, 0.0),
+            n(-1.0, 0.0, 0.0),
+            n(-1.0, 0.0, 0.0),
         ];
 
-        #[rustfmt::skip]
-            let faces = vec![
+        let faces = vec![
             // back
             TriangleFace::new(2, 1, 0),
             TriangleFace::new(2, 3, 0),
@@ -282,10 +286,10 @@ mod tests {
             OrientedEdge::new(3, 0),
         ];
 
-        let oriented_edges_border_check = border_edges(&edge_valency_map);
+        let oriented_edges_border_check: Vec<_> = border_edges(&edge_valency_map).collect();
 
-        for o_e in oriented_edges_border_check {
-            assert!(oriented_edges_border_correct.iter().any(|e| *e == o_e));
+        for o_e in &oriented_edges_border_correct {
+            assert!(oriented_edges_border_check.iter().any(|e| e == o_e));
         }
     }
 
@@ -303,10 +307,10 @@ mod tests {
         let oriented_edges_manifold_correct =
             vec![OrientedEdge::new(2, 0), OrientedEdge::new(0, 2)];
 
-        let oriented_edges_manifold_check = manifold_edges(&edge_valency_map);
+        let oriented_edges_manifold_check: Vec<_> = manifold_edges(&edge_valency_map).collect();
 
-        for o_e in oriented_edges_manifold_check {
-            assert!(oriented_edges_manifold_correct.iter().any(|e| *e == o_e));
+        for o_e in oriented_edges_manifold_correct {
+            assert!(oriented_edges_manifold_check.iter().any(|e| *e == o_e));
         }
     }
 
@@ -379,7 +383,7 @@ mod tests {
 
     #[test]
     fn test_mesh_analysis_is_mesh_orientable_returns_false_because_is_wrong() {
-        let geometry = cube_sharp_broken_winding([0.0, 0.0, 0.0], 1.0);
+        let geometry = cube_sharp_mismatching_winding([0.0, 0.0, 0.0], 1.0);
 
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
         let edge_valency_map = edge_valencies(&oriented_edges);
