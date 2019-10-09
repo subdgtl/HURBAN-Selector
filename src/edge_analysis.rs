@@ -3,15 +3,15 @@ use std::collections::HashMap;
 use crate::geometry::{OrientedEdge, UnorientedEdge};
 
 /// Used in EdgeCountMap
-/// ascending_count contains number of edges oriented from lower index to higher
-/// descending_count contains number of edges oriented from higher index to lower
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EdgeCount {
-    pub ascending_count: u32,
-    pub descending_count: u32,
+/// ascending_edges contains edges oriented from lower index to higher
+/// descending_edges contains edges oriented from higher index to lower
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SimilarEdges {
+    pub ascending_edges: Vec<OrientedEdge>,
+    pub descending_edges: Vec<OrientedEdge>,
 }
 
-pub type EdgeCountMap = HashMap<UnorientedEdge, EdgeCount>;
+pub type EdgeCountMap = HashMap<UnorientedEdge, SimilarEdges>;
 
 /// Calculate edge valencies = number of faces sharing an edge
 /// 1 -> border edge = acceptable but mesh is not watertight
@@ -24,22 +24,21 @@ pub fn edge_valencies<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
     let mut edge_valency_map: EdgeCountMap = HashMap::new();
     for edge in oriented_edges {
         let unoriented_edge = UnorientedEdge(*edge);
-        let mut ascending_count: u32 = 0;
-        let mut descending_count: u32 = 0;
-        if edge.vertices.0 < edge.vertices.1 {
-            ascending_count += 1;
-        } else {
-            descending_count += 1;
-        }
+        let ascending_edges: Vec<OrientedEdge> = Vec::new();
+        let descending_edges: Vec<OrientedEdge> = Vec::new();
 
         let edge_count = edge_valency_map
             .entry(unoriented_edge)
-            .or_insert(EdgeCount {
-                ascending_count: 0,
-                descending_count: 0,
+            .or_insert(SimilarEdges {
+                ascending_edges,
+                descending_edges,
             });
-        edge_count.ascending_count += ascending_count;
-        edge_count.descending_count += descending_count;
+
+        if edge.vertices.0 < edge.vertices.1 {
+            edge_count.ascending_edges.push(*edge);
+        } else {
+            edge_count.descending_edges.push(*edge);
+        }
     }
 
     edge_valency_map
@@ -99,32 +98,22 @@ mod tests {
             UnorientedEdge(OrientedEdge::new(2, 0)),
             UnorientedEdge(OrientedEdge::new(0, 2)),
         ];
-        let test_edge_count_ascending = EdgeCount {
-            ascending_count: 1,
-            descending_count: 0,
-        };
-        let test_edge_count_descending = EdgeCount {
-            ascending_count: 0,
-            descending_count: 1,
-        };
-        let test_edge_count_two_ways = EdgeCount {
-            ascending_count: 1,
-            descending_count: 1,
-        };
 
         for u_e in unoriented_edges_one_way_correct {
+            assert!(edge_valency_map.contains_key(&u_e));
             if u_e.0.vertices.0 < u_e.0.vertices.1 {
-                assert_eq!(edge_valency_map.get(&u_e), Some(&test_edge_count_ascending));
+                assert_eq!(edge_valency_map.get(&u_e).unwrap().ascending_edges.len(), 1);
+                assert_eq!(edge_valency_map.get(&u_e).unwrap().descending_edges.len(), 0);
             } else {
-                assert_eq!(
-                    edge_valency_map.get(&u_e),
-                    Some(&test_edge_count_descending)
-                );
+                assert_eq!(edge_valency_map.get(&u_e).unwrap().ascending_edges.len(), 0);
+                assert_eq!(edge_valency_map.get(&u_e).unwrap().descending_edges.len(), 1);
             }
         }
 
         for u_e in unoriented_edges_two_ways_correct {
-            assert_eq!(edge_valency_map.get(&u_e), Some(&test_edge_count_two_ways));
+            assert!(edge_valency_map.contains_key(&u_e));
+            assert_eq!(edge_valency_map.get(&u_e).unwrap().ascending_edges.len(), 1);
+            assert_eq!(edge_valency_map.get(&u_e).unwrap().descending_edges.len(), 1);
         }
     }
 }

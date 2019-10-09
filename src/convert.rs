@@ -17,6 +17,7 @@ where
 ///
 /// # Panics
 /// Panics if the conversion returns an error.
+#[allow(dead_code)]
 pub fn cast_i32<T>(n: T) -> i32
 where
     T: TryInto<i32>,

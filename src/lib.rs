@@ -24,6 +24,7 @@ mod math;
 mod mesh_analysis;
 mod platform;
 mod ui;
+mod test_geometry_fixtures;
 
 const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 
