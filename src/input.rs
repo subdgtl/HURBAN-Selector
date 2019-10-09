@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct InputState {
-    pub tmp_submit_prog_and_run: bool,
     pub camera_pan_ground: [f32; 2],
     pub camera_pan_screen: [f32; 2],
     pub camera_rotate: [f32; 2],
@@ -134,13 +133,6 @@ impl InputManager {
                                 &MODIFIERS_NONE,
                             ) => {
                                 self.input_state.import_requested = true;
-                            }
-                            (
-                                Some(winit::event::VirtualKeyCode::R),
-                                winit::event::ElementState::Pressed,
-                                &MODIFIERS_NONE,
-                            ) => {
-                                self.input_state.tmp_submit_prog_and_run = true;
                             }
                             _ => (),
                         }

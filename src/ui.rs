@@ -1,5 +1,10 @@
+use std::collections::HashMap;
+use std::convert::TryFrom;
+
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
+use crate::interpreter::ast::LitExpr;
+use crate::operation_manager::{Op, OpParamUiRepr, OpStatus, OpUiParam, OperationManager};
 use crate::renderer::DrawGeometryMode;
 
 const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
@@ -161,4 +166,173 @@ impl<'a> UiFrame<'a> {
                 );
             });
     }
+
+    /// Draws child window for a single operation.
+    pub fn draw_operation_window(&self, name: &str, params: &mut [OpUiParam], status: OpStatus) {
+        let ui = &self.imgui_ui;
+
+        let border_color = match status {
+            OpStatus::Ready => int_to_float_color(255, 255, 255, 255),
+            OpStatus::Running => int_to_float_color(0, 0, 255, 255),
+            OpStatus::Finished => int_to_float_color(0, 255, 0, 255),
+            OpStatus::Error => int_to_float_color(255, 0, 0, 255),
+        };
+
+        let border_color_token = ui.push_style_color(imgui::StyleColor::Border, border_color);
+
+        imgui::ChildWindow::new(&imgui::im_str!("{}", name))
+            .size([ui.window_content_region_width(), 150.0])
+            .border(true)
+            .always_auto_resize(true)
+            .build(ui, || {
+                for (id_counter, param) in params.iter_mut().enumerate() {
+                    let display_name = imgui::im_str!("{}", &param.name);
+                    let label = imgui::im_str!("");
+
+                    ui.columns(2, imgui::im_str!(""), true);
+                    ui.set_column_width(
+                        ui.current_column_index(),
+                        ui.window_content_region_width() / 3.0,
+                    );
+                    ui.text(&display_name);
+                    ui.next_column();
+
+                    // Since by default tokens are generated from lables, but
+                    // ours are gonna be empty, we need to provide them manually.
+                    let token = ui.push_id(id_counter as i32);
+
+                    match param.value {
+                        LitExpr::Int(ref mut value) => match param.repr {
+                            OpParamUiRepr::IntInput => {
+                                ui.input_int(&label, value).build();
+                            }
+                            OpParamUiRepr::IntSlider => {
+                                imgui::Slider::new(&label, 1..=10).build(ui, value);
+                            }
+                            _ => {}
+                        },
+
+                        LitExpr::Uint(ref mut value) => match param.repr {
+                            OpParamUiRepr::IntInput => {
+                                // Imgui's `input_int` requires i32, but our Uint
+                                // values are u32, so we need to cast them before
+                                // and after.
+                                let mut i32_value: i32 = *value as i32;
+                                ui.input_int(&label, &mut i32_value).build();
+                                *value = u32::try_from(i32_value)
+                                    .expect("Failed to convert signed int to unsigned int");
+                            }
+                            OpParamUiRepr::IntSlider => {
+                                imgui::Slider::new(&label, 1..=10).build(ui, value);
+                            }
+                            OpParamUiRepr::Dropdown(ref choices) => {
+                                // Imgui's combo box requires usize, but our Uint
+                                // values are u32, so we need to cast them before
+                                // and after.
+                                let mut usize_value: usize = *value as usize;
+                                imgui::ComboBox::new(&label).build_simple(
+                                    ui,
+                                    &mut usize_value,
+                                    choices,
+                                    &|item| std::borrow::Cow::from(imgui::im_str!("{}", item.1)),
+                                );
+                                *value = u32::try_from(usize_value)
+                                    .expect("Failed to convert signed int to unsigned int");
+                            }
+                            _ => {}
+                        },
+
+                        LitExpr::Float(ref mut value) => match param.repr {
+                            OpParamUiRepr::FloatInput => {
+                                ui.input_float(&label, value).build();
+                            }
+                            OpParamUiRepr::FloatSlider => {
+                                imgui::Slider::new(&label, 1.0..=10.0).build(ui, value);
+                            }
+                            _ => {}
+                        },
+
+                        LitExpr::Boolean(ref mut value) => match param.repr {
+                            OpParamUiRepr::Checkbox => {
+                                ui.checkbox(&label, value);
+                            }
+                            OpParamUiRepr::Radio => {
+                                // There are two different elements, so they
+                                // need extra tokens.
+                                let token = ui.push_id("true");
+                                ui.radio_button(&label, value, true);
+                                token.pop(&ui);
+
+                                ui.same_line(0.0);
+
+                                let token = ui.push_id("false");
+                                ui.radio_button(&label, value, false);
+                                token.pop(&ui);
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+
+                    token.pop(&ui);
+
+                    ui.next_column();
+                }
+            });
+
+        border_color_token.pop(&ui);
+    }
+
+    /// Draws window for all selected operations.
+    pub fn draw_operations_window<'b>(
+        &self,
+        available_operations: &'b HashMap<String, Op>,
+        operation_ui: &mut OperationManager,
+    ) -> (bool, bool) {
+        let ui = &self.imgui_ui;
+        let mut run_button_clicked = false;
+        let mut remove_button_clicked = false;
+        let last_operation_successful = operation_ui.last_operation_successful();
+
+        imgui::Window::new(&imgui::im_str!("Operations"))
+            .size([1000.0, 1000.0], imgui::Condition::FirstUseEver)
+            .build(ui, || {
+                if last_operation_successful {
+                    for (name, ui_op) in available_operations {
+                        if ui.button(&imgui::im_str!("{}", name), [90.0, 30.0]) {
+                            operation_ui.add_operation(ui_op.clone());
+                        }
+                    }
+                }
+
+                for (i, selected_op) in &mut operation_ui.selected_ops_iter_mut().enumerate() {
+                    self.draw_operation_window(
+                        &format!("{} #{}", &selected_op.op.name, i),
+                        &mut selected_op.op.params,
+                        selected_op.status,
+                    );
+                }
+
+                if operation_ui.runnable() {
+                    if ui.button(imgui::im_str!("Remove last operation"), [256.0, 32.0]) {
+                        remove_button_clicked = true;
+                    }
+
+                    if ui.button(imgui::im_str!("Run"), [64.0, 32.0]) {
+                        run_button_clicked = true;
+                    }
+                }
+            });
+
+        (run_button_clicked, remove_button_clicked)
+    }
+}
+
+fn int_to_float_color(r: u8, g: u8, b: u8, a: u8) -> [f32; 4] {
+    [
+        f32::from(r) / 255.0,
+        f32::from(g) / 255.0,
+        f32::from(b) / 255.0,
+        f32::from(a) / 255.0,
+    ]
 }
