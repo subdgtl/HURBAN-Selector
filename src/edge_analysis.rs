@@ -103,17 +103,26 @@ mod tests {
             assert!(edge_valency_map.contains_key(&u_e));
             if u_e.0.vertices.0 < u_e.0.vertices.1 {
                 assert_eq!(edge_valency_map.get(&u_e).unwrap().ascending_edges.len(), 1);
-                assert_eq!(edge_valency_map.get(&u_e).unwrap().descending_edges.len(), 0);
+                assert_eq!(
+                    edge_valency_map.get(&u_e).unwrap().descending_edges.len(),
+                    0
+                );
             } else {
                 assert_eq!(edge_valency_map.get(&u_e).unwrap().ascending_edges.len(), 0);
-                assert_eq!(edge_valency_map.get(&u_e).unwrap().descending_edges.len(), 1);
+                assert_eq!(
+                    edge_valency_map.get(&u_e).unwrap().descending_edges.len(),
+                    1
+                );
             }
         }
 
         for u_e in unoriented_edges_two_ways_correct {
             assert!(edge_valency_map.contains_key(&u_e));
             assert_eq!(edge_valency_map.get(&u_e).unwrap().ascending_edges.len(), 1);
-            assert_eq!(edge_valency_map.get(&u_e).unwrap().descending_edges.len(), 1);
+            assert_eq!(
+                edge_valency_map.get(&u_e).unwrap().descending_edges.len(),
+                1
+            );
         }
     }
 }

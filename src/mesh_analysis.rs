@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::edge_analysis::EdgeCountMap;
-use crate::geometry::{OrientedEdge};
+use crate::geometry::OrientedEdge;
 
 /// Finds edges with a certain valency in a mesh edge collection
 /// Valency indicates how many faces share the edge
@@ -51,7 +51,13 @@ pub fn non_manifold_edges<'a>(
         .filter(|(_, edge_count)| {
             edge_count.ascending_edges.len() + edge_count.descending_edges.len() > 2
         })
-        .map(|(unoriented_edge, _)| unoriented_edge.0)
+        .flat_map(|(_, similar_edges)| {
+            similar_edges
+                .ascending_edges
+                .iter()
+                .copied()
+                .chain(similar_edges.descending_edges.iter().copied())
+        })
 }
 
 /// Finds border vertex indices in a mesh edge collection
@@ -104,9 +110,9 @@ pub fn mesh_genus(vertex_count: i32, edge_count: i32, face_count: i32) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use crate::convert::cast_i32;
+    use crate::convert::{cast_i32, cast_usize};
     use crate::edge_analysis::edge_valencies;
-    use crate::geometry::{self, cube_sharp_var_len, NormalStrategy, UnorientedEdge, Geometry};
+    use crate::geometry::{self, cube_sharp_var_len, Geometry, NormalStrategy, UnorientedEdge};
     use crate::test_geometry_fixtures::{
         cube_sharp_mismatching_winding, double_torus, non_manifold_shape, quad, torus, triple_torus,
     };
@@ -133,15 +139,20 @@ mod tests {
         let oriented_edges_with_valency_2_correct =
             vec![OrientedEdge::new(2, 0), OrientedEdge::new(0, 2)];
 
-        let mut oriented_edges_with_valency_1 = find_edges_with_valency(&edge_valency_map, 1);
-        let mut oriented_edges_with_valency_2 = find_edges_with_valency(&edge_valency_map, 2);
+        let oriented_edges_with_valency_1: Vec<_> =
+            find_edges_with_valency(&edge_valency_map, 1).collect();
+        let oriented_edges_with_valency_2: Vec<_> =
+            find_edges_with_valency(&edge_valency_map, 2).collect();
+
+        assert_eq!(&oriented_edges_with_valency_1.len(), &cast_usize(4));
+        assert_eq!(&oriented_edges_with_valency_2.len(), &cast_usize(2));
 
         for o_e in oriented_edges_with_valency_1_correct {
-            assert!(oriented_edges_with_valency_1.any(|e| e == o_e));
+            assert!(&oriented_edges_with_valency_1.iter().any(|e| *e == o_e));
         }
 
         for o_e in oriented_edges_with_valency_2_correct {
-            assert!(oriented_edges_with_valency_2.any(|e| e == o_e));
+            assert!(&oriented_edges_with_valency_2.iter().any(|e| *e == o_e));
         }
     }
 
@@ -212,7 +223,7 @@ mod tests {
             assert!(oriented_edges_non_manifold_check.iter().any(|e| e == o_e));
         }
 
-        assert_eq!(oriented_edges_non_manifold_check.len(), 1);
+        assert_eq!(oriented_edges_non_manifold_check.len(), 3);
     }
 
     #[test]
