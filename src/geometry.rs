@@ -222,7 +222,7 @@ impl Geometry {
         used_normals.len() == self.normals().len()
     }
 
-    /// Calculates topological relations (neighborhood) of mesh faces.
+    /// Calculates topological relations (neighborhood) of mesh face -> faces.
     /// Returns a Map (key: face index, value: list of its neighboring faces indices)
     pub fn face_to_face_topology(&self) -> HashMap<usize, Vec<usize>> {
         let mut f2f: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -239,6 +239,21 @@ impl Geometry {
             }
         }
         f2f
+    }
+
+    /// Calculates topological relations (neighborhood) of mesh edge -> faces.
+    /// Returns a Map (key: face index, value: list of its neighboring faces indices)
+    pub fn edge_to_face_topology(&self, edges: &HashSet<UnorientedEdge>) -> HashMap<usize, Vec<usize>> {
+        let mut e2f: HashMap<usize, Vec<usize>> = HashMap::new();
+        for (from_counter, e) in edges.iter().enumerate() {
+            for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
+                if t_f.contains_unoriented_edge(*e) {
+                    let neighbors = e2f.entry(from_counter).or_insert_with(|| vec![]);
+                    neighbors.push(to_counter);
+                }
+            }
+        }
+        e2f
     }
 }
 
@@ -3298,5 +3313,31 @@ mod tests {
                     false
                 }
             }));
+    }
+
+    #[test]
+    fn test_geometry_edge_to_face_topology_from_tessellated_triangle() {
+        let (faces, vertices) = tessellated_triangle();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+        let edges: HashSet<_> = geometry.unoriented_edges_iter().collect();
+
+        let edge_to_face_topology_calculated = geometry.edge_to_face_topology(&edges);
+
+        let in_one_face_count = edge_to_face_topology_calculated
+            .iter()
+            .filter(|(_, to)| to.len() == 1)
+            .count();
+        let in_two_faces_count = edge_to_face_topology_calculated
+            .iter()
+            .filter(|(_, to)| to.len() == 2)
+            .count();
+
+        assert_eq!(edges.len(), 9);
+        assert_eq!(in_one_face_count, 6);
+        assert_eq!(in_two_faces_count, 3);
     }
 }
