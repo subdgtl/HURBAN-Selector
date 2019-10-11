@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::convert::cast_i32;
 use crate::edge_analysis::EdgeCountMap;
 use crate::geometry::OrientedEdge;
 
@@ -100,24 +101,138 @@ pub fn is_mesh_watertight(edge_valencies: &EdgeCountMap) -> bool {
     })
 }
 
-/// Genus of a mesh is the number of holes in topology / conectivity
+/// Genus of a mesh is the number of holes in topology / connectivity
 /// The mesh must be triangular and watertight
 /// V - E + F = 2 (1 - G)
 #[allow(dead_code)]
-pub fn mesh_genus(vertex_count: i32, edge_count: i32, face_count: i32) -> i32 {
-    1 - (vertex_count - edge_count + face_count) / 2
+pub fn mesh_genus(vertex_count: usize, edge_count: usize, face_count: usize) -> i32 {
+    1 - (cast_i32(vertex_count) - cast_i32(edge_count) + cast_i32(face_count)) / 2
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::convert::{cast_i32, cast_usize};
+    use nalgebra::base::Vector3;
+    use nalgebra::geometry::Point3;
+
     use crate::edge_analysis::edge_valencies;
-    use crate::geometry::{self, cube_sharp_var_len, Geometry, NormalStrategy, UnorientedEdge};
-    use crate::test_geometry_fixtures::{
-        cube_sharp_mismatching_winding, double_torus, non_manifold_shape, quad, torus, triple_torus,
-    };
+    use crate::geometry::{self, cube_sharp_var_len, Geometry, NormalStrategy, UnorientedEdge, TriangleFace};
+    use crate::test_geometry_fixtures::{double_torus, torus, triple_torus};
 
     use super::*;
+
+    fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
+        Point3::new(
+            scale * x + translation[0],
+            scale * y + translation[1],
+            scale * z + translation[2],
+        )
+    }
+
+    fn n(x: f32, y: f32, z: f32) -> Vector3<f32> {
+        Vector3::new(x, y, z)
+    }
+
+    pub fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+        let vertices = vec![
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+        ];
+
+        let faces = vec![(0, 1, 2), (2, 3, 0)];
+
+        (faces, vertices)
+    }
+
+    pub fn non_manifold_shape() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+        let vertices = vec![
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(0.0, 0.0, 1.0, [0.0, 0.0, 0.0], 1.0),
+        ];
+
+        let faces = vec![(0, 1, 2), (2, 3, 0), (2, 4, 0)];
+
+        (faces, vertices)
+    }
+
+    pub fn cube_sharp_mismatching_winding(position: [f32; 3], scale: f32) -> Geometry {
+        let vertex_positions = vec![
+            // back
+            v(-1.0, 1.0, -1.0, position, scale),
+            v(-1.0, 1.0, 1.0, position, scale),
+            v(1.0, 1.0, 1.0, position, scale),
+            v(1.0, 1.0, -1.0, position, scale),
+            // front
+            v(-1.0, -1.0, -1.0, position, scale),
+            v(-1.0, -1.0, 1.0, position, scale),
+            v(1.0, -1.0, 1.0, position, scale),
+            v(1.0, -1.0, -1.0, position, scale),
+        ];
+
+        let vertex_normals = vec![
+            // back
+            n(0.0, 1.0, 0.0),
+            n(0.0, 1.0, 0.0),
+            n(0.0, 1.0, 0.0),
+            n(0.0, 1.0, 0.0),
+            // front
+            n(0.0, -1.0, 0.0),
+            n(0.0, -1.0, 0.0),
+            n(0.0, -1.0, 0.0),
+            n(0.0, -1.0, 0.0),
+            // top
+            n(0.0, 0.0, 1.0),
+            n(0.0, 0.0, 1.0),
+            n(0.0, 0.0, 1.0),
+            n(0.0, 0.0, 1.0),
+            // bottom
+            n(0.0, 0.0, -1.0),
+            n(0.0, 0.0, -1.0),
+            n(0.0, 0.0, -1.0),
+            n(0.0, 0.0, -1.0),
+            // right
+            n(1.0, 0.0, 0.0),
+            n(1.0, 0.0, 0.0),
+            n(1.0, 0.0, 0.0),
+            n(1.0, 0.0, 0.0),
+            // left
+            n(-1.0, 0.0, 0.0),
+            n(-1.0, 0.0, 0.0),
+            n(-1.0, 0.0, 0.0),
+            n(-1.0, 0.0, 0.0),
+        ];
+
+        let faces = vec![
+            // back
+            TriangleFace::new(2, 1, 0),
+            TriangleFace::new(2, 3, 0),
+            // top
+            TriangleFace::new(2, 1, 5),
+            TriangleFace::new(2, 5, 6),
+            // right
+            TriangleFace::new(2, 6, 7),
+            TriangleFace::new(7, 3, 2),
+            // bottom
+            TriangleFace::new(3, 7, 4),
+            TriangleFace::new(4, 0, 3),
+            // front
+            TriangleFace::new(6, 4, 7),
+            TriangleFace::new(4, 6, 5),
+            // left
+            TriangleFace::new(0, 4, 5),
+            TriangleFace::new(5, 1, 0),
+        ];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces,
+            vertex_positions,
+            vertex_normals,
+        )
+    }
 
     #[test]
     fn test_mesh_analysis_find_edge_with_valency() {
@@ -144,15 +259,15 @@ mod tests {
         let oriented_edges_with_valency_2: Vec<_> =
             find_edges_with_valency(&edge_valency_map, 2).collect();
 
-        assert_eq!(&oriented_edges_with_valency_1.len(), &cast_usize(4));
-        assert_eq!(&oriented_edges_with_valency_2.len(), &cast_usize(2));
+        assert_eq!(oriented_edges_with_valency_1.len(), 4);
+        assert_eq!(oriented_edges_with_valency_2.len(), 2);
 
         for o_e in oriented_edges_with_valency_1_correct {
-            assert!(&oriented_edges_with_valency_1.iter().any(|e| *e == o_e));
+            assert!(oriented_edges_with_valency_1.iter().any(|e| *e == o_e));
         }
 
         for o_e in oriented_edges_with_valency_2_correct {
-            assert!(&oriented_edges_with_valency_2.iter().any(|e| *e == o_e));
+            assert!(oriented_edges_with_valency_2.iter().any(|e| *e == o_e));
         }
     }
 
@@ -309,9 +424,9 @@ mod tests {
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
         let genus = mesh_genus(
-            cast_i32(geometry.vertices().len()),
-            cast_i32(edges.len()),
-            cast_i32(geometry.triangle_faces_iter().count()),
+            geometry.vertices().len(),
+            edges.len(),
+            geometry.triangle_faces_iter().count(),
         );
         assert_eq!(genus, 0);
     }
@@ -327,9 +442,9 @@ mod tests {
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
         let genus = mesh_genus(
-            cast_i32(geometry.vertices().len()),
-            cast_i32(edges.len()),
-            cast_i32(geometry.triangle_faces_iter().count()),
+            geometry.vertices().len(),
+            edges.len(),
+            geometry.triangle_faces_iter().count(),
         );
         assert_eq!(genus, 1);
     }
@@ -345,9 +460,9 @@ mod tests {
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
         let genus = mesh_genus(
-            cast_i32(geometry.vertices().len()),
-            cast_i32(edges.len()),
-            cast_i32(geometry.triangle_faces_iter().count()),
+            geometry.vertices().len(),
+            edges.len(),
+            geometry.triangle_faces_iter().count(),
         );
         assert_eq!(genus, 2);
     }
@@ -363,9 +478,9 @@ mod tests {
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
         let genus = mesh_genus(
-            cast_i32(geometry.vertices().len()),
-            cast_i32(edges.len()),
-            cast_i32(geometry.triangle_faces_iter().count()),
+            geometry.vertices().len(),
+            edges.len(),
+            geometry.triangle_faces_iter().count(),
         );
         assert_eq!(genus, 3);
     }
