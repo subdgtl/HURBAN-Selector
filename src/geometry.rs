@@ -642,22 +642,18 @@ pub fn uv_sphere(position: [f32; 3], scale: f32, n_parallels: u32, n_meridians: 
 
 pub fn compute_bounding_sphere(geometries: &[Geometry]) -> (Point3<f32>, f32) {
     let centroid = compute_centroid(geometries);
-    let mut max_distance = 0.0;
+    let mut max_distance_squared = 0.0;
 
     for geometry in geometries {
         for vertex in &geometry.vertices {
-            // Can't use `distance_squared` for values 0..1
-
-            // FIXME: @Optimization Benchmark this against a 0..1 vs
-            // 1..inf branching version using distance_squared for 1..inf
-            let distance = na::distance(&centroid, vertex);
-            if distance > max_distance {
-                max_distance = distance;
+            let distance_squared = na::distance_squared(&centroid, vertex);
+            if distance_squared > max_distance_squared {
+                max_distance_squared = distance_squared;
             }
         }
     }
 
-    (centroid, max_distance)
+    (centroid, max_distance_squared.sqrt())
 }
 
 pub fn compute_centroid(geometries: &[Geometry]) -> Point3<f32> {
@@ -681,14 +677,12 @@ pub fn find_closest_point(position: &Point3<f32>, geometry: &Geometry) -> Option
     }
 
     let mut closest = vertices[0];
-    // FIXME: @Optimization benchmark `distance` vs `distance_squared`
-    // with branching (0..1, 1..inf)
-    let mut closest_distance = na::distance(position, &closest);
+    let mut closest_distance_squared = na::distance_squared(position, &closest);
     for point in &vertices[1..] {
-        let distance = na::distance(position, &point);
-        if distance < closest_distance {
+        let distance_squared = na::distance_squared(position, &point);
+        if distance_squared < closest_distance_squared {
             closest = *point;
-            closest_distance = distance;
+            closest_distance_squared = distance_squared;
         }
     }
 
