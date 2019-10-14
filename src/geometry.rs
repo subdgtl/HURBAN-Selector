@@ -230,6 +230,10 @@ pub struct TriangleFace {
 
 impl TriangleFace {
     pub fn new(i1: u32, i2: u32, i3: u32) -> TriangleFace {
+        assert!(
+            i1 != i2 && i1 != i3 && i2 != i3,
+            "One or more face edges consists of the same vertex"
+        );
         TriangleFace {
             vertices: (i1, i2, i3),
             normals: (i1, i2, i3),
@@ -244,6 +248,10 @@ impl TriangleFace {
         ni2: u32,
         ni3: u32,
     ) -> TriangleFace {
+        assert!(
+            vi1 != vi2 && vi1 != vi3 && vi2 != vi3,
+            "One or more face edges consists of the same vertex"
+        );
         TriangleFace {
             vertices: (vi1, vi2, vi3),
             normals: (ni1, ni2, ni3),
@@ -670,22 +678,18 @@ pub fn uv_sphere(position: [f32; 3], scale: f32, n_parallels: u32, n_meridians: 
 
 pub fn compute_bounding_sphere(geometries: &[Geometry]) -> (Point3<f32>, f32) {
     let centroid = compute_centroid(geometries);
-    let mut max_distance = 0.0;
+    let mut max_distance_squared = 0.0;
 
     for geometry in geometries {
         for vertex in &geometry.vertices {
-            // Can't use `distance_squared` for values 0..1
-
-            // FIXME: @Optimization Benchmark this against a 0..1 vs
-            // 1..inf branching version using distance_squared for 1..inf
-            let distance = na::distance(&centroid, vertex);
-            if distance > max_distance {
-                max_distance = distance;
+            let distance_squared = na::distance_squared(&centroid, vertex);
+            if distance_squared > max_distance_squared {
+                max_distance_squared = distance_squared;
             }
         }
     }
 
-    (centroid, max_distance)
+    (centroid, max_distance_squared.sqrt())
 }
 
 pub fn compute_centroid(geometries: &[Geometry]) -> Point3<f32> {
@@ -709,14 +713,12 @@ pub fn find_closest_point(position: &Point3<f32>, geometry: &Geometry) -> Option
     }
 
     let mut closest = vertices[0];
-    // FIXME: @Optimization benchmark `distance` vs `distance_squared`
-    // with branching (0..1, 1..inf)
-    let mut closest_distance = na::distance(position, &closest);
+    let mut closest_distance_squared = na::distance_squared(position, &closest);
     for point in &vertices[1..] {
-        let distance = na::distance(position, &point);
-        if distance < closest_distance {
+        let distance_squared = na::distance_squared(position, &point);
+        if distance_squared < closest_distance_squared {
             closest = *point;
-            closest_distance = distance;
+            closest_distance_squared = distance_squared;
         }
     }
 
@@ -861,7 +863,6 @@ mod tests {
         );
     }
 
-    #[test]
     fn test_oriented_edge_eq_returns_true() {
         let oriented_edge_one_way = OrientedEdge::new(0, 1);
         let oriented_edge_other_way = OrientedEdge::new(0, 1);
@@ -989,6 +990,42 @@ mod tests {
         assert_eq!(unoriented_edges_to_check[0], unoriented_edges_correct[0]);
         assert_eq!(unoriented_edges_to_check[1], unoriented_edges_correct[1]);
         assert_eq!(unoriented_edges_to_check[2], unoriented_edges_correct[2]);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_with_invalid_vertex_indices_0_1_should_panic() {
+        TriangleFace::new(0, 0, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_with_invalid_vertex_indices_1_2_should_panic() {
+        TriangleFace::new(0, 2, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_with_invalid_vertex_indices_0_2_should_panic() {
+        TriangleFace::new(0, 2, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_separate_with_invalid_vertex_indices_0_1_should_panic() {
+        TriangleFace::new_separate(0, 0, 2, 0, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_separate_with_invalid_vertex_indices_1_2_should_panic() {
+        TriangleFace::new_separate(0, 2, 2, 0, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "One or more face edges consists of the same vertex")]
+    fn test_triangle_face_new_separate_with_invalid_vertex_indices_0_2_should_panic() {
+        TriangleFace::new_separate(0, 2, 0, 0, 0, 0);
     }
 
     #[test]

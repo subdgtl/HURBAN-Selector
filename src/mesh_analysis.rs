@@ -115,7 +115,9 @@ mod tests {
     use nalgebra::geometry::Point3;
 
     use crate::edge_analysis::edge_valencies;
-    use crate::geometry::{self, cube_sharp_var_len, Geometry, NormalStrategy, UnorientedEdge, TriangleFace};
+    use crate::geometry::{
+        self, cube_sharp_var_len, Geometry, NormalStrategy, TriangleFace, UnorientedEdge,
+    };
     use crate::test_geometry_fixtures::{double_torus, torus, triple_torus};
 
     use super::*;
