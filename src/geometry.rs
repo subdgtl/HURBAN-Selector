@@ -863,6 +863,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_oriented_edge_eq_returns_true() {
         let oriented_edge_one_way = OrientedEdge::new(0, 1);
         let oriented_edge_other_way = OrientedEdge::new(0, 1);

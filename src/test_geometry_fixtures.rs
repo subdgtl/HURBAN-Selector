@@ -1,8 +1,9 @@
 // FIXME: move to data fixture files once we are able to serialize and deserialize stuff.
+#![cfg(test)]
 
 use nalgebra::Point3;
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::unreadable_literal, clippy::approx_constant)]
 pub fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
     #[rustfmt::skip]
         let vertices = vec![
@@ -231,7 +232,7 @@ pub fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
     (faces, vertices)
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::unreadable_literal, clippy::approx_constant)]
 pub fn double_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
     #[rustfmt::skip]
         let vertices = vec![
@@ -908,7 +909,7 @@ pub fn double_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
     (faces, vertices)
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::unreadable_literal, clippy::approx_constant)]
 pub fn triple_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
     #[rustfmt::skip]
         let vertices = vec![
