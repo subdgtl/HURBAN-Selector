@@ -38,43 +38,50 @@ impl error::Error for TypecheckError {}
 /// A runtime error.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
-    UndeclaredVarUse(ast::VarIdent),
-    UndeclaredFuncUse(ast::FuncIdent),
-    ArgCountMismatch(ast::CallExpr, usize, usize),
-    ArgTyMismatch(ast::CallExpr, bool, Ty, Ty),
-    ReturnTyMismatch(ast::CallExpr, Ty, Ty),
+    UndeclaredVarUse(usize, ast::VarIdent),
+    UndeclaredFuncUse(usize, ast::FuncIdent),
+    ArgCountMismatch(usize, ast::CallExpr, usize, usize),
+    ArgTyMismatch(usize, ast::CallExpr, bool, Ty, Ty),
+    ReturnTyMismatch(usize, ast::CallExpr, Ty, Ty),
 }
 
 impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RuntimeError::UndeclaredVarUse(undeclared_var_use) => {
-                write!(f, "Use of an undeclared variable {}", undeclared_var_use.0)
-            }
-            RuntimeError::UndeclaredFuncUse(undeclared_func_use) => {
-                write!(f, "Use of an undeclared function {}", undeclared_func_use.0)
-            }
-            RuntimeError::ArgCountMismatch(call, expected_count, actual_count) => write!(
+            RuntimeError::UndeclaredVarUse(line, undeclared_var_use) => write!(
                 f,
-                "Function {} declared with {} params, but provided with {} args",
+                "Use of an undeclared variable {} on line {}",
+                undeclared_var_use.0, line,
+            ),
+            RuntimeError::UndeclaredFuncUse(line, undeclared_func_use) => write!(
+                f,
+                "Use of an undeclared function {} on line {}",
+                undeclared_func_use.0, line,
+            ),
+            RuntimeError::ArgCountMismatch(line, call, expected_count, actual_count) => write!(
+                f,
+                "Function {} declared with {} params, but provided with {} args on line {}",
                 call.ident(),
                 expected_count,
                 actual_count,
+                line,
             ),
-            RuntimeError::ArgTyMismatch(call, optional, expected_ty, actual_ty) => write!(
+            RuntimeError::ArgTyMismatch(line, call, optional, expected_ty, actual_ty) => write!(
                 f,
-                "Function {} declared to take param (optional={}) type {}, but provided with {}",
+                "Function {} declared to take param (optional={}) type {}, but given {} on line {}",
                 call.ident(),
                 optional,
                 expected_ty,
                 actual_ty,
+                line,
             ),
-            RuntimeError::ReturnTyMismatch(call, expected_ty, actual_ty) => write!(
+            RuntimeError::ReturnTyMismatch(line, call, expected_ty, actual_ty) => write!(
                 f,
-                "Function {} declared to return type {}, but returned {}",
+                "Function {} declared to return type {}, but returned {} on line {}",
                 call.ident(),
                 expected_ty,
                 actual_ty,
+                line,
             ),
         }
     }
@@ -246,8 +253,8 @@ impl Interpreter {
         if self.pc <= index {
             // Run remaining operations, write results to vars
             let range = self.pc..=index;
-            for stmt in &self.prog.stmts()[range] {
-                eval_stmt(stmt, &self.funcs, &mut self.env)?;
+            for (line, stmt) in self.prog.stmts()[range].iter().enumerate() {
+                eval_stmt(line, stmt, &self.funcs, &mut self.env)?;
                 self.pc += 1;
             }
 
@@ -377,16 +384,18 @@ impl Interpreter {
 }
 
 fn eval_stmt(
+    line: usize,
     stmt: &ast::Stmt,
     funcs: &[Box<dyn Func>],
     env: &mut HashMap<ast::VarIdent, VarInfo>,
 ) -> Result<(), RuntimeError> {
     match stmt {
-        ast::Stmt::VarDecl(var_decl) => eval_var_decl_stmt(var_decl, funcs, env),
+        ast::Stmt::VarDecl(var_decl) => eval_var_decl_stmt(line, var_decl, funcs, env),
     }
 }
 
 fn eval_var_decl_stmt(
+    line: usize,
     var_decl: &ast::VarDeclStmt,
     funcs: &[Box<dyn Func>],
     env: &mut HashMap<ast::VarIdent, VarInfo>,
@@ -404,7 +413,7 @@ fn eval_var_decl_stmt(
     {
         if !env.contains_key(&var_ident) {
             let init_expr = var_decl.init_expr();
-            let value = eval_call_expr(init_expr, funcs, env)?;
+            let value = eval_call_expr(line, init_expr, funcs, env)?;
 
             env.insert(
                 var_ident,
@@ -420,12 +429,13 @@ fn eval_var_decl_stmt(
 }
 
 fn eval_expr(
+    line: usize,
     expr: &ast::Expr,
     env: &mut HashMap<ast::VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
     match expr {
         ast::Expr::Lit(lit) => eval_lit_expr(lit),
-        ast::Expr::Var(var) => eval_var_expr(var, env),
+        ast::Expr::Var(var) => eval_var_expr(line, var, env),
         ast::Expr::Index(_) => unimplemented!("We don't support index expressions yet"),
     }
 }
@@ -443,18 +453,20 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
 }
 
 fn eval_var_expr(
+    line: usize,
     var: &ast::VarExpr,
     env: &mut HashMap<ast::VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
     let var_ident = var.ident();
     let var_info = env
         .get(&var_ident)
-        .ok_or(RuntimeError::UndeclaredVarUse(var_ident))?;
+        .ok_or(RuntimeError::UndeclaredVarUse(line, var_ident))?;
 
     Ok(var_info.value.clone())
 }
 
 fn eval_call_expr(
+    line: usize,
     call: &ast::CallExpr,
     funcs: &[Box<dyn Func>],
     env: &mut HashMap<ast::VarIdent, VarInfo>,
@@ -465,6 +477,7 @@ fn eval_call_expr(
         let arg_exprs = call.args();
         if func.param_info().len() != arg_exprs.len() {
             return Err(RuntimeError::ArgCountMismatch(
+                line,
                 call.clone(),
                 func.param_info().len(),
                 arg_exprs.len(),
@@ -473,7 +486,7 @@ fn eval_call_expr(
 
         let mut args = Vec::with_capacity(arg_exprs.len());
         for arg_expr in arg_exprs {
-            let arg = eval_expr(arg_expr, env)?;
+            let arg = eval_expr(line, arg_expr, env)?;
             args.push(arg);
         }
 
@@ -488,6 +501,7 @@ fn eval_call_expr(
                 }
 
                 return Err(RuntimeError::ArgTyMismatch(
+                    line,
                     call.clone(),
                     info.optional,
                     param_ty,
@@ -502,6 +516,7 @@ fn eval_call_expr(
         let value_ty = value.ty();
         if return_ty != value_ty {
             return Err(RuntimeError::ReturnTyMismatch(
+                line,
                 call.clone(),
                 return_ty,
                 value_ty,
@@ -510,7 +525,7 @@ fn eval_call_expr(
 
         Ok(value)
     } else {
-        Err(RuntimeError::UndeclaredFuncUse(func_ident))
+        Err(RuntimeError::UndeclaredFuncUse(line, func_ident))
     }
 }
 
@@ -1165,7 +1180,7 @@ mod tests {
         let err = interpreter.interpret().unwrap_err();
         assert_eq!(
             err,
-            InterpretError::from(RuntimeError::ArgCountMismatch(call, 1, 2)),
+            InterpretError::from(RuntimeError::ArgCountMismatch(0, call, 1, 2)),
         );
     }
 
@@ -1199,7 +1214,13 @@ mod tests {
         let err = interpreter.interpret().unwrap_err();
         assert_eq!(
             err,
-            InterpretError::from(RuntimeError::ArgTyMismatch(call, false, Ty::Float, Ty::Int))
+            InterpretError::from(RuntimeError::ArgTyMismatch(
+                0,
+                call,
+                false,
+                Ty::Float,
+                Ty::Int
+            ))
         );
     }
 
@@ -1264,7 +1285,13 @@ mod tests {
         let err = interpreter.interpret().unwrap_err();
         assert_eq!(
             err,
-            InterpretError::from(RuntimeError::ArgTyMismatch(call, true, Ty::Float, Ty::Int))
+            InterpretError::from(RuntimeError::ArgTyMismatch(
+                0,
+                call,
+                true,
+                Ty::Float,
+                Ty::Int
+            ))
         );
     }
 
@@ -1287,7 +1314,7 @@ mod tests {
         let err = interpreter.interpret().unwrap_err();
         assert_eq!(
             err,
-            InterpretError::from(RuntimeError::ReturnTyMismatch(call, Ty::Float, Ty::Int))
+            InterpretError::from(RuntimeError::ReturnTyMismatch(0, call, Ty::Float, Ty::Int))
         );
     }
 }
