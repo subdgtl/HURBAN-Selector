@@ -25,7 +25,7 @@ pub enum NormalStrategy {
 ///
 /// The geometry data lives in right-handed coordinate space with the
 /// XY plane being the ground and Z axis growing upwards.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Geometry {
     faces: Vec<Face>,
     vertices: Vec<Point3<f32>>,
