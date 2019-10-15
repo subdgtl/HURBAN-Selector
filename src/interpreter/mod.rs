@@ -276,14 +276,19 @@ impl Interpreter {
     }
 
     pub fn interpret_up_until(&mut self, index: usize) -> Result<Value, InterpretError> {
-        self.resolve()?;
-        self.typecheck()?;
+        assert!(
+            !self.prog.stmts().is_empty(),
+            "Can not execute empty program",
+        );
 
         let max_index = self.prog.stmts().len() - 1;
         assert!(
             max_index >= index,
             "Can not execute past the program lenght",
         );
+
+        self.resolve()?;
+        self.typecheck()?;
 
         self.invalidate();
 
@@ -871,7 +876,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        interpreter.interpret_up_until(2);
+        let _ = interpreter.interpret_up_until(2);
     }
 
     // Var invalidation tests
