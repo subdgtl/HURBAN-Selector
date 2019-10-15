@@ -9,11 +9,16 @@ use crate::interpreter_funcs;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RequestId(u64);
 
+/// A possible error when polling for an interpreter response.
 #[derive(Debug)]
 pub enum PollResponseError {
+    /// The interpreter didn't send a response yet. The caller should
+    /// retry later.
     Pending,
 }
 
+/// An interpreter request. Variants correspond to various methods on
+/// the interpreter.
 #[derive(Debug)]
 pub enum InterpreterRequest {
     SetProg(Prog),
@@ -30,9 +35,14 @@ pub enum InterpreterRequest {
     InterpretUpUntil(usize),
 }
 
+/// An interpreter response.
 #[derive(Debug)]
 pub enum InterpreterResponse {
+    /// Interpreter successfully completed request.
     Completed,
+
+    /// Interpreter successfully completed request and responded with
+    /// a result.
     CompletedWithResult(Result<Value, InterpretError>),
 }
 
@@ -49,6 +59,11 @@ struct Response {
     data: InterpreterResponse,
 }
 
+/// An asynchronous server for an interpreter instance running in a
+/// separate thread.
+///
+/// Allows for sending requests to the interpreter and waiting for
+/// related responses.
 pub struct InterpreterServer {
     next_request_id: u64,
     thread: Option<thread::JoinHandle<()>>,
@@ -78,57 +93,45 @@ impl InterpreterServer {
 
                 // FIXME: handle potential interpreter panic?
 
-                match data {
+                let response = match data {
                     InterpreterRequest::SetProg(prog) => {
                         log::info!(
                             "Interpreter server received request 'SetProg' with {}",
                             prog,
                         );
                         interpreter.set_prog(prog);
-                        response_sender
-                            .send(Response {
-                                request_id,
-                                data: InterpreterResponse::Completed,
-                            })
-                            .expect("Interpreter server failed to send response");
+                        Response {
+                            request_id,
+                            data: InterpreterResponse::Completed,
+                        }
                     }
-
                     InterpreterRequest::ClearProg => {
                         log::info!("Interpreter server received request 'ClearProg'");
                         interpreter.clear_prog();
-                        response_sender
-                            .send(Response {
-                                request_id,
-                                data: InterpreterResponse::Completed,
-                            })
-                            .expect("Interpreter server failed to send response");
+                        Response {
+                            request_id,
+                            data: InterpreterResponse::Completed,
+                        }
                     }
-
                     InterpreterRequest::PushProgStmt(stmt) => {
                         log::info!(
                             "Interpreter server received request 'PushProgStmt' with {}",
                             stmt,
                         );
                         interpreter.push_prog_stmt(stmt);
-                        response_sender
-                            .send(Response {
-                                request_id,
-                                data: InterpreterResponse::Completed,
-                            })
-                            .expect("Interpreter server failed to send response");
+                        Response {
+                            request_id,
+                            data: InterpreterResponse::Completed,
+                        }
                     }
-
                     InterpreterRequest::PopProgStmt => {
                         log::info!("Interpreter server received request 'PopProgStmt'");
                         interpreter.pop_prog_stmt();
-                        response_sender
-                            .send(Response {
-                                request_id,
-                                data: InterpreterResponse::Completed,
-                            })
-                            .expect("Interpreter server failed to send response");
+                        Response {
+                            request_id,
+                            data: InterpreterResponse::Completed,
+                        }
                     }
-
                     InterpreterRequest::SetProgStmtAt(index, stmt) => {
                         log::info!(
                             "Interpreter server received request 'SetProgStmtAt({})' with {}",
@@ -136,39 +139,35 @@ impl InterpreterServer {
                             stmt,
                         );
                         interpreter.set_prog_stmt_at(index, stmt);
-                        response_sender
-                            .send(Response {
-                                request_id,
-                                data: InterpreterResponse::Completed,
-                            })
-                            .expect("Interpreter server failed to send response");
+                        Response {
+                            request_id,
+                            data: InterpreterResponse::Completed,
+                        }
                     }
-
                     InterpreterRequest::Interpret => {
                         log::info!("Interpreter server received request 'Interpret'");
                         let result = interpreter.interpret();
-                        response_sender
-                            .send(Response {
-                                request_id,
-                                data: InterpreterResponse::CompletedWithResult(result),
-                            })
-                            .expect("Interpreter server failed to send response");
+                        Response {
+                            request_id,
+                            data: InterpreterResponse::CompletedWithResult(result),
+                        }
                     }
-
                     InterpreterRequest::InterpretUpUntil(index) => {
                         log::info!(
                             "Interpreter server received request 'InterpretUpUntil({})'",
                             index,
                         );
                         let result = interpreter.interpret_up_until(index);
-                        response_sender
-                            .send(Response {
-                                request_id,
-                                data: InterpreterResponse::CompletedWithResult(result),
-                            })
-                            .expect("Interpreter server failed to send response");
+                        Response {
+                            request_id,
+                            data: InterpreterResponse::CompletedWithResult(result),
+                        }
                     }
-                }
+                };
+
+                response_sender
+                    .send(response)
+                    .expect("Interpreter server failed to send response");
             }
 
             log::info!("Interpreter server shutting down");
@@ -182,6 +181,10 @@ impl InterpreterServer {
         }
     }
 
+    /// Submit a new request for the interpreter to work on.
+    ///
+    /// The corresponding response can be paired with based on the
+    /// provided request id.
     pub fn submit_request(&mut self, request: InterpreterRequest) -> RequestId {
         let request_id = RequestId(self.next_request_id);
         self.next_request_id += 1;
@@ -196,7 +199,12 @@ impl InterpreterServer {
         request_id
     }
 
-    pub fn poll_response(&mut self) -> Result<(RequestId, InterpreterResponse), PollResponseError> {
+    /// Poll the server for a possible response.
+    ///
+    /// In case of no response, [`PollResponseError::Pending`] is returned.
+    ///
+    /// [`PollResponseError::Pending`]: enum.PollresponseError.html#variant.Pending
+    pub fn poll_response(&self) -> Result<(RequestId, InterpreterResponse), PollResponseError> {
         if self.response_receiver.is_empty() {
             Err(PollResponseError::Pending)
         } else {
@@ -214,7 +222,7 @@ impl Drop for InterpreterServer {
     fn drop(&mut self) {
         self.request_sender
             .send(Request::Shutdown)
-            .expect("Interpreter clinet failed to send shutdown request");
+            .expect("Interpreter client failed to send shutdown request");
 
         if let Some(thread) = self.thread.take() {
             log::info!("Waiting for interpreter server to shut down");
