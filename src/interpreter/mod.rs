@@ -319,41 +319,41 @@ impl Interpreter {
         Ok(value)
     }
 
+    /// Invalidate variables in the environment.
+    ///
+    /// Verify all variables we have computed already, invalidating
+    /// all that could have possibly changed since last execution.
+    /// Invalidated variables are simply removed from the environment
+    /// and will be re-computed a-fresh during evaluation. We count on
+    /// the fact that any dependency must come before its dependents
+    /// in the examined statements due to the serialized nature of the
+    /// program.
+    ///
+    /// If we invalidate any variable, we will have to reset our
+    /// program counter to the statement declaring the earliest
+    /// variable we cleared, once again taking advantage of the
+    /// program's serialized form. Cached variables will be skipped
+    /// over during evaluation though, so this does not generate a lot
+    /// of extra work.
+    ///
+    /// There are 3 types of variable invalidation:
+    ///
+    /// 1) Impurity invalidation: the function producing the variable
+    ///    is not pure (import, random, etc.)
+    /// 2) Definition invalidation: the call expression definition has
+    ///    changed (either the function or the parameters),
+    /// 3) Dependency invalidation: variables referenced in the
+    ///    parameters have have been invalidated.
     fn invalidate(&mut self) {
         // FIXME: This is still very pessimistic, we should support an
         // incremental computation model with fact verification a-lá
         // salsa. https://github.com/salsa-rs/salsa
 
-        // Verify all variables we have computed already, invalidating
-        // all that could have possibly changed since last execution.
-        // Invalidated variables are simply removed from the
-        // environment and will be re-computed a-fresh during
-        // evaluation. We count on the fact that any dependency must
-        // come before its dependents in the examined statements due
-        // to the serialized nature of the program.
-
-        // If we invalidate any variable, we will have to reset our
-        // program counter to the statement declaring the earliest
-        // variable we cleared, once again taking advantage of the
-        // program's serialized form. Cached variables will be skipped
-        // over during evaluation though, so this does not generate a
-        // lot of extra work.
         let mut new_pc = None;
 
         for (i, stmt) in self.prog.stmts().iter().enumerate() {
             match stmt {
                 ast::Stmt::VarDecl(var_decl) => {
-                    // There are 3 types of variable invalidation:
-                    // 1) Impurity invalidation: the function
-                    //    producing the variable is not pure (import,
-                    //    random, etc.)
-                    // 2) Definition invalidation: the call expression
-                    //    definition has changed (either the function
-                    //    or the parameters)
-                    // 3) Dependency invalidation: variables
-                    //    referenced in the parameters have have been
-                    //    invalidated.
-
                     let var_ident = var_decl.ident();
                     let init_expr = var_decl.init_expr();
                     let func_ident = init_expr.ident();
