@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::convert::cast_u32;
 use crate::geometry;
-use crate::interpreter::{Func, FuncFlags, ParamInfo, Ty, Value};
+use crate::interpreter::{Func, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
 use crate::operations::shrink_wrap::{self, ShrinkWrapParams};
 
 pub struct FuncImplCreateUvSphere;
@@ -76,12 +77,19 @@ impl Func for FuncImplShrinkWrap {
     }
 }
 
-pub fn global_definitions() -> Vec<Box<dyn Func>> {
-    // IMPORTANT: Do not re-order, ever!
-    // The index into this array serves as the unique function
-    // identifier throughout the program.
-    vec![
-        Box::new(FuncImplCreateUvSphere),
-        Box::new(FuncImplShrinkWrap),
-    ]
+// IMPORTANT: Do not change these IDs, ever! When adding a new
+// function, always create a new, unique function identifier for it.
+
+pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(0);
+pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
+
+/// The global set of function definitions available to the
+/// interpreter and it's clients.
+pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
+    let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+
+    funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncImplCreateUvSphere));
+    funcs.insert(FUNC_ID_SHRINK_WRAP, Box::new(FuncImplShrinkWrap));
+
+    funcs
 }

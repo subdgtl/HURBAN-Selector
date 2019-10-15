@@ -2,8 +2,7 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::error;
 use std::fmt;
 
-use crate::convert::cast_usize;
-
+pub use self::ast::{FuncIdent, VarIdent};
 pub use self::func::{Func, FuncFlags, ParamInfo};
 pub use self::value::{Ty, Value};
 
@@ -38,8 +37,8 @@ impl error::Error for TypecheckError {}
 /// A runtime error.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
-    UndeclaredVarUse(usize, ast::VarIdent),
-    UndeclaredFuncUse(usize, ast::FuncIdent),
+    UndeclaredVarUse(usize, VarIdent),
+    UndeclaredFuncUse(usize, FuncIdent),
     ArgCountMismatch(usize, ast::CallExpr, usize, usize),
     ArgTyMismatch(usize, ast::CallExpr, bool, Ty, Ty),
     ReturnTyMismatch(usize, ast::CallExpr, Ty, Ty),
@@ -146,15 +145,15 @@ struct VarInfo {
 /// be done.
 pub struct Interpreter {
     prog: ast::Prog,
-    funcs: Vec<Box<dyn Func>>,
-    env: HashMap<ast::VarIdent, VarInfo>,
+    funcs: HashMap<FuncIdent, Box<dyn Func>>,
+    env: HashMap<VarIdent, VarInfo>,
 
     /// The program counter. Always points to the **next** stmt to execute.
     pc: usize,
 }
 
 impl Interpreter {
-    pub fn new(funcs: Vec<Box<dyn Func>>) -> Self {
+    pub fn new(funcs: HashMap<FuncIdent, Box<dyn Func>>) -> Self {
         Self {
             prog: ast::Prog::default(),
             funcs,
@@ -318,10 +317,7 @@ impl Interpreter {
 
                     // Perform 1) Impurity invalidation
 
-                    if !self.funcs[cast_usize(func_ident.0)]
-                        .flags()
-                        .contains(FuncFlags::PURE)
-                    {
+                    if !self.funcs[&func_ident].flags().contains(FuncFlags::PURE) {
                         log::debug!("Performing impurity invalidation of {}", var_ident);
 
                         self.env.remove(&var_ident);
@@ -386,8 +382,8 @@ impl Interpreter {
 fn eval_stmt(
     line: usize,
     stmt: &ast::Stmt,
-    funcs: &[Box<dyn Func>],
-    env: &mut HashMap<ast::VarIdent, VarInfo>,
+    funcs: &HashMap<FuncIdent, Box<dyn Func>>,
+    env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<(), RuntimeError> {
     match stmt {
         ast::Stmt::VarDecl(var_decl) => eval_var_decl_stmt(line, var_decl, funcs, env),
@@ -397,8 +393,8 @@ fn eval_stmt(
 fn eval_var_decl_stmt(
     line: usize,
     var_decl: &ast::VarDeclStmt,
-    funcs: &[Box<dyn Func>],
-    env: &mut HashMap<ast::VarIdent, VarInfo>,
+    funcs: &HashMap<FuncIdent, Box<dyn Func>>,
+    env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<(), RuntimeError> {
     let var_ident = var_decl.ident();
 
@@ -431,7 +427,7 @@ fn eval_var_decl_stmt(
 fn eval_expr(
     line: usize,
     expr: &ast::Expr,
-    env: &mut HashMap<ast::VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
     match expr {
         ast::Expr::Lit(lit) => eval_lit_expr(lit),
@@ -455,7 +451,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
 fn eval_var_expr(
     line: usize,
     var: &ast::VarExpr,
-    env: &mut HashMap<ast::VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
     let var_ident = var.ident();
     let var_info = env
@@ -468,12 +464,12 @@ fn eval_var_expr(
 fn eval_call_expr(
     line: usize,
     call: &ast::CallExpr,
-    funcs: &[Box<dyn Func>],
-    env: &mut HashMap<ast::VarIdent, VarInfo>,
+    funcs: &HashMap<FuncIdent, Box<dyn Func>>,
+    env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
     let func_ident = call.ident();
 
-    if let Some(func) = funcs.get(cast_usize(func_ident.0)) {
+    if let Some(func) = funcs.get(&func_ident) {
         let arg_exprs = call.args();
         if func.param_info().len() != arg_exprs.len() {
             return Err(RuntimeError::ArgCountMismatch(
@@ -598,7 +594,7 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_single_func_parameterless_pure() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |_| Value::Boolean(true),
                 FuncFlags::PURE,
@@ -608,11 +604,14 @@ mod tests {
         );
 
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
-            ast::CallExpr::new(ast::FuncIdent(func_id), vec![]),
+            VarIdent(0),
+            ast::CallExpr::new(func_id, vec![]),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -622,7 +621,7 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_single_func_parametrized_pure() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |values| Value::Boolean(values[0].unwrap_boolean()),
                 FuncFlags::PURE,
@@ -635,14 +634,14 @@ mod tests {
         );
 
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
-            ast::CallExpr::new(
-                ast::FuncIdent(func_id),
-                vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))],
-            ),
+            VarIdent(0),
+            ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))]),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -652,7 +651,7 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_single_func_parameterless_impure() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |_| Value::Boolean(true),
                 FuncFlags::empty(),
@@ -662,11 +661,14 @@ mod tests {
         );
 
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
-            ast::CallExpr::new(ast::FuncIdent(func_id), vec![]),
+            VarIdent(0),
+            ast::CallExpr::new(func_id, vec![]),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -676,7 +678,7 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_single_func_parametrized_impure() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |values| Value::Boolean(values[0].unwrap_boolean()),
                 FuncFlags::empty(),
@@ -689,14 +691,14 @@ mod tests {
         );
 
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
-            ast::CallExpr::new(
-                ast::FuncIdent(func_id),
-                vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))],
-            ),
+            VarIdent(0),
+            ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))]),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -706,7 +708,7 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_func_chain_with_pure_param() {
         let (func_id1, func1) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |_| Value::Boolean(true),
                 FuncFlags::PURE,
@@ -715,7 +717,7 @@ mod tests {
             ),
         );
         let (func_id2, func2) = (
-            1,
+            FuncIdent(1),
             TestFunc::new(
                 |values| Value::Boolean(values[0].unwrap_boolean()),
                 FuncFlags::PURE,
@@ -729,19 +731,23 @@ mod tests {
 
         let prog = ast::Prog::new(vec![
             ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                ast::VarIdent(0),
-                ast::CallExpr::new(ast::FuncIdent(func_id1), vec![]),
+                VarIdent(0),
+                ast::CallExpr::new(func_id1, vec![]),
             )),
             ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                ast::VarIdent(1),
+                VarIdent(1),
                 ast::CallExpr::new(
-                    ast::FuncIdent(func_id2),
-                    vec![ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(0)))],
+                    func_id2,
+                    vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(0)))],
                 ),
             )),
         ]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func1), Box::new(func2)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id1, Box::new(func1));
+        funcs.insert(func_id2, Box::new(func2));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -751,7 +757,7 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_func_chain_with_impure_param() {
         let (func_id1, func1) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |_| Value::Boolean(true),
                 FuncFlags::empty(),
@@ -760,7 +766,7 @@ mod tests {
             ),
         );
         let (func_id2, func2) = (
-            1,
+            FuncIdent(1),
             TestFunc::new(
                 |values| Value::Boolean(values[0].unwrap_boolean()),
                 FuncFlags::empty(),
@@ -774,19 +780,23 @@ mod tests {
 
         let prog = ast::Prog::new(vec![
             ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                ast::VarIdent(0),
-                ast::CallExpr::new(ast::FuncIdent(func_id1), vec![]),
+                VarIdent(0),
+                ast::CallExpr::new(func_id1, vec![]),
             )),
             ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                ast::VarIdent(1),
+                VarIdent(1),
                 ast::CallExpr::new(
-                    ast::FuncIdent(func_id2),
-                    vec![ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(0)))],
+                    func_id2,
+                    vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(0)))],
                 ),
             )),
         ]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func1), Box::new(func2)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id1, Box::new(func1));
+        funcs.insert(func_id2, Box::new(func2));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -799,7 +809,7 @@ mod tests {
     #[should_panic(expected = "Can not execute past the program lenght")]
     fn test_interpreter_interpret_up_until_invalid_index() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |_| Value::Boolean(true),
                 FuncFlags::PURE,
@@ -809,14 +819,17 @@ mod tests {
         );
 
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
-            ast::CallExpr::new(ast::FuncIdent(func_id), vec![]),
+            VarIdent(0),
+            ast::CallExpr::new(func_id, vec![]),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let _ = interpreter.interpret_up_until(2);
+        interpreter.interpret_up_until(2);
     }
 
     // Var invalidation tests
@@ -827,7 +840,7 @@ mod tests {
         let c = Rc::clone(&n_calls);
 
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 move |values| {
                     c.inc();
@@ -843,14 +856,14 @@ mod tests {
         );
 
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(1),
-            ast::CallExpr::new(
-                ast::FuncIdent(func_id),
-                vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))],
-            ),
+            VarIdent(1),
+            ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))]),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -868,7 +881,7 @@ mod tests {
         let c = Rc::clone(&n_calls);
 
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 move |values| {
                     c.inc();
@@ -884,14 +897,14 @@ mod tests {
         );
 
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(1),
-            ast::CallExpr::new(
-                ast::FuncIdent(func_id),
-                vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))],
-            ),
+            VarIdent(1),
+            ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))]),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -909,7 +922,7 @@ mod tests {
         let c = Rc::clone(&n_calls);
 
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 move |values| {
                     c.inc();
@@ -937,9 +950,9 @@ mod tests {
         );
 
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
+            VarIdent(0),
             ast::CallExpr::new(
-                ast::FuncIdent(func_id),
+                func_id,
                 vec![
                     ast::Expr::Lit(ast::LitExpr::Boolean(true)),
                     ast::Expr::Lit(ast::LitExpr::Boolean(false)),
@@ -947,7 +960,10 @@ mod tests {
             ),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -957,9 +973,9 @@ mod tests {
         interpreter.set_prog_stmt_at(
             0,
             ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                ast::VarIdent(0),
+                VarIdent(0),
                 ast::CallExpr::new(
-                    ast::FuncIdent(func_id),
+                    func_id,
                     vec![
                         ast::Expr::Lit(ast::LitExpr::Boolean(true)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(true)),
@@ -982,7 +998,7 @@ mod tests {
         let c2 = Rc::clone(&n_calls2);
 
         let (func_id1, func1) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 move |values| {
                     c1.inc();
@@ -1010,7 +1026,7 @@ mod tests {
         );
 
         let (func_id2, func2) = (
-            1,
+            FuncIdent(1),
             TestFunc::new(
                 move |values| {
                     c2.inc();
@@ -1038,9 +1054,9 @@ mod tests {
         );
 
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
+            VarIdent(0),
             ast::CallExpr::new(
-                ast::FuncIdent(func_id1),
+                func_id1,
                 vec![
                     ast::Expr::Lit(ast::LitExpr::Boolean(true)),
                     ast::Expr::Lit(ast::LitExpr::Boolean(false)),
@@ -1048,7 +1064,11 @@ mod tests {
             ),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func1), Box::new(func2)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id1, Box::new(func1));
+        funcs.insert(func_id2, Box::new(func2));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -1058,9 +1078,9 @@ mod tests {
         interpreter.set_prog_stmt_at(
             0,
             ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                ast::VarIdent(0),
+                VarIdent(0),
                 ast::CallExpr::new(
-                    ast::FuncIdent(func_id2),
+                    func_id2,
                     vec![
                         ast::Expr::Lit(ast::LitExpr::Boolean(true)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(false)),
@@ -1084,7 +1104,7 @@ mod tests {
         let c2 = Rc::clone(&n_calls2);
 
         let (func_id1, func1) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 move |_| {
                     c1.inc();
@@ -1097,7 +1117,7 @@ mod tests {
         );
 
         let (func_id2, func2) = (
-            1,
+            FuncIdent(1),
             TestFunc::new(
                 move |values| {
                     c2.inc();
@@ -1114,19 +1134,23 @@ mod tests {
 
         let prog = ast::Prog::new(vec![
             ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                ast::VarIdent(0),
-                ast::CallExpr::new(ast::FuncIdent(func_id1), vec![]),
+                VarIdent(0),
+                ast::CallExpr::new(func_id1, vec![]),
             )),
             ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                ast::VarIdent(1),
+                VarIdent(1),
                 ast::CallExpr::new(
-                    ast::FuncIdent(func_id2),
-                    vec![ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(0)))],
+                    func_id2,
+                    vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(0)))],
                 ),
             )),
         ]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func1), Box::new(func2)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id1, Box::new(func1));
+        funcs.insert(func_id2, Box::new(func2));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -1150,7 +1174,7 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_single_func_dynamic_arg_count_error() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |values| Value::Float(values[0].unwrap_float() + 1.0),
                 FuncFlags::PURE,
@@ -1163,18 +1187,21 @@ mod tests {
         );
 
         let call = ast::CallExpr::new(
-            ast::FuncIdent(func_id),
+            func_id,
             vec![
                 ast::Expr::Lit(ast::LitExpr::Float(1.0)),
                 ast::Expr::Lit(ast::LitExpr::Float(0.0)),
             ],
         );
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
+            VarIdent(0),
             call.clone(),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let err = interpreter.interpret().unwrap_err();
@@ -1187,7 +1214,7 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_single_func_dynamic_arg_ty_error() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |values| Value::Float(values[0].unwrap_float() + 1.0),
                 FuncFlags::PURE,
@@ -1199,16 +1226,16 @@ mod tests {
             ),
         );
 
-        let call = ast::CallExpr::new(
-            ast::FuncIdent(func_id),
-            vec![ast::Expr::Lit(ast::LitExpr::Int(1))],
-        );
+        let call = ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Int(1))]);
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
+            VarIdent(0),
             call.clone(),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let err = interpreter.interpret().unwrap_err();
@@ -1227,7 +1254,7 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_single_func_dynamic_optional_arg_ty() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |values| Value::Float(values[0].get_float().unwrap_or(1.0)),
                 FuncFlags::PURE,
@@ -1239,16 +1266,16 @@ mod tests {
             ),
         );
 
-        let call = ast::CallExpr::new(
-            ast::FuncIdent(func_id),
-            vec![ast::Expr::Lit(ast::LitExpr::Nil)],
-        );
+        let call = ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Nil)]);
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
+            VarIdent(0),
             call,
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
@@ -1258,7 +1285,7 @@ mod tests {
     #[test]
     fn test_interpreter_run_single_func_dynamic_optional_arg_ty_error() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(
                 |values| Value::Float(values[0].get_float().unwrap_or(1.0)),
                 FuncFlags::PURE,
@@ -1270,16 +1297,16 @@ mod tests {
             ),
         );
 
-        let call = ast::CallExpr::new(
-            ast::FuncIdent(func_id),
-            vec![ast::Expr::Lit(ast::LitExpr::Int(1))],
-        );
+        let call = ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Int(1))]);
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
+            VarIdent(0),
             call.clone(),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let err = interpreter.interpret().unwrap_err();
@@ -1298,17 +1325,20 @@ mod tests {
     #[test]
     fn test_interpreter_interpret_single_func_dynamic_return_ty_error() {
         let (func_id, func) = (
-            0,
+            FuncIdent(0),
             TestFunc::new(|_| Value::Int(-1), FuncFlags::PURE, vec![], Ty::Float),
         );
 
-        let call = ast::CallExpr::new(ast::FuncIdent(func_id), vec![]);
+        let call = ast::CallExpr::new(func_id, vec![]);
         let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-            ast::VarIdent(0),
+            VarIdent(0),
             call.clone(),
         ))]);
 
-        let mut interpreter = Interpreter::new(vec![Box::new(func)]);
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
         let err = interpreter.interpret().unwrap_err();

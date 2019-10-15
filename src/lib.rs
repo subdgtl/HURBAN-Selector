@@ -8,6 +8,7 @@ use crate::camera::{Camera, CameraOptions};
 use crate::importer::ImporterWorker;
 use crate::input::InputManager;
 use crate::interpreter::ast;
+use crate::interpreter_funcs as funcs;
 use crate::interpreter_server::{InterpreterRequest, InterpreterResponse, InterpreterServer};
 use crate::renderer::{Renderer, RendererOptions, SceneRendererGeometry};
 use crate::ui::Ui;
@@ -229,7 +230,7 @@ pub fn init_and_run(options: Options) -> ! {
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(0),
                             ast::CallExpr::new(
-                                ast::FuncIdent(0),
+                                funcs::FUNC_ID_CREATE_UV_SPHERE,
                                 vec![
                                     ast::Expr::Lit(ast::LitExpr::Float(500.0)),
                                     ast::Expr::Lit(ast::LitExpr::Uint(20)),
@@ -240,7 +241,7 @@ pub fn init_and_run(options: Options) -> ! {
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(1),
                             ast::CallExpr::new(
-                                ast::FuncIdent(1),
+                                funcs::FUNC_ID_SHRINK_WRAP,
                                 vec![
                                     ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(0))),
                                     ast::Expr::Lit(ast::LitExpr::Uint(30)),
