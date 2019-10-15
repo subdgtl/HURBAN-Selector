@@ -448,6 +448,11 @@ fn eval_var_decl_stmt(
     // call into `eval_call_expr`, which borrows again. Note that
     // having `eval_call_expr` guarded by the map access is the whole
     // point here.
+
+    // FIXME: remove allow after
+    // https://github.com/rust-lang/rust-clippy/issues/4674 is
+    // resolved
+
     #[allow(clippy::map_entry)]
     {
         if !env.contains_key(&var_ident) {
