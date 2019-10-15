@@ -28,7 +28,7 @@ pub struct ParamInfo {
     /// allowed to have the type [`Nil`] in addition to its own type,
     /// if set to `true`.
     ///
-    /// [`Nil`]: enum.Ty.html#variant.Nil
+    /// [`Nil`]: ../value.enum.Ty.html#variant.Nil
     pub optional: bool,
 }
 
@@ -37,11 +37,11 @@ pub struct ParamInfo {
 /// Functions are pieces of callable code. They can receive parameters
 /// and must produce a return value, even if [`Nil`].
 ///
-/// [`Nil`]: enum.Ty.html#variant.Nil
+/// [`Nil`]: ../value/enum.Ty.html#variant.Nil
 pub trait Func {
     /// Information about the function behaviour.
     ///
-    /// See [`Funcflags`] for more.
+    /// See [`FuncFlags`] for more.
     ///
     /// [`FuncFlags`]: struct.FuncFlags.html
     fn flags(&self) -> FuncFlags {
@@ -60,7 +60,7 @@ pub trait Func {
     ///
     /// Used for static and dynamic typecheking. See [`Ty`] for more.
     ///
-    /// [`Ty`]: enum.Ty.html
+    /// [`Ty`]: ../value/enum.Ty.html
     fn return_ty(&self) -> Ty;
 
     /// Call the function with arguments and receive the return value.
