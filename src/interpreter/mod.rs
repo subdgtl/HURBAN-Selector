@@ -858,6 +858,28 @@ mod tests {
     // Prog index
 
     #[test]
+    #[should_panic(expected = "Can not execute empty program")]
+    fn test_interpreter_interpret_empty_prog() {
+        let prog = ast::Prog::new(vec![]);
+
+        let mut interpreter = Interpreter::new(HashMap::new());
+        interpreter.set_prog(prog);
+
+        let _ = interpreter.interpret();
+    }
+
+    #[test]
+    #[should_panic(expected = "Can not execute empty program")]
+    fn test_interpreter_interpret_up_until_empty_prog() {
+        let prog = ast::Prog::new(vec![]);
+
+        let mut interpreter = Interpreter::new(HashMap::new());
+        interpreter.set_prog(prog);
+
+        let _ = interpreter.interpret_up_until(1);
+    }
+
+    #[test]
     #[should_panic(expected = "Can not execute past the program lenght")]
     fn test_interpreter_interpret_up_until_invalid_index() {
         let (func_id, func) = (
@@ -882,6 +904,39 @@ mod tests {
         interpreter.set_prog(prog);
 
         let _ = interpreter.interpret_up_until(2);
+    }
+
+    #[test]
+    fn test_interpreter_interpret_up_until_valid_index() {
+        let (func_id, func) = (
+            FuncIdent(0),
+            TestFunc::new(
+                |_| Value::Boolean(true),
+                FuncFlags::PURE,
+                vec![],
+                Ty::Boolean,
+            ),
+        );
+
+        let prog = ast::Prog::new(vec![
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(0),
+                ast::CallExpr::new(func_id, vec![]),
+            )),
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(1),
+                ast::CallExpr::new(func_id, vec![]),
+            )),
+        ]);
+
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
+        interpreter.set_prog(prog);
+
+        let value = interpreter.interpret_up_until(0).unwrap();
+        assert_eq!(value, Value::Boolean(true));
     }
 
     // Var invalidation tests
