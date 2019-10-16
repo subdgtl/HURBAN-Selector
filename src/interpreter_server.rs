@@ -3,7 +3,7 @@ use std::thread;
 use crossbeam_channel as channel;
 
 use crate::interpreter::ast::{Prog, Stmt};
-use crate::interpreter::{InterpretError, Interpreter, Value};
+use crate::interpreter::{InterpretResult, Interpreter};
 use crate::interpreter_funcs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -43,7 +43,7 @@ pub enum InterpreterResponse {
 
     /// Interpreter successfully completed request and responded with
     /// a result.
-    CompletedWithResult(Result<Value, InterpretError>),
+    CompletedWithResult(InterpretResult),
 }
 
 enum Request {

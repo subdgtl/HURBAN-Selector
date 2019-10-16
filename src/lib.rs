@@ -266,7 +266,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 "Interpreter completed request {:?} with result",
                                 request_id,
                             );
-                            let value = result.unwrap();
+                            let value = result.unwrap().last_value;
                             let geometry = value.unwrap_geometry().clone();
                             let renderer_geometry = SceneRendererGeometry::from_geometry(&geometry);
                             let renderer_geometry_id =

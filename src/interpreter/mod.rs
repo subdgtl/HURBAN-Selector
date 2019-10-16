@@ -1,4 +1,5 @@
 use std::collections::hash_map::{Entry, HashMap};
+use std::collections::HashSet;
 use std::error;
 use std::fmt;
 
@@ -164,6 +165,24 @@ impl From<RuntimeError> for InterpretError {
     }
 }
 
+pub type InterpretResult = Result<ValueSet, InterpretError>;
+
+/// The state of values as captured by interpreting up to a certain
+/// point in a program.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValueSet {
+    /// The value of the last executed statement.
+    pub last_value: Value,
+
+    /// The values that were used as parameters to funcs within the
+    /// executed part of the program.
+    pub used_values: Vec<Value>,
+
+    /// The values that were not used as parameters to funcs within
+    /// the executed part of the program.
+    pub unused_values: Vec<Value>,
+}
+
 #[derive(Debug, Clone)]
 struct VarInfo {
     /// The parameters and function call this variable was created
@@ -267,7 +286,7 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn interpret(&mut self) -> Result<Value, InterpretError> {
+    pub fn interpret(&mut self) -> InterpretResult {
         assert!(
             !self.prog.stmts().is_empty(),
             "Can not execute empty program",
@@ -275,7 +294,7 @@ impl Interpreter {
         self.interpret_up_until(self.prog.stmts().len() - 1)
     }
 
-    pub fn interpret_up_until(&mut self, index: usize) -> Result<Value, InterpretError> {
+    pub fn interpret_up_until(&mut self, index: usize) -> InterpretResult {
         assert!(
             !self.prog.stmts().is_empty(),
             "Can not execute empty program",
@@ -303,8 +322,9 @@ impl Interpreter {
             assert_eq!(self.pc, index + 1);
         }
 
-        let last_executed_stmt = self.pc - 1;
-        let value = match &self.prog.stmts()[last_executed_stmt] {
+        let unused_vars = self.compute_unused_vars_up_until(index);
+
+        let last_value = match &self.prog.stmts()[index] {
             ast::Stmt::VarDecl(var_decl) => {
                 let var_ident = var_decl.ident();
                 let var_info = self
@@ -316,7 +336,53 @@ impl Interpreter {
             }
         };
 
-        Ok(value)
+        let mut used_values = Vec::with_capacity(index + 1);
+        let mut unused_values = Vec::with_capacity(index + 1);
+
+        for stmt in &self.prog.stmts()[0..=index] {
+            match stmt {
+                ast::Stmt::VarDecl(var_decl) => {
+                    let var_ident = var_decl.ident();
+                    let var_info = self
+                        .env
+                        .get(&var_ident)
+                        .expect("Value must have been populated or already cached");
+
+                    if unused_vars.contains(&var_ident) {
+                        unused_values.push(var_info.value.clone());
+                    } else {
+                        used_values.push(var_info.value.clone());
+                    }
+                }
+            }
+        }
+
+        Ok(ValueSet {
+            last_value,
+            used_values,
+            unused_values,
+        })
+    }
+
+    fn compute_unused_vars_up_until(&self, index: usize) -> HashSet<ast::VarIdent> {
+        let mut unused_vars = HashSet::new();
+
+        for stmt in &self.prog.stmts()[0..=index] {
+            match stmt {
+                ast::Stmt::VarDecl(var_decl) => {
+                    let init_expr = var_decl.init_expr();
+                    for arg in init_expr.args() {
+                        if let ast::Expr::Var(var) = arg {
+                            unused_vars.remove(&var.ident());
+                        }
+                    }
+
+                    unused_vars.insert(var_decl.ident());
+                }
+            }
+        }
+
+        unused_vars
     }
 
     /// Invalidate variables in the environment.
@@ -667,7 +733,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
     }
 
     #[test]
@@ -697,7 +770,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
     }
 
     #[test]
@@ -724,7 +804,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
     }
 
     #[test]
@@ -754,7 +841,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
     }
 
     #[test]
@@ -803,7 +897,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![Value::Boolean(true)],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
     }
 
     #[test]
@@ -852,7 +953,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![Value::Boolean(true)],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
     }
 
     // Prog index
@@ -936,7 +1044,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret_up_until(0).unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            },
+        );
     }
 
     // Var invalidation tests
@@ -974,10 +1089,24 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
 
         assert_eq!(n_calls.get(), 1);
     }
@@ -1015,10 +1144,24 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
 
         assert_eq!(n_calls.get(), 2);
     }
@@ -1074,7 +1217,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
 
         // Change the args but not the func
         interpreter.set_prog_stmt_at(
@@ -1092,7 +1242,14 @@ mod tests {
         );
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(false));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(false),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(false)],
+            }
+        );
 
         assert_eq!(n_calls.get(), 2);
     }
@@ -1179,7 +1336,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
 
         // Change the func but not the args
         interpreter.set_prog_stmt_at(
@@ -1197,7 +1361,14 @@ mod tests {
         );
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
 
         assert_eq!(n_calls1.get(), 1);
         assert_eq!(n_calls2.get(), 1);
@@ -1261,10 +1432,24 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![Value::Boolean(true)],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Boolean(true));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Boolean(true),
+                used_values: vec![Value::Boolean(true)],
+                unused_values: vec![Value::Boolean(true)],
+            }
+        );
 
         assert_eq!(n_calls1.get(), 2);
         assert_eq!(n_calls2.get(), 2);
@@ -1391,7 +1576,14 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value, Value::Float(1.0));
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: Value::Float(1.0),
+                used_values: vec![],
+                unused_values: vec![Value::Float(1.0)],
+            }
+        );
     }
 
     #[test]
