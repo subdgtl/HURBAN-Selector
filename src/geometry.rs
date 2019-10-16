@@ -1,6 +1,9 @@
+use std::cmp;
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 use arrayvec::ArrayVec;
+
 use nalgebra as na;
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
@@ -174,9 +177,14 @@ impl Geometry {
         &self.normals
     }
 
-    pub fn edges_iter<'a>(&'a self) -> impl Iterator<Item = HalfEdge> + 'a {
+    pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
         self.triangle_faces_iter()
-            .flat_map(|face| ArrayVec::from(face.to_edges()).into_iter())
+            .flat_map(|face| ArrayVec::from(face.to_oriented_edges()).into_iter())
+    }
+
+    pub fn unoriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = UnorientedEdge> + 'a {
+        self.triangle_faces_iter()
+            .flat_map(|face| ArrayVec::from(face.to_unoriented_edges()).into_iter())
     }
 
     pub fn has_no_orphan_vertices(&self) -> bool {
@@ -250,12 +258,21 @@ impl TriangleFace {
         }
     }
 
-    /// Generates 3 edges from the respective triangular face
-    pub fn to_edges(&self) -> [HalfEdge; 3] {
+    /// Generates 3 oriented edges from the respective triangular face
+    pub fn to_oriented_edges(&self) -> [OrientedEdge; 3] {
         [
-            HalfEdge::new(self.vertices.0, self.vertices.1),
-            HalfEdge::new(self.vertices.1, self.vertices.2),
-            HalfEdge::new(self.vertices.2, self.vertices.0),
+            OrientedEdge::new(self.vertices.0, self.vertices.1),
+            OrientedEdge::new(self.vertices.1, self.vertices.2),
+            OrientedEdge::new(self.vertices.2, self.vertices.0),
+        ]
+    }
+
+    /// Generates 3 unoriented edges from the respective triangular face
+    pub fn to_unoriented_edges(&self) -> [UnorientedEdge; 3] {
+        [
+            UnorientedEdge(OrientedEdge::new(self.vertices.0, self.vertices.1)),
+            UnorientedEdge(OrientedEdge::new(self.vertices.1, self.vertices.2)),
+            UnorientedEdge(OrientedEdge::new(self.vertices.2, self.vertices.0)),
         ]
     }
 }
@@ -266,25 +283,42 @@ impl From<(u32, u32, u32)> for TriangleFace {
     }
 }
 
-/// A face edge. Contains indices to other geometry data - vertices
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HalfEdge {
+/// Oriented face edge. Contains indices to other geometry data - vertices
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OrientedEdge {
     pub vertices: (u32, u32),
 }
 
-impl HalfEdge {
+impl OrientedEdge {
     pub fn new(i1: u32, i2: u32) -> Self {
-        HalfEdge { vertices: (i1, i2) }
+        assert!(
+            i1 != i2,
+            "The oriented edge is constituted of the same vertex"
+        );
+        OrientedEdge { vertices: (i1, i2) }
     }
-    pub fn equal_bidi(self, other: HalfEdge) -> bool {
-        (self.vertices.0 == other.vertices.0 && self.vertices.1 == other.vertices.1)
-            || (self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0)
+
+    pub fn is_reverted(self, other: OrientedEdge) -> bool {
+        self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0
     }
 }
 
-impl From<(u32, u32)> for HalfEdge {
-    fn from((i1, i2): (u32, u32)) -> HalfEdge {
-        HalfEdge::new(i1, i2)
+/// Implements orientation indifferent hash and equal methods
+#[derive(Debug, Clone, Copy, Eq)]
+pub struct UnorientedEdge(pub OrientedEdge);
+
+impl PartialEq for UnorientedEdge {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0.vertices.0 == other.0.vertices.0 && self.0.vertices.1 == other.0.vertices.1)
+            || (self.0.vertices.0 == other.0.vertices.1 && self.0.vertices.1 == other.0.vertices.0)
+    }
+}
+
+// FIXME: test
+impl Hash for UnorientedEdge {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        cmp::min(self.0.vertices.0, self.0.vertices.1).hash(state);
+        cmp::max(self.0.vertices.0, self.0.vertices.1).hash(state);
     }
 }
 
@@ -401,6 +435,8 @@ pub fn cube_smooth_same_len(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
+#[deprecated(note = "Don't use, generates open geometry")]
+// FIXME: Remove eventually
 pub fn cube_sharp_same_len(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
@@ -642,22 +678,18 @@ pub fn uv_sphere(position: [f32; 3], scale: f32, n_parallels: u32, n_meridians: 
 
 pub fn compute_bounding_sphere(geometries: &[Geometry]) -> (Point3<f32>, f32) {
     let centroid = compute_centroid(geometries);
-    let mut max_distance = 0.0;
+    let mut max_distance_squared = 0.0;
 
     for geometry in geometries {
         for vertex in &geometry.vertices {
-            // Can't use `distance_squared` for values 0..1
-
-            // FIXME: @Optimization Benchmark this against a 0..1 vs
-            // 1..inf branching version using distance_squared for 1..inf
-            let distance = na::distance(&centroid, vertex);
-            if distance > max_distance {
-                max_distance = distance;
+            let distance_squared = na::distance_squared(&centroid, vertex);
+            if distance_squared > max_distance_squared {
+                max_distance_squared = distance_squared;
             }
         }
     }
 
-    (centroid, max_distance)
+    (centroid, max_distance_squared.sqrt())
 }
 
 pub fn compute_centroid(geometries: &[Geometry]) -> Point3<f32> {
@@ -681,14 +713,12 @@ pub fn find_closest_point(position: &Point3<f32>, geometry: &Geometry) -> Option
     }
 
     let mut closest = vertices[0];
-    // FIXME: @Optimization benchmark `distance` vs `distance_squared`
-    // with branching (0..1, 1..inf)
-    let mut closest_distance = na::distance(position, &closest);
+    let mut closest_distance_squared = na::distance_squared(position, &closest);
     for point in &vertices[1..] {
-        let distance = na::distance(position, &point);
-        if distance < closest_distance {
+        let distance_squared = na::distance_squared(position, &point);
+        if distance_squared < closest_distance_squared {
             closest = *point;
-            closest_distance = distance;
+            closest_distance_squared = distance_squared;
         }
     }
 
@@ -716,6 +746,8 @@ fn compute_triangle_normal(p1: &Point3<f32>, p2: &Point3<f32>, p3: &Point3<f32>)
 
 #[cfg(test)]
 mod tests {
+    use std::collections::hash_map::DefaultHasher;
+
     use super::*;
 
     fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
@@ -832,6 +864,136 @@ mod tests {
     }
 
     #[test]
+    fn test_oriented_edge_eq_returns_true() {
+        let oriented_edge_one_way = OrientedEdge::new(0, 1);
+        let oriented_edge_other_way = OrientedEdge::new(0, 1);
+        assert_eq!(oriented_edge_one_way, oriented_edge_other_way);
+    }
+
+    #[test]
+    fn test_oriented_edge_eq_returns_false_because_different() {
+        let oriented_edge_one_way = OrientedEdge::new(0, 1);
+        let oriented_edge_other_way = OrientedEdge::new(2, 1);
+        assert_ne!(oriented_edge_one_way, oriented_edge_other_way);
+    }
+
+    #[test]
+    fn test_oriented_edge_eq_returns_false_because_reverted() {
+        let oriented_edge_one_way = OrientedEdge::new(0, 1);
+        let oriented_edge_other_way = OrientedEdge::new(1, 0);
+        assert_ne!(oriented_edge_one_way, oriented_edge_other_way);
+    }
+
+    #[test]
+    #[should_panic(expected = "The oriented edge is constituted of the same vertex")]
+    fn test_oriented_edge_constructor_consists_of_the_same_vertex_should_panic() {
+        OrientedEdge::new(0, 0);
+    }
+
+    #[test]
+    fn test_oriented_edge_constructor_does_not_consist_of_the_same_vertex_should_pass() {
+        OrientedEdge::new(0, 1);
+    }
+
+    #[test]
+    fn test_oriented_edge_is_reverted_returns_true_because_same() {
+        let oriented_edge_one_way = OrientedEdge::new(0, 1);
+        let oriented_edge_other_way = OrientedEdge::new(1, 0);
+        assert!(oriented_edge_one_way.is_reverted(oriented_edge_other_way));
+    }
+
+    #[test]
+    fn test_oriented_edge_is_reverted_returns_false_because_is_same() {
+        let oriented_edge_one_way = OrientedEdge::new(0, 1);
+        let oriented_edge_other_way = OrientedEdge::new(0, 1);
+        assert!(!oriented_edge_one_way.is_reverted(oriented_edge_other_way));
+    }
+
+    #[test]
+    fn test_oriented_edge_is_reverted_returns_false_because_is_different() {
+        let oriented_edge_one_way = OrientedEdge::new(0, 1);
+        let oriented_edge_other_way = OrientedEdge::new(2, 1);
+        assert!(!oriented_edge_one_way.is_reverted(oriented_edge_other_way));
+    }
+
+    #[test]
+    fn test_unoriented_edge_eq_returns_true_because_same() {
+        let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        assert_eq!(unoriented_edge_one_way, unoriented_edge_other_way);
+    }
+
+    #[test]
+    fn test_unoriented_edge_eq_returns_true_because_reverted() {
+        let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(1, 0));
+        assert_eq!(unoriented_edge_one_way, unoriented_edge_other_way);
+    }
+
+    #[test]
+    fn test_unoriented_edge_eq_returns_false_because_different() {
+        let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(2, 1));
+        assert_ne!(unoriented_edge_one_way, unoriented_edge_other_way);
+    }
+
+    #[test]
+    fn test_unoriented_edge_hash_returns_true_because_same() {
+        let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        let mut hasher_1 = DefaultHasher::new();
+        let mut hasher_2 = DefaultHasher::new();
+        unoriented_edge_one_way.hash(&mut hasher_1);
+        unoriented_edge_other_way.hash(&mut hasher_2);
+        assert_eq!(hasher_1.finish(), hasher_2.finish());
+    }
+
+    #[test]
+    fn test_unoriented_edge_hash_returns_true_because_reverted() {
+        let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(1, 0));
+        let mut hasher_1 = DefaultHasher::new();
+        let mut hasher_2 = DefaultHasher::new();
+        unoriented_edge_one_way.hash(&mut hasher_1);
+        unoriented_edge_other_way.hash(&mut hasher_2);
+        assert_eq!(hasher_1.finish(), hasher_2.finish());
+    }
+
+    #[test]
+    fn test_triangle_face_to_oriented_edges() {
+        let face = TriangleFace::new(0, 1, 2);
+
+        let oriented_edges_correct: [OrientedEdge; 3] = [
+            OrientedEdge::new(0, 1),
+            OrientedEdge::new(1, 2),
+            OrientedEdge::new(2, 0),
+        ];
+
+        let oriented_edges_to_check: [OrientedEdge; 3] = face.to_oriented_edges();
+
+        assert_eq!(oriented_edges_to_check[0], oriented_edges_correct[0]);
+        assert_eq!(oriented_edges_to_check[1], oriented_edges_correct[1]);
+        assert_eq!(oriented_edges_to_check[2], oriented_edges_correct[2]);
+    }
+
+    #[test]
+    fn test_triangle_face_to_unoriented_edges() {
+        let face = TriangleFace::new(0, 1, 2);
+
+        let unoriented_edges_correct: [UnorientedEdge; 3] = [
+            UnorientedEdge(OrientedEdge::new(0, 1)),
+            UnorientedEdge(OrientedEdge::new(1, 2)),
+            UnorientedEdge(OrientedEdge::new(2, 0)),
+        ];
+
+        let unoriented_edges_to_check: [UnorientedEdge; 3] = face.to_unoriented_edges();
+
+        assert_eq!(unoriented_edges_to_check[0], unoriented_edges_correct[0]);
+        assert_eq!(unoriented_edges_to_check[1], unoriented_edges_correct[1]);
+        assert_eq!(unoriented_edges_to_check[2], unoriented_edges_correct[2]);
+    }
+
+    #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_with_invalid_vertex_indices_0_1_should_panic() {
         TriangleFace::new(0, 0, 2);
@@ -906,6 +1068,63 @@ mod tests {
         );
 
         assert!(geometry_without_orphans.has_no_orphan_normals());
+    }
+
+    #[test]
+    fn test_geometry_unoriented_edges_iter() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals.clone(),
+        );
+        let unoriented_edges_correct = vec![
+            UnorientedEdge(OrientedEdge::new(0, 1)),
+            UnorientedEdge(OrientedEdge::new(1, 2)),
+            UnorientedEdge(OrientedEdge::new(2, 0)),
+            UnorientedEdge(OrientedEdge::new(2, 3)),
+            UnorientedEdge(OrientedEdge::new(3, 0)),
+            UnorientedEdge(OrientedEdge::new(0, 2)),
+        ];
+        let unoriented_edges_to_check: Vec<UnorientedEdge> =
+            geometry.unoriented_edges_iter().collect();
+
+        assert!(unoriented_edges_correct
+            .iter()
+            .all(|u_e| unoriented_edges_to_check.iter().any(|e| e == u_e)));
+
+        let len_1 = unoriented_edges_to_check.len();
+        let len_2 = unoriented_edges_correct.len();
+        assert_eq!(len_1, len_2);
+    }
+
+    #[test]
+    fn test_geometry_oriented_edges_iter() {
+        let (faces, vertices, normals) = quad_with_normals();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces.clone(),
+            vertices.clone(),
+            normals.clone(),
+        );
+
+        let oriented_edges_correct = vec![
+            OrientedEdge::new(0, 1),
+            OrientedEdge::new(1, 2),
+            OrientedEdge::new(2, 0),
+            OrientedEdge::new(2, 3),
+            OrientedEdge::new(3, 0),
+            OrientedEdge::new(0, 2),
+        ];
+        let oriented_edges_to_check: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+
+        assert!(oriented_edges_correct
+            .iter()
+            .all(|o_e| oriented_edges_to_check.iter().any(|e| e == o_e)));
+
+        let len_1 = oriented_edges_to_check.len();
+        let len_2 = oriented_edges_correct.len();
+
+        assert_eq!(len_1, len_2);
     }
 
     #[test]
