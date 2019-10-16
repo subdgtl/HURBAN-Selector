@@ -175,21 +175,9 @@ impl Geometry {
         vertices: Vertices,
         normals: Normals,
     ) -> Self {
-        let (faces_prepurged, vertices_purged) = remove_orphan_vertices(
-            faces
-                .iter()
-                .map(|f| (f.vertices.0, f.vertices.1, f.vertices.2))
-                .collect(),
-            vertices,
-        );
+        let (faces_purged, vertices_purged, normals_purged) =
+            remove_orphan_vertices_and_normals(faces, vertices, normals);
 
-        let (faces_purged, normals_purged) = remove_orphan_normals(
-            faces_prepurged
-                .iter()
-                .map(|f| TriangleFace::new(f.0, f.1, f.2))
-                .collect(),
-            normals,
-        );
         Geometry::from_triangle_faces_with_vertices_and_normals(
             faces_purged,
             vertices_purged,
@@ -378,37 +366,37 @@ fn remove_orphan_vertices(
     vertices: Vertices,
 ) -> (FaceVertexTuples, Vertices) {
     let mut vertices_reduced: Vertices = Vec::new();
-    let original_item_len = vertices.len();
-    let unused_item_marker = vertices.len();
-    let mut old_new_item_map: Vec<usize> = vec![unused_item_marker; original_item_len];
+    let original_vertex_len = vertices.len();
+    let unused_vertex_marker = vertices.len();
+    let mut old_new_vertex_map: Vec<usize> = vec![unused_vertex_marker; original_vertex_len];
     let mut faces_renumbered: FaceVertexTuples = Vec::new();
     for face in faces {
         let old_vertex_index_0 = cast_usize(face.0);
-        let new_vertex_index_0 = if old_new_item_map[old_vertex_index_0] == unused_item_marker {
+        let new_vertex_index_0 = if old_new_vertex_map[old_vertex_index_0] == unused_vertex_marker {
             vertices_reduced.push(vertices[old_vertex_index_0]);
             let new_index = vertices_reduced.len() - 1;
-            old_new_item_map[old_vertex_index_0] = new_index;
+            old_new_vertex_map[old_vertex_index_0] = new_index;
             new_index
         } else {
-            old_new_item_map[old_vertex_index_0]
+            old_new_vertex_map[old_vertex_index_0]
         };
         let old_vertex_index_1 = cast_usize(face.1);
-        let new_vertex_index_1 = if old_new_item_map[old_vertex_index_1] == unused_item_marker {
+        let new_vertex_index_1 = if old_new_vertex_map[old_vertex_index_1] == unused_vertex_marker {
             vertices_reduced.push(vertices[old_vertex_index_1]);
             let new_index = vertices_reduced.len() - 1;
-            old_new_item_map[old_vertex_index_1] = new_index;
+            old_new_vertex_map[old_vertex_index_1] = new_index;
             new_index
         } else {
-            old_new_item_map[old_vertex_index_1]
+            old_new_vertex_map[old_vertex_index_1]
         };
         let old_vertex_index_2 = cast_usize(face.2);
-        let new_vertex_index_2 = if old_new_item_map[old_vertex_index_2] == unused_item_marker {
+        let new_vertex_index_2 = if old_new_vertex_map[old_vertex_index_2] == unused_vertex_marker {
             vertices_reduced.push(vertices[old_vertex_index_2]);
             let new_index = vertices_reduced.len() - 1;
-            old_new_item_map[old_vertex_index_2] = new_index;
+            old_new_vertex_map[old_vertex_index_2] = new_index;
             new_index
         } else {
-            old_new_item_map[old_vertex_index_2]
+            old_new_vertex_map[old_vertex_index_2]
         };
         faces_renumbered.push((
             cast_u32(new_vertex_index_0),
@@ -419,50 +407,140 @@ fn remove_orphan_vertices(
     (faces_renumbered, vertices_reduced)
 }
 
+#[allow(dead_code)]
 fn remove_orphan_normals(
     faces: Vec<TriangleFace>,
     normals: Normals,
 ) -> (Vec<TriangleFace>, Normals) {
     let mut normals_reduced: Normals = Vec::new();
-    let original_item_len = normals.len();
-    let unused_item_marker = normals.len();
-    let mut old_new_item_map: Vec<usize> = vec![unused_item_marker; original_item_len];
+    let original_normal_len = normals.len();
+    let unused_normal_marker = normals.len();
+    let mut old_new_normal_map: Vec<usize> = vec![unused_normal_marker; original_normal_len];
     let mut faces_renumbered: Vec<TriangleFace> = Vec::new();
     for face in faces {
         let old_normal_index_0 = cast_usize(face.normals.0);
-        let new_normal_index_0 = if old_new_item_map[old_normal_index_0] == unused_item_marker {
+        let new_normal_index_0 = if old_new_normal_map[old_normal_index_0] == unused_normal_marker {
             normals_reduced.push(normals[old_normal_index_0]);
             let new_index = normals_reduced.len() - 1;
-            old_new_item_map[old_normal_index_0] = new_index;
+            old_new_normal_map[old_normal_index_0] = new_index;
             new_index
         } else {
-            old_new_item_map[old_normal_index_0]
+            old_new_normal_map[old_normal_index_0]
         };
         let old_normal_index_1 = cast_usize(face.normals.1);
-        let new_normal_index_1 = if old_new_item_map[old_normal_index_1] == unused_item_marker {
+        let new_normal_index_1 = if old_new_normal_map[old_normal_index_1] == unused_normal_marker {
             normals_reduced.push(normals[old_normal_index_1]);
             let new_index = normals_reduced.len() - 1;
-            old_new_item_map[old_normal_index_1] = new_index;
+            old_new_normal_map[old_normal_index_1] = new_index;
             new_index
         } else {
-            old_new_item_map[old_normal_index_1]
+            old_new_normal_map[old_normal_index_1]
         };
         let old_normal_index_2 = cast_usize(face.normals.2);
-        let new_normal_index_2 = if old_new_item_map[old_normal_index_2] == unused_item_marker {
+        let new_normal_index_2 = if old_new_normal_map[old_normal_index_2] == unused_normal_marker {
             normals_reduced.push(normals[old_normal_index_2]);
             let new_index = normals_reduced.len() - 1;
-            old_new_item_map[old_normal_index_2] = new_index;
+            old_new_normal_map[old_normal_index_2] = new_index;
             new_index
         } else {
-            old_new_item_map[old_normal_index_2]
+            old_new_normal_map[old_normal_index_2]
         };
-        faces_renumbered.push(TriangleFace::from((
+        faces_renumbered.push(TriangleFace::new_separate(
+            face.vertices.0,
+            face.vertices.1,
+            face.vertices.2,
             cast_u32(new_normal_index_0),
             cast_u32(new_normal_index_1),
             cast_u32(new_normal_index_2),
-        )));
+        ));
     }
     (faces_renumbered, normals_reduced)
+}
+
+fn remove_orphan_vertices_and_normals(
+    faces: Vec<TriangleFace>,
+    vertices: Vertices,
+    normals: Normals,
+) -> (Vec<TriangleFace>, Vertices, Normals) {
+    let mut vertices_reduced: Vertices = Vec::new();
+    let original_vertex_len = vertices.len();
+    let unused_vertex_marker = vertices.len();
+    let mut old_new_vertex_map: Vec<usize> = vec![unused_vertex_marker; original_vertex_len];
+
+    let mut normals_reduced: Normals = Vec::new();
+    let original_normal_len = normals.len();
+    let unused_normal_marker = normals.len();
+    let mut old_new_normal_map: Vec<usize> = vec![unused_normal_marker; original_normal_len];
+    let mut faces_renumbered: Vec<TriangleFace> = Vec::new();
+
+    for face in faces {
+        let old_vertex_index_0 = cast_usize(face.vertices.0);
+        let new_vertex_index_0 = if old_new_vertex_map[old_vertex_index_0] == unused_vertex_marker {
+            vertices_reduced.push(vertices[old_vertex_index_0]);
+            let new_index = vertices_reduced.len() - 1;
+            old_new_vertex_map[old_vertex_index_0] = new_index;
+            new_index
+        } else {
+            old_new_vertex_map[old_vertex_index_0]
+        };
+        let old_vertex_index_1 = cast_usize(face.vertices.1);
+        let new_vertex_index_1 = if old_new_vertex_map[old_vertex_index_1] == unused_vertex_marker {
+            vertices_reduced.push(vertices[old_vertex_index_1]);
+            let new_index = vertices_reduced.len() - 1;
+            old_new_vertex_map[old_vertex_index_1] = new_index;
+            new_index
+        } else {
+            old_new_vertex_map[old_vertex_index_1]
+        };
+        let old_vertex_index_2 = cast_usize(face.vertices.2);
+        let new_vertex_index_2 = if old_new_vertex_map[old_vertex_index_2] == unused_vertex_marker {
+            vertices_reduced.push(vertices[old_vertex_index_2]);
+            let new_index = vertices_reduced.len() - 1;
+            old_new_vertex_map[old_vertex_index_2] = new_index;
+            new_index
+        } else {
+            old_new_vertex_map[old_vertex_index_2]
+        };
+
+        let old_normal_index_0 = cast_usize(face.normals.0);
+        let new_normal_index_0 = if old_new_normal_map[old_normal_index_0] == unused_normal_marker {
+            normals_reduced.push(normals[old_normal_index_0]);
+            let new_index = normals_reduced.len() - 1;
+            old_new_normal_map[old_normal_index_0] = new_index;
+            new_index
+        } else {
+            old_new_normal_map[old_normal_index_0]
+        };
+        let old_normal_index_1 = cast_usize(face.normals.1);
+        let new_normal_index_1 = if old_new_normal_map[old_normal_index_1] == unused_normal_marker {
+            normals_reduced.push(normals[old_normal_index_1]);
+            let new_index = normals_reduced.len() - 1;
+            old_new_normal_map[old_normal_index_1] = new_index;
+            new_index
+        } else {
+            old_new_normal_map[old_normal_index_1]
+        };
+        let old_normal_index_2 = cast_usize(face.normals.2);
+        let new_normal_index_2 = if old_new_normal_map[old_normal_index_2] == unused_normal_marker {
+            normals_reduced.push(normals[old_normal_index_2]);
+            let new_index = normals_reduced.len() - 1;
+            old_new_normal_map[old_normal_index_2] = new_index;
+            new_index
+        } else {
+            old_new_normal_map[old_normal_index_2]
+        };
+
+        faces_renumbered.push(TriangleFace::new_separate(
+            cast_u32(new_vertex_index_0),
+            cast_u32(new_vertex_index_1),
+            cast_u32(new_vertex_index_2),
+            cast_u32(new_normal_index_0),
+            cast_u32(new_normal_index_1),
+            cast_u32(new_normal_index_2),
+        ));
+    }
+
+    (faces_renumbered, vertices_reduced, normals_reduced)
 }
 
 pub fn plane_same_len(position: [f32; 3], scale: f32) -> Geometry {
@@ -1331,6 +1409,45 @@ mod tests {
         let faces_purged_length = &faces_purged.len();
 
         assert_eq!(faces_length, faces_purged_length);
+        assert_eq!(normals_purged, normals);
+    }
+
+    #[test]
+    fn test_remove_orphan_vertices_and_normals() {
+        let (faces, vertices, normals) = quad_with_normals();
+
+        let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
+        let vertices_extended = [&extra_vertex[..], &vertices[..]].concat();
+
+        let extra_normal = vec![n(0.0, 0.0, 0.0)];
+        let normals_extended = [&extra_normal[..], &normals[..]].concat();
+
+        let faces_renumbered_to_match_extend_data: Vec<_> = faces
+            .iter()
+            .map(|f| {
+                TriangleFace::new_separate(
+                    f.vertices.0 + 1,
+                    f.vertices.1 + 1,
+                    f.vertices.2 + 1,
+                    f.normals.0 + 1,
+                    f.normals.1 + 1,
+                    f.normals.2 + 1,
+                )
+            })
+            .collect();
+
+        let faces_length = &faces.len();
+
+        let (faces_purged, vertices_purged, normals_purged) = remove_orphan_vertices_and_normals(
+            faces_renumbered_to_match_extend_data,
+            vertices_extended,
+            normals_extended,
+        );
+
+        let faces_purged_length = &faces_purged.len();
+
+        assert_eq!(faces_length, faces_purged_length);
+        assert_eq!(vertices_purged, vertices);
         assert_eq!(normals_purged, normals);
     }
 
