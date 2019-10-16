@@ -16,6 +16,10 @@ pub enum NormalStrategy {
     // FIXME: add `Smooth`
 }
 
+pub type FaceVertexTuples = Vec<(u32, u32, u32)>;
+pub type Vertices = Vec<Point3<f32>>;
+pub type Normals = Vec<Vector3<f32>>;
+
 /// Geometric data containing multiple possibly _variable-length_
 /// lists of geometric data, such as vertices and normals, and faces -
 /// a single list containing the index topology that describes the
@@ -31,8 +35,8 @@ pub enum NormalStrategy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Geometry {
     faces: Vec<Face>,
-    vertices: Vec<Point3<f32>>,
-    normals: Vec<Vector3<f32>>,
+    vertices: Vertices,
+    normals: Normals,
 }
 
 impl Geometry {
@@ -42,8 +46,8 @@ impl Geometry {
     /// # Panics
     /// Panics if faces refer to out-of-bounds vertices.
     pub fn from_triangle_faces_with_vertices_and_computed_normals(
-        faces: Vec<(u32, u32, u32)>,
-        vertices: Vec<Point3<f32>>,
+        faces: FaceVertexTuples,
+        vertices: Vertices,
         normal_strategy: NormalStrategy,
     ) -> Self {
         // FIXME: orphan removal
@@ -103,58 +107,16 @@ impl Geometry {
     /// # Panics
     /// Panics if faces refer to out-of-bounds vertices.
     pub fn from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
-        faces: Vec<(u32, u32, u32)>,
-        vertices: Vec<Point3<f32>>,
+        faces: FaceVertexTuples,
+        vertices: Vertices,
         normal_strategy: NormalStrategy,
     ) -> Self {
         let (faces_purged, vertices_purged) = remove_orphan_vertices(faces, vertices);
-
-        let mut normals = Vec::with_capacity(faces_purged.len());
-        let vertices_range = 0..cast_u32(vertices_purged.len());
-        for &(v1, v2, v3) in &faces_purged {
-            assert!(
-                vertices_range.contains(&v1),
-                "Faces reference out of bounds position data"
-            );
-            assert!(
-                vertices_range.contains(&v2),
-                "Faces reference out of bounds position data"
-            );
-            assert!(
-                vertices_range.contains(&v3),
-                "Faces reference out of bounds position data"
-            );
-
-            // FIXME: computing smooth normals in the future won't be
-            // so simple as just computing a normal per face, we will
-            // need to analyze larger parts of the geometry
-            let face_normal = match normal_strategy {
-                NormalStrategy::Sharp => compute_triangle_normal(
-                    &vertices_purged[cast_usize(v1)],
-                    &vertices_purged[cast_usize(v2)],
-                    &vertices_purged[cast_usize(v3)],
-                ),
-            };
-
-            normals.push(face_normal);
-        }
-
-        assert_eq!(normals.len(), faces_purged.len());
-        assert_eq!(normals.capacity(), faces_purged.len());
-
-        Self {
-            faces: faces_purged
-                .into_iter()
-                .enumerate()
-                .map(|(i, (i1, i2, i3))| {
-                    let normal_index = cast_u32(i);
-                    TriangleFace::new_separate(i1, i2, i3, normal_index, normal_index, normal_index)
-                })
-                .map(Face::from)
-                .collect(),
-            vertices: vertices_purged,
-            normals,
-        }
+        Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces_purged,
+            vertices_purged,
+            normal_strategy,
+        )
     }
 
     /// Create new triangle face geometry from provided faces,
@@ -164,8 +126,8 @@ impl Geometry {
     /// Panics if faces refer to out-of-bounds vertices or normals.
     pub fn from_triangle_faces_with_vertices_and_normals(
         faces: Vec<TriangleFace>,
-        vertices: Vec<Point3<f32>>,
-        normals: Vec<Vector3<f32>>,
+        vertices: Vertices,
+        normals: Normals,
     ) -> Self {
         // FIXME: orphan removal
 
@@ -214,8 +176,8 @@ impl Geometry {
     /// Panics if faces refer to out-of-bounds vertices or normals.
     pub fn from_triangle_faces_with_vertices_and_normals_remove_orphans(
         faces: Vec<TriangleFace>,
-        vertices: Vec<Point3<f32>>,
-        normals: Vec<Vector3<f32>>,
+        vertices: Vertices,
+        normals: Normals,
     ) -> Self {
         let (faces_prepurged, vertices_purged) = remove_orphan_vertices(
             faces
@@ -232,43 +194,11 @@ impl Geometry {
                 .collect(),
             normals,
         );
-
-        let vertices_range = 0..cast_u32(vertices_purged.len());
-        let normals_range = 0..cast_u32(normals_purged.len());
-        for face in &faces_purged {
-            let v = face.vertices;
-            let n = face.normals;
-            assert!(
-                vertices_range.contains(&v.0),
-                "Faces reference out of bounds position data"
-            );
-            assert!(
-                vertices_range.contains(&v.1),
-                "Faces reference out of bounds position data"
-            );
-            assert!(
-                vertices_range.contains(&v.2),
-                "Faces reference out of bounds position data"
-            );
-            assert!(
-                normals_range.contains(&n.0),
-                "Faces reference out of bounds normal data"
-            );
-            assert!(
-                normals_range.contains(&n.1),
-                "Faces reference out of bounds normal data"
-            );
-            assert!(
-                normals_range.contains(&n.2),
-                "Faces reference out of bounds normal data"
-            );
-        }
-
-        Self {
-            faces: faces_purged.into_iter().map(Face::Triangle).collect(),
-            vertices: vertices_purged,
-            normals: normals_purged,
-        }
+        Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces_purged,
+            vertices_purged,
+            normals_purged,
+        )
     }
 
     /// Return a view of all triangle faces in this geometry. Skip all
@@ -447,20 +377,18 @@ impl Hash for UnorientedEdge {
     }
 }
 
-#[allow(dead_code, clippy::type_complexity)]
 fn remove_orphan_vertices(
-    faces: Vec<(u32, u32, u32)>,
-    vertices: Vec<Point3<f32>>,
-) -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    faces: FaceVertexTuples,
+    vertices: Vertices,
+) -> (FaceVertexTuples, Vertices) {
     let mut old_to_new_vertex_index: HashMap<u32, u32> = HashMap::new();
-    let mut reduced_vertices: Vec<Point3<f32>> = Vec::new();
+    let mut reduced_vertices: Vertices = Vec::new();
     let mut new_index = 0;
-    #[allow(clippy::needless_range_loop)]
-    for original_index in 0..vertices.len() {
+    for (original_index, vertex) in vertices.iter().enumerate() {
         let o_i = cast_u32(original_index);
         if faces.iter().any(|f| f.0 == o_i || f.1 == o_i || f.2 == o_i) {
             old_to_new_vertex_index.insert(o_i, new_index);
-            reduced_vertices.push(vertices[original_index]);
+            reduced_vertices.push(*vertex);
             new_index += 1;
         }
     }
@@ -485,23 +413,21 @@ fn remove_orphan_vertices(
     (recomputed_faces, reduced_vertices)
 }
 
-#[allow(dead_code)]
 fn remove_orphan_normals(
     faces: Vec<TriangleFace>,
-    normals: Vec<Vector3<f32>>,
-) -> (Vec<TriangleFace>, Vec<Vector3<f32>>) {
+    normals: Normals,
+) -> (Vec<TriangleFace>, Normals) {
     let mut old_to_new_normal_index: HashMap<u32, u32> = HashMap::new();
-    let mut reduced_normals: Vec<Vector3<f32>> = Vec::new();
+    let mut reduced_normals: Normals = Vec::new();
     let mut new_index = 0;
-    #[allow(clippy::needless_range_loop)]
-    for original_index in 0..normals.len() {
+    for (original_index, normal) in normals.iter().enumerate() {
         let o_i = cast_u32(original_index);
         if faces
             .iter()
             .any(|f| f.normals.0 == o_i || f.normals.1 == o_i || f.normals.2 == o_i)
         {
             old_to_new_normal_index.insert(o_i, new_index);
-            reduced_normals.push(normals[original_index]);
+            reduced_normals.push(*normal);
             new_index += 1;
         }
     }
@@ -957,7 +883,7 @@ mod tests {
 
     use super::*;
 
-    fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn quad() -> (FaceVertexTuples, Vertices) {
         #[rustfmt::skip]
         let vertices = vec![
             v(-1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
@@ -975,7 +901,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn quad_with_normals() -> (Vec<TriangleFace>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
+    fn quad_with_normals() -> (Vec<TriangleFace>, Vertices, Normals) {
         #[rustfmt::skip]
         let vertices = vec![
             v(-1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
@@ -1350,13 +1276,11 @@ mod tests {
     }
     #[test]
     fn test_remove_orphan_vertices() {
-        let (faces, vertices, _normals) = quad_with_normals();
+        let (faces, vertices) = quad();
         let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
         let vertices_extended = [&extra_vertex[..], &vertices[..]].concat();
-        let faces_renumbered_to_match_extend_vertices: Vec<_> = faces
-            .iter()
-            .map(|f| (f.vertices.0 + 1, f.vertices.1 + 1, f.vertices.2 + 1))
-            .collect();
+        let faces_renumbered_to_match_extend_vertices: Vec<_> =
+            faces.iter().map(|f| (f.0 + 1, f.1 + 1, f.2 + 1)).collect();
 
         let faces_length = &faces.len();
 
@@ -1402,18 +1326,16 @@ mod tests {
 
     #[test]
     fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals_remove_orphans() {
-        let (faces, vertices, _normals) = quad_with_normals();
+        let (faces, vertices) = quad();
         let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
         let vertices_extended = [&extra_vertex[..], &vertices[..]].concat();
-        let faces_renumbered_to_match_extend_vertices: Vec<_> = faces
-            .iter()
-            .map(|f| (f.vertices.0 + 1, f.vertices.1 + 1, f.vertices.2 + 1))
-            .collect();
+        let faces_renumbered_to_match_extend_vertices: Vec<_> =
+            faces.iter().map(|f| (f.0 + 1, f.1 + 1, f.2 + 1)).collect();
 
         let geometry =
             Geometry::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
-                faces_renumbered_to_match_extend_vertices.clone(),
-                vertices_extended.clone(),
+                faces_renumbered_to_match_extend_vertices,
+                vertices_extended,
                 NormalStrategy::Sharp,
             );
 
@@ -1443,9 +1365,9 @@ mod tests {
             .collect();
 
         let geometry = Geometry::from_triangle_faces_with_vertices_and_normals_remove_orphans(
-            faces_renumbered_to_match_extend_vertices_and_normals.clone(),
-            vertices_extended.clone(),
-            normals_extended.clone(),
+            faces_renumbered_to_match_extend_vertices_and_normals,
+            vertices_extended,
+            normals_extended,
         );
 
         assert!(geometry.has_no_orphan_vertices());
