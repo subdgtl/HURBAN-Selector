@@ -7,6 +7,9 @@ use nalgebra::geometry::Point3;
 use crate::camera::{Camera, CameraOptions};
 use crate::importer::ImporterWorker;
 use crate::input::InputManager;
+use crate::interpreter::ast;
+use crate::interpreter_funcs as funcs;
+use crate::interpreter_server::{InterpreterRequest, InterpreterResponse, InterpreterServer};
 use crate::renderer::{Renderer, RendererOptions, SceneRendererGeometry};
 use crate::ui::Ui;
 
@@ -20,6 +23,9 @@ mod camera;
 mod convert;
 mod edge_analysis;
 mod input;
+mod interpreter;
+mod interpreter_funcs;
+mod interpreter_server;
 mod math;
 mod mesh_analysis;
 mod platform;
@@ -54,6 +60,7 @@ pub fn init_and_run(options: Options) -> ! {
     let window_size = window.inner_size().to_physical(window.hidpi_factor());
 
     let importer_worker = ImporterWorker::new();
+    let mut interpreter_server = InterpreterServer::new();
     let mut input_manager = InputManager::new();
     let mut ui = Ui::new(&window);
 
@@ -216,6 +223,57 @@ pub fn init_and_run(options: Options) -> ! {
                                 &format!("{}", err),
                                 tinyfiledialogs::MessageBoxIcon::Error,
                             );
+                        }
+                    }
+                }
+
+                if input_state.tmp_submit_prog_and_run {
+                    let prog = ast::Prog::new(vec![
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(0),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_CREATE_UV_SPHERE,
+                                vec![
+                                    ast::Expr::Lit(ast::LitExpr::Float(500.0)),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(20)),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(20)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(1),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_SHRINK_WRAP,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(0))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(30)),
+                                ],
+                            ),
+                        )),
+                    ]);
+
+                    interpreter_server.submit_request(InterpreterRequest::SetProg(prog));
+                    interpreter_server.submit_request(InterpreterRequest::Interpret);
+                }
+
+                while let Ok((request_id, response)) = interpreter_server.poll_response() {
+                    match response {
+                        InterpreterResponse::Completed => {
+                            log::info!("Interpreter completed request {:?}", request_id,)
+                        }
+                        InterpreterResponse::CompletedWithResult(result) => {
+                            log::info!(
+                                "Interpreter completed request {:?} with result",
+                                request_id,
+                            );
+                            let value = result.unwrap();
+                            let geometry = value.unwrap_geometry().clone();
+                            let renderer_geometry = SceneRendererGeometry::from_geometry(&geometry);
+                            let renderer_geometry_id =
+                                renderer.add_scene_geometry(&renderer_geometry).unwrap();
+
+                            scene_geometries.push(geometry);
+                            scene_renderer_geometry_ids.push(renderer_geometry_id);
                         }
                     }
                 }
