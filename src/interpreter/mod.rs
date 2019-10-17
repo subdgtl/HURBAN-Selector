@@ -364,6 +364,13 @@ impl Interpreter {
         })
     }
 
+    /// Compute set of variable identifiers that would be unused, if
+    /// the current program up to index-th statement.
+    ///
+    /// Iterates over all variable declaration statements and inserts
+    /// an unused variable for each. If the variable identifier is
+    /// later referenced by a variable expression, it is removed from
+    /// the unused set.
     fn compute_unused_vars_up_until(&self, index: usize) -> HashSet<ast::VarIdent> {
         let mut unused_vars = HashSet::new();
 
