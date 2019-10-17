@@ -3,8 +3,10 @@
 
 use nalgebra::Point3;
 
+use crate::geometry::Vertices;
+
 #[allow(dead_code, clippy::unreadable_literal, clippy::approx_constant)]
-pub fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+pub fn torus() -> (Vec<(u32, u32, u32)>, Vertices) {
     #[rustfmt::skip]
         let vertices = vec![
         Point3::new(1.0, 0.0, 0.25),
@@ -233,7 +235,7 @@ pub fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
 }
 
 #[allow(dead_code, clippy::unreadable_literal, clippy::approx_constant)]
-pub fn double_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+pub fn double_torus() -> (Vec<(u32, u32, u32)>, Vertices) {
     #[rustfmt::skip]
         let vertices = vec![
         Point3::new(-1.375, 0.0, 0.0),
@@ -910,7 +912,7 @@ pub fn double_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
 }
 
 #[allow(dead_code, clippy::unreadable_literal, clippy::approx_constant)]
-pub fn triple_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+pub fn triple_torus() -> (Vec<(u32, u32, u32)>, Vertices) {
     #[rustfmt::skip]
         let vertices = vec![
         Point3::new(-3.5, 0.0, 0.0),
