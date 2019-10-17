@@ -449,12 +449,6 @@ pub struct OrientedEdge {
     pub vertices: (u32, u32),
 }
 
-impl From<(u32, u32)> for OrientedEdge {
-    fn from((i1, i2): (u32, u32)) -> OrientedEdge {
-        OrientedEdge::new(i1, i2)
-    }
-}
-
 impl OrientedEdge {
     pub fn new(i1: u32, i2: u32) -> Self {
         assert!(
