@@ -242,8 +242,11 @@ impl Geometry {
     }
 
     /// Calculates topological relations (neighborhood) of mesh edge -> faces.
-    /// Returns a Map (key: face index, value: list of its neighboring faces indices)
-    pub fn edge_to_face_topology(&self, edges: &HashSet<UnorientedEdge>) -> HashMap<usize, Vec<usize>> {
+    /// Returns a Map (key: edge index, value: list of its neighboring faces indices)
+    pub fn edge_to_face_topology(
+        &self,
+        edges: &HashSet<UnorientedEdge>,
+    ) -> HashMap<usize, Vec<usize>> {
         let mut e2f: HashMap<usize, Vec<usize>> = HashMap::new();
         for (from_counter, e) in edges.iter().enumerate() {
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
@@ -254,6 +257,21 @@ impl Geometry {
             }
         }
         e2f
+    }
+
+    /// Calculates topological relations (neighborhood) of mesh vertex -> faces.
+    /// Returns a Map (key: vertex index, value: list of its neighboring faces indices)
+    pub fn vertex_to_face_topology(&self) -> HashMap<usize, Vec<usize>> {
+        let mut v2f: HashMap<usize, Vec<usize>> = HashMap::new();
+        for from_counter in 0..self.vertices.len() {
+            for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
+                if t_f.contains_vertex(cast_u32(from_counter)) {
+                    let neighbors = v2f.entry(from_counter).or_insert_with(|| vec![]);
+                    neighbors.push(to_counter);
+                }
+            }
+        }
+        v2f
     }
 }
 
@@ -315,6 +333,13 @@ impl TriangleFace {
             UnorientedEdge(OrientedEdge::new(self.vertices.1, self.vertices.2)),
             UnorientedEdge(OrientedEdge::new(self.vertices.2, self.vertices.0)),
         ]
+    }
+
+    /// Does the face contain the specific vertex
+    pub fn contains_vertex(&self, vertex_index: u32) -> bool {
+        self.vertices.0 == vertex_index
+            || self.vertices.1 == vertex_index
+            || self.vertices.2 == vertex_index
     }
 
     /// Does the face contain the specific unoriented edge
@@ -3339,5 +3364,29 @@ mod tests {
         assert_eq!(edges.len(), 9);
         assert_eq!(in_one_face_count, 6);
         assert_eq!(in_two_faces_count, 3);
+    }
+
+    #[test]
+    fn test_geometry_vertex_to_face_topology_from_tessellated_triangle() {
+        let (faces, vertices) = tessellated_triangle();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let vertex_to_face_topology_calculated = geometry.vertex_to_face_topology();
+
+        let in_one_face_count = vertex_to_face_topology_calculated
+            .iter()
+            .filter(|(_, to)| to.len() == 1)
+            .count();
+        let in_three_faces_count = vertex_to_face_topology_calculated
+            .iter()
+            .filter(|(_, to)| to.len() == 3)
+            .count();
+
+        assert_eq!(in_one_face_count, 3);
+        assert_eq!(in_three_faces_count, 3);
     }
 }
