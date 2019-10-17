@@ -37,6 +37,7 @@ winapi = { version = "0.3.8", features = ["combaseapi", "knownfolders", "shlobj"
 
 [dev-dependencies]
 criterion = "0.3.0"
+mockall = "0.5.1"
 
 [build-dependencies]
 shaderc = "0.6.0"
