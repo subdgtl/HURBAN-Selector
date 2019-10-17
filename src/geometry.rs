@@ -224,8 +224,8 @@ impl Geometry {
 
     /// Calculates topological relations (neighborhood) of mesh face -> faces.
     /// Returns a Map (key: face index, value: list of its neighboring faces indices)
-    pub fn face_to_face_topology(&self) -> HashMap<usize, Vec<usize>> {
-        let mut f2f: HashMap<usize, Vec<usize>> = HashMap::new();
+    pub fn face_to_face_topology(&self) -> HashMap<usize, HashSet<usize>> {
+        let mut f2f: HashMap<usize, HashSet<usize>> = HashMap::new();
         for (from_counter, f) in self.triangle_faces_iter().enumerate() {
             let [f_e_0, f_e_1, f_e_2] = f.to_unoriented_edges();
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
@@ -233,8 +233,8 @@ impl Geometry {
                     || t_f.contains_unoriented_edge(f_e_1)
                     || t_f.contains_unoriented_edge(f_e_2)
                 {
-                    let neighbors = f2f.entry(from_counter).or_insert_with(|| vec![]);
-                    neighbors.push(to_counter);
+                    let neighbors = f2f.entry(from_counter).or_insert_with(HashSet::new);
+                    neighbors.insert(to_counter);
                 }
             }
         }
@@ -246,13 +246,13 @@ impl Geometry {
     pub fn edge_to_face_topology(
         &self,
         edges: &HashSet<UnorientedEdge>,
-    ) -> HashMap<usize, Vec<usize>> {
-        let mut e2f: HashMap<usize, Vec<usize>> = HashMap::new();
+    ) -> HashMap<usize, HashSet<usize>> {
+        let mut e2f: HashMap<usize, HashSet<usize>> = HashMap::new();
         for (from_counter, e) in edges.iter().enumerate() {
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
                 if t_f.contains_unoriented_edge(*e) {
-                    let neighbors = e2f.entry(from_counter).or_insert_with(|| vec![]);
-                    neighbors.push(to_counter);
+                    let neighbors = e2f.entry(from_counter).or_insert_with(HashSet::new);
+                    neighbors.insert(to_counter);
                 }
             }
         }
@@ -261,17 +261,53 @@ impl Geometry {
 
     /// Calculates topological relations (neighborhood) of mesh vertex -> faces.
     /// Returns a Map (key: vertex index, value: list of its neighboring faces indices)
-    pub fn vertex_to_face_topology(&self) -> HashMap<usize, Vec<usize>> {
-        let mut v2f: HashMap<usize, Vec<usize>> = HashMap::new();
+    pub fn vertex_to_face_topology(&self) -> HashMap<usize, HashSet<usize>> {
+        let mut v2f: HashMap<usize, HashSet<usize>> = HashMap::new();
         for from_counter in 0..self.vertices.len() {
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
                 if t_f.contains_vertex(cast_u32(from_counter)) {
-                    let neighbors = v2f.entry(from_counter).or_insert_with(|| vec![]);
-                    neighbors.push(to_counter);
+                    let neighbors = v2f.entry(from_counter).or_insert_with(HashSet::new);
+                    neighbors.insert(to_counter);
                 }
             }
         }
         v2f
+    }
+
+    /// Calculates topological relations (neighborhood) of mesh vertex -> edge.
+    /// Returns a Map (key: vertex index, value: list of its neighboring edge indices)
+    pub fn vertex_to_edge_topology(
+        &self,
+        edges: &HashSet<UnorientedEdge>,
+    ) -> HashMap<usize, HashSet<usize>> {
+        let mut v2e: HashMap<usize, HashSet<usize>> = HashMap::new();
+        for from_counter in 0..self.vertices.len() {
+            for (to_counter, e) in edges.iter().enumerate() {
+                if e.0.contains_vertex(cast_u32(from_counter)) {
+                    let neighbors = v2e.entry(from_counter).or_insert_with(HashSet::new);
+                    neighbors.insert(to_counter);
+                }
+            }
+        }
+        v2e
+    }
+
+    /// Calculates topological relations (neighborhood) of mesh vertex -> vertex.
+    /// Returns a Map (key: vertex index, value: list of its neighboring vertices indices)
+    pub fn vertex_to_vertex_topology(&self) -> HashMap<usize, HashSet<usize>> {
+        let mut v2v: HashMap<usize, HashSet<usize>> = HashMap::new();
+        for f in self.triangle_faces_iter() {
+            let neighbors_0 = v2v.entry(cast_usize(f.vertices.0)).or_insert_with(HashSet::new);
+            neighbors_0.insert(cast_usize(f.vertices.1));
+            neighbors_0.insert(cast_usize(f.vertices.2));
+            let neighbors_1 = v2v.entry(cast_usize(f.vertices.1)).or_insert_with(HashSet::new);
+            neighbors_1.insert(cast_usize(f.vertices.0));
+            neighbors_1.insert(cast_usize(f.vertices.2));
+            let neighbors_2 = v2v.entry(cast_usize(f.vertices.2)).or_insert_with(HashSet::new);
+            neighbors_2.insert(cast_usize(f.vertices.0));
+            neighbors_2.insert(cast_usize(f.vertices.1));
+        }
+        v2v
     }
 }
 
@@ -372,6 +408,10 @@ impl OrientedEdge {
 
     pub fn is_reverted(self, other: OrientedEdge) -> bool {
         self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0
+    }
+
+    pub fn contains_vertex(self, vertex_index: u32) -> bool {
+        self.vertices.0 == vertex_index || self.vertices.1 == vertex_index
     }
 }
 
@@ -3388,5 +3428,55 @@ mod tests {
 
         assert_eq!(in_one_face_count, 3);
         assert_eq!(in_three_faces_count, 3);
+    }
+
+    #[test]
+    fn test_geometry_vertex_to_edge_topology_from_tessellated_triangle() {
+        let (faces, vertices) = tessellated_triangle();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let edges: HashSet<_> = geometry.unoriented_edges_iter().collect();
+
+        let vertex_to_edge_topology_calculated = geometry.vertex_to_edge_topology(&edges);
+
+        let in_two_edges_count = vertex_to_edge_topology_calculated
+            .iter()
+            .filter(|(_, to)| to.len() == 2)
+            .count();
+        let in_four_edges_count = vertex_to_edge_topology_calculated
+            .iter()
+            .filter(|(_, to)| to.len() == 4)
+            .count();
+
+        assert_eq!(in_two_edges_count, 3);
+        assert_eq!(in_four_edges_count, 3);
+    }
+
+    #[test]
+    fn test_geometry_vertex_to_vertex_topology_from_tessellated_triangle() {
+        let (faces, vertices) = tessellated_triangle();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let vertex_to_vertex_topology_calculated = geometry.vertex_to_vertex_topology();
+
+        let two_neighbors_count = vertex_to_vertex_topology_calculated
+            .iter()
+            .filter(|(_, to)| to.len() == 2)
+            .count();
+        let four_neighbors_count = vertex_to_vertex_topology_calculated
+            .iter()
+            .filter(|(_, to)| to.len() == 4)
+            .count();
+
+        assert_eq!(two_neighbors_count, 3);
+        assert_eq!(four_neighbors_count, 3);
     }
 }
