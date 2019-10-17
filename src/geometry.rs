@@ -364,11 +364,11 @@ fn remove_orphan_vertices(
     faces: Vec<(u32, u32, u32)>,
     vertices: Vertices,
 ) -> (Vec<(u32, u32, u32)>, Vertices) {
-    let mut vertices_reduced: Vertices = Vec::new();
+    let mut vertices_reduced: Vertices = Vec::with_capacity(vertices.len());
     let original_vertex_len = vertices.len();
     let unused_vertex_marker = vertices.len();
     let mut old_new_vertex_map: Vec<usize> = vec![unused_vertex_marker; original_vertex_len];
-    let mut faces_renumbered: Vec<(u32, u32, u32)> = Vec::new();
+    let mut faces_renumbered: Vec<(u32, u32, u32)> = Vec::with_capacity(faces.len());
 
     for face in faces {
         let old_vertex_index_0 = cast_usize(face.0);
@@ -408,6 +408,9 @@ fn remove_orphan_vertices(
         ));
     }
 
+    faces_renumbered.shrink_to_fit();
+    vertices_reduced.shrink_to_fit();
+
     (faces_renumbered, vertices_reduced)
 }
 
@@ -416,11 +419,11 @@ fn remove_orphan_normals(
     faces: Vec<TriangleFace>,
     normals: Normals,
 ) -> (Vec<TriangleFace>, Normals) {
-    let mut normals_reduced: Normals = Vec::new();
+    let mut normals_reduced: Normals = Vec::with_capacity(normals.len());
     let original_normal_len = normals.len();
     let unused_normal_marker = normals.len();
     let mut old_new_normal_map: Vec<usize> = vec![unused_normal_marker; original_normal_len];
-    let mut faces_renumbered: Vec<TriangleFace> = Vec::new();
+    let mut faces_renumbered: Vec<TriangleFace> = Vec::with_capacity(faces.len());
 
     for face in faces {
         let old_normal_index_0 = cast_usize(face.normals.0);
@@ -463,6 +466,9 @@ fn remove_orphan_normals(
         ));
     }
 
+    faces_renumbered.shrink_to_fit();
+    normals_reduced.shrink_to_fit();
+
     (faces_renumbered, normals_reduced)
 }
 
@@ -471,16 +477,17 @@ fn remove_orphan_vertices_and_normals(
     vertices: Vertices,
     normals: Normals,
 ) -> (Vec<TriangleFace>, Vertices, Normals) {
-    let mut vertices_reduced: Vertices = Vec::new();
+    let mut vertices_reduced: Vertices = Vec::with_capacity(vertices.len());
     let original_vertex_len = vertices.len();
     let unused_vertex_marker = vertices.len();
     let mut old_new_vertex_map: Vec<usize> = vec![unused_vertex_marker; original_vertex_len];
 
-    let mut normals_reduced: Normals = Vec::new();
+    let mut normals_reduced: Normals = Vec::with_capacity(normals.len());
     let original_normal_len = normals.len();
     let unused_normal_marker = normals.len();
     let mut old_new_normal_map: Vec<usize> = vec![unused_normal_marker; original_normal_len];
-    let mut faces_renumbered: Vec<TriangleFace> = Vec::new();
+
+    let mut faces_renumbered: Vec<TriangleFace> = Vec::with_capacity(faces.len());
 
     for face in faces {
         let old_vertex_index_0 = cast_usize(face.vertices.0);
@@ -552,6 +559,10 @@ fn remove_orphan_vertices_and_normals(
             cast_u32(new_normal_index_2),
         ));
     }
+
+    faces_renumbered.shrink_to_fit();
+    vertices_reduced.shrink_to_fit();
+    normals_reduced.shrink_to_fit();
 
     (faces_renumbered, vertices_reduced, normals_reduced)
 }
