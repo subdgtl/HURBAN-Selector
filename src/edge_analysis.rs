@@ -48,7 +48,7 @@ pub fn edge_valencies<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
 mod tests {
     use nalgebra::Point3;
 
-    use crate::geometry::{Geometry, NormalStrategy};
+    use crate::geometry::{Geometry, NormalStrategy, Vertices};
 
     use super::*;
 
@@ -60,7 +60,7 @@ mod tests {
         )
     }
 
-    fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn quad() -> (Vec<(u32, u32, u32)>, Vertices) {
         #[rustfmt::skip]
         let vertices = vec![
             v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),

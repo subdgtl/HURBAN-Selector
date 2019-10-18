@@ -116,7 +116,7 @@ mod tests {
 
     use crate::edge_analysis::edge_valencies;
     use crate::geometry::{
-        self, cube_sharp_var_len, Geometry, NormalStrategy, TriangleFace, UnorientedEdge,
+        self, cube_sharp_var_len, Geometry, NormalStrategy, TriangleFace, UnorientedEdge, Vertices,
     };
     use crate::test_geometry_fixtures::{double_torus, torus, triple_torus};
 
@@ -134,7 +134,7 @@ mod tests {
         Vector3::new(x, y, z)
     }
 
-    pub fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    pub fn quad() -> (Vec<(u32, u32, u32)>, Vertices) {
         let vertices = vec![
             v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
             v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
@@ -147,7 +147,7 @@ mod tests {
         (faces, vertices)
     }
 
-    pub fn non_manifold_shape() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    pub fn non_manifold_shape() -> (Vec<(u32, u32, u32)>, Vertices) {
         let vertices = vec![
             v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
             v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
