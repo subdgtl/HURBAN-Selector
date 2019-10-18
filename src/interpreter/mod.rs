@@ -364,8 +364,9 @@ impl Interpreter {
         })
     }
 
-    /// Compute set of variable identifiers that would be unused, if
-    /// the current program up to index-th statement.
+    /// Computes a set of variable identifiers that would be unused,
+    /// if the current program were only interpreterd up to index-th
+    /// statement.
     ///
     /// Iterates over all variable declaration statements and inserts
     /// an unused variable for each. If the variable identifier is
