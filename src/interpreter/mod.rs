@@ -365,7 +365,7 @@ impl Interpreter {
     }
 
     /// Computes a set of variable identifiers that would be unused,
-    /// if the current program were only interpreterd up to index-th
+    /// if the current program were only interpreted up to index-th
     /// statement.
     ///
     /// Iterates over all variable declaration statements and inserts
