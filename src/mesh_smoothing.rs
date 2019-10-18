@@ -5,10 +5,10 @@ use crate::geometry::{Geometry, Vertices};
 /// # Mesh relaxation / Laplacian smoothing
 /// Relaxes angles between mesh edges, resulting in a smoother geometry.
 /// The number of vertices, faces and the overall topology remains unchanged.
-/// The more iterations, the smoother result. 
+/// The more iterations, the smoother result.
 /// Too many iterations may cause slow calculation time.
-/// 
-/// The algorithm is based on replacing each vertex position 
+///
+/// The algorithm is based on replacing each vertex position
 /// with an average position of its immediate neighbors
 #[allow(dead_code)]
 pub fn laplacian_smoothing(geometry: Geometry, iterations: u8) -> Geometry {
@@ -22,7 +22,7 @@ pub fn laplacian_smoothing(geometry: Geometry, iterations: u8) -> Geometry {
                 average_position += geometry_vertices[*neighbor_index] - Point3::origin();
             }
             average_position /= neighbors_indices.len() as f32;
-            vertices[current_vertex_index] = average_position;
+            vertices[*current_vertex_index] = average_position;
         }
     }
     Geometry::from_triangle_faces_with_vertices_and_normals(
