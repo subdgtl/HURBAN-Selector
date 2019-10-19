@@ -7,7 +7,6 @@ use arrayvec::ArrayVec;
 use nalgebra as na;
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
-
 use smallvec::SmallVec;
 
 use crate::convert::{cast_u32, cast_usize};
@@ -253,8 +252,8 @@ impl Geometry {
 
     /// Calculates topological relations (neighborhood) of mesh face -> faces.
     /// Returns a Map (key: face index, value: list of its neighboring faces indices)
-    pub fn face_to_face_topology(&self) -> HashMap<usize, SmallVec<[usize; 16]>> {
-        let mut f2f: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
+    pub fn face_to_face_topology(&self) -> HashMap<usize, SmallVec<[usize; 8]>> {
+        let mut f2f: HashMap<usize, SmallVec<[usize; 8]>> = HashMap::new();
         for (from_counter, f) in self.triangle_faces_iter().enumerate() {
             let [f_e_0, f_e_1, f_e_2] = f.to_unoriented_edges();
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
@@ -276,9 +275,9 @@ impl Geometry {
     /// Returns a Map (key: edge index, value: list of its neighboring faces indices)
     pub fn edge_to_face_topology(
         &self,
-        edges: &HashSet<UnorientedEdge>,
-    ) -> HashMap<usize, SmallVec<[usize; 16]>> {
-        let mut e2f: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
+        edges: &Vec<UnorientedEdge>,
+    ) -> HashMap<usize, SmallVec<[usize; 8]>> {
+        let mut e2f: HashMap<usize, SmallVec<[usize; 8]>> = HashMap::new();
         for (from_counter, e) in edges.iter().enumerate() {
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
                 if t_f.contains_unoriented_edge(*e) {
@@ -294,8 +293,8 @@ impl Geometry {
 
     /// Calculates topological relations (neighborhood) of mesh vertex -> faces.
     /// Returns a Map (key: vertex index, value: list of its neighboring faces indices)
-    pub fn vertex_to_face_topology(&self) -> HashMap<usize, SmallVec<[usize; 16]>> {
-        let mut v2f: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
+    pub fn vertex_to_face_topology(&self) -> HashMap<usize, SmallVec<[usize; 8]>> {
+        let mut v2f: HashMap<usize, SmallVec<[usize; 8]>> = HashMap::new();
         for from_counter in 0..self.vertices.len() {
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
                 if t_f.contains_vertex(cast_u32(from_counter)) {
@@ -313,9 +312,9 @@ impl Geometry {
     /// Returns a Map (key: vertex index, value: list of its neighboring edge indices)
     pub fn vertex_to_edge_topology(
         &self,
-        edges: &HashSet<UnorientedEdge>,
-    ) -> HashMap<usize, SmallVec<[usize; 16]>> {
-        let mut v2e: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
+        edges: &Vec<UnorientedEdge>,
+    ) -> HashMap<usize, SmallVec<[usize; 8]>> {
+        let mut v2e: HashMap<usize, SmallVec<[usize; 8]>> = HashMap::new();
         for from_counter in 0..self.vertices.len() {
             for (to_counter, e) in edges.iter().enumerate() {
                 if e.0.contains_vertex(cast_u32(from_counter)) {
@@ -331,8 +330,8 @@ impl Geometry {
 
     /// Calculates topological relations (neighborhood) of mesh vertex -> vertex.
     /// Returns a Map (key: vertex index, value: list of its neighboring vertices indices)
-    pub fn vertex_to_vertex_topology(&self) -> HashMap<usize, SmallVec<[usize; 16]>> {
-        let mut v2v: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
+    pub fn vertex_to_vertex_topology(&self) -> HashMap<usize, SmallVec<[usize; 8]>> {
+        let mut v2v: HashMap<usize, SmallVec<[usize; 8]>> = HashMap::new();
         for f in self.triangle_faces_iter() {
             let neighbors_0 = v2v
                 .entry(cast_usize(f.vertices.0))
@@ -460,9 +459,9 @@ impl TriangleFace {
     }
 
     /// Does the face contain the specific unoriented edge
-    pub fn contains_unoriented_edge(&self, unoriented_edge: UnorientedEdge) -> bool {
-        let [o_e_0, o_e_1, o_e_2] = &self.to_unoriented_edges();
-        o_e_0 == &unoriented_edge || o_e_1 == &unoriented_edge || o_e_2 == &unoriented_edge
+    pub fn contains_unoriented_edge(self, unoriented_edge: UnorientedEdge) -> bool {
+        let [o_e_0, o_e_1, o_e_2] = self.to_unoriented_edges();
+        o_e_0 == unoriented_edge || o_e_1 == unoriented_edge || o_e_2 == unoriented_edge
     }
 }
 
@@ -1595,7 +1594,8 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let edges: HashSet<_> = geometry.unoriented_edges_iter().collect();
+        let edge_set: HashSet<_> = geometry.unoriented_edges_iter().collect();
+        let edges: Vec<_> = edge_set.iter().cloned().collect();
 
         let edge_to_face_topology_calculated = geometry.edge_to_face_topology(&edges);
 
@@ -1646,7 +1646,8 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
-        let edges: HashSet<_> = geometry.unoriented_edges_iter().collect();
+        let edge_set: HashSet<_> = geometry.unoriented_edges_iter().collect();
+        let edges: Vec<_> = edge_set.iter().cloned().collect();
 
         let vertex_to_edge_topology_calculated = geometry.vertex_to_edge_topology(&edges);
 
