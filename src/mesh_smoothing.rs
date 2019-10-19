@@ -25,7 +25,7 @@ pub fn laplacian_smoothing(geometry: &Geometry, iterations: u8) -> Geometry {
         for (current_vertex_index, neighbors_indices) in vertex_to_vertex_topology.iter() {
             let mut average_position: Point3<f32> = Point3::origin();
             for neighbor_index in neighbors_indices {
-                average_position += geometry_vertices[*neighbor_index] - Point3::origin();
+                average_position += geometry_vertices[*neighbor_index].coords;
             }
             average_position /= neighbors_indices.len() as f32;
             vertices[*current_vertex_index] = average_position;
