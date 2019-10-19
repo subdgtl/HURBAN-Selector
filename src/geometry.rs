@@ -8,7 +8,9 @@ use nalgebra as na;
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 
-use crate::convert::{cast_i32, cast_u32, cast_usize};
+use smallvec::SmallVec;
+
+use crate::convert::{cast_u32, cast_usize};
 
 #[derive(Debug, Clone, Copy)]
 pub enum NormalStrategy {
@@ -227,17 +229,6 @@ impl Geometry {
             .flat_map(|face| ArrayVec::from(face.to_unoriented_edges()).into_iter())
     }
 
-    /// Genus of a mesh is the number of holes in topology / conectivity
-    /// The mesh must be triangular and watertight
-    /// V - E + F = 2 (1 - G)
-    pub fn mesh_genus(&self, edges: &HashSet<UnorientedEdge>) -> i32 {
-        let vertex_count = cast_i32(self.vertices.len());
-        let edge_count = cast_i32(edges.len());
-        let face_count = cast_i32(self.faces.len());
-
-        1 - (vertex_count - edge_count + face_count) / 2
-    }
-
     /// Does the mesh contain unused (not referenced in faces) vertices
     pub fn has_no_orphan_vertices(&self) -> bool {
         let mut used_vertices = HashSet::new();
@@ -262,8 +253,8 @@ impl Geometry {
 
     /// Calculates topological relations (neighborhood) of mesh face -> faces.
     /// Returns a Map (key: face index, value: list of its neighboring faces indices)
-    pub fn face_to_face_topology(&self) -> HashMap<usize, HashSet<usize>> {
-        let mut f2f: HashMap<usize, HashSet<usize>> = HashMap::new();
+    pub fn face_to_face_topology(&self) -> HashMap<usize, SmallVec<[usize; 16]>> {
+        let mut f2f: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
         for (from_counter, f) in self.triangle_faces_iter().enumerate() {
             let [f_e_0, f_e_1, f_e_2] = f.to_unoriented_edges();
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
@@ -271,8 +262,10 @@ impl Geometry {
                     || t_f.contains_unoriented_edge(f_e_1)
                     || t_f.contains_unoriented_edge(f_e_2)
                 {
-                    let neighbors = f2f.entry(from_counter).or_insert_with(HashSet::new);
-                    neighbors.insert(to_counter);
+                    let neighbors = f2f.entry(from_counter).or_insert_with(SmallVec::new);
+                    if neighbors.iter().all(|value| *value != to_counter) {
+                        neighbors.push(to_counter);
+                    }
                 }
             }
         }
@@ -284,13 +277,15 @@ impl Geometry {
     pub fn edge_to_face_topology(
         &self,
         edges: &HashSet<UnorientedEdge>,
-    ) -> HashMap<usize, HashSet<usize>> {
-        let mut e2f: HashMap<usize, HashSet<usize>> = HashMap::new();
+    ) -> HashMap<usize, SmallVec<[usize; 16]>> {
+        let mut e2f: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
         for (from_counter, e) in edges.iter().enumerate() {
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
                 if t_f.contains_unoriented_edge(*e) {
-                    let neighbors = e2f.entry(from_counter).or_insert_with(HashSet::new);
-                    neighbors.insert(to_counter);
+                    let neighbors = e2f.entry(from_counter).or_insert_with(SmallVec::new);
+                    if neighbors.iter().all(|value| *value != to_counter) {
+                        neighbors.push(to_counter);
+                    }
                 }
             }
         }
@@ -299,13 +294,15 @@ impl Geometry {
 
     /// Calculates topological relations (neighborhood) of mesh vertex -> faces.
     /// Returns a Map (key: vertex index, value: list of its neighboring faces indices)
-    pub fn vertex_to_face_topology(&self) -> HashMap<usize, HashSet<usize>> {
-        let mut v2f: HashMap<usize, HashSet<usize>> = HashMap::new();
+    pub fn vertex_to_face_topology(&self) -> HashMap<usize, SmallVec<[usize; 16]>> {
+        let mut v2f: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
         for from_counter in 0..self.vertices.len() {
             for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
                 if t_f.contains_vertex(cast_u32(from_counter)) {
-                    let neighbors = v2f.entry(from_counter).or_insert_with(HashSet::new);
-                    neighbors.insert(to_counter);
+                    let neighbors = v2f.entry(from_counter).or_insert_with(SmallVec::new);
+                    if neighbors.iter().all(|value| *value != to_counter) {
+                        neighbors.push(to_counter);
+                    }
                 }
             }
         }
@@ -317,13 +314,15 @@ impl Geometry {
     pub fn vertex_to_edge_topology(
         &self,
         edges: &HashSet<UnorientedEdge>,
-    ) -> HashMap<usize, HashSet<usize>> {
-        let mut v2e: HashMap<usize, HashSet<usize>> = HashMap::new();
+    ) -> HashMap<usize, SmallVec<[usize; 16]>> {
+        let mut v2e: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
         for from_counter in 0..self.vertices.len() {
             for (to_counter, e) in edges.iter().enumerate() {
                 if e.0.contains_vertex(cast_u32(from_counter)) {
-                    let neighbors = v2e.entry(from_counter).or_insert_with(HashSet::new);
-                    neighbors.insert(to_counter);
+                    let neighbors = v2e.entry(from_counter).or_insert_with(SmallVec::new);
+                    if neighbors.iter().all(|value| *value != to_counter) {
+                        neighbors.push(to_counter);
+                    }
                 }
             }
         }
@@ -332,24 +331,54 @@ impl Geometry {
 
     /// Calculates topological relations (neighborhood) of mesh vertex -> vertex.
     /// Returns a Map (key: vertex index, value: list of its neighboring vertices indices)
-    pub fn vertex_to_vertex_topology(&self) -> HashMap<usize, HashSet<usize>> {
-        let mut v2v: HashMap<usize, HashSet<usize>> = HashMap::new();
+    pub fn vertex_to_vertex_topology(&self) -> HashMap<usize, SmallVec<[usize; 16]>> {
+        let mut v2v: HashMap<usize, SmallVec<[usize; 16]>> = HashMap::new();
         for f in self.triangle_faces_iter() {
             let neighbors_0 = v2v
                 .entry(cast_usize(f.vertices.0))
-                .or_insert_with(HashSet::new);
-            neighbors_0.insert(cast_usize(f.vertices.1));
-            neighbors_0.insert(cast_usize(f.vertices.2));
+                .or_insert_with(SmallVec::new);
+            if neighbors_0
+                .iter()
+                .all(|value| *value != cast_usize(f.vertices.1))
+            {
+                neighbors_0.push(cast_usize(f.vertices.1));
+            }
+            if neighbors_0
+                .iter()
+                .all(|value| *value != cast_usize(f.vertices.2))
+            {
+                neighbors_0.push(cast_usize(f.vertices.2));
+            }
             let neighbors_1 = v2v
                 .entry(cast_usize(f.vertices.1))
-                .or_insert_with(HashSet::new);
-            neighbors_1.insert(cast_usize(f.vertices.0));
-            neighbors_1.insert(cast_usize(f.vertices.2));
+                .or_insert_with(SmallVec::new);
+            if neighbors_1
+                .iter()
+                .all(|value| *value != cast_usize(f.vertices.0))
+            {
+                neighbors_1.push(cast_usize(f.vertices.0));
+            }
+            if neighbors_1
+                .iter()
+                .all(|value| *value != cast_usize(f.vertices.2))
+            {
+                neighbors_1.push(cast_usize(f.vertices.2));
+            }
             let neighbors_2 = v2v
                 .entry(cast_usize(f.vertices.2))
-                .or_insert_with(HashSet::new);
-            neighbors_2.insert(cast_usize(f.vertices.0));
-            neighbors_2.insert(cast_usize(f.vertices.1));
+                .or_insert_with(SmallVec::new);
+            if neighbors_2
+                .iter()
+                .all(|value| *value != cast_usize(f.vertices.0))
+            {
+                neighbors_2.push(cast_usize(f.vertices.0));
+            }
+            if neighbors_2
+                .iter()
+                .all(|value| *value != cast_usize(f.vertices.1))
+            {
+                neighbors_2.push(cast_usize(f.vertices.1));
+            }
         }
         v2v
     }
@@ -467,6 +496,7 @@ impl OrientedEdge {
     }
 }
 
+/// Implements orientation indifferent hash and equal methods
 #[derive(Debug, Clone, Copy, Eq)]
 pub struct UnorientedEdge(pub OrientedEdge);
 
@@ -477,6 +507,7 @@ impl PartialEq for UnorientedEdge {
     }
 }
 
+// FIXME: test
 impl Hash for UnorientedEdge {
     fn hash<H: Hasher>(&self, state: &mut H) {
         cmp::min(self.0.vertices.0, self.0.vertices.1).hash(state);
@@ -1117,8 +1148,6 @@ fn compute_triangle_normal(p1: &Point3<f32>, p2: &Point3<f32>, p3: &Point3<f32>)
 mod tests {
     use std::collections::hash_map::DefaultHasher;
 
-    use crate::test_geometry_fixtures::{double_torus, torus, triple_torus};
-
     use super::*;
 
     fn quad() -> (Vec<(u32, u32, u32)>, Vertices) {
@@ -1166,8 +1195,7 @@ mod tests {
     }
 
     fn tessellated_triangle() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
-        #[rustfmt::skip]
-            let vertices = vec![
+        let vertices = vec![
             Point3::new(-2.0, -2.0, 0.0),
             Point3::new(0.0, -2.0, 0.0),
             Point3::new(2.0, -2.0, 0.0),
@@ -1176,13 +1204,7 @@ mod tests {
             Point3::new(0.0, 2.0, 0.0),
         ];
 
-        #[rustfmt::skip]
-            let faces = vec![
-            (0, 3, 1),
-            (1, 3, 4),
-            (1, 4, 2),
-            (3, 5, 4),
-        ];
+        let faces = vec![(0, 3, 1), (1, 3, 4), (1, 4, 2), (3, 5, 4)];
 
         (faces, vertices)
     }
@@ -1533,57 +1555,6 @@ mod tests {
         );
 
         assert!(!geometry_with_orphans.has_no_orphan_normals());
-    }
-
-    #[test]
-    fn test_geometry_mesh_genus_box_should_be_0() {
-        let geometry = cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
-
-        let genus = geometry.mesh_genus(&edges);
-        assert_eq!(genus, 0);
-    }
-
-    #[test]
-    fn test_geometry_mesh_genus_torus_should_be_1() {
-        let (faces, vertices) = torus();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
-            NormalStrategy::Sharp,
-        );
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
-
-        let genus = geometry.mesh_genus(&edges);
-        assert_eq!(genus, 1);
-    }
-
-    #[test]
-    fn test_geometry_mesh_genus_double_torus_should_be_2() {
-        let (faces, vertices) = double_torus();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
-            NormalStrategy::Sharp,
-        );
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
-
-        let genus = geometry.mesh_genus(&edges);
-        assert_eq!(genus, 2);
-    }
-
-    #[test]
-    fn test_geometry_mesh_genus_triple_torus_should_be_3() {
-        let (faces, vertices) = triple_torus();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
-            NormalStrategy::Sharp,
-        );
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
-
-        let genus = geometry.mesh_genus(&edges);
-        assert_eq!(genus, 3);
     }
 
     #[test]
