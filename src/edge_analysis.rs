@@ -61,7 +61,6 @@ mod tests {
     }
 
     fn quad() -> (Vec<(u32, u32, u32)>, Vertices) {
-        #[rustfmt::skip]
         let vertices = vec![
             v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
             v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
