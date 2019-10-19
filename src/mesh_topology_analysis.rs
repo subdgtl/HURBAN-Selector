@@ -36,7 +36,7 @@ pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<usize, SmallVec<[us
 #[allow(dead_code)]
 pub fn edge_to_face_topology(
     geometry: &Geometry,
-    edges: &Vec<UnorientedEdge>,
+    edges: &[UnorientedEdge],
 ) -> HashMap<usize, SmallVec<[usize; 8]>> {
     let mut e2f: HashMap<usize, SmallVec<[usize; 8]>> = HashMap::new();
     for (from_counter, e) in edges.iter().enumerate() {
@@ -83,7 +83,7 @@ pub fn vertex_to_face_topology(geometry: &Geometry) -> HashMap<usize, SmallVec<[
 #[allow(dead_code)]
 pub fn vertex_to_edge_topology(
     geometry: &Geometry,
-    edges: &Vec<UnorientedEdge>,
+    edges: &[UnorientedEdge],
 ) -> HashMap<usize, SmallVec<[usize; 8]>> {
     let mut v2e: HashMap<usize, SmallVec<[usize; 8]>> = HashMap::new();
     for from_counter in 0..geometry.vertices().len() {
