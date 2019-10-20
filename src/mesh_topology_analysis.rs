@@ -14,14 +14,19 @@ pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<usize, SmallVec<[us
         match face {
             Face::Triangle(f) => {
                 let [f_e_0, f_e_1, f_e_2] = f.to_unoriented_edges();
-                for (to_counter, t_f) in geometry.triangle_faces_iter().enumerate() {
-                    if from_counter != to_counter && t_f.contains_unoriented_edge(f_e_0)
-                        || t_f.contains_unoriented_edge(f_e_1)
-                        || t_f.contains_unoriented_edge(f_e_2)
-                    {
-                        let neighbors = f2f.entry(from_counter).or_insert_with(SmallVec::new);
-                        if neighbors.iter().all(|value| *value != to_counter) {
-                            neighbors.push(to_counter);
+                for (to_counter, to_face) in geometry.faces().iter().enumerate() {
+                    match to_face {
+                        Face::Triangle(t_f) => {
+                            if from_counter != to_counter && t_f.contains_unoriented_edge(f_e_0)
+                                || t_f.contains_unoriented_edge(f_e_1)
+                                || t_f.contains_unoriented_edge(f_e_2)
+                            {
+                                let neighbors =
+                                    f2f.entry(from_counter).or_insert_with(SmallVec::new);
+                                if neighbors.iter().all(|value| *value != to_counter) {
+                                    neighbors.push(to_counter);
+                                }
+                            }
                         }
                     }
                 }
@@ -104,51 +109,55 @@ pub fn vertex_to_edge_topology(
 #[allow(dead_code)]
 pub fn vertex_to_vertex_topology(geometry: &Geometry) -> HashMap<usize, SmallVec<[usize; 8]>> {
     let mut v2v: HashMap<usize, SmallVec<[usize; 8]>> = HashMap::new();
-    for f in geometry.triangle_faces_iter() {
-        let neighbors_0 = v2v
-            .entry(cast_usize(f.vertices.0))
-            .or_insert_with(SmallVec::new);
-        if neighbors_0
-            .iter()
-            .all(|value| *value != cast_usize(f.vertices.1))
-        {
-            neighbors_0.push(cast_usize(f.vertices.1));
-        }
-        if neighbors_0
-            .iter()
-            .all(|value| *value != cast_usize(f.vertices.2))
-        {
-            neighbors_0.push(cast_usize(f.vertices.2));
-        }
-        let neighbors_1 = v2v
-            .entry(cast_usize(f.vertices.1))
-            .or_insert_with(SmallVec::new);
-        if neighbors_1
-            .iter()
-            .all(|value| *value != cast_usize(f.vertices.0))
-        {
-            neighbors_1.push(cast_usize(f.vertices.0));
-        }
-        if neighbors_1
-            .iter()
-            .all(|value| *value != cast_usize(f.vertices.2))
-        {
-            neighbors_1.push(cast_usize(f.vertices.2));
-        }
-        let neighbors_2 = v2v
-            .entry(cast_usize(f.vertices.2))
-            .or_insert_with(SmallVec::new);
-        if neighbors_2
-            .iter()
-            .all(|value| *value != cast_usize(f.vertices.0))
-        {
-            neighbors_2.push(cast_usize(f.vertices.0));
-        }
-        if neighbors_2
-            .iter()
-            .all(|value| *value != cast_usize(f.vertices.1))
-        {
-            neighbors_2.push(cast_usize(f.vertices.1));
+    for face in geometry.faces() {
+        match face {
+            Face::Triangle(f) => {
+                let neighbors_0 = v2v
+                    .entry(cast_usize(f.vertices.0))
+                    .or_insert_with(SmallVec::new);
+                if neighbors_0
+                    .iter()
+                    .all(|value| *value != cast_usize(f.vertices.1))
+                {
+                    neighbors_0.push(cast_usize(f.vertices.1));
+                }
+                if neighbors_0
+                    .iter()
+                    .all(|value| *value != cast_usize(f.vertices.2))
+                {
+                    neighbors_0.push(cast_usize(f.vertices.2));
+                }
+                let neighbors_1 = v2v
+                    .entry(cast_usize(f.vertices.1))
+                    .or_insert_with(SmallVec::new);
+                if neighbors_1
+                    .iter()
+                    .all(|value| *value != cast_usize(f.vertices.0))
+                {
+                    neighbors_1.push(cast_usize(f.vertices.0));
+                }
+                if neighbors_1
+                    .iter()
+                    .all(|value| *value != cast_usize(f.vertices.2))
+                {
+                    neighbors_1.push(cast_usize(f.vertices.2));
+                }
+                let neighbors_2 = v2v
+                    .entry(cast_usize(f.vertices.2))
+                    .or_insert_with(SmallVec::new);
+                if neighbors_2
+                    .iter()
+                    .all(|value| *value != cast_usize(f.vertices.0))
+                {
+                    neighbors_2.push(cast_usize(f.vertices.0));
+                }
+                if neighbors_2
+                    .iter()
+                    .all(|value| *value != cast_usize(f.vertices.1))
+                {
+                    neighbors_2.push(cast_usize(f.vertices.1));
+                }
+            }
         }
     }
     v2v
