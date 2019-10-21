@@ -134,6 +134,7 @@ impl<'a> UiFrame<'a> {
         self.imgui_ui.render()
     }
 
+    #[cfg(debug_assertions)]
     pub fn draw_fps_window(&self) {
         let ui = &self.imgui_ui;
 
