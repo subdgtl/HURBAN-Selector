@@ -13,11 +13,27 @@ pub mod value;
 
 /// A name resolution error.
 #[derive(Debug, PartialEq)]
-pub enum ResolveError {}
+pub enum ResolveError {
+    VarRedefinition { line: usize, var: ast::VarIdent },
+    UndeclaredVarUse { line: usize, var: VarIdent },
+    UndeclaredFuncUse { line: usize, func: FuncIdent },
+}
 
 impl fmt::Display for ResolveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ResolveError")
+        match self {
+            ResolveError::VarRedefinition { line, var } => write!(
+                f,
+                "Re-definition of already declared variable {} on line {}",
+                var, line,
+            ),
+            ResolveError::UndeclaredVarUse { line, var } => {
+                write!(f, "Use of an undeclared variable {} on line {}", var, line)
+            }
+            ResolveError::UndeclaredFuncUse { line, func } => {
+                write!(f, "Use of an undeclared function {} on line {}", func, line)
+            }
+        }
     }
 }
 
@@ -38,14 +54,6 @@ impl error::Error for TypecheckError {}
 /// A runtime error.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
-    UndeclaredVarUse {
-        line: usize,
-        var_use: VarIdent,
-    },
-    UndeclaredFuncUse {
-        line: usize,
-        func_use: FuncIdent,
-    },
     ArgCountMismatch {
         line: usize,
         call: ast::CallExpr,
@@ -70,16 +78,6 @@ pub enum RuntimeError {
 impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RuntimeError::UndeclaredVarUse { line, var_use } => write!(
-                f,
-                "Use of an undeclared variable {} on line {}",
-                var_use, line,
-            ),
-            RuntimeError::UndeclaredFuncUse { line, func_use } => write!(
-                f,
-                "Use of an undeclared function {} on line {}",
-                func_use, line,
-            ),
             RuntimeError::ArgCountMismatch {
                 line,
                 call,
@@ -207,6 +205,14 @@ pub struct Interpreter {
 
     /// The program counter. Always points to the **next** stmt to execute.
     pc: usize,
+
+    /// The number of changes to the program since the interpreter was
+    /// created. Incremented with each program modification.
+    epoch: u64,
+
+    /// The last epoch for which name resolution succeeded. Initially
+    /// 0, since empty program is by default resolved.
+    last_resolve_epoch: u64,
 }
 
 impl Interpreter {
@@ -216,6 +222,8 @@ impl Interpreter {
             funcs,
             env: HashMap::new(),
             pc: 0,
+            epoch: 0,
+            last_resolve_epoch: 0,
         }
     }
 
@@ -227,16 +235,19 @@ impl Interpreter {
     pub fn set_prog(&mut self, prog: ast::Prog) {
         self.env.clear();
         self.pc = 0;
+        self.epoch += 1;
         self.prog = prog;
     }
 
     pub fn clear_prog(&mut self) {
         self.env.clear();
         self.pc = 0;
+        self.epoch += 1;
         self.prog = ast::Prog::default();
     }
 
     pub fn push_prog_stmt(&mut self, stmt: ast::Stmt) {
+        self.epoch += 1;
         self.prog.push_stmt(stmt);
     }
 
@@ -253,6 +264,7 @@ impl Interpreter {
             assert_eq!(self.pc, self.prog.stmts().len() - 1);
         }
 
+        self.epoch += 1;
         self.prog.pop_stmt();
     }
 
@@ -271,11 +283,50 @@ impl Interpreter {
             .get_mut(index)
             .expect("Expected the program to have index-th element");
 
+        self.epoch += 1;
         *stmt_mut = stmt;
     }
 
     pub fn resolve(&mut self) -> Result<(), ResolveError> {
-        // FIXME: @Diagnostics Implement name resolution
+        if self.last_resolve_epoch == self.epoch {
+            return Ok(());
+        }
+
+        let mut var_scope = HashSet::new();
+
+        for (line, stmt) in self.prog.stmts().iter().enumerate() {
+            match stmt {
+                ast::Stmt::VarDecl(var_decl) => {
+                    if var_scope.contains(&var_decl.ident()) {
+                        return Err(ResolveError::VarRedefinition {
+                            line,
+                            var: var_decl.ident(),
+                        });
+                    }
+
+                    let func = var_decl.init_expr().ident();
+                    if self.funcs.get(&func).is_none() {
+                        return Err(ResolveError::UndeclaredFuncUse { line, func });
+                    }
+
+                    for arg in var_decl.init_expr().args() {
+                        if let ast::Expr::Var(var) = arg {
+                            if !var_scope.contains(&var.ident()) {
+                                return Err(ResolveError::UndeclaredVarUse {
+                                    line,
+                                    var: var.ident(),
+                                });
+                            }
+                        }
+                    }
+
+                    var_scope.insert(var_decl.ident());
+                }
+            }
+        }
+
+        // Mark current epoch as name-resolved.
+        self.last_resolve_epoch = self.epoch;
 
         Ok(())
     }
@@ -547,13 +598,12 @@ fn eval_var_decl_stmt(
 }
 
 fn eval_expr(
-    line: usize,
     expr: &ast::Expr,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
     match expr {
         ast::Expr::Lit(lit) => eval_lit_expr(lit),
-        ast::Expr::Var(var) => eval_var_expr(line, var, env),
+        ast::Expr::Var(var) => eval_var_expr(var, env),
         ast::Expr::Index(_) => unimplemented!("We don't support index expressions yet"),
     }
 }
@@ -571,15 +621,11 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
 }
 
 fn eval_var_expr(
-    line: usize,
     var: &ast::VarExpr,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
     let var_ident = var.ident();
-    let var_info = env.get(&var_ident).ok_or(RuntimeError::UndeclaredVarUse {
-        line,
-        var_use: var_ident,
-    })?;
+    let var_info = &env[&var_ident];
 
     Ok(var_info.value.clone())
 }
@@ -590,65 +636,58 @@ fn eval_call_expr(
     funcs: &HashMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
-    let func_ident = call.ident();
+    let func = &funcs[&call.ident()];
 
-    if let Some(func) = funcs.get(&func_ident) {
-        let arg_exprs = call.args();
-        if func.param_info().len() != arg_exprs.len() {
-            return Err(RuntimeError::ArgCountMismatch {
-                line,
-                call: call.clone(),
-                args_expected: func.param_info().len(),
-                args_provided: arg_exprs.len(),
-            });
-        }
+    let arg_exprs = call.args();
+    if func.param_info().len() != arg_exprs.len() {
+        return Err(RuntimeError::ArgCountMismatch {
+            line,
+            call: call.clone(),
+            args_expected: func.param_info().len(),
+            args_provided: arg_exprs.len(),
+        });
+    }
 
-        let mut args = Vec::with_capacity(arg_exprs.len());
-        for arg_expr in arg_exprs {
-            let arg = eval_expr(line, arg_expr, env)?;
-            args.push(arg);
-        }
+    let mut args = Vec::with_capacity(arg_exprs.len());
+    for arg_expr in arg_exprs {
+        let arg = eval_expr(arg_expr, env)?;
+        args.push(arg);
+    }
 
-        for (info, value) in func.param_info().iter().zip(args.iter()) {
-            let param_ty = info.ty;
-            let value_ty = value.ty();
-
-            if param_ty != value_ty {
-                // Nil is an acceptable value for parameters marked optional
-                if value_ty == Ty::Nil && info.optional {
-                    continue;
-                }
-
-                return Err(RuntimeError::ArgTyMismatch {
-                    line,
-                    call: call.clone(),
-                    optional: info.optional,
-                    ty_expected: param_ty,
-                    ty_provided: value_ty,
-                });
-            }
-        }
-
-        let value = func.call(&args);
-
-        let return_ty = func.return_ty();
+    for (info, value) in func.param_info().iter().zip(args.iter()) {
+        let param_ty = info.ty;
         let value_ty = value.ty();
-        if return_ty != value_ty {
-            return Err(RuntimeError::ReturnTyMismatch {
+
+        if param_ty != value_ty {
+            // Nil is an acceptable value for parameters marked optional
+            if value_ty == Ty::Nil && info.optional {
+                continue;
+            }
+
+            return Err(RuntimeError::ArgTyMismatch {
                 line,
                 call: call.clone(),
-                ty_expected: return_ty,
+                optional: info.optional,
+                ty_expected: param_ty,
                 ty_provided: value_ty,
             });
         }
-
-        Ok(value)
-    } else {
-        Err(RuntimeError::UndeclaredFuncUse {
-            line,
-            func_use: func_ident,
-        })
     }
+
+    let value = func.call(&args);
+
+    let return_ty = func.return_ty();
+    let value_ty = value.ty();
+    if return_ty != value_ty {
+        return Err(RuntimeError::ReturnTyMismatch {
+            line,
+            call: call.clone(),
+            ty_expected: return_ty,
+            ty_provided: value_ty,
+        });
+    }
+
+    Ok(value)
 }
 
 #[cfg(test)]
@@ -1343,7 +1382,194 @@ mod tests {
 
     // FIXME: Prog manipulation tests
 
-    // FIXME: Name resolution tests (invalid names and redeclaration)
+    // Name resolution tests
+
+    #[test]
+    fn test_interpreter_interpret_var_redefinition() {
+        let (func_id, func) = (
+            FuncIdent(0),
+            TestFunc::new(
+                |_| Value::Boolean(true),
+                FuncFlags::PURE,
+                vec![],
+                Ty::Boolean,
+            ),
+        );
+
+        let prog = ast::Prog::new(vec![
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(0),
+                ast::CallExpr::new(func_id, vec![]),
+            )),
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(0),
+                ast::CallExpr::new(func_id, vec![]),
+            )),
+        ]);
+
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
+        interpreter.set_prog(prog);
+
+        let err = interpreter.interpret().unwrap_err();
+        assert_eq!(
+            err,
+            InterpretError::from(ResolveError::VarRedefinition {
+                line: 1,
+                var: VarIdent(0),
+            }),
+        );
+    }
+
+    #[test]
+    fn test_interpreter_interpret_undeclared_var() {
+        let (func_id, func) = (
+            FuncIdent(0),
+            TestFunc::new(
+                |values| Value::Boolean(values[0].unwrap_boolean()),
+                FuncFlags::PURE,
+                vec![ParamInfo {
+                    ty: Ty::Boolean,
+                    optional: false,
+                }],
+                Ty::Boolean,
+            ),
+        );
+
+        let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(0),
+            ast::CallExpr::new(
+                func_id,
+                vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(42)))],
+            ),
+        ))]);
+
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
+        interpreter.set_prog(prog);
+
+        let err = interpreter.interpret().unwrap_err();
+        assert_eq!(
+            err,
+            InterpretError::from(ResolveError::UndeclaredVarUse {
+                line: 0,
+                var: VarIdent(42),
+            }),
+        );
+    }
+
+    #[test]
+    fn test_interpreter_interpret_undeclared_var_defined_by_self() {
+        let (func_id, func) = (
+            FuncIdent(0),
+            TestFunc::new(
+                |values| Value::Boolean(values[0].unwrap_boolean()),
+                FuncFlags::PURE,
+                vec![ParamInfo {
+                    ty: Ty::Boolean,
+                    optional: false,
+                }],
+                Ty::Boolean,
+            ),
+        );
+
+        // The stmt uses the same var it would only just define - it
+        // is not defined yet though.
+        let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(0),
+            ast::CallExpr::new(
+                func_id,
+                vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(0)))],
+            ),
+        ))]);
+
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
+        interpreter.set_prog(prog);
+
+        let err = interpreter.interpret().unwrap_err();
+        assert_eq!(
+            err,
+            InterpretError::from(ResolveError::UndeclaredVarUse {
+                line: 0,
+                var: VarIdent(0),
+            }),
+        );
+    }
+
+    #[test]
+    fn test_interpreter_interpret_undeclared_var_defined_in_future() {
+        let (func_id, func) = (
+            FuncIdent(0),
+            TestFunc::new(
+                |values| Value::Boolean(values[0].unwrap_boolean()),
+                FuncFlags::PURE,
+                vec![ParamInfo {
+                    ty: Ty::Boolean,
+                    optional: false,
+                }],
+                Ty::Boolean,
+            ),
+        );
+
+        // Even if a var is defined later in the program, it must not
+        // be used before it's defining stmt
+        let prog = ast::Prog::new(vec![
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(0),
+                ast::CallExpr::new(
+                    func_id,
+                    vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(1)))],
+                ),
+            )),
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(1),
+                ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))]),
+            )),
+        ]);
+
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
+        interpreter.set_prog(prog);
+
+        let err = interpreter.interpret().unwrap_err();
+        assert_eq!(
+            err,
+            InterpretError::from(ResolveError::UndeclaredVarUse {
+                line: 0,
+                var: VarIdent(1),
+            }),
+        );
+    }
+
+    #[test]
+    fn test_interpreter_interpret_undeclared_func() {
+        // This program uses an undeclared function
+        let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(0),
+            ast::CallExpr::new(FuncIdent(0), vec![]),
+        ))]);
+
+        let mut interpreter = Interpreter::new(HashMap::new());
+        interpreter.set_prog(prog);
+
+        let err = interpreter.interpret().unwrap_err();
+        assert_eq!(
+            err,
+            InterpretError::from(ResolveError::UndeclaredFuncUse {
+                line: 0,
+                func: FuncIdent(0),
+            }),
+        );
+    }
 
     // FIXME: Static typecheck tests
 
