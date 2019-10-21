@@ -203,6 +203,10 @@ impl Geometry {
             .count()
     }
 
+    pub fn faces(&self) -> &[Face] {
+        &self.faces
+    }
+
     pub fn vertices(&self) -> &[Point3<f32>] {
         &self.vertices
     }
@@ -215,16 +219,19 @@ impl Geometry {
         &self.normals
     }
 
+    /// Extracts oriented edges from all mesh faces
     pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_oriented_edges()).into_iter())
     }
 
+    /// Extracts unoriented edges from all mesh faces
     pub fn unoriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = UnorientedEdge> + 'a {
         self.triangle_faces_iter()
             .flat_map(|face| ArrayVec::from(face.to_unoriented_edges()).into_iter())
     }
 
+    /// Does the mesh contain unused (not referenced in faces) vertices
     pub fn has_no_orphan_vertices(&self) -> bool {
         let mut used_vertices = HashSet::new();
         for face in self.triangle_faces_iter() {
@@ -235,6 +242,7 @@ impl Geometry {
         used_vertices.len() == self.vertices().len()
     }
 
+    /// Does the mesh contain unused (not referenced in faces) normals
     pub fn has_no_orphan_normals(&self) -> bool {
         let mut used_normals = HashSet::new();
         for face in self.triangle_faces_iter() {
@@ -313,6 +321,19 @@ impl TriangleFace {
             UnorientedEdge(OrientedEdge::new(self.vertices.2, self.vertices.0)),
         ]
     }
+
+    /// Does the face contain the specific vertex
+    pub fn contains_vertex(&self, vertex_index: u32) -> bool {
+        self.vertices.0 == vertex_index
+            || self.vertices.1 == vertex_index
+            || self.vertices.2 == vertex_index
+    }
+
+    /// Does the face contain the specific unoriented edge
+    pub fn contains_unoriented_edge(self, unoriented_edge: UnorientedEdge) -> bool {
+        let [o_e_0, o_e_1, o_e_2] = self.to_unoriented_edges();
+        o_e_0 == unoriented_edge || o_e_1 == unoriented_edge || o_e_2 == unoriented_edge
+    }
 }
 
 impl From<(u32, u32, u32)> for TriangleFace {
@@ -338,6 +359,10 @@ impl OrientedEdge {
 
     pub fn is_reverted(self, other: OrientedEdge) -> bool {
         self.vertices.0 == other.vertices.1 && self.vertices.1 == other.vertices.0
+    }
+
+    pub fn contains_vertex(self, vertex_index: u32) -> bool {
+        self.vertices.0 == vertex_index || self.vertices.1 == vertex_index
     }
 }
 
@@ -1386,6 +1411,7 @@ mod tests {
 
         assert!(!geometry_with_orphans.has_no_orphan_normals());
     }
+
     #[test]
     fn test_remove_orphan_vertices() {
         let (faces, vertices) = quad();

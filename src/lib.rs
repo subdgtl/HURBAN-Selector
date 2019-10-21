@@ -28,6 +28,7 @@ mod interpreter_funcs;
 mod interpreter_server;
 mod math;
 mod mesh_analysis;
+mod mesh_topology_analysis;
 mod platform;
 mod ui;
 
