@@ -40,9 +40,45 @@ mod tests {
     use nalgebra::distance_squared;
 
     use crate::geometry::{Geometry, NormalStrategy, TriangleFace, Vertices};
-    use crate::test_geometry_fixtures::torus;
 
     use super::*;
+
+    fn torus() -> (Vec<(u32, u32, u32)>, Vertices) {
+        let vertices = vec![
+            Point3::new(0.566987, -1.129e-11, 0.25),
+            Point3::new(-0.716506, 1.241025, 0.25),
+            Point3::new(-0.283494, 0.491025, 0.25),
+            Point3::new(-0.716506, -1.241025, 0.25),
+            Point3::new(-0.283494, -0.491025, 0.25),
+            Point3::new(1.0, -1.129e-11, -0.5),
+            Point3::new(1.433013, -1.129e-11, 0.25),
+            Point3::new(-0.5, 0.866025, -0.5),
+            Point3::new(-0.5, -0.866025, -0.5),
+        ];
+
+        let faces = vec![
+            (4, 3, 6),
+            (0, 6, 2),
+            (2, 1, 3),
+            (8, 4, 0),
+            (3, 8, 6),
+            (5, 0, 7),
+            (6, 5, 7),
+            (7, 2, 4),
+            (1, 7, 8),
+            (4, 6, 0),
+            (6, 1, 2),
+            (2, 3, 4),
+            (8, 0, 5),
+            (8, 5, 6),
+            (0, 2, 7),
+            (6, 7, 1),
+            (7, 4, 8),
+            (1, 8, 3),
+        ];
+
+        (faces, vertices)
+    }
 
     fn triple_torus() -> (Vec<(u32, u32, u32)>, Vertices) {
         let vertices = vec![
