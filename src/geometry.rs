@@ -218,6 +218,13 @@ impl Geometry {
         })
     }
 
+    /// Returns whether the geometry contains exclusively triangular faces.
+    pub fn is_triangular(&self) -> bool {
+        self.faces().iter().all(|face| match face {
+            Face::Triangle(_) => true,
+        })
+    }
+
     /// Does the mesh contain unused (not referenced in faces) vertices
     pub fn has_no_orphan_vertices(&self) -> bool {
         let mut used_vertices = HashSet::new();
@@ -1071,6 +1078,7 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
+        assert!(geometry.is_triangular());
 
         let geometry_faces: Vec<_> = geometry
             .faces()
@@ -1079,11 +1087,6 @@ mod tests {
                 Face::Triangle(triangle_face) => Some(triangle_face),
             })
             .collect();
-        assert_eq!(
-            geometry.faces().len(),
-            geometry_faces.len(),
-            "All faces must be triangular",
-        );
 
         assert_eq!(vertices.as_slice(), geometry.vertices());
         assert_eq!(
@@ -1120,6 +1123,7 @@ mod tests {
             vertices.clone(),
             normals.clone(),
         );
+        assert!(geometry.is_triangular());
 
         let geometry_faces: Vec<_> = geometry
             .faces()
@@ -1129,11 +1133,6 @@ mod tests {
             })
             .copied()
             .collect();
-        assert_eq!(
-            geometry.faces().len(),
-            geometry_faces.len(),
-            "All faces must be triangular",
-        );
 
         assert_eq!(vertices.as_slice(), geometry.vertices());
         assert_eq!(normals.as_slice(), geometry.normals());

@@ -594,20 +594,9 @@ mod tests {
     #[test]
     fn test_geometry_mesh_genus_box_should_be_0() {
         let geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
-        let triangle_faces_count = geometry
-            .faces()
-            .iter()
-            .filter(|face| match face {
-                Face::Triangle(_) => true,
-            })
-            .count();
+        assert!(geometry.is_triangular());
 
-        assert_eq!(
-            triangle_faces_count,
-            geometry.faces().len(),
-            "All geometry faces must be triangular for the mesh genus",
-        );
+        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
         let genus = mesh_genus(
             geometry.vertices().len(),
@@ -625,20 +614,9 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
-        let triangle_faces_count = geometry
-            .faces()
-            .iter()
-            .filter(|face| match face {
-                Face::Triangle(_) => true,
-            })
-            .count();
+        assert!(geometry.is_triangular());
 
-        assert_eq!(
-            triangle_faces_count,
-            geometry.faces().len(),
-            "All geometry faces must be triangular for the mesh genus",
-        );
+        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
         let genus = mesh_genus(
             geometry.vertices().len(),
@@ -656,20 +634,9 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
-        let triangle_faces_count = geometry
-            .faces()
-            .iter()
-            .filter(|face| match face {
-                Face::Triangle(_) => true,
-            })
-            .count();
+        assert!(geometry.is_triangular());
 
-        assert_eq!(
-            triangle_faces_count,
-            geometry.faces().len(),
-            "All geometry faces must be triangular for the mesh genus",
-        );
+        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
         let genus = mesh_genus(
             geometry.vertices().len(),
@@ -687,20 +654,9 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
-        let triangle_faces_count = geometry
-            .faces()
-            .iter()
-            .filter(|face| match face {
-                Face::Triangle(_) => true,
-            })
-            .count();
+        assert!(geometry.is_triangular());
 
-        assert_eq!(
-            triangle_faces_count,
-            geometry.faces().len(),
-            "All geometry faces must be triangular for the mesh genus",
-        );
+        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
         let genus = mesh_genus(
             geometry.vertices().len(),
