@@ -76,7 +76,29 @@ pub fn border_vertex_indices(edge_sharing: &EdgeSharingMap) -> HashSet<u32> {
 
 #[allow(dead_code)]
 pub fn edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<UnorientedEdge>> {
-    let border_edges = border_edges(edge_sharing)
+    let mut border_edges: Vec<_> = border_edges(edge_sharing)
+        .map(|e| UnorientedEdge(e))
+        .collect();
+    let mut edge_loops: Vec<Vec<UnorientedEdge>> = Vec::new();
+
+    while !border_edges.is_empty() {
+        if let Some(edge) = border_edges.pop() {
+            let mut current_loop: Vec<UnorientedEdge> = vec![edge];
+
+            while current_loop.len() < 3
+                || !current_loop[current_loop.len() - 1].shares_vertex(current_loop[0])
+            {
+                for (i, other_edge) in border_edges.iter().enumerate() {
+                    if current_loop[current_loop.len() - 1].shares_vertex(*other_edge) {
+                        current_loop.push(border_edges.remove(i));
+                        break;
+                    }
+                }
+            }
+            edge_loops.push(current_loop);
+        }
+    }
+    edge_loops
 }
 
 /// Check if all the face normals point the same way.

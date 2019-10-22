@@ -385,6 +385,12 @@ impl Hash for UnorientedEdge {
     }
 }
 
+impl UnorientedEdge {
+    pub fn shares_vertex(self, other: UnorientedEdge) -> bool {
+        other.0.contains_vertex(self.0.vertices.0) || other.0.contains_vertex(self.0.vertices.1)
+    }
+}
+
 fn remove_orphan_vertices(
     faces: Vec<(u32, u32, u32)>,
     vertices: Vertices,
