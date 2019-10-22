@@ -184,25 +184,6 @@ impl Geometry {
         )
     }
 
-    /// Return a view of all triangle faces in this geometry. Skip all
-    /// other types of faces.
-    pub fn triangle_faces_iter<'a>(&'a self) -> impl Iterator<Item = TriangleFace> + 'a {
-        self.faces.iter().copied().map(|index| match index {
-            Face::Triangle(f) => f,
-        })
-    }
-
-    /// Return count of all triangle faces in this geometry. Skip all
-    /// other types of faces.
-    pub fn triangle_faces_len(&self) -> usize {
-        self.faces
-            .iter()
-            .filter(|index| match index {
-                Face::Triangle(_) => true,
-            })
-            .count()
-    }
-
     pub fn faces(&self) -> &[Face] {
         &self.faces
     }
@@ -221,35 +202,53 @@ impl Geometry {
 
     /// Extracts oriented edges from all mesh faces
     pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
-        self.triangle_faces_iter()
-            .flat_map(|face| ArrayVec::from(face.to_oriented_edges()).into_iter())
+        self.faces.iter().flat_map(|face| match face {
+            Face::Triangle(triangle_face) => {
+                ArrayVec::from(triangle_face.to_oriented_edges()).into_iter()
+            }
+        })
     }
 
     /// Extracts unoriented edges from all mesh faces
     pub fn unoriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = UnorientedEdge> + 'a {
-        self.triangle_faces_iter()
-            .flat_map(|face| ArrayVec::from(face.to_unoriented_edges()).into_iter())
+        self.faces.iter().flat_map(|face| match face {
+            Face::Triangle(triangle_face) => {
+                ArrayVec::from(triangle_face.to_unoriented_edges()).into_iter()
+            }
+        })
     }
 
     /// Does the mesh contain unused (not referenced in faces) vertices
     pub fn has_no_orphan_vertices(&self) -> bool {
         let mut used_vertices = HashSet::new();
-        for face in self.triangle_faces_iter() {
-            used_vertices.insert(face.vertices.0);
-            used_vertices.insert(face.vertices.1);
-            used_vertices.insert(face.vertices.2);
+
+        for face in self.faces() {
+            match face {
+                Face::Triangle(triangle_face) => {
+                    used_vertices.insert(triangle_face.vertices.0);
+                    used_vertices.insert(triangle_face.vertices.1);
+                    used_vertices.insert(triangle_face.vertices.2);
+                }
+            }
         }
+
         used_vertices.len() == self.vertices().len()
     }
 
     /// Does the mesh contain unused (not referenced in faces) normals
     pub fn has_no_orphan_normals(&self) -> bool {
         let mut used_normals = HashSet::new();
-        for face in self.triangle_faces_iter() {
-            used_normals.insert(face.normals.0);
-            used_normals.insert(face.normals.1);
-            used_normals.insert(face.normals.2);
+
+        for face in self.faces() {
+            match face {
+                Face::Triangle(triangle_face) => {
+                    used_normals.insert(triangle_face.normals.0);
+                    used_normals.insert(triangle_face.normals.1);
+                    used_normals.insert(triangle_face.normals.2);
+                }
+            }
         }
+
         used_normals.len() == self.normals().len()
     }
 }
@@ -1072,7 +1071,19 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let geometry_faces: Vec<_> = geometry.triangle_faces_iter().collect();
+
+        let geometry_faces: Vec<_> = geometry
+            .faces()
+            .iter()
+            .filter_map(|face| match face {
+                Face::Triangle(triangle_face) => Some(triangle_face),
+            })
+            .collect();
+        assert_eq!(
+            geometry.faces().len(),
+            geometry_faces.len(),
+            "All faces must be triangular",
+        );
 
         assert_eq!(vertices.as_slice(), geometry.vertices());
         assert_eq!(
@@ -1109,11 +1120,24 @@ mod tests {
             vertices.clone(),
             normals.clone(),
         );
-        let geometry_faces: Vec<_> = geometry.triangle_faces_iter().collect();
+
+        let geometry_faces: Vec<_> = geometry
+            .faces()
+            .iter()
+            .filter_map(|face| match face {
+                Face::Triangle(triangle_face) => Some(triangle_face),
+            })
+            .copied()
+            .collect();
+        assert_eq!(
+            geometry.faces().len(),
+            geometry_faces.len(),
+            "All faces must be triangular",
+        );
 
         assert_eq!(vertices.as_slice(), geometry.vertices());
         assert_eq!(normals.as_slice(), geometry.normals());
-        assert_eq!(faces.as_slice(), geometry_faces.as_slice());
+        assert_eq!(faces, geometry_faces);
     }
 
     #[test]

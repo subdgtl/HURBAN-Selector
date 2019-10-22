@@ -101,9 +101,13 @@ pub fn is_mesh_watertight(edge_valencies: &EdgeCountMap) -> bool {
     })
 }
 
-/// Genus of a mesh is the number of holes in topology / connectivity
-/// The mesh must be triangular and watertight
-/// V - E + F = 2 (1 - G)
+/// Computes the mesh genus.
+///
+/// Genus of a mesh is the number of holes in topology / connectivity.
+/// The mesh **must** be triangular and watertight for this to produce
+/// usable results.
+///
+/// The genus (G) is computed as: `V - E + F = 2*(1 - G)`.
 #[allow(dead_code)]
 pub fn mesh_genus(vertex_count: usize, edge_count: usize, face_count: usize) -> i32 {
     1 - (cast_i32(vertex_count) - cast_i32(edge_count) + cast_i32(face_count)) / 2
@@ -116,7 +120,7 @@ mod tests {
 
     use crate::edge_analysis::edge_valencies;
     use crate::geometry::{
-        self, cube_sharp_var_len, Geometry, NormalStrategy, TriangleFace, UnorientedEdge, Vertices,
+        self, Face, Geometry, NormalStrategy, TriangleFace, UnorientedEdge, Vertices,
     };
 
     use super::*;
@@ -589,13 +593,26 @@ mod tests {
 
     #[test]
     fn test_geometry_mesh_genus_box_should_be_0() {
-        let geometry = cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
+        let geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+        let triangle_faces_count = geometry
+            .faces()
+            .iter()
+            .filter(|face| match face {
+                Face::Triangle(_) => true,
+            })
+            .count();
+
+        assert_eq!(
+            triangle_faces_count,
+            geometry.faces().len(),
+            "All geometry faces must be triangular for the mesh genus",
+        );
 
         let genus = mesh_genus(
             geometry.vertices().len(),
             edges.len(),
-            geometry.triangle_faces_iter().count(),
+            geometry.faces().len(),
         );
         assert_eq!(genus, 0);
     }
@@ -609,11 +626,24 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+        let triangle_faces_count = geometry
+            .faces()
+            .iter()
+            .filter(|face| match face {
+                Face::Triangle(_) => true,
+            })
+            .count();
+
+        assert_eq!(
+            triangle_faces_count,
+            geometry.faces().len(),
+            "All geometry faces must be triangular for the mesh genus",
+        );
 
         let genus = mesh_genus(
             geometry.vertices().len(),
             edges.len(),
-            geometry.triangle_faces_iter().count(),
+            geometry.faces().len(),
         );
         assert_eq!(genus, 1);
     }
@@ -627,11 +657,24 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+        let triangle_faces_count = geometry
+            .faces()
+            .iter()
+            .filter(|face| match face {
+                Face::Triangle(_) => true,
+            })
+            .count();
+
+        assert_eq!(
+            triangle_faces_count,
+            geometry.faces().len(),
+            "All geometry faces must be triangular for the mesh genus",
+        );
 
         let genus = mesh_genus(
             geometry.vertices().len(),
             edges.len(),
-            geometry.triangle_faces_iter().count(),
+            geometry.faces().len(),
         );
         assert_eq!(genus, 2);
     }
@@ -645,11 +688,24 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+        let triangle_faces_count = geometry
+            .faces()
+            .iter()
+            .filter(|face| match face {
+                Face::Triangle(_) => true,
+            })
+            .count();
+
+        assert_eq!(
+            triangle_faces_count,
+            geometry.faces().len(),
+            "All geometry faces must be triangular for the mesh genus",
+        );
 
         let genus = mesh_genus(
             geometry.vertices().len(),
             edges.len(),
-            geometry.triangle_faces_iter().count(),
+            geometry.faces().len(),
         );
         assert_eq!(genus, 3);
     }

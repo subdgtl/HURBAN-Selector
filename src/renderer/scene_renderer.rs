@@ -9,7 +9,7 @@ use nalgebra::base::{Matrix4, Vector3};
 use nalgebra::geometry::Point3;
 
 use crate::convert::cast_usize;
-use crate::geometry::Geometry;
+use crate::geometry::{Face, Geometry};
 
 use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
 
@@ -36,7 +36,7 @@ impl SceneRendererGeometry {
         let vertices = geometry.vertices();
         let normals = geometry.normals();
 
-        let faces_len = geometry.triangle_faces_len();
+        let faces_len = geometry.faces().len();
         let indices_len_estimate = faces_len * 3;
 
         let mut indices = Vec::with_capacity(indices_len_estimate);
@@ -55,37 +55,41 @@ impl SceneRendererGeometry {
         // Iterate over all faces, creating or re-using vertices
         // as we go. Vertex data identity is defined by equality
         // of the index that constructed the vertex.
-        for triangle_face in geometry.triangle_faces_iter() {
-            let v = triangle_face.vertices;
-            let n = triangle_face.normals;
+        for face in geometry.faces() {
+            match face {
+                Face::Triangle(triangle_face) => {
+                    let v = triangle_face.vertices;
+                    let n = triangle_face.normals;
 
-            for &(vertex_index, normal_index) in &[(v.0, n.0), (v.1, n.1), (v.2, n.2)] {
-                match index_map.entry((vertex_index, normal_index)) {
-                    Entry::Occupied(occupied) => {
-                        // This concrete vertex/normal combination
-                        // was used before, re-use the vertex it
-                        // created
-                        let renderer_index = *occupied.get();
+                    for &(vertex_index, normal_index) in &[(v.0, n.0), (v.1, n.1), (v.2, n.2)] {
+                        match index_map.entry((vertex_index, normal_index)) {
+                            Entry::Occupied(occupied) => {
+                                // This concrete vertex/normal combination
+                                // was used before, re-use the vertex it
+                                // created
+                                let renderer_index = *occupied.get();
 
-                        indices.push(renderer_index);
+                                indices.push(renderer_index);
+                            }
+                            Entry::Vacant(vacant) => {
+                                // We didn't see this vertex/normal
+                                // combination before, we need to create a
+                                // new vertex and remember the index we
+                                // assigned
+                                let renderer_index = next_renderer_index;
+                                let position = vertices[cast_usize(vertex_index)];
+                                let normal = normals[cast_usize(normal_index)];
+                                let vertex = Self::vertex((position, normal));
+
+                                vacant.insert(renderer_index);
+                                next_renderer_index += 1;
+
+                                vertex_data.push(vertex);
+                                indices.push(renderer_index)
+                            }
+                        };
                     }
-                    Entry::Vacant(vacant) => {
-                        // We didn't see this vertex/normal
-                        // combination before, we need to create a
-                        // new vertex and remember the index we
-                        // assigned
-                        let renderer_index = next_renderer_index;
-                        let position = vertices[cast_usize(vertex_index)];
-                        let normal = normals[cast_usize(normal_index)];
-                        let vertex = Self::vertex((position, normal));
-
-                        vacant.insert(renderer_index);
-                        next_renderer_index += 1;
-
-                        vertex_data.push(vertex);
-                        indices.push(renderer_index)
-                    }
-                };
+                }
             }
         }
 
