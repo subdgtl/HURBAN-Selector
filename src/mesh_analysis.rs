@@ -82,9 +82,7 @@ pub fn border_vertex_indices(edge_sharing: &EdgeSharingMap) -> HashSet<u32> {
 /// may be unpredictable and erratic.
 #[allow(dead_code)]
 pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<UnorientedEdge>> {
-    let mut border_edges: Vec<_> = border_edges(edge_sharing)
-        .map(|e| UnorientedEdge(e))
-        .collect();
+    let mut border_edges: Vec<_> = border_edges(edge_sharing).map(UnorientedEdge).collect();
 
     let mut edge_loops: Vec<Vec<UnorientedEdge>> = Vec::new();
 
