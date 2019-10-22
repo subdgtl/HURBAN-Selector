@@ -81,7 +81,7 @@ pub fn border_vertex_indices(edge_sharing: &EdgeSharingMap) -> HashSet<u32> {
 /// If two edge loops meet at a single vertex, the result
 /// may be unpredictable and erratic.
 #[allow(dead_code)]
-pub fn edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<UnorientedEdge>> {
+pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<UnorientedEdge>> {
     let mut border_edges: Vec<_> = border_edges(edge_sharing)
         .map(|e| UnorientedEdge(e))
         .collect();
@@ -706,7 +706,7 @@ mod tests {
     }
 
     #[test]
-    fn test_edge_loops() {
+    fn test_border_edge_loops() {
         let (faces, vertices) = tessellated_triangle();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
@@ -726,7 +726,7 @@ mod tests {
             UnorientedEdge(OrientedEdge::new(3, 0)),
         ];
 
-        let calculated_loops = edge_loops(&edge_sharing_map);
+        let calculated_loops = border_edge_loops(&edge_sharing_map);
 
         assert_eq!(calculated_loops.len(), 1);
         for edge in correct_loop {
