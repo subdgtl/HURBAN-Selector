@@ -18,10 +18,6 @@ steps:
       rustup update $TOOLCHAIN
       rustup default $TOOLCHAIN
     displayName: Install rust
-  - bash: rustup component add clippy || echo "clippy not available"
-    displayName: "Install clippy"
-  - bash: rustup component add rustfmt
-    displayName: "Install rustfmt"
   - bash: |
       set -ex
       rustup -V
