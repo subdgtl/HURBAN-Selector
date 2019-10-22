@@ -119,9 +119,7 @@ mod tests {
     use nalgebra::geometry::Point3;
 
     use crate::edge_analysis::edge_valencies;
-    use crate::geometry::{
-        self, Face, Geometry, NormalStrategy, TriangleFace, UnorientedEdge, Vertices,
-    };
+    use crate::geometry::{self, Geometry, NormalStrategy, TriangleFace, UnorientedEdge, Vertices};
 
     use super::*;
 
