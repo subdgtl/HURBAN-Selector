@@ -88,7 +88,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
         let unoriented_edges_one_way_correct = vec![
             UnorientedEdge(OrientedEdge::new(0, 1)),
             UnorientedEdge(OrientedEdge::new(1, 2)),
@@ -101,27 +101,27 @@ mod tests {
         ];
 
         for u_e in unoriented_edges_one_way_correct {
-            assert!(edge_valency_map.contains_key(&u_e));
+            assert!(edge_sharing_map.contains_key(&u_e));
             if u_e.0.vertices.0 < u_e.0.vertices.1 {
-                assert_eq!(edge_valency_map.get(&u_e).unwrap().ascending_edges.len(), 1);
+                assert_eq!(edge_sharing_map.get(&u_e).unwrap().ascending_edges.len(), 1);
                 assert_eq!(
-                    edge_valency_map.get(&u_e).unwrap().descending_edges.len(),
+                    edge_sharing_map.get(&u_e).unwrap().descending_edges.len(),
                     0
                 );
             } else {
-                assert_eq!(edge_valency_map.get(&u_e).unwrap().ascending_edges.len(), 0);
+                assert_eq!(edge_sharing_map.get(&u_e).unwrap().ascending_edges.len(), 0);
                 assert_eq!(
-                    edge_valency_map.get(&u_e).unwrap().descending_edges.len(),
+                    edge_sharing_map.get(&u_e).unwrap().descending_edges.len(),
                     1
                 );
             }
         }
 
         for u_e in unoriented_edges_two_ways_correct {
-            assert!(edge_valency_map.contains_key(&u_e));
-            assert_eq!(edge_valency_map.get(&u_e).unwrap().ascending_edges.len(), 1);
+            assert!(edge_sharing_map.contains_key(&u_e));
+            assert_eq!(edge_sharing_map.get(&u_e).unwrap().ascending_edges.len(), 1);
             assert_eq!(
-                edge_valency_map.get(&u_e).unwrap().descending_edges.len(),
+                edge_sharing_map.get(&u_e).unwrap().descending_edges.len(),
                 1
             );
         }
