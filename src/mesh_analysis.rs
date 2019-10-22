@@ -2,15 +2,15 @@ use std::collections::HashSet;
 
 use crate::convert::cast_i32;
 use crate::edge_analysis::EdgeSharingMap;
-use crate::geometry::OrientedEdge;
+use crate::geometry::{OrientedEdge, UnorientedEdge};
 
 /// Finds edges with a certain valency in a mesh edge collection
 /// Valency indicates how many faces share the edge
 fn find_edges_with_valency<'a>(
-    edge_valencies: &'a EdgeSharingMap,
+    edge_sharing: &'a EdgeSharingMap,
     valency: usize,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
-    edge_valencies
+    edge_sharing
         .iter()
         .filter(move |(_, similar_edges)| {
             similar_edges.ascending_edges.len() + similar_edges.descending_edges.len() == valency
@@ -28,26 +28,26 @@ fn find_edges_with_valency<'a>(
 /// An edge is border when its valency is 1
 #[allow(dead_code)]
 pub fn border_edges<'a>(
-    edge_valencies: &'a EdgeSharingMap,
+    edge_sharing: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
-    find_edges_with_valency(edge_valencies, 1)
+    find_edges_with_valency(edge_sharing, 1)
 }
 
 /// Finds manifold (inner) edges in a mesh edge collection
 /// An edge is manifold when its valency is 2
 #[allow(dead_code)]
 pub fn manifold_edges<'a>(
-    edge_valencies: &'a EdgeSharingMap,
+    edge_sharing: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
-    find_edges_with_valency(edge_valencies, 2)
+    find_edges_with_valency(edge_sharing, 2)
 }
 
 /// Finds non-manifold (errorneous) edges in a mesh edge collection
 #[allow(dead_code)]
 pub fn non_manifold_edges<'a>(
-    edge_valencies: &'a EdgeSharingMap,
+    edge_sharing: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
-    edge_valencies
+    edge_sharing
         .iter()
         .filter(|(_, edge_count)| {
             edge_count.ascending_edges.len() + edge_count.descending_edges.len() > 2
@@ -64,14 +64,19 @@ pub fn non_manifold_edges<'a>(
 /// Finds border vertex indices in a mesh edge collection
 /// A vertex is border when its edge's valency is 1
 #[allow(dead_code)]
-pub fn border_vertex_indices(edge_valencies: &EdgeSharingMap) -> HashSet<u32> {
+pub fn border_vertex_indices(edge_sharing: &EdgeSharingMap) -> HashSet<u32> {
     let mut border_vertices = HashSet::new();
 
-    border_edges(edge_valencies).for_each(|edge| {
+    border_edges(edge_sharing).for_each(|edge| {
         border_vertices.insert(edge.vertices.0);
         border_vertices.insert(edge.vertices.1);
     });
     border_vertices
+}
+
+#[allow(dead_code)]
+pub fn edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<UnorientedEdge>> {
+    let border_edges = border_edges(edge_sharing)
 }
 
 /// Check if all the face normals point the same way.
@@ -81,8 +86,8 @@ pub fn border_vertex_indices(edge_valencies: &EdgeSharingMap) -> HashSet<u32> {
 /// in a single reverted oriented edge and
 /// the border edges don't have any counterpart.
 #[allow(dead_code)]
-pub fn is_mesh_orientable(edge_valencies: &EdgeSharingMap) -> bool {
-    edge_valencies.iter().all(|(_, edge_count)| {
+pub fn is_mesh_orientable(edge_sharing: &EdgeSharingMap) -> bool {
+    edge_sharing.iter().all(|(_, edge_count)| {
         // Ascending_count and descending_count can never be both 0
         // at the same time because there is never a case that the
         // edge doesn't exist in any direction.
@@ -95,8 +100,8 @@ pub fn is_mesh_orientable(edge_valencies: &EdgeSharingMap) -> bool {
 /// The mesh is watertight if there is no border or non-manifold edge,
 /// in other words, all edge valencies are 2
 #[allow(dead_code)]
-pub fn is_mesh_watertight(edge_valencies: &EdgeSharingMap) -> bool {
-    edge_valencies.iter().all(|(_, edge_count)| {
+pub fn is_mesh_watertight(edge_sharing: &EdgeSharingMap) -> bool {
+    edge_sharing.iter().all(|(_, edge_count)| {
         edge_count.ascending_edges.len() == 1 && edge_count.descending_edges.len() == 1
     })
 }
@@ -114,7 +119,7 @@ mod tests {
     use nalgebra::base::Vector3;
     use nalgebra::geometry::Point3;
 
-    use crate::edge_analysis::edge_valencies;
+    use crate::edge_analysis::edge_sharing;
     use crate::geometry::{
         self, cube_sharp_var_len, Geometry, NormalStrategy, TriangleFace, UnorientedEdge, Vertices,
     };
@@ -412,7 +417,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         let oriented_edges_with_valency_1_correct = vec![
             OrientedEdge::new(0, 1),
@@ -449,7 +454,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         let oriented_edges_border_correct = vec![
             OrientedEdge::new(0, 1),
@@ -474,7 +479,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         let oriented_edges_manifold_correct =
             vec![OrientedEdge::new(2, 0), OrientedEdge::new(0, 2)];
@@ -495,7 +500,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         let oriented_edges_non_manifold_correct =
             vec![OrientedEdge::new(2, 0), OrientedEdge::new(0, 2)];
@@ -519,7 +524,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         let border_vertex_indices_correct = vec![0, 1, 2, 3];
 
@@ -534,7 +539,7 @@ mod tests {
     fn test_mesh_analysis_is_mesh_orientable_returns_true_watertight_mesh() {
         let geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         assert!(is_mesh_orientable(&edge_valency_map));
     }
@@ -548,7 +553,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         assert!(is_mesh_orientable(&edge_valency_map));
     }
@@ -558,7 +563,7 @@ mod tests {
         let geometry = cube_sharp_mismatching_winding([0.0, 0.0, 0.0], 1.0);
 
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         assert!(!is_mesh_orientable(&edge_valency_map));
     }
@@ -567,7 +572,7 @@ mod tests {
     fn test_mesh_analysis_is_mesh_watertight_returns_true_for_watertight_mesh() {
         let geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         assert!(is_mesh_watertight(&edge_valency_map));
     }
@@ -582,7 +587,7 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
 
         assert!(!is_mesh_watertight(&edge_valency_map));
     }

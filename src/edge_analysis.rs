@@ -13,21 +13,22 @@ pub struct SharedEdges {
 
 pub type EdgeSharingMap = HashMap<UnorientedEdge, SharedEdges>;
 
-/// Calculate edge valencies = number of faces sharing an edge
+/// Calculate edge sharing and pack shared edges into SharedEdges
+/// Edge valency = number of faces sharing an edge
 /// 1 -> border edge = acceptable but mesh is not watertight
 /// 2 -> manifold edge = correct
 /// 3 or more -> non-manifold edge = corrupted mesh
 #[allow(dead_code)]
-pub fn edge_valencies<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
+pub fn edge_sharing<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
     oriented_edges: I,
 ) -> EdgeSharingMap {
-    let mut edge_valency_map: EdgeSharingMap = HashMap::new();
+    let mut edge_sharing_map: EdgeSharingMap = HashMap::new();
     for edge in oriented_edges {
         let unoriented_edge = UnorientedEdge(*edge);
         let ascending_edges: Vec<OrientedEdge> = Vec::new();
         let descending_edges: Vec<OrientedEdge> = Vec::new();
 
-        let edge_count = edge_valency_map
+        let shared_edges = edge_sharing_map
             .entry(unoriented_edge)
             .or_insert(SharedEdges {
                 ascending_edges,
@@ -35,13 +36,13 @@ pub fn edge_valencies<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
             });
 
         if edge.vertices.0 < edge.vertices.1 {
-            edge_count.ascending_edges.push(*edge);
+            shared_edges.ascending_edges.push(*edge);
         } else {
-            edge_count.descending_edges.push(*edge);
+            shared_edges.descending_edges.push(*edge);
         }
     }
 
-    edge_valency_map
+    edge_sharing_map
 }
 
 #[cfg(test)]
@@ -87,7 +88,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
+        let edge_valency_map = edge_sharing(&oriented_edges);
         let unoriented_edges_one_way_correct = vec![
             UnorientedEdge(OrientedEdge::new(0, 1)),
             UnorientedEdge(OrientedEdge::new(1, 2)),
