@@ -1,5 +1,5 @@
 use std::cmp;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 use arrayvec::ArrayVec;
@@ -251,100 +251,6 @@ impl Geometry {
             used_normals.insert(face.normals.2);
         }
         used_normals.len() == self.normals().len()
-    }
-
-    /// Calculates topological relations (neighborhood) of mesh face -> faces.
-    /// Returns a Map (key: face index, value: list of its neighboring faces indices)
-    pub fn face_to_face_topology(&self) -> HashMap<usize, HashSet<usize>> {
-        let mut f2f: HashMap<usize, HashSet<usize>> = HashMap::new();
-        for (from_counter, f) in self.triangle_faces_iter().enumerate() {
-            let [f_e_0, f_e_1, f_e_2] = f.to_unoriented_edges();
-            for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
-                if from_counter != to_counter && t_f.contains_unoriented_edge(f_e_0)
-                    || t_f.contains_unoriented_edge(f_e_1)
-                    || t_f.contains_unoriented_edge(f_e_2)
-                {
-                    let neighbors = f2f.entry(from_counter).or_insert_with(HashSet::new);
-                    neighbors.insert(to_counter);
-                }
-            }
-        }
-        f2f
-    }
-
-    /// Calculates topological relations (neighborhood) of mesh edge -> faces.
-    /// Returns a Map (key: edge index, value: list of its neighboring faces indices)
-    pub fn edge_to_face_topology(
-        &self,
-        edges: &HashSet<UnorientedEdge>,
-    ) -> HashMap<usize, HashSet<usize>> {
-        let mut e2f: HashMap<usize, HashSet<usize>> = HashMap::new();
-        for (from_counter, e) in edges.iter().enumerate() {
-            for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
-                if t_f.contains_unoriented_edge(*e) {
-                    let neighbors = e2f.entry(from_counter).or_insert_with(HashSet::new);
-                    neighbors.insert(to_counter);
-                }
-            }
-        }
-        e2f
-    }
-
-    /// Calculates topological relations (neighborhood) of mesh vertex -> faces.
-    /// Returns a Map (key: vertex index, value: list of its neighboring faces indices)
-    pub fn vertex_to_face_topology(&self) -> HashMap<usize, HashSet<usize>> {
-        let mut v2f: HashMap<usize, HashSet<usize>> = HashMap::new();
-        for from_counter in 0..self.vertices.len() {
-            for (to_counter, t_f) in self.triangle_faces_iter().enumerate() {
-                if t_f.contains_vertex(cast_u32(from_counter)) {
-                    let neighbors = v2f.entry(from_counter).or_insert_with(HashSet::new);
-                    neighbors.insert(to_counter);
-                }
-            }
-        }
-        v2f
-    }
-
-    /// Calculates topological relations (neighborhood) of mesh vertex -> edge.
-    /// Returns a Map (key: vertex index, value: list of its neighboring edge indices)
-    pub fn vertex_to_edge_topology(
-        &self,
-        edges: &HashSet<UnorientedEdge>,
-    ) -> HashMap<usize, HashSet<usize>> {
-        let mut v2e: HashMap<usize, HashSet<usize>> = HashMap::new();
-        for from_counter in 0..self.vertices.len() {
-            for (to_counter, e) in edges.iter().enumerate() {
-                if e.0.contains_vertex(cast_u32(from_counter)) {
-                    let neighbors = v2e.entry(from_counter).or_insert_with(HashSet::new);
-                    neighbors.insert(to_counter);
-                }
-            }
-        }
-        v2e
-    }
-
-    /// Calculates topological relations (neighborhood) of mesh vertex -> vertex.
-    /// Returns a Map (key: vertex index, value: list of its neighboring vertices indices)
-    pub fn vertex_to_vertex_topology(&self) -> HashMap<usize, HashSet<usize>> {
-        let mut v2v: HashMap<usize, HashSet<usize>> = HashMap::new();
-        for f in self.triangle_faces_iter() {
-            let neighbors_0 = v2v
-                .entry(cast_usize(f.vertices.0))
-                .or_insert_with(HashSet::new);
-            neighbors_0.insert(cast_usize(f.vertices.1));
-            neighbors_0.insert(cast_usize(f.vertices.2));
-            let neighbors_1 = v2v
-                .entry(cast_usize(f.vertices.1))
-                .or_insert_with(HashSet::new);
-            neighbors_1.insert(cast_usize(f.vertices.0));
-            neighbors_1.insert(cast_usize(f.vertices.2));
-            let neighbors_2 = v2v
-                .entry(cast_usize(f.vertices.2))
-                .or_insert_with(HashSet::new);
-            neighbors_2.insert(cast_usize(f.vertices.0));
-            neighbors_2.insert(cast_usize(f.vertices.1));
-        }
-        v2v
     }
 }
 

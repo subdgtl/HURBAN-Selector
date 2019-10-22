@@ -1,6 +1,7 @@
 use nalgebra::geometry::Point3;
 
 use crate::geometry::Geometry;
+use crate::mesh_topology_analysis::vertex_to_vertex_topology;
 
 /// # Mesh relaxation / Laplacian smoothing
 /// Relaxes angles between mesh edges, resulting in a smoother geometry.
@@ -12,7 +13,7 @@ use crate::geometry::Geometry;
 /// with an average position of its immediate neighbors
 #[allow(dead_code)]
 pub fn laplacian_smoothing(geometry: &Geometry, iterations: u8) -> Geometry {
-    let vertex_to_vertex_topology = geometry.vertex_to_vertex_topology();
+    let vertex_to_vertex_topology = vertex_to_vertex_topology(geometry);
     let mut geometry_vertices: Vec<Point3<f32>> = Vec::from(geometry.vertices());
     let mut vertices = geometry_vertices.clone();
 
