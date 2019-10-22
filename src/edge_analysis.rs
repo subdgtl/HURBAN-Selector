@@ -2,16 +2,16 @@ use std::collections::HashMap;
 
 use crate::geometry::{OrientedEdge, UnorientedEdge};
 
-/// Used in EdgeCountMap
+/// Used in EdgeSharingMap
 /// ascending_edges contains edges oriented from lower index to higher
 /// descending_edges contains edges oriented from higher index to lower
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SimilarEdges {
+pub struct SharedEdges {
     pub ascending_edges: Vec<OrientedEdge>,
     pub descending_edges: Vec<OrientedEdge>,
 }
 
-pub type EdgeCountMap = HashMap<UnorientedEdge, SimilarEdges>;
+pub type EdgeSharingMap = HashMap<UnorientedEdge, SharedEdges>;
 
 /// Calculate edge valencies = number of faces sharing an edge
 /// 1 -> border edge = acceptable but mesh is not watertight
@@ -20,8 +20,8 @@ pub type EdgeCountMap = HashMap<UnorientedEdge, SimilarEdges>;
 #[allow(dead_code)]
 pub fn edge_valencies<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
     oriented_edges: I,
-) -> EdgeCountMap {
-    let mut edge_valency_map: EdgeCountMap = HashMap::new();
+) -> EdgeSharingMap {
+    let mut edge_valency_map: EdgeSharingMap = HashMap::new();
     for edge in oriented_edges {
         let unoriented_edge = UnorientedEdge(*edge);
         let ascending_edges: Vec<OrientedEdge> = Vec::new();
@@ -29,7 +29,7 @@ pub fn edge_valencies<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
 
         let edge_count = edge_valency_map
             .entry(unoriented_edge)
-            .or_insert(SimilarEdges {
+            .or_insert(SharedEdges {
                 ascending_edges,
                 descending_edges,
             });

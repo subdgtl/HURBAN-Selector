@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 
 use crate::convert::cast_i32;
-use crate::edge_analysis::EdgeCountMap;
+use crate::edge_analysis::EdgeSharingMap;
 use crate::geometry::OrientedEdge;
 
 /// Finds edges with a certain valency in a mesh edge collection
 /// Valency indicates how many faces share the edge
 fn find_edges_with_valency<'a>(
-    edge_valencies: &'a EdgeCountMap,
+    edge_valencies: &'a EdgeSharingMap,
     valency: usize,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
     edge_valencies
@@ -28,7 +28,7 @@ fn find_edges_with_valency<'a>(
 /// An edge is border when its valency is 1
 #[allow(dead_code)]
 pub fn border_edges<'a>(
-    edge_valencies: &'a EdgeCountMap,
+    edge_valencies: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
     find_edges_with_valency(edge_valencies, 1)
 }
@@ -37,7 +37,7 @@ pub fn border_edges<'a>(
 /// An edge is manifold when its valency is 2
 #[allow(dead_code)]
 pub fn manifold_edges<'a>(
-    edge_valencies: &'a EdgeCountMap,
+    edge_valencies: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
     find_edges_with_valency(edge_valencies, 2)
 }
@@ -45,7 +45,7 @@ pub fn manifold_edges<'a>(
 /// Finds non-manifold (errorneous) edges in a mesh edge collection
 #[allow(dead_code)]
 pub fn non_manifold_edges<'a>(
-    edge_valencies: &'a EdgeCountMap,
+    edge_valencies: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
     edge_valencies
         .iter()
@@ -64,7 +64,7 @@ pub fn non_manifold_edges<'a>(
 /// Finds border vertex indices in a mesh edge collection
 /// A vertex is border when its edge's valency is 1
 #[allow(dead_code)]
-pub fn border_vertex_indices(edge_valencies: &EdgeCountMap) -> HashSet<u32> {
+pub fn border_vertex_indices(edge_valencies: &EdgeSharingMap) -> HashSet<u32> {
     let mut border_vertices = HashSet::new();
 
     border_edges(edge_valencies).for_each(|edge| {
@@ -81,7 +81,7 @@ pub fn border_vertex_indices(edge_valencies: &EdgeCountMap) -> HashSet<u32> {
 /// in a single reverted oriented edge and
 /// the border edges don't have any counterpart.
 #[allow(dead_code)]
-pub fn is_mesh_orientable(edge_valencies: &EdgeCountMap) -> bool {
+pub fn is_mesh_orientable(edge_valencies: &EdgeSharingMap) -> bool {
     edge_valencies.iter().all(|(_, edge_count)| {
         // Ascending_count and descending_count can never be both 0
         // at the same time because there is never a case that the
@@ -95,7 +95,7 @@ pub fn is_mesh_orientable(edge_valencies: &EdgeCountMap) -> bool {
 /// The mesh is watertight if there is no border or non-manifold edge,
 /// in other words, all edge valencies are 2
 #[allow(dead_code)]
-pub fn is_mesh_watertight(edge_valencies: &EdgeCountMap) -> bool {
+pub fn is_mesh_watertight(edge_valencies: &EdgeSharingMap) -> bool {
     edge_valencies.iter().all(|(_, edge_count)| {
         edge_count.ascending_edges.len() == 1 && edge_count.descending_edges.len() == 1
     })
