@@ -13,6 +13,7 @@ pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32;
     for (from_counter, face) in geometry.faces().iter().enumerate() {
         match face {
             Face::Triangle(f) => {
+                let from_counter_u32 = cast_u32(from_counter);
                 let [f_e_0, f_e_1, f_e_2] = f.to_unoriented_edges();
                 for (to_counter, to_face) in geometry.faces().iter().enumerate() {
                     match to_face {
@@ -21,9 +22,8 @@ pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32;
                                 || t_f.contains_unoriented_edge(f_e_1)
                                 || t_f.contains_unoriented_edge(f_e_2)
                             {
-                                let neighbors = f2f
-                                    .entry(cast_u32(from_counter))
-                                    .or_insert_with(SmallVec::new);
+                                let neighbors =
+                                    f2f.entry(from_counter_u32).or_insert_with(SmallVec::new);
                                 if neighbors.iter().all(|value| *value != cast_u32(to_counter)) {
                                     neighbors.push(cast_u32(to_counter));
                                 }
@@ -72,10 +72,11 @@ pub fn vertex_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u3
     for (to_face, face) in geometry.faces().iter().enumerate() {
         match face {
             Face::Triangle(t_f) => {
+                let to_face_u32 = cast_u32(to_face);
                 for from_vertex in &[t_f.vertices.0, t_f.vertices.1, t_f.vertices.2] {
                     let neighbors = v2f.entry(*from_vertex).or_insert_with(SmallVec::new);
-                    if neighbors.iter().all(|value| *value != cast_u32(to_face)) {
-                        neighbors.push(cast_u32(to_face));
+                    if neighbors.iter().all(|value| *value != to_face_u32) {
+                        neighbors.push(to_face_u32);
                     }
                 }
             }
@@ -91,10 +92,11 @@ pub fn vertex_to_edge_topology(edges: &[UnorientedEdge]) -> HashMap<u32, SmallVe
     let mut v2e: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
 
     for (to_edge, e) in edges.iter().enumerate() {
+        let to_edge_u32 = cast_u32(to_edge);
         for from_vertex in &[e.0.vertices.0, e.0.vertices.1] {
             let neighbors = v2e.entry(*from_vertex).or_insert_with(SmallVec::new);
-            if neighbors.iter().all(|value| *value != cast_u32(to_edge)) {
-                neighbors.push(cast_u32(to_edge));
+            if neighbors.iter().all(|value| *value != to_edge_u32) {
+                neighbors.push(to_edge_u32);
             }
         }
     }
