@@ -61,8 +61,8 @@ pub fn non_manifold_edges<'a>(
         })
 }
 
-///Finds border vertex indices in a mesh edge collection.
-///A vertex is border when its edge's valency is 1
+/// Finds border vertex indices in a mesh edge collection.
+/// A vertex is border when its edge's valency is 1
 #[allow(dead_code)]
 pub fn border_vertex_indices(edge_sharing: &EdgeSharingMap) -> HashSet<u32> {
     let mut border_vertices = HashSet::new();
