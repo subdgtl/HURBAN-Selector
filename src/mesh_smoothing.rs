@@ -4,43 +4,56 @@ use crate::convert::cast_u32;
 use crate::geometry::Geometry;
 use crate::mesh_topology_analysis::vertex_to_vertex_topology;
 
-/// # Mesh relaxation / Laplacian smoothing
 /// Relaxes angles between mesh edges, resulting in a smoother geometry.
-/// The number of vertices, faces and the overall topology remains unchanged.
-/// The more iterations, the smoother result.
-/// Too many iterations may cause slow calculation time.
 ///
-/// The algorithm is based on replacing each vertex position
-/// with an average position of its immediate neighbors
+/// The number of vertices, faces and the overall topology remains unchanged. The
+/// more iterations, the smoother result. Too many iterations may cause slow
+/// calculation time.
+///
+/// The algorithm is based on replacing each vertex position with an average
+/// position of its immediate neighbors
+///
+/// - `geometry` - mesh geometry to relax
+/// - `iterations` - number of times the smoothing algorithm should relax the geometry
 #[allow(dead_code)]
 pub fn laplacian_smoothing(geometry: &Geometry, iterations: u8) -> Geometry {
     laplacian_smoothing_with_anchors(geometry, iterations, &[])
 }
 
-/// # Mesh relaxation / Laplacian smoothing with fixed vertices
 /// Relaxes angles between mesh edges, while keeping some vertices anchored,
 /// resulting in a smoother geometry.
-/// The number of vertices, faces and the overall topology remains unchanged.
-/// The more iterations, the smoother result.
-/// Too many iterations may cause slow calculation time.
 ///
-/// The algorithm is based on replacing each vertex position
-/// with an average position of its immediate neighbors
+/// The number of vertices, faces and the overall topology remains unchanged. The
+/// more iterations, the smoother result. Too many iterations may cause slow
+/// calculation time.
+///
+/// The algorithm is based on replacing each vertex position with an average
+/// position of its immediate neighbors
+///
+/// - `geometry` - mesh geometry to relax
+/// - `iterations` - number of times the smoothing algorithm should relax the geometry
+/// - `fixed_vertex_indices` - indices of vertices to keep fixed during the relaxation
 #[allow(dead_code)]
 pub fn laplacian_smoothing_with_anchors(
     geometry: &Geometry,
     iterations: u8,
     fixed_vertex_indices: &[u32],
 ) -> Geometry {
+    if iterations == 0 {
+        return geometry.clone();
+    }
+
     let vertex_to_vertex_topology = vertex_to_vertex_topology(geometry);
-    let mut geometry_vertices: Vec<Point3<f32>> = Vec::from(geometry.vertices());
-    let mut vertices = geometry_vertices.clone();
+    let mut vertices: Vec<Point3<f32>> = Vec::from(geometry.vertices());
+    let mut geometry_vertices: Vec<Point3<f32>>;
 
     for _ in 0..iterations {
+        geometry_vertices = vertices.clone();
         for (current_vertex_index, neighbors_indices) in vertex_to_vertex_topology.iter() {
             if fixed_vertex_indices
                 .iter()
                 .all(|i| *i != cast_u32(*current_vertex_index))
+                || neighbors_indices.len() == 0
             {
                 let mut average_position: Point3<f32> = Point3::origin();
                 for neighbor_index in neighbors_indices {
@@ -50,9 +63,9 @@ pub fn laplacian_smoothing_with_anchors(
                 vertices[*current_vertex_index] = average_position;
             }
         }
-        geometry_vertices = vertices.clone();
     }
 
+    // FIXME: Calculate smooth normals for the result once we support them
     Geometry::from_triangle_faces_with_vertices_and_normals(
         geometry.triangle_faces_iter().collect(),
         vertices,
@@ -62,14 +75,17 @@ pub fn laplacian_smoothing_with_anchors(
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::distance_squared;
+    use std::iter::FromIterator;
 
-    use crate::edge_analysis::edge_valencies;
+    use nalgebra;
+
+    use crate::edge_analysis;
     use crate::geometry::{Geometry, NormalStrategy, OrientedEdge, TriangleFace, Vertices};
-    use crate::mesh_analysis::border_vertex_indices;
+    use crate::mesh_analysis;
 
     use super::*;
 
+    // FIXME: Snapshot testing
     fn torus() -> (Vec<(u32, u32, u32)>, Vertices) {
         let vertices = vec![
             Point3::new(0.566987, -1.129e-11, 0.25),
@@ -400,9 +416,14 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
+        let relaxed_geometry_0 = laplacian_smoothing(&geometry, 0);
         let relaxed_geometry_1 = laplacian_smoothing(&geometry, 1);
         let relaxed_geometry_10 = laplacian_smoothing(&geometry, 10);
 
+        assert_eq!(
+            relaxed_geometry_0.triangle_faces_len(),
+            geometry.triangle_faces_len()
+        );
         assert_eq!(
             relaxed_geometry_1.triangle_faces_len(),
             geometry.triangle_faces_len()
@@ -412,6 +433,10 @@ mod tests {
             geometry.triangle_faces_len()
         );
         assert_eq!(
+            relaxed_geometry_0.vertices().len(),
+            geometry.vertices().len()
+        );
+        assert_eq!(
             relaxed_geometry_1.vertices().len(),
             geometry.vertices().len()
         );
@@ -419,6 +444,7 @@ mod tests {
             relaxed_geometry_10.vertices().len(),
             geometry.vertices().len()
         );
+        assert_eq!(relaxed_geometry_0.normals().len(), geometry.normals().len());
         assert_eq!(relaxed_geometry_1.normals().len(), geometry.normals().len());
         assert_eq!(
             relaxed_geometry_10.normals().len(),
@@ -449,11 +475,15 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
+        let relaxed_geometry_0_i = laplacian_smoothing(&geometry, 0);
         let relaxed_geometry_1_i = laplacian_smoothing(&geometry, 1);
         let relaxed_geometry_3_i = laplacian_smoothing(&geometry, 3);
 
+        let relaxed_geometry_0_i_faces: Vec<TriangleFace> =
+            relaxed_geometry_0_i.triangle_faces_iter().collect();
         let relaxed_geometry_1_i_faces: Vec<TriangleFace> =
             relaxed_geometry_1_i.triangle_faces_iter().collect();
+        let test_geometry_0_i_faces: Vec<TriangleFace> = geometry.triangle_faces_iter().collect();
         let test_geometry_1_i_faces: Vec<TriangleFace> =
             test_geometry_1_i.triangle_faces_iter().collect();
         let relaxed_geometry_3_i_faces: Vec<TriangleFace> =
@@ -461,17 +491,30 @@ mod tests {
         let test_geometry_3_i_faces: Vec<TriangleFace> =
             test_geometry_3_i.triangle_faces_iter().collect();
 
+        assert_eq!(relaxed_geometry_0_i_faces, test_geometry_0_i_faces);
         assert_eq!(relaxed_geometry_1_i_faces, test_geometry_1_i_faces);
         assert_eq!(relaxed_geometry_3_i_faces, test_geometry_3_i_faces);
 
         const TOLERANCE_SQUARED: f32 = 0.01 * 0.01;
+
+        let relaxed_geometry_0_i_vertices = relaxed_geometry_0_i.vertices();
+        let test_geometry_0_i_vertices = geometry.vertices();
+
+        for i in 0..test_geometry_0_i_vertices.len() {
+            assert!(
+                nalgebra::distance_squared(
+                    &test_geometry_0_i_vertices[i],
+                    &relaxed_geometry_0_i_vertices[i]
+                ) < TOLERANCE_SQUARED
+            );
+        }
 
         let relaxed_geometry_1_i_vertices = relaxed_geometry_1_i.vertices();
         let test_geometry_1_i_vertices = test_geometry_1_i.vertices();
 
         for i in 0..test_geometry_1_i_vertices.len() {
             assert!(
-                distance_squared(
+                nalgebra::distance_squared(
                     &test_geometry_1_i_vertices[i],
                     &relaxed_geometry_1_i_vertices[i]
                 ) < TOLERANCE_SQUARED
@@ -483,7 +526,7 @@ mod tests {
 
         for i in 0..test_geometry_3_i_vertices.len() {
             assert!(
-                distance_squared(
+                nalgebra::distance_squared(
                     &test_geometry_3_i_vertices[i],
                     &relaxed_geometry_3_i_vertices[i]
                 ) < TOLERANCE_SQUARED
@@ -527,8 +570,10 @@ mod tests {
 
         for i in 0..test_geometry_vertices.len() {
             assert!(
-                distance_squared(&test_geometry_vertices[i], &relaxed_geometry_vertices[i])
-                    < TOLERANCE_SQUARED
+                nalgebra::distance_squared(
+                    &test_geometry_vertices[i],
+                    &relaxed_geometry_vertices[i]
+                ) < TOLERANCE_SQUARED
             );
         }
     }
@@ -543,11 +588,9 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_valencies(&oriented_edges);
-        let fixed_vertex_indices: Vec<_> = border_vertex_indices(&edge_valency_map)
-            .iter()
-            .map(|i| *i)
-            .collect();
+        let edge_valency_map = edge_analysis::edge_valencies(&oriented_edges);
+        let fixed_vertex_indices =
+            Vec::from_iter(mesh_analysis::border_vertex_indices(&edge_valency_map).into_iter());
 
         let (faces_correct, vertices_correct) = shape_for_smoothing_with_anchors_50_iterations();
         let test_geometry_correct =
@@ -567,16 +610,15 @@ mod tests {
 
         assert_eq!(relaxed_geometry_faces, test_geometry_faces);
 
-        const TOLERANCE_SQUARED: f32 = 0.01 * 0.01;
-
         let relaxed_geometry_vertices = relaxed_geometry.vertices();
         let test_geometry_vertices = test_geometry_correct.vertices();
 
         for i in 0..test_geometry_vertices.len() {
-            assert!(
-                distance_squared(&test_geometry_vertices[i], &relaxed_geometry_vertices[i])
-                    < TOLERANCE_SQUARED
-            );
+            assert!(test_geometry_vertices[i].coords.relative_eq(
+                &relaxed_geometry_vertices[i].coords,
+                0.001,
+                0.001,
+            ));
         }
     }
 }

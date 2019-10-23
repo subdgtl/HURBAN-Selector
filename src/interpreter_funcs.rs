@@ -103,12 +103,12 @@ impl Func for FuncImplLaplacianSmoothing {
 
     fn call(&self, args: &[Value]) -> Value {
         let geometry = args[0].unwrap_geometry();
-        let iterations = args[1].unwrap_uint();
-
-        assert!(
-            iterations < 255 && iterations > 0,
-            "The number of iterations of Laplacian smoothing must be between 1 and 255"
-        );
+        let iterations_unclamped = args[1].unwrap_uint();
+        let iterations = if iterations_unclamped > 255 {
+            255
+        } else {
+            iterations_unclamped
+        };
 
         let value = laplacian_smoothing(geometry, cast_u8(iterations));
 

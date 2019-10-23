@@ -366,6 +366,7 @@ impl OrientedEdge {
     }
 }
 
+/// Implements orientation indifferent hash and equal methods
 #[derive(Debug, Clone, Copy, Eq)]
 pub struct UnorientedEdge(pub OrientedEdge);
 
@@ -376,6 +377,7 @@ impl PartialEq for UnorientedEdge {
     }
 }
 
+// FIXME: test
 impl Hash for UnorientedEdge {
     fn hash<H: Hasher>(&self, state: &mut H) {
         cmp::min(self.0.vertices.0, self.0.vertices.1).hash(state);
