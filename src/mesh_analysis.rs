@@ -101,15 +101,15 @@ pub fn is_mesh_watertight(edge_valencies: &EdgeCountMap) -> bool {
     })
 }
 
-/// Computes the mesh genus.
+/// Computes the mesh genus of a triangulated mesh.
 ///
 /// Genus of a mesh is the number of holes in topology / connectivity.
-/// The mesh **must** be triangular and watertight for this to produce
+/// The mesh **must** be triangulated and watertight for this to produce
 /// usable results.
 ///
 /// The genus (G) is computed as: `V - E + F = 2*(1 - G)`.
 #[allow(dead_code)]
-pub fn mesh_genus(vertex_count: usize, edge_count: usize, face_count: usize) -> i32 {
+pub fn triangulated_mesh_genus(vertex_count: usize, edge_count: usize, face_count: usize) -> i32 {
     1 - (cast_i32(vertex_count) - cast_i32(edge_count) + cast_i32(face_count)) / 2
 }
 
@@ -590,13 +590,13 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_mesh_genus_box_should_be_0() {
+    fn test_geometry_triangulated_mesh_genus_box_should_be_0() {
         let geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
-        assert!(geometry.is_triangular());
+        assert!(geometry.is_triangulated());
 
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
-        let genus = mesh_genus(
+        let genus = triangulated_mesh_genus(
             geometry.vertices().len(),
             edges.len(),
             geometry.faces().len(),
@@ -605,18 +605,18 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_mesh_genus_torus_should_be_1() {
+    fn test_geometry_triangulated_mesh_genus_torus_should_be_1() {
         let (faces, vertices) = torus();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        assert!(geometry.is_triangular());
+        assert!(geometry.is_triangulated());
 
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
-        let genus = mesh_genus(
+        let genus = triangulated_mesh_genus(
             geometry.vertices().len(),
             edges.len(),
             geometry.faces().len(),
@@ -625,18 +625,18 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_mesh_genus_double_torus_should_be_2() {
+    fn test_geometry_triangulated_mesh_genus_double_torus_should_be_2() {
         let (faces, vertices) = double_torus();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        assert!(geometry.is_triangular());
+        assert!(geometry.is_triangulated());
 
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
-        let genus = mesh_genus(
+        let genus = triangulated_mesh_genus(
             geometry.vertices().len(),
             edges.len(),
             geometry.faces().len(),
@@ -645,18 +645,18 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_mesh_genus_triple_torus_should_be_3() {
+    fn test_geometry_triangulated_mesh_genus_triple_torus_should_be_3() {
         let (faces, vertices) = triple_torus();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        assert!(geometry.is_triangular());
+        assert!(geometry.is_triangulated());
 
         let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
 
-        let genus = mesh_genus(
+        let genus = triangulated_mesh_genus(
             geometry.vertices().len(),
             edges.len(),
             geometry.faces().len(),

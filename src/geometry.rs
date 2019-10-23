@@ -39,8 +39,9 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    /// Creates new triangular geometry from provided triangle faces
-    /// and vertices, and computes normals based on `normal_strategy`.
+    /// Creates new triangulated mesh geometry from provided triangle
+    /// faces and vertices, and computes normals based on
+    /// `normal_strategy`.
     ///
     /// # Panics
     /// Panics if faces refer to out-of-bounds vertices.
@@ -124,9 +125,9 @@ impl Geometry {
         }
     }
 
-    /// Creates new triangular geometry from provided triangle faces
-    /// and vertices, removes orphan vertices and computes normals
-    /// based on `normal_strategy`.
+    /// Creates new triangulated mesh geometry from provided triangle
+    /// faces and vertices, removes orphan vertices, and computes
+    /// normals based on `normal_strategy`.
     ///
     /// # Panics
     /// Panics if faces refer to out-of-bounds vertices.
@@ -148,8 +149,8 @@ impl Geometry {
         )
     }
 
-    /// Creates new triangular geometry from provided triangle faces,
-    /// vertices, and normals.
+    /// Creates new triangulated mesh geometry from provided triangle
+    /// faces, vertices and normals.
     ///
     /// # Panics
     /// Panics if faces refer to out-of-bounds vertices or normals.
@@ -170,8 +171,9 @@ impl Geometry {
         )
     }
 
-    /// Creates new triangular geometry from provided triangle faces,
-    /// vertices, and normals and removes orphan vertices and normals.
+    /// Creates new triangulated mesh geometry from provided triangle
+    /// faces, vertices and normals, and removes orphan vertices and
+    /// normals.
     ///
     /// # Panics
     /// Panics if faces refer to out-of-bounds vertices or normals.
@@ -252,8 +254,9 @@ impl Geometry {
         }
     }
 
-    /// Creates new triangular geometry from provided triangle faces,
-    /// vertices, and normals and removes orphan vertices and normals.
+    /// Creates new triangulated geometry from provided triangle
+    /// faces, vertices, and normals and removes orphan vertices and
+    /// normals.
     ///
     /// # Panics
     /// Panics if faces refer to out-of-bounds vertices or normals.
@@ -310,8 +313,9 @@ impl Geometry {
         })
     }
 
-    /// Returns whether the geometry contains exclusively triangular faces.
-    pub fn is_triangular(&self) -> bool {
+    /// Returns whether the geometry contains exclusively triangle
+    /// faces - is triangulated.
+    pub fn is_triangulated(&self) -> bool {
         self.faces().iter().all(|face| match face {
             Face::Triangle(_) => true,
         })
@@ -1180,7 +1184,7 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        assert!(geometry.is_triangular());
+        assert!(geometry.is_triangulated());
 
         let geometry_faces: Vec<_> = geometry
             .faces()
@@ -1225,7 +1229,7 @@ mod tests {
             vertices.clone(),
             normals.clone(),
         );
-        assert!(geometry.is_triangular());
+        assert!(geometry.is_triangulated());
 
         let geometry_faces: Vec<_> = geometry
             .faces()
