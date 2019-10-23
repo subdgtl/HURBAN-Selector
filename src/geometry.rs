@@ -53,68 +53,74 @@ impl Geometry {
         F: IntoIterator<Item = (u32, u32, u32)>,
         V: IntoIterator<Item = Point3<f32>>,
     {
-        // To avoid one additional cloning of this collection, we
-        // first materialize it into its final structure (Vec<Face>),
-        // and later assert the only kind of faces there are
-        // triangles.
-        let faces_collection: Vec<_> = faces
-            .into_iter()
-            .enumerate()
-            .map(|(i, (i1, i2, i3))| {
-                let normal_index = cast_u32(i);
-                TriangleFace::new_separate(i1, i2, i3, normal_index, normal_index, normal_index)
-            })
-            .map(Face::from)
-            .collect();
+        match normal_strategy {
+            NormalStrategy::Sharp => {
+                // To avoid one additional cloning of this collection, we
+                // first materialize it into its final structure (Vec<Face>),
+                // and later assert the only kind of faces there are
+                // triangles.
+                let faces_collection: Vec<_> = faces
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (i1, i2, i3))| {
+                        let normal_index = cast_u32(i);
+                        TriangleFace::new_separate(
+                            i1,
+                            i2,
+                            i3,
+                            normal_index,
+                            normal_index,
+                            normal_index,
+                        )
+                    })
+                    .map(Face::from)
+                    .collect();
 
-        let vertices_collection: Vec<_> = vertices.into_iter().collect();
-        let mut normals_collection = Vec::with_capacity(faces_collection.len());
+                let vertices_collection: Vec<_> = vertices.into_iter().collect();
+                let mut normals_collection = Vec::with_capacity(faces_collection.len());
 
-        let vertices_range = 0..cast_u32(vertices_collection.len());
-        for face in &faces_collection {
-            match face {
-                Face::Triangle(triangle_face) => {
-                    let (v1, v2, v3) = triangle_face.vertices;
+                let vertices_range = 0..cast_u32(vertices_collection.len());
+                for face in &faces_collection {
+                    match face {
+                        Face::Triangle(triangle_face) => {
+                            let (v1, v2, v3) = triangle_face.vertices;
 
-                    assert!(
-                        vertices_range.contains(&v1),
-                        "Faces reference out of bounds position data"
-                    );
-                    assert!(
-                        vertices_range.contains(&v2),
-                        "Faces reference out of bounds position data"
-                    );
-                    assert!(
-                        vertices_range.contains(&v3),
-                        "Faces reference out of bounds position data"
-                    );
+                            assert!(
+                                vertices_range.contains(&v1),
+                                "Faces reference out of bounds position data"
+                            );
+                            assert!(
+                                vertices_range.contains(&v2),
+                                "Faces reference out of bounds position data"
+                            );
+                            assert!(
+                                vertices_range.contains(&v3),
+                                "Faces reference out of bounds position data"
+                            );
 
-                    // FIXME: computing smooth normals in the future won't be
-                    // so simple as just computing a normal per face, we will
-                    // need to analyze larger parts of the geometry
-                    let face_normal = match normal_strategy {
-                        NormalStrategy::Sharp => compute_triangle_normal(
-                            &vertices_collection[cast_usize(v1)],
-                            &vertices_collection[cast_usize(v2)],
-                            &vertices_collection[cast_usize(v3)],
-                        ),
-                    };
+                            let face_normal = compute_triangle_normal(
+                                &vertices_collection[cast_usize(v1)],
+                                &vertices_collection[cast_usize(v2)],
+                                &vertices_collection[cast_usize(v3)],
+                            );
 
-                    normals_collection.push(face_normal);
+                            normals_collection.push(face_normal);
 
+                        }
+                        // FIXME: once we add other kinds of faces, they must panic here
+                        // _ => panic!("Face must be a triangle, we just created it"),
+                    }
                 }
-                // FIXME: once we add other kinds of faces, they must panic here
-                // _ => panic!("Face must be triangular, we just created it"),
+
+                assert_eq!(normals_collection.len(), faces_collection.len());
+                assert_eq!(normals_collection.capacity(), faces_collection.len());
+
+                Self {
+                    faces: faces_collection,
+                    vertices: vertices_collection,
+                    normals: normals_collection,
+                }
             }
-        }
-
-        assert_eq!(normals_collection.len(), faces_collection.len());
-        assert_eq!(normals_collection.capacity(), faces_collection.len());
-
-        Self {
-            faces: faces_collection,
-            vertices: vertices_collection,
-            normals: normals_collection,
         }
     }
 
