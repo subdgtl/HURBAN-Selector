@@ -1,7 +1,7 @@
 use nalgebra::geometry::Point3;
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::geometry::Geometry;
+use crate::geometry::{Face, Geometry, TriangleFace};
 use crate::mesh_topology_analysis::vertex_to_vertex_topology;
 
 /// Relaxes angles between mesh edges, resulting in a smoother geometry.
@@ -65,12 +65,25 @@ pub fn laplacian_smoothing_with_anchors(
         }
     }
 
+    let faces: Vec<_> = filter_triangular_faces(&geometry);
+
     // FIXME: Calculate smooth normals for the result once we support them
     Geometry::from_triangle_faces_with_vertices_and_normals(
-        geometry.triangle_faces_iter().collect(),
+        faces,
         vertices,
         geometry.normals().to_vec(),
     )
+}
+
+fn filter_triangular_faces(geometry: &Geometry) -> Vec<TriangleFace> {
+    geometry
+        .faces()
+        .iter()
+        .copied()
+        .map(|face| match face {
+            Face::Triangle(f) => f,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -420,35 +433,26 @@ mod tests {
         let relaxed_geometry_1 = laplacian_smoothing(&geometry, 1);
         let relaxed_geometry_10 = laplacian_smoothing(&geometry, 10);
 
-        assert_eq!(
-            relaxed_geometry_0.triangle_faces_len(),
-            geometry.triangle_faces_len()
-        );
-        assert_eq!(
-            relaxed_geometry_1.triangle_faces_len(),
-            geometry.triangle_faces_len()
-        );
-        assert_eq!(
-            relaxed_geometry_10.triangle_faces_len(),
-            geometry.triangle_faces_len()
-        );
+        assert_eq!(relaxed_geometry_0.faces().len(), geometry.faces().len(),);
+        assert_eq!(relaxed_geometry_1.faces().len(), geometry.faces().len(),);
+        assert_eq!(relaxed_geometry_10.faces().len(), geometry.faces().len(),);
         assert_eq!(
             relaxed_geometry_0.vertices().len(),
-            geometry.vertices().len()
+            geometry.vertices().len(),
         );
         assert_eq!(
             relaxed_geometry_1.vertices().len(),
-            geometry.vertices().len()
+            geometry.vertices().len(),
         );
         assert_eq!(
             relaxed_geometry_10.vertices().len(),
-            geometry.vertices().len()
+            geometry.vertices().len(),
         );
         assert_eq!(relaxed_geometry_0.normals().len(), geometry.normals().len());
         assert_eq!(relaxed_geometry_1.normals().len(), geometry.normals().len());
         assert_eq!(
             relaxed_geometry_10.normals().len(),
-            geometry.normals().len()
+            geometry.normals().len(),
         );
     }
 
@@ -480,16 +484,16 @@ mod tests {
         let relaxed_geometry_3_i = laplacian_smoothing(&geometry, 3);
 
         let relaxed_geometry_0_i_faces: Vec<TriangleFace> =
-            relaxed_geometry_0_i.triangle_faces_iter().collect();
+            filter_triangular_faces(&relaxed_geometry_0_i);
         let relaxed_geometry_1_i_faces: Vec<TriangleFace> =
-            relaxed_geometry_1_i.triangle_faces_iter().collect();
-        let test_geometry_0_i_faces: Vec<TriangleFace> = geometry.triangle_faces_iter().collect();
+            filter_triangular_faces(&relaxed_geometry_1_i);
+        let test_geometry_0_i_faces: Vec<TriangleFace> = filter_triangular_faces(&geometry);
         let test_geometry_1_i_faces: Vec<TriangleFace> =
-            test_geometry_1_i.triangle_faces_iter().collect();
+            filter_triangular_faces(&test_geometry_1_i);
         let relaxed_geometry_3_i_faces: Vec<TriangleFace> =
-            relaxed_geometry_3_i.triangle_faces_iter().collect();
+            filter_triangular_faces(&relaxed_geometry_3_i);
         let test_geometry_3_i_faces: Vec<TriangleFace> =
-            test_geometry_3_i.triangle_faces_iter().collect();
+            filter_triangular_faces(&test_geometry_3_i);
 
         assert_eq!(relaxed_geometry_0_i_faces, test_geometry_0_i_faces);
         assert_eq!(relaxed_geometry_1_i_faces, test_geometry_1_i_faces);
@@ -556,10 +560,9 @@ mod tests {
         let relaxed_geometry =
             laplacian_smoothing_with_anchors(&geometry, 50, &fixed_vertex_indices);
 
-        let relaxed_geometry_faces: Vec<TriangleFace> =
-            relaxed_geometry.triangle_faces_iter().collect();
+        let relaxed_geometry_faces: Vec<TriangleFace> = filter_triangular_faces(&relaxed_geometry);
         let test_geometry_faces: Vec<TriangleFace> =
-            test_geometry_correct.triangle_faces_iter().collect();
+            filter_triangular_faces(&test_geometry_correct);
 
         assert_eq!(relaxed_geometry_faces, test_geometry_faces);
 
@@ -588,9 +591,9 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
-        let edge_valency_map = edge_analysis::edge_valencies(&oriented_edges);
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
         let fixed_vertex_indices =
-            Vec::from_iter(mesh_analysis::border_vertex_indices(&edge_valency_map).into_iter());
+            Vec::from_iter(mesh_analysis::border_vertex_indices(&edge_sharing_map).into_iter());
 
         let (faces_correct, vertices_correct) = shape_for_smoothing_with_anchors_50_iterations();
         let test_geometry_correct =
@@ -603,10 +606,9 @@ mod tests {
         let relaxed_geometry =
             laplacian_smoothing_with_anchors(&geometry, 50, &fixed_vertex_indices);
 
-        let relaxed_geometry_faces: Vec<TriangleFace> =
-            relaxed_geometry.triangle_faces_iter().collect();
+        let relaxed_geometry_faces: Vec<TriangleFace> = filter_triangular_faces(&relaxed_geometry);
         let test_geometry_faces: Vec<TriangleFace> =
-            test_geometry_correct.triangle_faces_iter().collect();
+            filter_triangular_faces(&test_geometry_correct);
 
         assert_eq!(relaxed_geometry_faces, test_geometry_faces);
 

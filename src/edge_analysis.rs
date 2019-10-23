@@ -81,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn test_edge_analysis_edge_valencies() {
+    fn test_edge_analysis_edge_sharing() {
         let (faces, vertices) = quad();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
