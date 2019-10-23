@@ -1,6 +1,6 @@
 use nalgebra::geometry::Point3;
 
-use crate::convert::cast_u32;
+use crate::convert::{cast_u32, cast_usize};
 use crate::geometry::Geometry;
 use crate::mesh_topology_analysis::vertex_to_vertex_topology;
 
@@ -57,10 +57,10 @@ pub fn laplacian_smoothing_with_anchors(
             {
                 let mut average_position: Point3<f32> = Point3::origin();
                 for neighbor_index in neighbors_indices {
-                    average_position += geometry_vertices[*neighbor_index].coords;
+                    average_position += geometry_vertices[cast_usize(*neighbor_index)].coords;
                 }
                 average_position /= neighbors_indices.len() as f32;
-                vertices[*current_vertex_index] = average_position;
+                vertices[cast_usize(*current_vertex_index)] = average_position;
             }
         }
     }
