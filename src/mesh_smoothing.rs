@@ -53,7 +53,7 @@ pub fn laplacian_smoothing_with_anchors(
             if fixed_vertex_indices
                 .iter()
                 .all(|i| *i != cast_u32(*current_vertex_index))
-                || neighbors_indices.len() == 0
+                || neighbors_indices.is_empty()
             {
                 let mut average_position: Point3<f32> = Point3::origin();
                 for neighbor_index in neighbors_indices {
