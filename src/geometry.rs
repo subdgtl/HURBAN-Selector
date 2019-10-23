@@ -472,6 +472,12 @@ impl OrientedEdge {
 #[derive(Debug, Clone, Copy, Eq)]
 pub struct UnorientedEdge(pub OrientedEdge);
 
+impl UnorientedEdge {
+    pub fn shares_vertex(self, other: UnorientedEdge) -> bool {
+        other.0.contains_vertex(self.0.vertices.0) || other.0.contains_vertex(self.0.vertices.1)
+    }
+}
+
 impl PartialEq for UnorientedEdge {
     fn eq(&self, other: &Self) -> bool {
         (self.0.vertices.0 == other.0.vertices.0 && self.0.vertices.1 == other.0.vertices.1)
