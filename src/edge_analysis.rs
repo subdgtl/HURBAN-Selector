@@ -18,6 +18,7 @@ pub type EdgeSharingMap = HashMap<UnorientedEdge, SharedEdges>;
 /// 1 -> border edge = acceptable but mesh is not watertight
 /// 2 -> manifold edge = correct
 /// 3 or more -> non-manifold edge = corrupted mesh
+// FIXME: Implement also for UnorientedEdges
 #[allow(dead_code)]
 pub fn edge_sharing<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
     oriented_edges: I,
