@@ -1,8 +1,11 @@
 use std::collections::HashSet;
 
-use crate::convert::cast_i32;
+use nalgebra::base::Vector3;
+use nalgebra::geometry::Point3;
+
+use crate::convert::{cast_i32, cast_usize};
 use crate::edge_analysis::EdgeSharingMap;
-use crate::geometry::{OrientedEdge, UnorientedEdge};
+use crate::geometry::{Face, Geometry, OrientedEdge, UnorientedEdge};
 
 /// Finds edges with a certain valency in a mesh edge collection
 /// Valency indicates how many faces share the edge
@@ -144,6 +147,78 @@ pub fn triangulated_mesh_genus(vertex_count: usize, edge_count: usize, face_coun
     1 - (cast_i32(vertex_count) - cast_i32(edge_count) + cast_i32(face_count)) / 2
 }
 
+/// Checks if two geometries are visually identical.
+///
+/// The two geometries can
+/// possibly contain the same vertices and normals bound to the same faces, but all
+/// of these can be in different order, including shifts in face winding. This
+/// function takes all these cases in consideration. Therefore it is slow.
+#[allow(dead_code)]
+pub fn are_visually_identical(g_1: &Geometry, g_2: &Geometry) -> bool {
+    struct UnpackedFace {
+        vertices: (Point3<f32>, Point3<f32>, Point3<f32>),
+        normals: (Vector3<f32>, Vector3<f32>, Vector3<f32>),
+    }
+
+    impl PartialEq for UnpackedFace {
+        fn eq(&self, other: &Self) -> bool {
+            (self.vertices.0 == other.vertices.0
+                && self.vertices.1 == other.vertices.1
+                && self.vertices.2 == other.vertices.2
+                && self.normals.0 == other.normals.0
+                && self.normals.1 == other.normals.1
+                && self.normals.2 == other.normals.2)
+                || (self.vertices.0 == other.vertices.1
+                    && self.vertices.1 == other.vertices.2
+                    && self.vertices.2 == other.vertices.0
+                    && self.normals.0 == other.normals.1
+                    && self.normals.1 == other.normals.2
+                    && self.normals.2 == other.normals.0)
+                || (self.vertices.0 == other.vertices.2
+                    && self.vertices.1 == other.vertices.0
+                    && self.vertices.2 == other.vertices.1
+                    && self.normals.0 == other.normals.2
+                    && self.normals.1 == other.normals.0
+                    && self.normals.2 == other.normals.1)
+        }
+    }
+
+    let mut unpacked_faces_1 = g_1.faces().iter().map(|face| match face {
+        Face::Triangle(f) => Some(UnpackedFace {
+            vertices: (
+                g_1.vertices()[cast_usize(f.vertices.0)],
+                g_1.vertices()[cast_usize(f.vertices.1)],
+                g_1.vertices()[cast_usize(f.vertices.2)],
+            ),
+            normals: (
+                g_1.normals()[cast_usize(f.normals.0)],
+                g_1.normals()[cast_usize(f.normals.1)],
+                g_1.normals()[cast_usize(f.normals.2)],
+            ),
+        }),
+    });
+
+    let mut unpacked_faces_2 = g_2.faces().iter().map(|face| match face {
+        Face::Triangle(f) => Some(UnpackedFace {
+            vertices: (
+                g_2.vertices()[cast_usize(f.vertices.0)],
+                g_2.vertices()[cast_usize(f.vertices.1)],
+                g_2.vertices()[cast_usize(f.vertices.2)],
+            ),
+            normals: (
+                g_2.normals()[cast_usize(f.normals.0)],
+                g_2.normals()[cast_usize(f.normals.1)],
+                g_2.normals()[cast_usize(f.normals.2)],
+            ),
+        }),
+    });
+
+    g_1.faces().len() == g_2.faces().len()
+        && g_1.vertices().len() == g_2.vertices().len()
+        && g_1.normals().len() == g_2.normals().len()
+        && unpacked_faces_1.all(|f| unpacked_faces_2.any(|g| f == g))
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::base::Vector3;
@@ -177,6 +252,46 @@ mod tests {
         let faces = vec![(0, 1, 2), (2, 3, 0)];
 
         (faces, vertices)
+    }
+
+    pub fn quad_with_normals() -> Geometry {
+        let vertices = vec![
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+        ];
+
+        let vertex_normals = vec![
+            n(-1.0, -1.0, 1.0),
+            n(1.0, -1.0, 1.0),
+            n(1.0, 1.0, 1.0),
+            n(-1.0, 1.0, 1.0),
+        ];
+
+        let faces = vec![TriangleFace::new(0, 1, 2), TriangleFace::new(2, 3, 0)];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+    }
+
+    pub fn quad_renumbered_with_normals() -> Geometry {
+        let vertices = vec![
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+        ];
+
+        let vertex_normals = vec![
+            n(1.0, -1.0, 1.0),
+            n(-1.0, -1.0, 1.0),
+            n(1.0, 1.0, 1.0),
+            n(-1.0, 1.0, 1.0),
+        ];
+
+        let faces = vec![TriangleFace::new(1, 0, 2), TriangleFace::new(3, 1, 2)];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
     fn torus() -> (Vec<(u32, u32, u32)>, Vertices) {
@@ -821,5 +936,38 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_mesh_analysis_are_visually_identical_returns_true_for_same() {
+        let (faces, vertices) = quad();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        assert!(are_visually_identical(&geometry, &geometry));
+    }
+
+    #[test]
+    fn test_mesh_analysis_are_visually_identical_returns_true_for_renumbered() {
+        let geometry = quad_with_normals();
+        let geometry_r = quad_renumbered_with_normals();
+
+        assert!(are_visually_identical(&geometry, &geometry_r));
+    }
+
+    #[test]
+    fn test_mesh_analysis_are_visually_identical_returns_false_for_different() {
+        let geometry = quad_with_normals();
+        let (faces_d, vertices_d) = tessellated_triangle();
+        let geometry_d = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces_d.clone(),
+            vertices_d.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        assert!(!are_visually_identical(&geometry, &geometry_d));
     }
 }
