@@ -189,11 +189,11 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
 
     funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncImplCreateUvSphere));
     funcs.insert(FUNC_ID_SHRINK_WRAP, Box::new(FuncImplShrinkWrap));
+    funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncImplTransform));
     funcs.insert(
         FUNC_ID_LAPLACIAN_SMOOTHING,
         Box::new(FuncImplLaplacianSmoothing),
     );
-    funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncImplTransform));
 
     funcs
 }
