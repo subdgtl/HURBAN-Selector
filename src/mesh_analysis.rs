@@ -42,7 +42,7 @@ pub fn manifold_edges<'a>(
     find_edges_with_valency(edge_sharing, 2)
 }
 
-/// Finds non-manifold (errorneous) edges in a mesh edge collection
+/// Finds non-manifold (erroneous) edges in a mesh edge collection
 #[allow(dead_code)]
 pub fn non_manifold_edges<'a>(
     edge_sharing: &'a EdgeSharingMap,

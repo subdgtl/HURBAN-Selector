@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use nalgebra::base::Vector3;
 
-use crate::convert::cast_u32;
+use crate::convert::{cast_u32, cast_u8};
 use crate::geometry;
 use crate::interpreter::{Func, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
+use crate::mesh_smoothing::laplacian_smoothing;
 use crate::operations::shrink_wrap::{self, ShrinkWrapParams};
 use crate::operations::transform;
 
@@ -137,12 +138,49 @@ impl Func for FuncImplTransform {
     }
 }
 
+pub struct FuncImplLaplacianSmoothing;
+impl Func for FuncImplLaplacianSmoothing {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+    fn param_info(&self) -> &[ParamInfo] {
+        &[
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+            ParamInfo {
+                ty: Ty::Uint,
+                optional: false,
+            },
+        ]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+        let geometry = args[0].unwrap_geometry();
+        let iterations_unclamped = args[1].unwrap_uint();
+        let iterations = if iterations_unclamped > 255 {
+            255
+        } else {
+            iterations_unclamped
+        };
+
+        let value = laplacian_smoothing(geometry, cast_u8(iterations));
+        Value::Geometry(Arc::new(value))
+    }
+}
+
 // IMPORTANT: Do not change these IDs, ever! When adding a new
 // function, always create a new, unique function identifier for it.
 
 pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(0);
 pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
+pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
@@ -152,6 +190,10 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncImplCreateUvSphere));
     funcs.insert(FUNC_ID_SHRINK_WRAP, Box::new(FuncImplShrinkWrap));
     funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncImplTransform));
+    funcs.insert(
+        FUNC_ID_LAPLACIAN_SMOOTHING,
+        Box::new(FuncImplLaplacianSmoothing),
+    );
 
     funcs
 }
