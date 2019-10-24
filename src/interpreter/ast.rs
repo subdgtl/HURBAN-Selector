@@ -149,6 +149,7 @@ pub enum LitExpr {
     Int(i32),
     Uint(u32),
     Float(f32),
+    Float3([f32; 3]),
 }
 
 impl fmt::Display for LitExpr {
@@ -159,6 +160,9 @@ impl fmt::Display for LitExpr {
             LitExpr::Int(int) => write!(f, "<int {}>", int),
             LitExpr::Uint(uint) => write!(f, "<uint {}>", uint),
             LitExpr::Float(float) => write!(f, "<float {}>", float),
+            LitExpr::Float3(float3) => {
+                write!(f, "<float3 [{}, {}, {}]>", float3[0], float3[1], float3[2])
+            }
         }
     }
 }
