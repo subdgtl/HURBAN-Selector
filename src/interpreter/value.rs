@@ -14,6 +14,7 @@ pub enum Ty {
     Int,
     Uint,
     Float,
+    Float3,
     Geometry,
 }
 
@@ -25,6 +26,7 @@ impl fmt::Display for Ty {
             Ty::Int => f.write_str("Int"),
             Ty::Uint => f.write_str("Uint"),
             Ty::Float => f.write_str("Float"),
+            Ty::Float3 => f.write_str("Float3"),
             Ty::Geometry => f.write_str("Geometry"),
         }
     }
@@ -38,6 +40,7 @@ pub enum Value {
     Int(i32),
     Uint(u32),
     Float(f32),
+    Float3([f32; 3]),
     Geometry(Arc<Geometry>),
 }
 
@@ -50,6 +53,7 @@ impl Value {
             Value::Int(_) => Ty::Int,
             Value::Uint(_) => Ty::Uint,
             Value::Float(_) => Ty::Float,
+            Value::Float3(_) => Ty::Float3,
             Value::Geometry(_) => Ty::Geometry,
         }
     }
@@ -94,6 +98,16 @@ impl Value {
     pub fn get_float(&self) -> Option<f32> {
         match self {
             Value::Float(float) => Some(*float),
+            _ => None,
+        }
+    }
+
+    /// Get the value if float3, otherwise `None`.
+    ///
+    /// Useful for getting a value of an optional parameter.
+    pub fn get_float3(&self) -> Option<[f32; 3]> {
+        match self {
+            Value::Float3(flaot3) => Some(*flaot3),
             _ => None,
         }
     }
@@ -155,6 +169,18 @@ impl Value {
         }
     }
 
+    /// Get the value if float3, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when value is not a float3.
+    #[allow(dead_code)]
+    pub fn unwrap_float3(&self) -> [f32; 3] {
+        match self {
+            Value::Float3(float3) => *float3,
+            _ => panic!("Value not float3"),
+        }
+    }
+
     /// Get the value if geometry, otherwise panic.
     ///
     /// # Panics
@@ -175,6 +201,9 @@ impl fmt::Display for Value {
             Value::Int(int) => write!(f, "<int {}>", int),
             Value::Uint(uint) => write!(f, "<uint {}>", uint),
             Value::Float(float) => write!(f, "<float {}>", float),
+            Value::Float3(float3) => {
+                write!(f, "<float3 [{}, {}, {}]>", float3[0], float3[1], float3[2])
+            }
             Value::Geometry(geometry) => {
                 write!(f, "<geometry (vertices: {})>", geometry.vertices().len())
             }
