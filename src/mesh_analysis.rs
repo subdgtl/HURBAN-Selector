@@ -7,7 +7,7 @@ use crate::convert::{cast_i32, cast_usize};
 use crate::edge_analysis::EdgeSharingMap;
 use crate::geometry::{Face, Geometry, OrientedEdge, UnorientedEdge};
 
-/// Finds edges with a certain valency in a mesh edge collection 
+/// Finds edges with a certain valency in a mesh edge collection
 ///
 /// An edge valency indicates how many faces share the edge.
 fn find_edges_with_valency<'a>(
@@ -112,7 +112,7 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<UnorientedEdg
     edge_loops
 }
 
-/// Check if all the face normals point the same way. 
+/// Check if all the face normals point the same way
 ///
 /// In a proper watertight orientable mesh each oriented edge should have a
 /// single counterpart in a reverted oriented edge. In an open orientable mesh
