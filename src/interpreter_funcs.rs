@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use nalgebra::base::Vector3;
+
 use crate::convert::{cast_u32, cast_u8};
 use crate::geometry;
 use crate::interpreter::{Func, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
 use crate::mesh_smoothing::laplacian_smoothing;
 use crate::operations::shrink_wrap::{self, ShrinkWrapParams};
+use crate::operations::transform;
 
 pub struct FuncImplCreateUvSphere;
 impl Func for FuncImplCreateUvSphere {
@@ -78,12 +81,68 @@ impl Func for FuncImplShrinkWrap {
     }
 }
 
+pub struct FuncImplTransform;
+impl Func for FuncImplTransform {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+            ParamInfo {
+                ty: Ty::Float3,
+                optional: true,
+            },
+            ParamInfo {
+                ty: Ty::Float3,
+                optional: true,
+            },
+            ParamInfo {
+                ty: Ty::Float3,
+                optional: true,
+            },
+        ]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+        let geometry = args[0].unwrap_geometry();
+
+        let translate = args[1].get_float3().map(Vector3::from);
+        let rotate = args[2].get_float3().map(|rot| {
+            [
+                rot[0].to_radians(),
+                rot[1].to_radians(),
+                rot[2].to_radians(),
+            ]
+        });
+        let scale = args[3].get_float3().map(Vector3::from);
+
+        let value = transform::transform(
+            &geometry,
+            transform::TransformOptions {
+                translate,
+                rotate,
+                scale,
+            },
+        );
+
+        Value::Geometry(Arc::new(value))
+    }
+}
+
 pub struct FuncImplLaplacianSmoothing;
 impl Func for FuncImplLaplacianSmoothing {
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
-
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
@@ -111,7 +170,6 @@ impl Func for FuncImplLaplacianSmoothing {
         };
 
         let value = laplacian_smoothing(geometry, cast_u8(iterations));
-
         Value::Geometry(Arc::new(value))
     }
 }
@@ -121,7 +179,8 @@ impl Func for FuncImplLaplacianSmoothing {
 
 pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(0);
 pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
-pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(2);
+pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
+pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
@@ -134,6 +193,7 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
         FUNC_ID_LAPLACIAN_SMOOTHING,
         Box::new(FuncImplLaplacianSmoothing),
     );
+    funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncImplTransform));
 
     funcs
 }
