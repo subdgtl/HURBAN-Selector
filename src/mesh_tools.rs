@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use smallvec::SmallVec;
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::geometry::{Face, Geometry, TriangleFace};
+use crate::geometry::Geometry;
 use crate::mesh_topology_analysis::face_to_face_topology;
 
 fn crawl_faces(
@@ -17,13 +17,13 @@ fn crawl_faces(
     if let Some(all_neighbors) = face_to_face.get(&current_face_index) {
         let neighbors: Vec<u32> = all_neighbors
             .iter()
-            .filter(|n| available_faces.iter().any(|a_f| *a_f == **n))
-            .map(|n| *n)
+            .copied()
+            .filter(|n| available_faces.iter().any(|a_f| a_f == n))
             .collect();
         let af: Vec<_> = available_faces
             .iter()
-            .filter(|f| neighbors.iter().all(|n| n != *f))
-            .map(|f| *f)
+            .copied()
+            .filter(|f| neighbors.iter().all(|n| n != f))
             .collect();
         *available_faces = af;
         for neighbor_index in neighbors {
@@ -42,14 +42,7 @@ fn crawl_faces(
 #[allow(dead_code)]
 pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
     let face_to_face = face_to_face_topology(geometry);
-    let triangular_faces: Vec<TriangleFace> = geometry
-        .faces()
-        .iter()
-        .copied()
-        .map(|face| match face {
-            Face::Triangle(f) => f,
-        })
-        .collect();
+    let faces = geometry.faces();
     let vertices: Vec<_> = geometry.vertices().to_vec();
     let normals: Vec<_> = geometry.normals().to_vec();
 
@@ -69,13 +62,13 @@ pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
             );
         }
 
-        let faces: Vec<TriangleFace> = separate_faces
+        let faces: Vec<_> = separate_faces
             .iter()
-            .map(|face_index| triangular_faces[cast_usize(*face_index)])
+            .map(|face_index| faces[cast_usize(*face_index)])
             .collect();
 
         patches.push(
-            Geometry::from_triangle_faces_with_vertices_and_normals_remove_orphans(
+            Geometry::from_faces_with_vertices_and_normals_remove_orphans(
                 faces,
                 vertices.clone(),
                 normals.clone(),
@@ -91,7 +84,7 @@ mod tests {
     use nalgebra::base::Vector3;
     use nalgebra::geometry::Point3;
 
-    use crate::geometry::{self, Geometry, NormalStrategy, TriangleFace, UnorientedEdge};
+    use crate::geometry::{Geometry, NormalStrategy, TriangleFace};
 
     use super::*;
 
@@ -226,6 +219,17 @@ mod tests {
     }
 
     #[test]
+    fn test_separate_isolated_meshes_returns_identical_for_cube() {
+        let geometry = cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
+
+        let calculated_geometries = separate_isolated_meshes(&geometry);
+
+        assert_eq!(calculated_geometries.len(), 1);
+
+        assert_eq!(calculated_geometries[0], geometry);
+    }
+
+    #[test]
     fn test_separate_isolated_meshes_returns_identical_for_tessellated_triangle_with_island() {
         let (faces, vertices) = tessellated_triangle_with_island();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
@@ -254,10 +258,10 @@ mod tests {
 
         assert_eq!(calculated_geometries.len(), 2);
         if calculated_geometries[0] == geometry_triangle_correct {
-            assert_eq!(calculated_geometries[1], geometry_triangle_correct);
+            assert_eq!(calculated_geometries[1], geometry_island_correct);
         } else {
             assert_eq!(calculated_geometries[1], geometry_triangle_correct);
-            assert_eq!(calculated_geometries[0], geometry_triangle_correct);
+            assert_eq!(calculated_geometries[0], geometry_island_correct);
         }
     }
 }
