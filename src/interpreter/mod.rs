@@ -564,6 +564,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
         ast::LitExpr::Int(int) => Value::Int(*int),
         ast::LitExpr::Uint(uint) => Value::Uint(*uint),
         ast::LitExpr::Float(float) => Value::Float(*float),
+        ast::LitExpr::Float3(float3) => Value::Float3(*float3),
         ast::LitExpr::Nil => Value::Nil,
     };
 
