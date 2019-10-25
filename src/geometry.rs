@@ -89,15 +89,15 @@ impl Geometry {
 
                             assert!(
                                 vertices_range.contains(&v1),
-                                "Faces reference out of bounds position data: Vertex 1 at from_triangle_faces_with_vertices_and_computed_normals"
+                                "Faces reference out of bounds position data"
                             );
                             assert!(
                                 vertices_range.contains(&v2),
-                                "Faces reference out of bounds position data: Vertex 2 at from_triangle_faces_with_vertices_and_computed_normals"
+                                "Faces reference out of bounds position data"
                             );
                             assert!(
                                 vertices_range.contains(&v3),
-                                "Faces reference out of bounds position data: Vertex 3 at from_triangle_faces_with_vertices_and_computed_normals"
+                                "Faces reference out of bounds position data"
                             );
 
                             let face_normal = compute_triangle_normal(
@@ -222,15 +222,15 @@ impl Geometry {
                     let n = triangle_face.normals;
                     assert!(
                         vertices_range.contains(&v.0),
-                        "Faces reference out of bounds position data: Vertex 1 at from_faces_with_vertices_and_normals"
+                        "Faces reference out of bounds position data"
                     );
                     assert!(
                         vertices_range.contains(&v.1),
-                        "Faces reference out of bounds position data: Vertex 2 at from_faces_with_vertices_and_normals"
+                        "Faces reference out of bounds position data"
                     );
                     assert!(
                         vertices_range.contains(&v.2),
-                        "Faces reference out of bounds position data: Vertex 3 at from_faces_with_vertices_and_normals"
+                        "Faces reference out of bounds position data"
                     );
                     assert!(
                         normals_range.contains(&n.0),
@@ -1268,9 +1268,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Faces reference out of bounds position data: Vertex 3 at from_triangle_faces_with_vertices_and_computed_normals"
-    )]
+    #[should_panic(expected = "Faces reference out of bounds position data")]
     fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals_bounds_check() {
         let (_, vertices) = quad();
         #[rustfmt::skip]
@@ -1311,9 +1309,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Faces reference out of bounds position data: Vertex 3 at from_faces_with_vertices_and_normals"
-    )]
+    #[should_panic(expected = "Faces reference out of bounds position data")]
     fn test_geometry_from_triangle_faces_with_vertices_and_normals_bounds_check() {
         let (_, vertices, normals) = quad_with_normals();
         #[rustfmt::skip]
