@@ -47,14 +47,14 @@ fn crawl_faces(
 ) {
     separate_face_indices.push(current_face_index);
 
-    if let Some(all_neighbors) = face_to_face.get(&current_face_index) {
-        let neighbors: Vec<_> = all_neighbors
+    if let Some(all_neighbors_indices) = face_to_face.get(&current_face_index) {
+        let neighbor_indices: Vec<_> = all_neighbors_indices
             .iter()
             .copied()
             .filter(|n| available_face_indices.iter().any(|a_f| a_f == n))
             .collect();
-        available_face_indices.retain(|f| neighbors.iter().all(|n| n != f));
-        for neighbor_index in neighbors {
+        available_face_indices.retain(|f| neighbor_indices.iter().all(|n| n != f));
+        for neighbor_index in neighbor_indices {
             crawl_faces(
                 neighbor_index,
                 face_to_face,
