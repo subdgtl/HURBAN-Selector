@@ -2,9 +2,6 @@ pub use crate::renderer::{GpuBackend, Msaa, PresentMode};
 
 use std::time::{Duration, Instant};
 
-#[macro_use]
-extern crate approx;
-
 use nalgebra::geometry::Point3;
 
 use crate::camera::{Camera, CameraOptions};

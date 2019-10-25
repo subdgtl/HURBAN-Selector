@@ -1,6 +1,6 @@
 use nalgebra::geometry::Point3;
 
-use crate::convert::{cast_u32, cast_usize};
+use crate::convert::cast_usize;
 use crate::geometry::Geometry;
 use crate::mesh_topology_analysis::vertex_to_vertex_topology;
 
@@ -77,7 +77,6 @@ fn laplacian_smoothing_with_anchors_full(
     if max_iterations == 0 {
         return geometry.clone();
     }
-    println!("Stop when stable: {}", stop_when_stable);
 
     let vertex_to_vertex_topology = vertex_to_vertex_topology(geometry);
     let mut vertices: Vec<Point3<f32>> = Vec::from(geometry.vertices());
@@ -92,7 +91,7 @@ fn laplacian_smoothing_with_anchors_full(
         for (current_vertex_index, neighbors_indices) in vertex_to_vertex_topology.iter() {
             if fixed_vertex_indices
                 .iter()
-                .all(|i| *i != cast_u32(*current_vertex_index))
+                .all(|i| i != current_vertex_index)
                 && !neighbors_indices.is_empty()
             {
                 let mut average_position: Point3<f32> = Point3::origin();
@@ -101,7 +100,7 @@ fn laplacian_smoothing_with_anchors_full(
                 }
                 average_position /= neighbors_indices.len() as f32;
                 if stop_when_stable {
-                    stable &= relative_eq!(
+                    stable &= approx::relative_eq!(
                         &average_position.coords,
                         &vertices[cast_usize(*current_vertex_index)].coords,
                     );
