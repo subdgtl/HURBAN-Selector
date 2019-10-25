@@ -982,7 +982,7 @@ pub fn cube_sharp_var_len(position: [f32; 3], scale: f32) -> Geometry {
 /// Panics if number of parallels is less than 2 or number of
 /// meridians is less than 3.
 pub fn uv_sphere(position: [f32; 3], scale: f32, n_parallels: u32, n_meridians: u32) -> Geometry {
-    assert!(n_parallels >= 2, "Need at least 2 paralells");
+    assert!(n_parallels >= 2, "Need at least 2 parallels");
     assert!(n_meridians >= 3, "Need at least 3 meridians");
 
     // Add the poles
