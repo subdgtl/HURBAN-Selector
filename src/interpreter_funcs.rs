@@ -178,7 +178,7 @@ impl Func for FuncImplLaplacianSmoothing {
 pub struct FuncImplSeparateIsolatedMeshes;
 impl Func for FuncImplSeparateIsolatedMeshes {
     fn flags(&self) -> FuncFlags {
-        FuncFlags::PURE
+        FuncFlags::empty()
     }
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
