@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use smallvec::SmallVec;
 
-use crate::convert::{cast_u32, cast_usize};
+use crate::convert::cast_usize;
 use crate::geometry::Geometry;
 use crate::mesh_topology_analysis::face_to_face_topology;
 
@@ -11,58 +11,57 @@ use crate::mesh_topology_analysis::face_to_face_topology;
 #[allow(dead_code)]
 pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
     let face_to_face = face_to_face_topology(geometry);
-    let mut available_face_indices: Vec<u32> =
-        face_to_face.keys().map(|key| cast_u32(*key)).collect();
+    // NOTE: I have a hunch we can somehow get rid of this set
+    let mut available_face_indices: HashSet<u32> = face_to_face.keys().cloned().collect();
     let mut patches: Vec<Geometry> = Vec::new();
 
-    while let Some(first_face_index) = available_face_indices.pop() {
-        let mut separate_face_indices: Vec<u32> = Vec::new();
-
-        crawl_faces(
-            first_face_index,
-            &face_to_face,
-            &mut available_face_indices,
-            &mut separate_face_indices,
-        );
+    while let Some(first_face_index) = available_face_indices.iter().next() {
+        let connected_indices = crawl_faces(*first_face_index, &face_to_face);
 
         patches.push(
             Geometry::from_faces_with_vertices_and_normals_remove_orphans(
-                separate_face_indices
+                connected_indices
                     .iter()
                     .map(|face_index| geometry.faces()[cast_usize(*face_index)]),
                 geometry.vertices().to_vec(),
                 geometry.normals().to_vec(),
             ),
         );
+
+        for c in &connected_indices {
+            available_face_indices.remove(c);
+        }
     }
 
     patches
 }
 
 fn crawl_faces(
-    current_face_index: u32,
+    start_face_index: u32,
     face_to_face: &HashMap<u32, SmallVec<[u32; 8]>>,
-    available_face_indices: &mut Vec<u32>,
-    separate_face_indices: &mut Vec<u32>,
-) {
-    separate_face_indices.push(current_face_index);
+) -> HashSet<u32> {
+    // NOTE: very random capacity, I bet there's some clever math to figure this out
+    let mut index_stack = Vec::with_capacity(face_to_face.len() / 2);
+    index_stack.push(start_face_index);
 
-    if let Some(all_neighbors_indices) = face_to_face.get(&current_face_index) {
-        let neighbor_indices: Vec<_> = all_neighbors_indices
-            .iter()
-            .copied()
-            .filter(|n| available_face_indices.iter().any(|a_f| a_f == n))
-            .collect();
-        available_face_indices.retain(|f| neighbor_indices.iter().all(|n| n != f));
-        for neighbor_index in neighbor_indices {
-            crawl_faces(
-                neighbor_index,
-                face_to_face,
-                available_face_indices,
-                separate_face_indices,
-            );
+    // NOTE: Worst case scenario capacity (everything is connected)
+    let mut connected_face_indices = HashSet::with_capacity(face_to_face.len());
+
+    while !index_stack.is_empty() {
+        let current_face_index = index_stack.pop().unwrap();
+
+        if !connected_face_indices.contains(&current_face_index) {
+            connected_face_indices.insert(current_face_index);
+
+            for neighbor in &face_to_face[&current_face_index] {
+                index_stack.push(neighbor.clone());
+            }
         }
     }
+
+    connected_face_indices.shrink_to_fit();
+
+    connected_face_indices
 }
 
 #[cfg(test)]
