@@ -242,7 +242,7 @@ impl ImporterWorker {
     pub fn import_obj(&self, filename: &str) {
         self.request_sender
             .send(ImporterWorkerRequest::NewImport(filename.to_string()))
-            .expect("Failed to send new import message to improter worker");
+            .expect("Failed to send new import message to importer worker");
     }
 
     /// Reads response queue and returns last parsed obj in case there's any.

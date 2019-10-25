@@ -85,6 +85,7 @@ mod tests {
     use nalgebra::geometry::Point3;
 
     use crate::geometry::{Geometry, NormalStrategy, TriangleFace};
+    use crate::mesh_analysis;
 
     use super::*;
 
@@ -226,7 +227,13 @@ mod tests {
 
         assert_eq!(calculated_geometries.len(), 1);
 
-        assert_eq!(calculated_geometries[0], geometry);
+        println!("CALCULATED GEOMETRY \n {}", &calculated_geometries[0]);
+        println!("GEOMETRY \n {}", &geometry);
+
+        assert!(mesh_analysis::are_visually_identical(
+            &geometry,
+            &calculated_geometries[0]
+        ));
     }
 
     #[test]

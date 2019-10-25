@@ -1,5 +1,6 @@
 use std::cmp;
 use std::collections::HashSet;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::IntoIterator;
 
@@ -356,6 +357,36 @@ impl Geometry {
     }
 }
 
+impl fmt::Display for Geometry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let vertices: Vec<_> = self
+            .vertices
+            .iter()
+            .enumerate()
+            .map(|(i, v)| format!("{}: {}", i, v))
+            .collect();
+        let faces: Vec<_> = self
+            .faces
+            .iter()
+            .enumerate()
+            .map(|(i, f)| format!("{}: {}", i, f))
+            .collect();
+        // TODO: Display vectors properly
+        write!(
+            f,
+            "Vertex count: {}, Normal count: {}, Face count: {}\n\
+             Vertices: {:?}\n\
+             Normals not formatted yet\n\
+             Faces: {:?}",
+            self.vertices.len(),
+            self.normals.len(),
+            self.faces.len(),
+            vertices,
+            faces,
+        )
+    }
+}
+
 /// A geometry index. Describes topology of geometry data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Face {
@@ -365,6 +396,14 @@ pub enum Face {
 impl From<TriangleFace> for Face {
     fn from(triangle_face: TriangleFace) -> Face {
         Face::Triangle(triangle_face)
+    }
+}
+
+impl fmt::Display for Face {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Face::Triangle(face) => write!(f, "T({})", face),
+        }
     }
 }
 
@@ -441,6 +480,21 @@ impl TriangleFace {
 impl From<(u32, u32, u32)> for TriangleFace {
     fn from((i1, i2, i3): (u32, u32, u32)) -> TriangleFace {
         TriangleFace::new(i1, i2, i3)
+    }
+}
+
+impl fmt::Display for TriangleFace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "V: ({}, {}, {}); N: ({}, {}, {})",
+            self.vertices.0,
+            self.vertices.1,
+            self.vertices.2,
+            self.normals.0,
+            self.normals.1,
+            self.normals.2,
+        )
     }
 }
 
@@ -982,7 +1036,7 @@ pub fn cube_sharp_var_len(position: [f32; 3], scale: f32) -> Geometry {
 /// Panics if number of parallels is less than 2 or number of
 /// meridians is less than 3.
 pub fn uv_sphere(position: [f32; 3], scale: f32, n_parallels: u32, n_meridians: u32) -> Geometry {
-    assert!(n_parallels >= 2, "Need at least 2 paralells");
+    assert!(n_parallels >= 2, "Need at least 2 parallels");
     assert!(n_meridians >= 3, "Need at least 3 meridians");
 
     // Add the poles

@@ -28,6 +28,7 @@ mod interpreter_funcs;
 mod interpreter_server;
 mod math;
 mod mesh_analysis;
+mod mesh_smoothing;
 mod mesh_tools;
 mod mesh_topology_analysis;
 mod platform;
@@ -251,6 +252,42 @@ pub fn init_and_run(options: Options) -> ! {
                                 ],
                             ),
                         )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(2),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(1))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([2000.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(3),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(1))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([4000.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([30.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(4),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(1))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([6000.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([2.0, 2.0, 5.0])),
+                                ],
+                            ),
+                        )),
                     ]);
 
                     interpreter_server.submit_request(InterpreterRequest::SetProg(prog));
@@ -267,14 +304,30 @@ pub fn init_and_run(options: Options) -> ! {
                                 "Interpreter completed request {:?} with result",
                                 request_id,
                             );
-                            let value = result.unwrap().last_value;
-                            let geometry = value.unwrap_geometry().clone();
-                            let renderer_geometry = SceneRendererGeometry::from_geometry(&geometry);
-                            let renderer_geometry_id =
-                                renderer.add_scene_geometry(&renderer_geometry).unwrap();
 
-                            scene_geometries.push(geometry);
-                            scene_renderer_geometry_ids.push(renderer_geometry_id);
+                            let value_set = result.unwrap();
+
+                            for (_, value) in &value_set.used_values {
+                                let geometry = value.unwrap_geometry().clone();
+                                let renderer_geometry =
+                                    SceneRendererGeometry::from_geometry(&geometry);
+                                let renderer_geometry_id =
+                                    renderer.add_scene_geometry(&renderer_geometry).unwrap();
+
+                                scene_geometries.push(geometry);
+                                scene_renderer_geometry_ids.push(renderer_geometry_id);
+                            }
+
+                            for (_, value) in &value_set.unused_values {
+                                let geometry = value.unwrap_geometry().clone();
+                                let renderer_geometry =
+                                    SceneRendererGeometry::from_geometry(&geometry);
+                                let renderer_geometry_id =
+                                    renderer.add_scene_geometry(&renderer_geometry).unwrap();
+
+                                scene_geometries.push(geometry);
+                                scene_renderer_geometry_ids.push(renderer_geometry_id);
+                            }
                         }
                     }
                 }
