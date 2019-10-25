@@ -6,7 +6,8 @@ use nalgebra::base::Vector3;
 use crate::convert::{cast_u32, cast_u8};
 use crate::geometry;
 use crate::interpreter::{Func, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
-use crate::mesh_smoothing::laplacian_smoothing;
+use crate::mesh_smoothing;
+use crate::mesh_tools;
 use crate::operations::shrink_wrap::{self, ShrinkWrapParams};
 use crate::operations::transform;
 
@@ -169,8 +170,34 @@ impl Func for FuncImplLaplacianSmoothing {
             iterations_unclamped
         };
 
-        let value = laplacian_smoothing(geometry, cast_u8(iterations));
+        let value = mesh_smoothing::laplacian_smoothing(geometry, cast_u8(iterations));
         Value::Geometry(Arc::new(value))
+    }
+}
+
+pub struct FuncImplSeparateIsolatedMeshes;
+impl Func for FuncImplSeparateIsolatedMeshes {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            ty: Ty::Geometry,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+        let geometry = args[0].unwrap_geometry();
+
+        let values = mesh_tools::separate_isolated_meshes(geometry);
+
+        // FIXME: This returns a slice of Geometries. Return all of them
+        Value::Geometry(Arc::new(values[0].clone()))
     }
 }
 
@@ -181,6 +208,7 @@ pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(0);
 pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
 pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
+pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
@@ -193,6 +221,10 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(
         FUNC_ID_LAPLACIAN_SMOOTHING,
         Box::new(FuncImplLaplacianSmoothing),
+    );
+    funcs.insert(
+        FUNC_ID_SEPARATE_ISOLATED_MESHES,
+        Box::new(FuncImplSeparateIsolatedMeshes),
     );
 
     funcs

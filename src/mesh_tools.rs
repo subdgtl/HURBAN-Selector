@@ -84,7 +84,7 @@ mod tests {
     use nalgebra::base::Vector3;
     use nalgebra::geometry::Point3;
 
-    use crate::geometry::{Geometry, NormalStrategy, TriangleFace};
+    use crate::geometry::{Geometry, TriangleFace};
     use crate::mesh_analysis;
 
     use super::*;
