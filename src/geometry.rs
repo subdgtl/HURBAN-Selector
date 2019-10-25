@@ -358,7 +358,7 @@ impl Geometry {
 }
 
 impl fmt::Display for Geometry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let vertices: Vec<_> = self
             .vertices
             .iter()
@@ -379,15 +379,12 @@ impl fmt::Display for Geometry {
             .collect();
         write!(
             f,
-            "Vertex count: {}, Normal count: {}, Face count: {}\n\
-             Vertices: {:?}\n\
-             Normals: {:?}\n\
-             Faces: {:?}",
+            "G( V({}): {:?}, N({}): {:?}, F({}): {:?} )",
             self.vertices.len(),
-            self.normals.len(),
-            self.faces.len(),
             vertices,
+            self.normals.len(),
             normals,
+            self.faces.len(),
             faces,
         )
     }
@@ -406,9 +403,9 @@ impl From<TriangleFace> for Face {
 }
 
 impl fmt::Display for Face {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Face::Triangle(face) => write!(f, "T({})", face),
+            Face::Triangle(face) => write!(f, "{}", face),
         }
     }
 }
@@ -490,10 +487,10 @@ impl From<(u32, u32, u32)> for TriangleFace {
 }
 
 impl fmt::Display for TriangleFace {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "V: ({}, {}, {}); N: ({}, {}, {})",
+            "T(V: ({}, {}, {}); N: ({}, {}, {}))",
             self.vertices.0,
             self.vertices.1,
             self.vertices.2,

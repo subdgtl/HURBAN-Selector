@@ -301,6 +301,26 @@ mod tests {
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
+    pub fn quad_renumbered_more_with_normals() -> Geometry {
+        let vertices = vec![
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),  //1
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),  //3
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0), //0
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),   //2
+        ];
+
+        let vertex_normals = vec![
+            n(1.0, -1.0, 1.0),  //1
+            n(-1.0, 1.0, 1.0),  //3
+            n(-1.0, -1.0, 1.0), //0
+            n(1.0, 1.0, 1.0),   //2
+        ];
+
+        let faces = vec![TriangleFace::new(2, 0, 3), TriangleFace::new(2, 3, 1)];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+    }
+
     fn torus() -> (Vec<(u32, u32, u32)>, Vertices) {
         let vertices = vec![
             Point3::new(0.566987, -1.129e-11, 0.25),
@@ -961,6 +981,14 @@ mod tests {
     fn test_mesh_analysis_are_visually_identical_returns_true_for_renumbered() {
         let geometry = quad_with_normals();
         let geometry_r = quad_renumbered_with_normals();
+
+        assert!(are_visually_identical(&geometry, &geometry_r));
+    }
+
+    #[test]
+    fn test_mesh_analysis_are_visually_identical_returns_true_for_renumbered_more() {
+        let geometry = quad_with_normals();
+        let geometry_r = quad_renumbered_more_with_normals();
 
         assert!(are_visually_identical(&geometry, &geometry_r));
     }
