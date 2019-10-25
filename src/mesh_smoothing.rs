@@ -39,16 +39,56 @@ pub fn laplacian_smoothing_with_anchors(
     iterations: u8,
     fixed_vertex_indices: &[u32],
 ) -> Geometry {
-    if iterations == 0 {
+    laplacian_smoothing_with_anchors_full(geometry, iterations, fixed_vertex_indices, false)
+}
+
+/// Relaxes angles between mesh edges, while keeping some vertices anchored,
+/// resulting in an evenly distributed geometry stretched between the anchor
+/// points.
+///
+/// The number of vertices, faces and the overall topology remains unchanged.
+/// The more iterations, the smoother result. Too many iterations may cause slow
+/// calculation time. Only the maximum number of iterations is specified, the
+/// smoothing stops when the geometry stops transforming between iterations.
+///
+/// The algorithm is based on replacing each vertex position with an average
+/// position of its immediate neighbors
+///
+/// - `geometry` - mesh geometry to relax
+/// - `max_iterations` - maximum number of times the smoothing algorithm should
+///   relax the geometry
+/// - `fixed_vertex_indices` - indices of vertices to keep fixed during the
+///   relaxation
+#[allow(dead_code)]
+pub fn laplacian_smoothing_with_anchors_stop_when_stable(
+    geometry: &Geometry,
+    max_iterations: u8,
+    fixed_vertex_indices: &[u32],
+) -> Geometry {
+    laplacian_smoothing_with_anchors_full(geometry, max_iterations, fixed_vertex_indices, true)
+}
+
+fn laplacian_smoothing_with_anchors_full(
+    geometry: &Geometry,
+    max_iterations: u8,
+    fixed_vertex_indices: &[u32],
+    stop_when_stable: bool,
+) -> Geometry {
+    if max_iterations == 0 {
         return geometry.clone();
     }
+    println!("Stop when stable: {}", stop_when_stable);
 
     let vertex_to_vertex_topology = vertex_to_vertex_topology(geometry);
     let mut vertices: Vec<Point3<f32>> = Vec::from(geometry.vertices());
     let mut geometry_vertices: Vec<Point3<f32>>;
 
-    for _ in 0..iterations {
+    for _ in 0..max_iterations {
+        // Only relevant when fixed vertices are specified
+        let mut stable = !fixed_vertex_indices.is_empty();
+
         geometry_vertices = vertices.clone();
+
         for (current_vertex_index, neighbors_indices) in vertex_to_vertex_topology.iter() {
             if fixed_vertex_indices
                 .iter()
@@ -60,8 +100,18 @@ pub fn laplacian_smoothing_with_anchors(
                     average_position += geometry_vertices[cast_usize(*neighbor_index)].coords;
                 }
                 average_position /= neighbors_indices.len() as f32;
+                if stop_when_stable {
+                    stable &= relative_eq!(
+                        &average_position.coords,
+                        &vertices[cast_usize(*current_vertex_index)].coords,
+                    );
+                }
                 vertices[cast_usize(*current_vertex_index)] = average_position;
             }
+        }
+
+        if stop_when_stable && stable {
+            break;
         }
     }
 
@@ -586,6 +636,51 @@ mod tests {
 
         let relaxed_geometry =
             laplacian_smoothing_with_anchors(&geometry, 50, &fixed_vertex_indices);
+
+        let relaxed_geometry_faces = relaxed_geometry.faces();
+        let test_geometry_faces = test_geometry_correct.faces();
+
+        assert_eq!(relaxed_geometry_faces, test_geometry_faces);
+
+        let relaxed_geometry_vertices = relaxed_geometry.vertices();
+        let test_geometry_vertices = test_geometry_correct.vertices();
+
+        for i in 0..test_geometry_vertices.len() {
+            assert!(test_geometry_vertices[i].coords.relative_eq(
+                &relaxed_geometry_vertices[i].coords,
+                0.001,
+                0.001,
+            ));
+        }
+    }
+
+    #[test]
+    fn test_laplacian_smoothing_with_anchors_stop_when_stable_find_border_vertices() {
+        let (faces, vertices) = shape_for_smoothing_with_anchors();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let fixed_vertex_indices =
+            Vec::from_iter(mesh_analysis::border_vertex_indices(&edge_sharing_map).into_iter());
+
+        let (faces_correct, vertices_correct) = shape_for_smoothing_with_anchors_50_iterations();
+        let test_geometry_correct =
+            Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+                faces_correct.clone(),
+                vertices_correct.clone(),
+                NormalStrategy::Sharp,
+            );
+
+        let relaxed_geometry = laplacian_smoothing_with_anchors_stop_when_stable(
+            &geometry,
+            255,
+            &fixed_vertex_indices,
+        );
 
         let relaxed_geometry_faces = relaxed_geometry.faces();
         let test_geometry_faces = test_geometry_correct.faces();
