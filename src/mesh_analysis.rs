@@ -205,7 +205,7 @@ pub fn are_visually_identical(g_1: &Geometry, g_2: &Geometry) -> bool {
         },
     });
 
-    let mut unpacked_faces_2 = g_2.faces().iter().map(|face| match face {
+    let unpacked_faces_2 = g_2.faces().iter().map(|face| match face {
         Face::Triangle(f) => UnpackedFace {
             vertices: (
                 g_2.vertices()[cast_usize(f.vertices.0)],
@@ -223,7 +223,7 @@ pub fn are_visually_identical(g_1: &Geometry, g_2: &Geometry) -> bool {
     g_1.faces().len() == g_2.faces().len()
         && g_1.vertices().len() == g_2.vertices().len()
         && g_1.normals().len() == g_2.normals().len()
-        && unpacked_faces_1.all(|f| unpacked_faces_2.any(|g| f == g))
+        && unpacked_faces_1.all(|f| unpacked_faces_2.clone().any(|g| f == g))
 }
 
 #[cfg(test)]

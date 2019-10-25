@@ -371,17 +371,23 @@ impl fmt::Display for Geometry {
             .enumerate()
             .map(|(i, f)| format!("{}: {}", i, f))
             .collect();
-        // TODO: Display vectors properly
+        let normals: Vec<_> = self
+            .normals
+            .iter()
+            .enumerate()
+            .map(|(i, n)| format!("{}: ({}, {}, {})", i, n.x, n.y, n.z))
+            .collect();
         write!(
             f,
             "Vertex count: {}, Normal count: {}, Face count: {}\n\
              Vertices: {:?}\n\
-             Normals not formatted yet\n\
+             Normals: {:?}\n\
              Faces: {:?}",
             self.vertices.len(),
             self.normals.len(),
             self.faces.len(),
             vertices,
+            normals,
             faces,
         )
     }

@@ -101,7 +101,7 @@ mod tests {
         Vector3::new(x, y, z)
     }
 
-    fn tessellated_triangle() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn tessellated_triangle_geometry() -> Geometry {
         let vertices = vec![
             Point3::new(-2.0, -2.0, 0.0),
             Point3::new(0.0, -2.0, 0.0),
@@ -111,12 +111,19 @@ mod tests {
             Point3::new(0.0, 2.0, 0.0),
         ];
 
-        let faces = vec![(0, 3, 1), (1, 3, 4), (1, 4, 2), (3, 5, 4)];
+        let vertex_normals = vec![n(0.0, 0.0, 1.0)];
 
-        (faces, vertices)
+        let faces = vec![
+            TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
+            TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
+            TriangleFace::new_separate(1, 4, 2, 0, 0, 0),
+            TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
+        ];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    fn tessellated_triangle_with_island() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn tessellated_triangle_with_island_geometry() -> Geometry {
         let vertices = vec![
             Point3::new(-2.0, -2.0, 0.0),
             Point3::new(0.0, -2.0, 0.0),
@@ -129,21 +136,31 @@ mod tests {
             Point3::new(0.0, 2.0, 1.0),
         ];
 
-        let faces = vec![(0, 3, 1), (1, 3, 4), (1, 4, 2), (3, 5, 4), (6, 7, 8)];
+        let vertex_normals = vec![n(0.0, 0.0, 1.0)];
 
-        (faces, vertices)
+        let faces = vec![
+            TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
+            TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
+            TriangleFace::new_separate(1, 4, 2, 0, 0, 0),
+            TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
+            TriangleFace::new_separate(6, 7, 8, 0, 0, 0),
+        ];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    fn triangular_island() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn triangular_island_geometry() -> Geometry {
         let vertices = vec![
             Point3::new(-1.0, 0.0, 1.0),
             Point3::new(1.0, 0.0, 1.0),
             Point3::new(0.0, 2.0, 1.0),
         ];
 
-        let faces = vec![(6, 7, 8)];
+        let vertex_normals = vec![n(0.0, 0.0, 1.0)];
 
-        (faces, vertices)
+        let faces = vec![TriangleFace::new_separate(0, 1, 2, 0, 0, 0)];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
     pub fn cube_sharp_var_len(position: [f32; 3], scale: f32) -> Geometry {
@@ -205,18 +222,16 @@ mod tests {
 
     #[test]
     fn test_separate_isolated_meshes_returns_identical_for_tessellated_triangle() {
-        let (faces, vertices) = tessellated_triangle();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
-            NormalStrategy::Sharp,
-        );
+        let geometry = tessellated_triangle_geometry();
 
         let calculated_geometries = separate_isolated_meshes(&geometry);
 
         assert_eq!(calculated_geometries.len(), 1);
 
-        assert_eq!(calculated_geometries[0], geometry);
+        assert!(mesh_analysis::are_visually_identical(
+            &calculated_geometries[0],
+            &geometry
+        ));
     }
 
     #[test]
@@ -226,10 +241,6 @@ mod tests {
         let calculated_geometries = separate_isolated_meshes(&geometry);
 
         assert_eq!(calculated_geometries.len(), 1);
-
-        println!("CALCULATED GEOMETRY \n {}", &calculated_geometries[0]);
-        println!("GEOMETRY \n {}", &geometry);
-
         assert!(mesh_analysis::are_visually_identical(
             &geometry,
             &calculated_geometries[0]
@@ -238,37 +249,31 @@ mod tests {
 
     #[test]
     fn test_separate_isolated_meshes_returns_identical_for_tessellated_triangle_with_island() {
-        let (faces, vertices) = tessellated_triangle_with_island();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
-            NormalStrategy::Sharp,
-        );
-
-        let (faces_triangle_correct, vertices_triangle_correct) = tessellated_triangle();
-        let geometry_triangle_correct =
-            Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-                faces_triangle_correct.clone(),
-                vertices_triangle_correct.clone(),
-                NormalStrategy::Sharp,
-            );
-
-        let (faces_island_correct, vertices_island_correct) = triangular_island();
-        let geometry_island_correct =
-            Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-                faces_island_correct.clone(),
-                vertices_island_correct.clone(),
-                NormalStrategy::Sharp,
-            );
+        let geometry = tessellated_triangle_with_island_geometry();
+        let geometry_triangle_correct = tessellated_triangle_geometry();
+        let geometry_island_correct = triangular_island_geometry();
 
         let calculated_geometries = separate_isolated_meshes(&geometry);
 
         assert_eq!(calculated_geometries.len(), 2);
-        if calculated_geometries[0] == geometry_triangle_correct {
-            assert_eq!(calculated_geometries[1], geometry_island_correct);
+
+        if mesh_analysis::are_visually_identical(
+            &calculated_geometries[0],
+            &geometry_triangle_correct,
+        ) {
+            assert!(mesh_analysis::are_visually_identical(
+                &calculated_geometries[1],
+                &geometry_island_correct
+            ));
         } else {
-            assert_eq!(calculated_geometries[1], geometry_triangle_correct);
-            assert_eq!(calculated_geometries[0], geometry_island_correct);
+            assert!(mesh_analysis::are_visually_identical(
+                &calculated_geometries[1],
+                &geometry_triangle_correct
+            ));
+            assert!(mesh_analysis::are_visually_identical(
+                &calculated_geometries[0],
+                &geometry_island_correct
+            ));
         }
     }
 }
