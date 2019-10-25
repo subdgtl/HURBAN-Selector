@@ -11,7 +11,6 @@ use crate::mesh_topology_analysis::face_to_face_topology;
 #[allow(dead_code)]
 pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
     let face_to_face = face_to_face_topology(geometry);
-    // NOTE: I have a hunch we can somehow get rid of this set
     let mut available_face_indices: HashSet<u32> = face_to_face.keys().cloned().collect();
     let mut patches: Vec<Geometry> = Vec::new();
 
@@ -40,11 +39,9 @@ fn crawl_faces(
     start_face_index: u32,
     face_to_face: &HashMap<u32, SmallVec<[u32; 8]>>,
 ) -> HashSet<u32> {
-    // NOTE: very random capacity, I bet there's some clever math to figure this out
     let mut index_stack = Vec::with_capacity(face_to_face.len() / 2);
     index_stack.push(start_face_index);
 
-    // NOTE: Worst case scenario capacity (everything is connected)
     let mut connected_face_indices = HashSet::with_capacity(face_to_face.len());
 
     while !index_stack.is_empty() {
