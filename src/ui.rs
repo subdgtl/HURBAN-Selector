@@ -1,5 +1,7 @@
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
+use crate::renderer::RendererDrawGeometryMode;
+
 const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
 const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Bold.ttf");
 const OPENSANS_LIGHT_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Light.ttf");
@@ -134,14 +136,33 @@ impl<'a> UiFrame<'a> {
         self.imgui_ui.render()
     }
 
-    #[cfg(debug_assertions)]
-    pub fn draw_fps_window(&self) {
+    pub fn draw_renderer_settings_window(&self, draw_mode: &mut RendererDrawGeometryMode) {
         let ui = &self.imgui_ui;
 
-        imgui::Window::new(imgui::im_str!("FPS"))
-            .position([450.0, 50.0], imgui::Condition::Always)
+        imgui::Window::new(imgui::im_str!("Renderer Settings"))
+            .size([250.0, 200.0], imgui::Condition::Once)
             .build(ui, || {
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
+                ui.radio_button(
+                    imgui::im_str!("Shaded"),
+                    draw_mode,
+                    RendererDrawGeometryMode::Shaded,
+                );
+                ui.radio_button(
+                    imgui::im_str!("Edges"),
+                    draw_mode,
+                    RendererDrawGeometryMode::Edges,
+                );
+                ui.radio_button(
+                    imgui::im_str!("Shaded with Edges"),
+                    draw_mode,
+                    RendererDrawGeometryMode::ShadedEdges,
+                );
+                ui.radio_button(
+                    imgui::im_str!("Shaded with Edges (X-RAY)"),
+                    draw_mode,
+                    RendererDrawGeometryMode::ShadedEdgesXray,
+                );
             });
     }
 }
