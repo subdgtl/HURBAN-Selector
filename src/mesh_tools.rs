@@ -1,14 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
+use nalgebra::base::Vector3;
+use nalgebra::geometry::Point3;
 use smallvec::SmallVec;
 
-use crate::convert::cast_usize;
-use crate::geometry::Geometry;
+use crate::convert::{cast_u32, cast_usize};
+use crate::geometry::{Face, Geometry, TriangleFace};
+
 use crate::mesh_topology_analysis::face_to_face_topology;
 
 /// Crawls the geometry to find continuous patches of geometry.
 /// Returns a vector of new separated geometries.
-#[allow(dead_code)]
 pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
     let face_to_face = face_to_face_topology(geometry);
     let mut available_face_indices: HashSet<u32> = face_to_face.keys().cloned().collect();
@@ -61,6 +63,47 @@ fn crawl_faces(
     connected_face_indices
 }
 
+/// Joins two mesh geometries into one
+///
+/// Concatenates vertex and normal slices, while keeping the first mesh
+/// geometry's element indices intact and second geometry's indices offset by
+/// the length of the respective elements. Reuses first mesh geometry's faces
+/// and recomputes the second mesh geometry's faces to match new indices of its
+/// elements.
+pub fn join_meshes(first_geometry: &Geometry, second_geometry: &Geometry) -> Geometry {
+    let vertex_offset = first_geometry.vertices().len();
+    let mut vertices: Vec<Point3<f32>> =
+        Vec::with_capacity(vertex_offset + second_geometry.vertices().len());
+    vertices.extend_from_slice(first_geometry.vertices());
+    vertices.extend_from_slice(second_geometry.vertices());
+
+    let normal_offset = first_geometry.normals().len();
+    let mut normals: Vec<Vector3<f32>> =
+        Vec::with_capacity(normal_offset + second_geometry.normals().len());
+    normals.extend_from_slice(first_geometry.normals());
+    normals.extend_from_slice(second_geometry.normals());
+
+    let mut faces: Vec<Face> =
+        Vec::with_capacity(first_geometry.faces().len() + second_geometry.faces().len());
+    faces.extend_from_slice(first_geometry.faces());
+    let vertex_offset_u32 = cast_u32(vertex_offset);
+    let normal_offset_u32 = cast_u32(normal_offset);
+    for face in second_geometry.faces() {
+        match face {
+            Face::Triangle(f) => faces.push(Face::Triangle(TriangleFace::new_separate(
+                f.vertices.0 + vertex_offset_u32,
+                f.vertices.1 + vertex_offset_u32,
+                f.vertices.2 + vertex_offset_u32,
+                f.normals.0 + normal_offset_u32,
+                f.normals.1 + normal_offset_u32,
+                f.normals.2 + normal_offset_u32,
+            ))),
+        }
+    }
+
+    Geometry::from_faces_with_vertices_and_normals(faces, vertices, normals)
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::base::Vector3;
@@ -110,14 +153,14 @@ mod tests {
             Point3::new(0.0, 2.0, 1.0),
         ];
 
-        let vertex_normals = vec![n(0.0, 0.0, 1.0)];
+        let vertex_normals = vec![n(0.0, 0.0, 1.0), n(0.0, 0.0, 1.0)];
 
         let faces = vec![
             TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
             TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
             TriangleFace::new_separate(1, 4, 2, 0, 0, 0),
             TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
-            TriangleFace::new_separate(6, 7, 8, 0, 0, 0),
+            TriangleFace::new_separate(6, 7, 8, 1, 1, 1),
         ];
 
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -192,5 +235,20 @@ mod tests {
                 &geometry_island_correct
             ));
         }
+    }
+
+    #[test]
+    fn test_join_meshes_returns_tessellated_triangle_with_island() {
+        let tessellated_triangle = tessellated_triangle_geometry();
+        let triangular_island = triangular_island_geometry();
+
+        let geometry_correct = tessellated_triangle_with_island_geometry();
+
+        let calculated_geometry = join_meshes(&tessellated_triangle, &triangular_island);
+
+        assert!(mesh_analysis::are_visually_identical(
+            &geometry_correct,
+            &calculated_geometry
+        ));
     }
 }
