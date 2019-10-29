@@ -170,7 +170,7 @@ impl Func for FuncImplLaplacianSmoothing {
         let (g, _, _) = mesh_smoothing::laplacian_smoothing_with_anchors_full(
             geometry,
             vertex_to_vertex_topology,
-            cast_u32(cmp::min(255, iterations)),
+            cmp::min(255, iterations),
             &[],
             false,
         );
