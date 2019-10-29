@@ -133,34 +133,34 @@ mod tests {
     }
 
     #[test]
-    fn test_separate_isolated_meshes_returns_identical_for_tessellated_triangle() {
+    fn test_separate_isolated_meshes_returns_similar_for_tessellated_triangle() {
         let geometry = tessellated_triangle_geometry();
 
         let calculated_geometries = separate_isolated_meshes(&geometry);
 
         assert_eq!(calculated_geometries.len(), 1);
 
-        assert!(mesh_analysis::are_visually_identical(
+        assert!(mesh_analysis::are_similar(
             &calculated_geometries[0],
             &geometry
         ));
     }
 
     #[test]
-    fn test_separate_isolated_meshes_returns_identical_for_cube() {
+    fn test_separate_isolated_meshes_returns_similar_for_cube() {
         let geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
 
         let calculated_geometries = separate_isolated_meshes(&geometry);
 
         assert_eq!(calculated_geometries.len(), 1);
-        assert!(mesh_analysis::are_visually_identical(
+        assert!(mesh_analysis::are_similar(
             &geometry,
             &calculated_geometries[0]
         ));
     }
 
     #[test]
-    fn test_separate_isolated_meshes_returns_identical_for_tessellated_triangle_with_island() {
+    fn test_separate_isolated_meshes_returns_similar_for_tessellated_triangle_with_island() {
         let geometry = tessellated_triangle_with_island_geometry();
         let geometry_triangle_correct = tessellated_triangle_geometry();
         let geometry_island_correct = triangular_island_geometry();
@@ -169,20 +169,17 @@ mod tests {
 
         assert_eq!(calculated_geometries.len(), 2);
 
-        if mesh_analysis::are_visually_identical(
-            &calculated_geometries[0],
-            &geometry_triangle_correct,
-        ) {
-            assert!(mesh_analysis::are_visually_identical(
+        if mesh_analysis::are_similar(&calculated_geometries[0], &geometry_triangle_correct) {
+            assert!(mesh_analysis::are_similar(
                 &calculated_geometries[1],
                 &geometry_island_correct
             ));
         } else {
-            assert!(mesh_analysis::are_visually_identical(
+            assert!(mesh_analysis::are_similar(
                 &calculated_geometries[1],
                 &geometry_triangle_correct
             ));
-            assert!(mesh_analysis::are_visually_identical(
+            assert!(mesh_analysis::are_similar(
                 &calculated_geometries[0],
                 &geometry_island_correct
             ));
