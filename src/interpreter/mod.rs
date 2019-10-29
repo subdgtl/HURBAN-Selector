@@ -287,6 +287,12 @@ impl Interpreter {
         *stmt_mut = stmt;
     }
 
+    /// Runs name resolution on the currently set program.
+    ///
+    /// More concretely, this statically verifies that:
+    /// - Each used function is registered with the interpreter
+    /// - Each variable is defined before it is used
+    /// - Variables are not re-declared
     pub fn resolve(&mut self) -> Result<(), ResolveError> {
         if self.last_resolve_epoch == self.epoch {
             return Ok(());
@@ -337,6 +343,11 @@ impl Interpreter {
         Ok(())
     }
 
+    /// Interprets the whole currently set program and returns the
+    /// used/unused values after the last statment.
+    ///
+    /// # Panics
+    /// Panics if the currently set program is empty.
     pub fn interpret(&mut self) -> InterpretResult {
         assert!(
             !self.prog.stmts().is_empty(),
@@ -345,6 +356,13 @@ impl Interpreter {
         self.interpret_up_until(self.prog.stmts().len() - 1)
     }
 
+    /// Interprets the currently set program up until the `index`-th
+    /// statement (inclusive) and returns the used/unused values after
+    /// it.
+    ///
+    /// # Panics
+    /// Panics if the currently set program is empty or if `index` is
+    /// out of bounds.
     pub fn interpret_up_until(&mut self, index: usize) -> InterpretResult {
         assert!(
             !self.prog.stmts().is_empty(),
