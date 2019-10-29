@@ -8,10 +8,9 @@ use crate::mesh_topology_analysis::face_to_face_topology;
 
 /// Crawls the geometry to find continuous patches of geometry.
 /// Returns a vector of new separated geometries.
-#[allow(dead_code)]
 pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
     let face_to_face = face_to_face_topology(geometry);
-    let mut available_face_indices: HashSet<u32> = face_to_face.keys().cloned().collect();
+    let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
     let mut patches: Vec<Geometry> = Vec::new();
 
     while let Some(first_face_index) = available_face_indices.iter().next() {
@@ -39,17 +38,13 @@ fn crawl_faces(
     start_face_index: u32,
     face_to_face: &HashMap<u32, SmallVec<[u32; 8]>>,
 ) -> HashSet<u32> {
-    let mut index_stack = Vec::with_capacity(face_to_face.len() / 2);
+    let mut index_stack = vec![start_face_index];
     index_stack.push(start_face_index);
 
-    let mut connected_face_indices = HashSet::with_capacity(face_to_face.len());
+    let mut connected_face_indices = HashSet::new();
 
-    while !index_stack.is_empty() {
-        let current_face_index = index_stack.pop().unwrap();
-
-        if !connected_face_indices.contains(&current_face_index) {
-            connected_face_indices.insert(current_face_index);
-
+    while let Some(current_face_index) = index_stack.pop() {
+        if connected_face_indices.insert(current_face_index) {
             for neighbor in &face_to_face[&current_face_index] {
                 index_stack.push(neighbor.clone());
             }
