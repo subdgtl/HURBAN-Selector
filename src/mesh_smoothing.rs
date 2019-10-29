@@ -5,7 +5,6 @@ use smallvec::SmallVec;
 
 use crate::convert::cast_usize;
 use crate::geometry::Geometry;
-use crate::mesh_topology_analysis;
 
 /// Relaxes angles between mesh edges, resulting in a smoother geometry
 ///
@@ -101,6 +100,7 @@ mod tests {
     use crate::edge_analysis;
     use crate::geometry::{Geometry, NormalStrategy, OrientedEdge, Vertices};
     use crate::mesh_analysis;
+    use crate::mesh_topology_analysis;
 
     use super::*;
 
