@@ -163,9 +163,9 @@ pub fn triangulated_mesh_genus(vertex_count: usize, edge_count: usize, face_coun
 /// can differ but as long as the previous conditions are met, and the count of
 /// vertices, normals and faces are identical, the mesh geometries are similar.
 ///
-/// The mesh geometries are not necessarily identical in the memory but they
-/// look the same and are treated the same by all functions of this software and
-/// all their transformations result in similar mesh geometries.
+/// The mesh geometries are not necessarily identical in memory but they look
+/// the same and are treated the same by all functions of this software and all
+/// their transformations result in similar mesh geometries.
 #[allow(dead_code)]
 pub fn are_similar(geometry_1: &Geometry, geometry_2: &Geometry) -> bool {
     geometry_1.vertices().len() == geometry_2.vertices().len()
@@ -189,12 +189,12 @@ pub fn are_similar(geometry_1: &Geometry, geometry_2: &Geometry) -> bool {
 /// normals are identical, because one mesh may reuse (share) vertices and
 /// normals in more faces and the other doesn't (applies to all or some faces).
 ///
-/// They mesh geometries are not necessarily identical in the memory but they
-/// look the same. If the number of vertices differs, the mesh geometries don't
-/// share the same qualities (they are not welded in the same places and at
-/// least one of them is not watertight) are not going to be treated the same by
-/// some functions of this software and all their transformations result in
-/// different mesh geometries.
+/// They mesh geometries are not necessarily identical in memory but they look
+/// the same. If the number of vertices differs, the mesh geometries don't share
+/// the same qualities (they are not welded in the same places and at least one
+/// of them is not watertight) are not going to be treated the same by some
+/// functions of this software and all their transformations result in different
+/// mesh geometries.
 #[allow(dead_code)]
 pub fn are_visually_similar(geometry_1: &Geometry, geometry_2: &Geometry) -> bool {
     struct UnpackedFace {
@@ -314,18 +314,18 @@ mod tests {
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    pub fn quad_not_watertight_with_normals() -> Geometry {
+    pub fn quad_with_extra_vertices_and_normals() -> Geometry {
         let vertices = vec![
             v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
             v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0), // first copy of the same vertex
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0), // second copy of the same vertex
             v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
         ];
 
         let vertex_normals = vec![
-            n(-1.0, -1.0, 1.0),
-            n(-1.0, -1.0, 1.0),
+            n(-1.0, -1.0, 1.0), // first copy of the same normal
+            n(-1.0, -1.0, 1.0), // second copy of the same normal
             n(1.0, -1.0, 1.0),
             n(1.0, 1.0, 1.0),
             n(-1.0, 1.0, 1.0),
@@ -1026,7 +1026,7 @@ mod tests {
     #[test]
     fn test_mesh_analysis_are_visually_similar_returns_true_for_not_watertight() {
         let geometry = quad_with_normals();
-        let geometry_not_watertight = quad_not_watertight_with_normals();
+        let geometry_not_watertight = quad_with_extra_vertices_and_normals();
 
         assert!(are_visually_similar(&geometry, &geometry_not_watertight));
     }
@@ -1034,7 +1034,7 @@ mod tests {
     #[test]
     fn test_mesh_analysis_are_similar_returns_false_for_not_watertight() {
         let geometry = quad_with_normals();
-        let geometry_not_watertight = quad_not_watertight_with_normals();
+        let geometry_not_watertight = quad_with_extra_vertices_and_normals();
 
         assert!(!are_similar(&geometry, &geometry_not_watertight));
     }
