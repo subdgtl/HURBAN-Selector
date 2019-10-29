@@ -14,7 +14,7 @@ pub mod value;
 /// A name resolution error.
 #[derive(Debug, PartialEq)]
 pub enum ResolveError {
-    VarRedefinition { line: usize, var: ast::VarIdent },
+    VarRedefinition { line: usize, var: VarIdent },
     UndeclaredVarUse { line: usize, var: VarIdent },
     UndeclaredFuncUse { line: usize, func: FuncIdent },
 }
