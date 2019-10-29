@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use nalgebra::geometry::Point3;
+use smallvec::SmallVec;
 
 use crate::convert::cast_usize;
 use crate::geometry::Geometry;
-use crate::mesh_topology_analysis::vertex_to_vertex_topology;
+use crate::mesh_topology_analysis;
 
 /// Relaxes angles between mesh edges, resulting in a smoother geometry.
 ///
@@ -16,8 +19,16 @@ use crate::mesh_topology_analysis::vertex_to_vertex_topology;
 /// - `geometry` - mesh geometry to relax
 /// - `iterations` - number of times the smoothing algorithm should relax the geometry
 #[allow(dead_code)]
-pub fn laplacian_smoothing(geometry: &Geometry, iterations: u8) -> Geometry {
-    laplacian_smoothing_with_anchors(geometry, iterations, &[])
+pub fn laplacian_smoothing(geometry: &Geometry, iterations: u32) -> Geometry {
+    let vertex_to_vertex_topology = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
+    let (g, _, _) = laplacian_smoothing_with_anchors_full(
+        geometry,
+        vertex_to_vertex_topology,
+        iterations,
+        &[],
+        false,
+    );
+    g
 }
 
 /// Relaxes angles between mesh edges, while keeping some vertices anchored,
@@ -36,10 +47,18 @@ pub fn laplacian_smoothing(geometry: &Geometry, iterations: u8) -> Geometry {
 #[allow(dead_code)]
 pub fn laplacian_smoothing_with_anchors(
     geometry: &Geometry,
-    iterations: u8,
+    iterations: u32,
     fixed_vertex_indices: &[u32],
 ) -> Geometry {
-    laplacian_smoothing_with_anchors_full(geometry, iterations, fixed_vertex_indices, false)
+    let vertex_to_vertex_topology = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
+    let (g, _, _) = laplacian_smoothing_with_anchors_full(
+        geometry,
+        vertex_to_vertex_topology,
+        iterations,
+        fixed_vertex_indices,
+        false,
+    );
+    g
 }
 
 /// Relaxes angles between mesh edges, while keeping some vertices anchored,
@@ -62,30 +81,41 @@ pub fn laplacian_smoothing_with_anchors(
 #[allow(dead_code)]
 pub fn laplacian_smoothing_with_anchors_stop_when_stable(
     geometry: &Geometry,
-    max_iterations: u8,
+    max_iterations: u32,
     fixed_vertex_indices: &[u32],
 ) -> Geometry {
-    laplacian_smoothing_with_anchors_full(geometry, max_iterations, fixed_vertex_indices, true)
+    let vertex_to_vertex_topology = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
+    let (g, _, _) = laplacian_smoothing_with_anchors_full(
+        geometry,
+        vertex_to_vertex_topology,
+        max_iterations,
+        fixed_vertex_indices,
+        true,
+    );
+    g
 }
 
-fn laplacian_smoothing_with_anchors_full(
+/// returns (smooth_geometry: Geometry, executed_iterations: u32, stable: bool)
+pub fn laplacian_smoothing_with_anchors_full(
     geometry: &Geometry,
-    max_iterations: u8,
+    vertex_to_vertex_topology: HashMap<u32, SmallVec<[u32; 8]>>,
+    max_iterations: u32,
     fixed_vertex_indices: &[u32],
     stop_when_stable: bool,
-) -> Geometry {
+) -> (Geometry, u32, bool) {
     if max_iterations == 0 {
-        return geometry.clone();
+        return (geometry.clone(), 0, stop_when_stable);
     }
 
-    let vertex_to_vertex_topology = vertex_to_vertex_topology(geometry);
     let mut vertices: Vec<Point3<f32>> = Vec::from(geometry.vertices());
     let mut geometry_vertices: Vec<Point3<f32>>;
 
-    for _ in 0..max_iterations {
-        // Only relevant when fixed vertices are specified
-        let mut stable = !fixed_vertex_indices.is_empty();
+    let mut iteration: u32 = 0;
 
+    // Only relevant when fixed vertices are specified
+    let mut stable = !fixed_vertex_indices.is_empty();
+    while iteration < max_iterations {
+        stable = !fixed_vertex_indices.is_empty();
         geometry_vertices = vertices.clone();
 
         for (current_vertex_index, neighbors_indices) in vertex_to_vertex_topology.iter() {
@@ -99,15 +129,14 @@ fn laplacian_smoothing_with_anchors_full(
                     average_position += geometry_vertices[cast_usize(*neighbor_index)].coords;
                 }
                 average_position /= neighbors_indices.len() as f32;
-                if stop_when_stable {
-                    stable &= approx::relative_eq!(
-                        &average_position.coords,
-                        &vertices[cast_usize(*current_vertex_index)].coords,
-                    );
-                }
+                stable &= approx::relative_eq!(
+                    &average_position.coords,
+                    &vertices[cast_usize(*current_vertex_index)].coords,
+                );
                 vertices[cast_usize(*current_vertex_index)] = average_position;
             }
         }
+        iteration += 1;
 
         if stop_when_stable && stable {
             break;
@@ -115,10 +144,14 @@ fn laplacian_smoothing_with_anchors_full(
     }
 
     // FIXME: Calculate smooth normals for the result once we support them
-    Geometry::from_faces_with_vertices_and_normals(
-        geometry.faces().to_vec(),
-        vertices,
-        geometry.normals().to_vec(),
+    (
+        Geometry::from_faces_with_vertices_and_normals(
+            geometry.faces().to_vec(),
+            vertices,
+            geometry.normals().to_vec(),
+        ),
+        iteration,
+        stable,
     )
 }
 
