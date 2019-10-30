@@ -203,6 +203,38 @@ impl Func for FuncImplSeparateIsolatedMeshes {
     }
 }
 
+pub struct FuncImplJoinMeshes;
+impl Func for FuncImplJoinMeshes {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+    fn param_info(&self) -> &[ParamInfo] {
+        &[
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+        ]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+        let first_geometry = args[0].unwrap_geometry();
+        let second_geometry = args[1].unwrap_geometry();
+
+        let value = mesh_tools::join_meshes(first_geometry, second_geometry);
+
+        Value::Geometry(Arc::new(value))
+    }
+}
+
 // IMPORTANT: Do not change these IDs, ever! When adding a new
 // function, always create a new, unique function identifier for it.
 
@@ -211,6 +243,7 @@ pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
 pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
 pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
+pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(5);
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
@@ -228,6 +261,7 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
         FUNC_ID_SEPARATE_ISOLATED_MESHES,
         Box::new(FuncImplSeparateIsolatedMeshes),
     );
+    funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncImplJoinMeshes));
 
     funcs
 }
