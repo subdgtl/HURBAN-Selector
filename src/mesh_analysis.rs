@@ -240,7 +240,7 @@ pub fn are_visually_similar(geometry_1: &Geometry, geometry_2: &Geometry) -> boo
         },
     });
 
-    let mut unpacked_faces_2 = geometry_2.faces().iter().map(|face| match face {
+    let unpacked_faces_2 = geometry_2.faces().iter().map(|face| match face {
         Face::Triangle(f) => UnpackedFace {
             vertices: (
                 geometry_2.vertices()[cast_usize(f.vertices.0)],
@@ -256,7 +256,7 @@ pub fn are_visually_similar(geometry_1: &Geometry, geometry_2: &Geometry) -> boo
     });
 
     geometry_1.faces().len() == geometry_2.faces().len()
-        && unpacked_faces_1.all(|f| unpacked_faces_2.any(|g| f == g))
+        && unpacked_faces_1.all(|f| unpacked_faces_2.clone().any(|g| f == g))
 }
 
 #[cfg(test)]
@@ -355,6 +355,26 @@ mod tests {
         ];
 
         let faces = vec![TriangleFace::new(1, 0, 2), TriangleFace::new(3, 1, 2)];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+    }
+
+    pub fn quad_renumbered_more_with_normals() -> Geometry {
+        let vertices = vec![
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),  //1
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),  //3
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0), //0
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),   //2
+        ];
+
+        let vertex_normals = vec![
+            n(1.0, -1.0, 1.0),  //1
+            n(-1.0, 1.0, 1.0),  //3
+            n(-1.0, -1.0, 1.0), //0
+            n(1.0, 1.0, 1.0),   //2
+        ];
+
+        let faces = vec![TriangleFace::new(2, 0, 3), TriangleFace::new(2, 3, 1)];
 
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
@@ -1037,6 +1057,14 @@ mod tests {
         let geometry_not_watertight = quad_with_extra_vertices_and_normals();
 
         assert!(!are_similar(&geometry, &geometry_not_watertight));
+    }
+
+    #[test]
+    fn test_mesh_analysis_are_visually_similar_returns_true_for_renumbered_more() {
+        let geometry = quad_with_normals();
+        let geometry_r = quad_renumbered_more_with_normals();
+
+        assert!(are_visually_similar(&geometry, &geometry_r));
     }
 
     #[test]
