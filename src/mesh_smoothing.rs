@@ -32,7 +32,7 @@ use crate::geometry::Geometry;
 ///   iterations
 ///
 /// returns (smooth_geometry: Geometry, executed_iterations: u32, stable: bool)
-pub fn laplacian_smoothing_with_anchors_full(
+pub fn laplacian_smoothing(
     geometry: &Geometry,
     vertex_to_vertex_topology: HashMap<u32, SmallVec<[u32; 8]>>,
     iterations: u32,
@@ -438,27 +438,12 @@ mod tests {
 
         let vertex_to_vertex_topology =
             mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry_0, _, _) = laplacian_smoothing_with_anchors_full(
-            &geometry,
-            vertex_to_vertex_topology.clone(),
-            0,
-            &[],
-            false,
-        );
-        let (relaxed_geometry_1, _, _) = laplacian_smoothing_with_anchors_full(
-            &geometry,
-            vertex_to_vertex_topology.clone(),
-            1,
-            &[],
-            false,
-        );
-        let (relaxed_geometry_10, _, _) = laplacian_smoothing_with_anchors_full(
-            &geometry,
-            vertex_to_vertex_topology.clone(),
-            10,
-            &[],
-            false,
-        );
+        let (relaxed_geometry_0, _, _) =
+            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 0, &[], false);
+        let (relaxed_geometry_1, _, _) =
+            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 1, &[], false);
+        let (relaxed_geometry_10, _, _) =
+            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 10, &[], false);
 
         assert_eq!(relaxed_geometry_0.faces().len(), geometry.faces().len(),);
         assert_eq!(relaxed_geometry_1.faces().len(), geometry.faces().len(),);
@@ -508,27 +493,12 @@ mod tests {
 
         let vertex_to_vertex_topology =
             mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry_0_i, _, _) = laplacian_smoothing_with_anchors_full(
-            &geometry,
-            vertex_to_vertex_topology.clone(),
-            0,
-            &[],
-            false,
-        );
-        let (relaxed_geometry_1_i, _, _) = laplacian_smoothing_with_anchors_full(
-            &geometry,
-            vertex_to_vertex_topology.clone(),
-            1,
-            &[],
-            false,
-        );
-        let (relaxed_geometry_3_i, _, _) = laplacian_smoothing_with_anchors_full(
-            &geometry,
-            vertex_to_vertex_topology.clone(),
-            3,
-            &[],
-            false,
-        );
+        let (relaxed_geometry_0_i, _, _) =
+            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 0, &[], false);
+        let (relaxed_geometry_1_i, _, _) =
+            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 1, &[], false);
+        let (relaxed_geometry_3_i, _, _) =
+            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 3, &[], false);
 
         let relaxed_geometry_0_i_faces = relaxed_geometry_0_i.faces();
         let relaxed_geometry_1_i_faces = relaxed_geometry_1_i.faces();
@@ -601,7 +571,7 @@ mod tests {
 
         let vertex_to_vertex_topology =
             mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry, _, _) = laplacian_smoothing_with_anchors_full(
+        let (relaxed_geometry, _, _) = laplacian_smoothing(
             &geometry,
             vertex_to_vertex_topology,
             50,
@@ -652,7 +622,7 @@ mod tests {
             );
         let vertex_to_vertex_topology =
             mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry, _, _) = laplacian_smoothing_with_anchors_full(
+        let (relaxed_geometry, _, _) = laplacian_smoothing(
             &geometry,
             vertex_to_vertex_topology,
             50,
@@ -701,7 +671,7 @@ mod tests {
 
         let vertex_to_vertex_topology =
             mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry, _, _) = laplacian_smoothing_with_anchors_full(
+        let (relaxed_geometry, _, _) = laplacian_smoothing(
             &geometry,
             vertex_to_vertex_topology,
             255,

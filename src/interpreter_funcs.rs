@@ -168,7 +168,7 @@ impl Func for FuncImplLaplacianSmoothing {
         let iterations = args[1].unwrap_uint();
         let vertex_to_vertex_topology = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
 
-        let (g, _, _) = mesh_smoothing::laplacian_smoothing_with_anchors_full(
+        let (g, _, _) = mesh_smoothing::laplacian_smoothing(
             geometry,
             vertex_to_vertex_topology,
             cmp::min(255, iterations),
