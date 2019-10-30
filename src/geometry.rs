@@ -1191,8 +1191,6 @@ fn compute_triangle_normal(p1: &Point3<f32>, p2: &Point3<f32>, p3: &Point3<f32>)
 
 #[cfg(test)]
 mod tests {
-    use std::collections::hash_map::DefaultHasher;
-
     use super::*;
 
     fn quad() -> (Vec<(u32, u32, u32)>, Vertices) {
@@ -1397,28 +1395,6 @@ mod tests {
         let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
         let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(2, 1));
         assert_ne!(unoriented_edge_one_way, unoriented_edge_other_way);
-    }
-
-    #[test]
-    fn test_unoriented_edge_hash_returns_true_because_same() {
-        let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
-        let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(0, 1));
-        let mut hasher_1 = DefaultHasher::new();
-        let mut hasher_2 = DefaultHasher::new();
-        unoriented_edge_one_way.hash(&mut hasher_1);
-        unoriented_edge_other_way.hash(&mut hasher_2);
-        assert_eq!(hasher_1.finish(), hasher_2.finish());
-    }
-
-    #[test]
-    fn test_unoriented_edge_hash_returns_true_because_reverted() {
-        let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
-        let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(1, 0));
-        let mut hasher_1 = DefaultHasher::new();
-        let mut hasher_2 = DefaultHasher::new();
-        unoriented_edge_one_way.hash(&mut hasher_1);
-        unoriented_edge_other_way.hash(&mut hasher_2);
-        assert_eq!(hasher_1.finish(), hasher_2.finish());
     }
 
     #[test]
