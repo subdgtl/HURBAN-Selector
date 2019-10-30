@@ -64,6 +64,7 @@ pub fn weld(geometry: &Geometry, tolerance: f32) -> Geometry {
     // New faces with renumbered vertex (and normal) indices. Some faces might
     // end up invalid (not referencing three distinct vertices). Those will be
     // removed as they don't affect the visual appearance of the mesh geometry.
+    #[allow(clippy::unnecessary_filter_map)]
     let new_faces = geometry
         .faces()
         .iter()
