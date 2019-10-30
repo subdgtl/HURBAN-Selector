@@ -1,13 +1,15 @@
+use std::cmp;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use nalgebra::base::Vector3;
 
-use crate::convert::{cast_u32, cast_u8};
+use crate::convert::cast_u32;
 use crate::geometry;
 use crate::interpreter::{Func, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
 use crate::mesh_smoothing;
 use crate::mesh_tools;
+use crate::mesh_topology_analysis;
 use crate::operations::shrink_wrap::{self, ShrinkWrapParams};
 use crate::operations::transform;
 
@@ -163,15 +165,18 @@ impl Func for FuncImplLaplacianSmoothing {
 
     fn call(&self, args: &[Value]) -> Value {
         let geometry = args[0].unwrap_geometry();
-        let iterations_unclamped = args[1].unwrap_uint();
-        let iterations = if iterations_unclamped > 255 {
-            255
-        } else {
-            iterations_unclamped
-        };
+        let iterations = args[1].unwrap_uint();
+        let vertex_to_vertex_topology = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
 
-        let value = mesh_smoothing::laplacian_smoothing(geometry, cast_u8(iterations));
-        Value::Geometry(Arc::new(value))
+        let (g, _, _) = mesh_smoothing::laplacian_smoothing(
+            geometry,
+            vertex_to_vertex_topology,
+            cmp::min(255, iterations),
+            &[],
+            false,
+        );
+
+        Value::Geometry(Arc::new(g))
     }
 }
 
