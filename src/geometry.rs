@@ -1,5 +1,6 @@
 use std::cmp;
 use std::collections::HashSet;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::IntoIterator;
 
@@ -356,6 +357,39 @@ impl Geometry {
     }
 }
 
+impl fmt::Display for Geometry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let vertices: Vec<_> = self
+            .vertices
+            .iter()
+            .enumerate()
+            .map(|(i, v)| format!("{}: {}", i, v))
+            .collect();
+        let faces: Vec<_> = self
+            .faces
+            .iter()
+            .enumerate()
+            .map(|(i, f)| format!("{}: {}", i, f))
+            .collect();
+        let normals: Vec<_> = self
+            .normals
+            .iter()
+            .enumerate()
+            .map(|(i, n)| format!("{}: ({}, {}, {})", i, n.x, n.y, n.z))
+            .collect();
+        write!(
+            f,
+            "G( V({}): {:?}, N({}): {:?}, F({}): {:?} )",
+            self.vertices.len(),
+            vertices,
+            self.normals.len(),
+            normals,
+            self.faces.len(),
+            faces,
+        )
+    }
+}
+
 /// A geometry index. Describes topology of geometry data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Face {
@@ -365,6 +399,14 @@ pub enum Face {
 impl From<TriangleFace> for Face {
     fn from(triangle_face: TriangleFace) -> Face {
         Face::Triangle(triangle_face)
+    }
+}
+
+impl fmt::Display for Face {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Face::Triangle(face) => write!(f, "{}", face),
+        }
     }
 }
 
@@ -441,6 +483,21 @@ impl TriangleFace {
 impl From<(u32, u32, u32)> for TriangleFace {
     fn from((i1, i2, i3): (u32, u32, u32)) -> TriangleFace {
         TriangleFace::new(i1, i2, i3)
+    }
+}
+
+impl fmt::Display for TriangleFace {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "T(V: ({}, {}, {}); N: ({}, {}, {}))",
+            self.vertices.0,
+            self.vertices.1,
+            self.vertices.2,
+            self.normals.0,
+            self.normals.1,
+            self.normals.2,
+        )
     }
 }
 

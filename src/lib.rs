@@ -29,6 +29,7 @@ mod interpreter_server;
 mod math;
 mod mesh_analysis;
 mod mesh_smoothing;
+mod mesh_tools;
 mod mesh_topology_analysis;
 mod platform;
 mod ui;
@@ -47,7 +48,7 @@ pub struct Options {
 
 /// Initialize the window and run in infinite loop.
 ///
-/// Will continue running until a close request is recieved from the
+/// Will continue running until a close request is received from the
 /// created window.
 pub fn init_and_run(options: Options) -> ! {
     let event_loop = winit::event_loop::EventLoop::new();
@@ -393,7 +394,7 @@ pub fn init_and_run(options: Options) -> ! {
                 //
                 // 2) ImGui produces a draw list with `render()`. The
                 //    drawlist shares the lifetime of the `Ui` frame
-                //    contex, which is dropped at the end of "events
+                //    context, which is dropped at the end of "events
                 //    cleared". We could copy the draw list and stash
                 //    it for our subsequent handling of redraw
                 //    requests, but it contains raw pointers to the

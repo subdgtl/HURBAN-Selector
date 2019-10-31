@@ -10,7 +10,7 @@ fn main() {
     let msaa = env::var("HS_MSAA")
         .ok()
         .map(|msaa| match msaa.as_str() {
-            "0" => hs::Msaa::Disabled,
+            "1" => hs::Msaa::Disabled,
             "4" => hs::Msaa::X4,
             "8" => hs::Msaa::X8,
             "16" => hs::Msaa::X16,
