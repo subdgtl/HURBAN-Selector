@@ -156,6 +156,7 @@ mod tests {
     use std::collections::HashSet;
 
     use nalgebra::geometry::Point3;
+    use smallvec::smallvec;
 
     use crate::geometry::NormalStrategy;
 
@@ -176,6 +177,26 @@ mod tests {
         (faces, vertices)
     }
 
+    // FIXME: make proptests on all topologies verifying that self is
+    // not included in neighbors, similar to what
+    // test_geometry_face_to_face_topology_does_not_include_self_in_neighbors
+    // does
+
+    #[test]
+    fn test_geometry_face_to_face_topology_does_not_include_self_in_neighbors() {
+        let (faces, vertices) = tessellated_triangle();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
+            NormalStrategy::Sharp,
+        );
+        let face_to_face_topology = face_to_face_topology(&geometry);
+
+        for (key, value) in face_to_face_topology {
+            assert!(!value.contains(&key));
+        }
+    }
+
     #[test]
     fn test_geometry_face_to_face_topology_from_tessellated_triangle() {
         let (faces, vertices) = tessellated_triangle();
@@ -184,26 +205,18 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let mut face_to_face_topology_correct: HashMap<u32, Vec<u32>> = HashMap::new();
-        face_to_face_topology_correct.insert(0, vec![1]);
-        face_to_face_topology_correct.insert(1, vec![0, 2, 3]);
-        face_to_face_topology_correct.insert(2, vec![1]);
-        face_to_face_topology_correct.insert(3, vec![1]);
+        let mut face_to_face_topology_correct: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+        face_to_face_topology_correct.insert(0, smallvec![1]);
+        face_to_face_topology_correct.insert(1, smallvec![0, 2, 3]);
+        face_to_face_topology_correct.insert(2, smallvec![1]);
+        face_to_face_topology_correct.insert(3, smallvec![1]);
 
         let face_to_face_topology_calculated = face_to_face_topology(&geometry);
 
-        assert!(face_to_face_topology_correct
-            .iter()
-            .all(|(face_index, neighbors)| {
-                if let Some(neighbors_calculated) = face_to_face_topology_calculated.get(face_index)
-                {
-                    neighbors
-                        .iter()
-                        .all(|n| neighbors_calculated.iter().any(|n_c| n_c == n))
-                } else {
-                    false
-                }
-            }));
+        assert_eq!(
+            face_to_face_topology_calculated,
+            face_to_face_topology_correct,
+        );
     }
 
     #[test]
