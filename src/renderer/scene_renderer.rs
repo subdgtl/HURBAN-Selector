@@ -22,12 +22,12 @@ static MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../resources/matcap.png"
 /// The geometry containing index and vertex data in same-length
 /// format as will be uploaded on the GPU.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SceneRendererGeometry {
-    indices: Option<Vec<GeometryIndex>>,
-    vertex_data: Vec<GeometryVertex>,
+pub struct GpuGeometry {
+    indices: Option<Vec<GpuGeometryIndex>>,
+    vertex_data: Vec<GpuGeometryVertex>,
 }
 
-impl SceneRendererGeometry {
+impl GpuGeometry {
     /// Construct geometry with same-length per-vertex data from
     /// variable-length data `Geometry`.
     ///
@@ -45,7 +45,7 @@ impl SceneRendererGeometry {
         // This capacity is a lower bound estimate. Given that
         // `Geometry` contains no orphan vertices, there should be
         // at least `vertices.len()` vertices present in the
-        // resulting `SceneRendererGeometry`.
+        // resulting `GpuGeometry`.
         let mut vertex_data = Vec::with_capacity(vertices.len());
 
         // This capacity is an upper bound estimate and will
@@ -104,7 +104,7 @@ impl SceneRendererGeometry {
 
         vertex_data.shrink_to_fit();
 
-        SceneRendererGeometry {
+        GpuGeometry {
             indices: Some(indices),
             vertex_data,
         }
@@ -150,7 +150,7 @@ impl SceneRendererGeometry {
     /// checking.
     #[allow(dead_code)]
     pub fn from_positions_and_normals_indexed(
-        indices: Vec<GeometryIndex>,
+        indices: Vec<GpuGeometryIndex>,
         vertex_positions: Vec<Point3<f32>>,
         vertex_normals: Vec<Vector3<f32>>,
     ) -> Self {
@@ -182,8 +182,8 @@ impl SceneRendererGeometry {
         }
     }
 
-    fn vertex(position: Point3<f32>, normal: Vector3<f32>, barycentric: u32) -> GeometryVertex {
-        GeometryVertex {
+    fn vertex(position: Point3<f32>, normal: Vector3<f32>, barycentric: u32) -> GpuGeometryVertex {
+        GpuGeometryVertex {
             position: [position[0], position[1], position[2], 1.0],
             normal: [normal[0], normal[1], normal[2], 0.0],
             barycentric,
@@ -193,17 +193,16 @@ impl SceneRendererGeometry {
 
 /// Opaque handle to geometry stored in scene renderer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SceneRendererGeometryId(u64);
+pub struct GpuGeometryId(u64);
 
 #[derive(Debug)]
-pub enum SceneRendererAddGeometryError {
+pub enum AddGeometryError {
     TooManyVertices(usize),
     TooManyIndices(usize),
 }
 
-impl fmt::Display for SceneRendererAddGeometryError {
+impl fmt::Display for AddGeometryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use SceneRendererAddGeometryError as AddGeometryError;
         match self {
             AddGeometryError::TooManyVertices(given) => write!(
                 f,
@@ -221,24 +220,24 @@ impl fmt::Display for SceneRendererAddGeometryError {
     }
 }
 
-impl error::Error for SceneRendererAddGeometryError {}
+impl error::Error for AddGeometryError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SceneRendererOptions {
+pub struct Options {
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
     pub output_depth_attachment_format: wgpu::TextureFormat,
 }
 
 bitflags! {
-    pub struct SceneRendererClearFlags: u8 {
+    pub struct ClearFlags: u8 {
         const COLOR = 0b_0000_0001;
         const DEPTH = 0b_0000_0010;
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SceneRendererDrawGeometryMode {
+pub enum DrawGeometryMode {
     Shaded,
     Edges,
     ShadedEdges,
@@ -273,7 +272,7 @@ impl SceneRenderer {
         queue: &mut wgpu::Queue,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
-        options: SceneRendererOptions,
+        options: Options,
     ) -> Self {
         let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_VIEWPORT_VERT))
             .expect("Couldn't read pre-built SPIR-V");
@@ -542,11 +541,9 @@ impl SceneRenderer {
     pub fn add_geometry(
         &mut self,
         device: &wgpu::Device,
-        geometry: &SceneRendererGeometry,
-    ) -> Result<SceneRendererGeometryId, SceneRendererAddGeometryError> {
-        use SceneRendererAddGeometryError as AddGeometryError;
-
-        let id = SceneRendererGeometryId(self.geometry_resources_next_id);
+        geometry: &GpuGeometry,
+    ) -> Result<GpuGeometryId, AddGeometryError> {
+        let id = GpuGeometryId(self.geometry_resources_next_id);
 
         let vertex_data = &geometry.vertex_data[..];
         let vertex_data_count = u32::try_from(vertex_data.len())
@@ -598,7 +595,7 @@ impl SceneRenderer {
     }
 
     /// Remove a previously uploaded geometry from the GPU.
-    pub fn remove_geometry(&mut self, id: SceneRendererGeometryId) {
+    pub fn remove_geometry(&mut self, id: GpuGeometryId) {
         log::debug!("Removing geometry with {}", id.0);
         // Dropping the geometry descriptor here unstreams the buffers from device memory
         self.geometry_resources.remove(&id.0);
@@ -610,21 +607,21 @@ impl SceneRenderer {
     #[allow(clippy::too_many_arguments)]
     pub fn draw_geometry(
         &self,
-        mode: SceneRendererDrawGeometryMode,
-        clear_flags: SceneRendererClearFlags,
+        mode: DrawGeometryMode,
+        clear_flags: ClearFlags,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
         msaa_attachment: Option<&wgpu::TextureView>,
         depth_attachment: &wgpu::TextureView,
-        ids: &[SceneRendererGeometryId],
+        ids: &[GpuGeometryId],
     ) {
-        let color_load_op = if clear_flags.contains(SceneRendererClearFlags::COLOR) {
+        let color_load_op = if clear_flags.contains(ClearFlags::COLOR) {
             wgpu::LoadOp::Clear
         } else {
             wgpu::LoadOp::Load
         };
 
-        let depth_load_op = if clear_flags.contains(SceneRendererClearFlags::DEPTH) {
+        let depth_load_op = if clear_flags.contains(ClearFlags::DEPTH) {
             wgpu::LoadOp::Clear
         } else {
             wgpu::LoadOp::Load
@@ -701,7 +698,7 @@ impl SceneRenderer {
         //     https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
 
         match mode {
-            SceneRendererDrawGeometryMode::Shaded => {
+            DrawGeometryMode::Shaded => {
                 rpass.set_pipeline(&self.render_pipeline_opaque);
                 rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
@@ -709,7 +706,7 @@ impl SceneRenderer {
 
                 self.record_geometry_drawing(&mut rpass, ids);
             }
-            SceneRendererDrawGeometryMode::Edges => {
+            DrawGeometryMode::Edges => {
                 rpass.set_pipeline(&self.render_pipeline_transparent);
                 rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
@@ -717,7 +714,7 @@ impl SceneRenderer {
 
                 self.record_geometry_drawing(&mut rpass, ids);
             }
-            SceneRendererDrawGeometryMode::ShadedEdges => {
+            DrawGeometryMode::ShadedEdges => {
                 rpass.set_pipeline(&self.render_pipeline_opaque);
                 rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded_edges, &[]);
@@ -725,7 +722,7 @@ impl SceneRenderer {
 
                 self.record_geometry_drawing(&mut rpass, ids);
             }
-            SceneRendererDrawGeometryMode::ShadedEdgesXray => {
+            DrawGeometryMode::ShadedEdgesXray => {
                 rpass.set_pipeline(&self.render_pipeline_opaque);
                 rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
@@ -741,11 +738,7 @@ impl SceneRenderer {
         }
     }
 
-    fn record_geometry_drawing(
-        &self,
-        rpass: &mut wgpu::RenderPass,
-        ids: &[SceneRendererGeometryId],
-    ) {
+    fn record_geometry_drawing(&self, rpass: &mut wgpu::RenderPass, ids: &[GpuGeometryId]) {
         for id in ids {
             if let Some(geometry) = &self.geometry_resources.get(&id.0) {
                 let (vertex_buffer, vertex_count) = &geometry.vertices;
@@ -775,7 +768,7 @@ struct GeometryResource {
 /// respectively.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct GeometryVertex {
+struct GpuGeometryVertex {
     /// The position of the vertex in world-space. Last component is 1.
     pub position: [f32; 4],
 
@@ -790,7 +783,7 @@ struct GeometryVertex {
 
 // FIXME: @Optimization Determine u16/u32 dynamically per geometry to
 // save memory
-type GeometryIndex = u32;
+type GpuGeometryIndex = u32;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -902,7 +895,7 @@ fn create_pipeline(
     shading_bind_group_layout: &wgpu::BindGroupLayout,
     matcap_texture_bind_group_layout: &wgpu::BindGroupLayout,
     support_transparency: bool,
-    options: SceneRendererOptions,
+    options: Options,
 ) -> wgpu::RenderPipeline {
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         bind_group_layouts: &[
@@ -967,7 +960,7 @@ fn create_pipeline(
         }),
         index_format: wgpu::IndexFormat::Uint32,
         vertex_buffers: &[wgpu::VertexBufferDescriptor {
-            stride: wgpu_size_of::<GeometryVertex>(),
+            stride: wgpu_size_of::<GpuGeometryVertex>(),
             step_mode: wgpu::InputStepMode::Vertex,
             attributes: &[
                 wgpu::VertexAttributeDescriptor {
@@ -1017,7 +1010,7 @@ mod tests {
         (vertex_positions, vertex_normals)
     }
 
-    fn triangle_indexed() -> (Vec<GeometryIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
+    fn triangle_indexed() -> (Vec<GpuGeometryIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
         let (vertex_positions, vertex_normals) = triangle();
         let indices = vec![0, 1, 2];
 
@@ -1071,22 +1064,22 @@ mod tests {
     #[test]
     fn test_renderer_geometry_from_positions_and_normals() {
         let (positions, normals) = triangle();
-        let geometry = SceneRendererGeometry::from_positions_and_normals(positions, normals);
+        let geometry = GpuGeometry::from_positions_and_normals(positions, normals);
 
         assert_eq!(
             geometry.vertex_data,
             vec![
-                GeometryVertex {
+                GpuGeometryVertex {
                     position: [-0.3, -0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
                     barycentric: 0x01,
                 },
-                GeometryVertex {
+                GpuGeometryVertex {
                     position: [0.3, -0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
                     barycentric: 0x02,
                 },
-                GeometryVertex {
+                GpuGeometryVertex {
                     position: [0.0, 0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
                     barycentric: 0x04,
@@ -1099,21 +1092,20 @@ mod tests {
     #[test]
     fn test_renderer_geometry_from_positions_and_normals_indexed() {
         let (indices, positions, normals) = triangle_indexed();
-        let geometry =
-            SceneRendererGeometry::from_positions_and_normals_indexed(indices, positions, normals);
+        let geometry = GpuGeometry::from_positions_and_normals_indexed(indices, positions, normals);
 
         let expected_vertex_data = vec![
-            GeometryVertex {
+            GpuGeometryVertex {
                 position: [-0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x01,
             },
-            GeometryVertex {
+            GpuGeometryVertex {
                 position: [0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x02,
             },
-            GeometryVertex {
+            GpuGeometryVertex {
                 position: [0.0, 0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x04,
@@ -1128,17 +1120,14 @@ mod tests {
     #[should_panic(expected = "Per-vertex data must be same length")]
     fn test_renderer_geometry_from_positions_and_normals_panics_on_different_length_data() {
         let (_, normals) = triangle();
-        SceneRendererGeometry::from_positions_and_normals(
-            vec![Point3::new(1.0, 1.0, 1.0)],
-            normals,
-        );
+        GpuGeometry::from_positions_and_normals(vec![Point3::new(1.0, 1.0, 1.0)], normals);
     }
 
     #[test]
     #[should_panic(expected = "Per-vertex data must be same length")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_different_length_data() {
         let (indices, positions, _) = triangle_indexed();
-        SceneRendererGeometry::from_positions_and_normals_indexed(
+        GpuGeometry::from_positions_and_normals_indexed(
             indices,
             positions,
             vec![Vector3::new(1.0, 1.0, 1.0)],
@@ -1149,53 +1138,53 @@ mod tests {
     #[should_panic(expected = "Vertex positions must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_positions() {
         let (_, normals) = triangle();
-        SceneRendererGeometry::from_positions_and_normals(vec![], normals);
+        GpuGeometry::from_positions_and_normals(vec![], normals);
     }
 
     #[test]
     #[should_panic(expected = "Vertex normals must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_positions() {
         let (positions, _) = triangle();
-        SceneRendererGeometry::from_positions_and_normals(positions, vec![]);
+        GpuGeometry::from_positions_and_normals(positions, vec![]);
     }
 
     #[test]
     #[should_panic(expected = "Vertex positions must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_normals() {
         let (indices, _, normals) = triangle_indexed();
-        SceneRendererGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
+        GpuGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
     }
 
     #[test]
     #[should_panic(expected = "Vertex normals must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_normals() {
         let (indices, positions, _) = triangle_indexed();
-        SceneRendererGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
+        GpuGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
     }
 
     #[test]
     #[should_panic(expected = "Indices must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_indices() {
         let (_, vertices, normals) = triangle_indexed();
-        SceneRendererGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
+        GpuGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
     }
 
     #[test]
     fn test_renderer_geometry_from_geometry_preserves_already_same_len_geometry() {
-        let geometry = SceneRendererGeometry::from_geometry(&triangle_geometry_same_len());
+        let geometry = GpuGeometry::from_geometry(&triangle_geometry_same_len());
 
         let expected_vertex_data = vec![
-            GeometryVertex {
+            GpuGeometryVertex {
                 position: [-0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x01,
             },
-            GeometryVertex {
+            GpuGeometryVertex {
                 position: [0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x02,
             },
-            GeometryVertex {
+            GpuGeometryVertex {
                 position: [0.0, 0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x04,
@@ -1208,20 +1197,20 @@ mod tests {
 
     #[test]
     fn test_renderer_geometry_from_geometry_duplicates_normals_in_var_len_geometry() {
-        let geometry = SceneRendererGeometry::from_geometry(&triangle_geometry_var_len());
+        let geometry = GpuGeometry::from_geometry(&triangle_geometry_var_len());
 
         let expected_vertex_data = vec![
-            GeometryVertex {
+            GpuGeometryVertex {
                 position: [-0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x01,
             },
-            GeometryVertex {
+            GpuGeometryVertex {
                 position: [0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x02,
             },
-            GeometryVertex {
+            GpuGeometryVertex {
                 position: [0.0, 0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x04,

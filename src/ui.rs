@@ -1,6 +1,6 @@
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
-use crate::renderer::RendererDrawGeometryMode;
+use crate::renderer::DrawGeometryMode;
 
 const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
 const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Bold.ttf");
@@ -136,7 +136,7 @@ impl<'a> UiFrame<'a> {
         self.imgui_ui.render()
     }
 
-    pub fn draw_renderer_settings_window(&self, draw_mode: &mut RendererDrawGeometryMode) {
+    pub fn draw_renderer_settings_window(&self, draw_mode: &mut DrawGeometryMode) {
         let ui = &self.imgui_ui;
 
         imgui::Window::new(imgui::im_str!("Renderer Settings"))
@@ -146,22 +146,18 @@ impl<'a> UiFrame<'a> {
                 ui.radio_button(
                     imgui::im_str!("Shaded"),
                     draw_mode,
-                    RendererDrawGeometryMode::Shaded,
+                    DrawGeometryMode::Shaded,
                 );
-                ui.radio_button(
-                    imgui::im_str!("Edges"),
-                    draw_mode,
-                    RendererDrawGeometryMode::Edges,
-                );
+                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawGeometryMode::Edges);
                 ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
                     draw_mode,
-                    RendererDrawGeometryMode::ShadedEdges,
+                    DrawGeometryMode::ShadedEdges,
                 );
                 ui.radio_button(
                     imgui::im_str!("Shaded with Edges (X-RAY)"),
                     draw_mode,
-                    RendererDrawGeometryMode::ShadedEdgesXray,
+                    DrawGeometryMode::ShadedEdgesXray,
                 );
             });
     }
