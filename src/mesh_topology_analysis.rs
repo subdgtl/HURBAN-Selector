@@ -11,33 +11,34 @@ use crate::geometry::{Face, Geometry, UnorientedEdge};
 pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
     let mut f2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
 
-    for (from_counter, face) in geometry.faces().iter().enumerate() {
-        match face {
-            Face::Triangle(f) => {
-                let from_counter_u32 = cast_u32(from_counter);
-                let [f_e_0, f_e_1, f_e_2] = f.to_unoriented_edges();
-                for (to_counter, to_face) in geometry.faces().iter().enumerate() {
-                    let to_counter_u32 = cast_u32(to_counter);
+    for (from_face_index, from_face) in geometry.faces().iter().enumerate() {
+        let from_face_index_u32 = cast_u32(from_face_index);
+        let mut neighbors = SmallVec::new();
+
+        match from_face {
+            Face::Triangle(triangle_face) => {
+                let [e1, e2, e3] = triangle_face.to_unoriented_edges();
+                for (to_face_index, to_face) in geometry.faces().iter().enumerate() {
+                    let to_face_index_u32 = cast_u32(to_face_index);
 
                     match to_face {
-                        Face::Triangle(t_f) => {
-                            if from_counter != to_counter
-                                && (t_f.contains_unoriented_edge(f_e_0)
-                                    || t_f.contains_unoriented_edge(f_e_1)
-                                    || t_f.contains_unoriented_edge(f_e_2))
+                        Face::Triangle(triangle_face) => {
+                            let face_contains_edge = triangle_face.contains_unoriented_edge(e1)
+                                || triangle_face.contains_unoriented_edge(e2)
+                                || triangle_face.contains_unoriented_edge(e3);
+                            if face_contains_edge
+                                && from_face_index != to_face_index
+                                && !neighbors.contains(&to_face_index_u32)
                             {
-                                let neighbors =
-                                    f2f.entry(from_counter_u32).or_insert_with(SmallVec::new);
-
-                                if !neighbors.contains(&to_counter_u32) {
-                                    neighbors.push(to_counter_u32);
-                                }
+                                neighbors.push(to_face_index_u32);
                             }
                         }
                     }
                 }
             }
         }
+
+        f2f.insert(from_face_index_u32, neighbors);
     }
 
     f2f
@@ -52,24 +53,25 @@ pub fn edge_to_face_topology(
 ) -> HashMap<u32, SmallVec<[u32; 8]>> {
     let mut e2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
 
-    for (from_counter, e) in edges.iter().enumerate() {
-        for (to_counter, face) in geometry.faces().iter().enumerate() {
-            let to_counter_u32 = cast_u32(to_counter);
+    for (from_edge_index, from_edge) in edges.iter().enumerate() {
+        let from_edge_index_u32 = cast_u32(from_edge_index);
+        let mut neighbors = SmallVec::new();
 
-            match face {
-                Face::Triangle(t_f) => {
-                    if t_f.contains_unoriented_edge(*e) {
-                        let neighbors = e2f
-                            .entry(cast_u32(from_counter))
-                            .or_insert_with(SmallVec::new);
+        for (to_face_index, to_face) in geometry.faces().iter().enumerate() {
+            let to_face_index_u32 = cast_u32(to_face_index);
 
-                        if !neighbors.contains(&to_counter_u32) {
-                            neighbors.push(to_counter_u32);
-                        }
+            match to_face {
+                Face::Triangle(triangle_face) => {
+                    if triangle_face.contains_unoriented_edge(*from_edge)
+                        && !neighbors.contains(&to_face_index_u32)
+                    {
+                        neighbors.push(to_face_index_u32);
                     }
                 }
             }
         }
+
+        e2f.insert(from_edge_index_u32, neighbors);
     }
 
     e2f
@@ -81,16 +83,18 @@ pub fn edge_to_face_topology(
 pub fn vertex_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
     let mut v2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
 
-    for (to_face, face) in geometry.faces().iter().enumerate() {
-        match face {
-            Face::Triangle(t_f) => {
-                let to_face_u32 = cast_u32(to_face);
+    for (to_face_index, to_face) in geometry.faces().iter().enumerate() {
+        let to_face_index_u32 = cast_u32(to_face_index);
 
-                for from_vertex in &[t_f.vertices.0, t_f.vertices.1, t_f.vertices.2] {
+        match to_face {
+            Face::Triangle(triangle_face) => {
+                let vertices = &triangle_face.vertices;
+
+                for from_vertex in &[vertices.0, vertices.1, vertices.2] {
                     let neighbors = v2f.entry(*from_vertex).or_insert_with(SmallVec::new);
 
-                    if !neighbors.contains(&to_face_u32) {
-                        neighbors.push(to_face_u32);
+                    if !neighbors.contains(&to_face_index_u32) {
+                        neighbors.push(to_face_index_u32);
                     }
                 }
             }
@@ -106,14 +110,14 @@ pub fn vertex_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u3
 pub fn vertex_to_edge_topology(edges: &[UnorientedEdge]) -> HashMap<u32, SmallVec<[u32; 8]>> {
     let mut v2e: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
 
-    for (to_edge, e) in edges.iter().enumerate() {
-        let to_edge_u32 = cast_u32(to_edge);
+    for (to_edge_index, to_edge) in edges.iter().enumerate() {
+        let to_edge_index_u32 = cast_u32(to_edge_index);
 
-        for from_vertex in &[e.0.vertices.0, e.0.vertices.1] {
+        for from_vertex in &[to_edge.0.vertices.0, to_edge.0.vertices.1] {
             let neighbors = v2e.entry(*from_vertex).or_insert_with(SmallVec::new);
 
-            if !neighbors.contains(&to_edge_u32) {
-                neighbors.push(to_edge_u32);
+            if !neighbors.contains(&to_edge_index_u32) {
+                neighbors.push(to_edge_index_u32);
             }
         }
     }
