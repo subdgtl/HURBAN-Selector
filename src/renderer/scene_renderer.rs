@@ -876,6 +876,14 @@ fn apply_wgpu_correction_matrix(projection_matrix: &Matrix4<f32>) -> Matrix4<f32
     wgpu_correction_matrix * projection_matrix
 }
 
+/// Produces an infinite iterator over bit-packed barycentric
+/// coordinates of triangle vertices.
+///
+/// Barycentric coords (1, 0, 0), (0, 1, 0) and (0, 0, 1) are
+/// bit-packed into a single u32 to save space (possibly, depending on
+/// attribute data layout and alignment). They are unpacked on the
+/// vertex shader. Usage is to zip this iterator with other data
+/// iterators to produce vertex attributes for renderer geometry.
 fn barycentric_sequence_iter() -> impl Iterator<Item = u32> {
     iter::successors(Some(0x01), |predecessor| match predecessor {
         0x01 => Some(0x02),
