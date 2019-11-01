@@ -51,22 +51,27 @@ pub fn edge_to_face_topology(
     edges: &[UnorientedEdge],
 ) -> HashMap<u32, SmallVec<[u32; 8]>> {
     let mut e2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+
     for (from_counter, e) in edges.iter().enumerate() {
         for (to_counter, face) in geometry.faces().iter().enumerate() {
+            let to_counter_u32 = cast_u32(to_counter);
+
             match face {
                 Face::Triangle(t_f) => {
                     if t_f.contains_unoriented_edge(*e) {
                         let neighbors = e2f
                             .entry(cast_u32(from_counter))
                             .or_insert_with(SmallVec::new);
-                        if neighbors.iter().all(|value| *value != cast_u32(to_counter)) {
-                            neighbors.push(cast_u32(to_counter));
+
+                        if !neighbors.contains(&to_counter_u32) {
+                            neighbors.push(to_counter_u32);
                         }
                     }
                 }
             }
         }
     }
+
     e2f
 }
 
@@ -75,19 +80,23 @@ pub fn edge_to_face_topology(
 #[allow(dead_code)]
 pub fn vertex_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
     let mut v2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+
     for (to_face, face) in geometry.faces().iter().enumerate() {
         match face {
             Face::Triangle(t_f) => {
                 let to_face_u32 = cast_u32(to_face);
+
                 for from_vertex in &[t_f.vertices.0, t_f.vertices.1, t_f.vertices.2] {
                     let neighbors = v2f.entry(*from_vertex).or_insert_with(SmallVec::new);
-                    if neighbors.iter().all(|value| *value != to_face_u32) {
+
+                    if !neighbors.contains(&to_face_u32) {
                         neighbors.push(to_face_u32);
                     }
                 }
             }
         }
     }
+
     v2f
 }
 
@@ -99,13 +108,16 @@ pub fn vertex_to_edge_topology(edges: &[UnorientedEdge]) -> HashMap<u32, SmallVe
 
     for (to_edge, e) in edges.iter().enumerate() {
         let to_edge_u32 = cast_u32(to_edge);
+
         for from_vertex in &[e.0.vertices.0, e.0.vertices.1] {
             let neighbors = v2e.entry(*from_vertex).or_insert_with(SmallVec::new);
-            if neighbors.iter().all(|value| *value != to_edge_u32) {
+
+            if !neighbors.contains(&to_edge_u32) {
                 neighbors.push(to_edge_u32);
             }
         }
     }
+
     v2e
 }
 
@@ -114,28 +126,28 @@ pub fn vertex_to_edge_topology(edges: &[UnorientedEdge]) -> HashMap<u32, SmallVe
 #[allow(dead_code)]
 pub fn vertex_to_vertex_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
     let mut v2v: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+
     for face in geometry.faces() {
         match face {
             Face::Triangle(f) => {
                 let vertex_indices = &[f.vertices.0, f.vertices.1, f.vertices.2];
                 for i in 0..vertex_indices.len() {
                     let neighbors = v2v.entry(vertex_indices[i]).or_insert_with(SmallVec::new);
-                    if neighbors
-                        .iter()
-                        .all(|value| *value != vertex_indices[(i + 1) % 3])
-                    {
-                        neighbors.push(vertex_indices[(i + 1) % 3])
+
+                    let neighbor_candidate1 = vertex_indices[(i + 1) % 3];
+                    let neighbor_candidate2 = vertex_indices[(i + 2) % 3];
+
+                    if !neighbors.contains(&neighbor_candidate1) {
+                        neighbors.push(neighbor_candidate1)
                     }
-                    if neighbors
-                        .iter()
-                        .all(|value| *value != vertex_indices[(i + 2) % 3])
-                    {
-                        neighbors.push(vertex_indices[(i + 2) % 3])
+                    if !neighbors.contains(&neighbor_candidate2) {
+                        neighbors.push(neighbor_candidate2)
                     }
                 }
             }
         }
     }
+
     v2v
 }
 
