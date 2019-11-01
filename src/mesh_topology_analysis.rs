@@ -10,22 +10,27 @@ use crate::geometry::{Face, Geometry, UnorientedEdge};
 #[allow(dead_code)]
 pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
     let mut f2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+
     for (from_counter, face) in geometry.faces().iter().enumerate() {
         match face {
             Face::Triangle(f) => {
                 let from_counter_u32 = cast_u32(from_counter);
                 let [f_e_0, f_e_1, f_e_2] = f.to_unoriented_edges();
                 for (to_counter, to_face) in geometry.faces().iter().enumerate() {
+                    let to_counter_u32 = cast_u32(to_counter);
+
                     match to_face {
                         Face::Triangle(t_f) => {
-                            if from_counter != to_counter && t_f.contains_unoriented_edge(f_e_0)
-                                || t_f.contains_unoriented_edge(f_e_1)
-                                || t_f.contains_unoriented_edge(f_e_2)
+                            if from_counter != to_counter
+                                && (t_f.contains_unoriented_edge(f_e_0)
+                                    || t_f.contains_unoriented_edge(f_e_1)
+                                    || t_f.contains_unoriented_edge(f_e_2))
                             {
                                 let neighbors =
                                     f2f.entry(from_counter_u32).or_insert_with(SmallVec::new);
-                                if neighbors.iter().all(|value| *value != cast_u32(to_counter)) {
-                                    neighbors.push(cast_u32(to_counter));
+
+                                if !neighbors.contains(&to_counter_u32) {
+                                    neighbors.push(to_counter_u32);
                                 }
                             }
                         }
@@ -34,6 +39,7 @@ pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32;
             }
         }
     }
+
     f2f
 }
 
