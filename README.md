@@ -2,14 +2,35 @@
 
 [![Build Status](https://dev.azure.com/subdigital/HURBAN-selector/_apis/build/status/sub-digital.HURBAN-Selector?branchName=master)](https://dev.azure.com/subdigital/HURBAN-selector/_build/latest?definitionId=1&branchName=master)
 
-## Prerequisites
+H.U.R.B.A.N. Selector is a software experiment sponsored by the [Slovak
+Center of Design](https://www.scd.sk/). It is meant to test the
+hypothesis that creating new designs and shapes is subconsciously
+inspired by our previous experience. There is a trial and error phase
+in the design process where many variations on the same shape are
+prototyped and chosen from.
+
+The software is currently in very early stages, but as it nears
+completion, it will strive to be a tool for simple parametric
+modeling, containing implementations of various hybridization
+strategies for mesh models, allowing designers to smoothly interpolate
+between multiple mesh geometries and select the result with the most
+desired features.
+
+_Screenshots coming soon™!_
+
+## Getting the software
+
+Currently the only option is to build from source (see development
+guide down below).
+
+## Developing
+
+Make sure you have the following installed:
 
 - [Rust](https://rustup.rs/)
 - Clippy (`rustup component add clippy`)
 - Rustfmt (`rustup component add rustfmt`)
 - [Dependencies for `shaderc-sys`](https://github.com/google/shaderc-rs#building-from-source)
-
-## Developing
 
 We use standard `cargo` workflows:
 
@@ -56,3 +77,11 @@ SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection
 **HS_LIBS_LOG_LEVEL (optional)**: Changes level of logging for external crates.
 It is `warn` by default. Options are `error`, `warn`, `info`, `debug`, `trace`
 and `off`.
+
+### Licence
+
+The editor source code is provided under the GNU GENERAL PUBLIC
+LICENSE, Version 3. If the research or implementation yields
+interesting results, those will be extracted from the editor and
+published and licensed separately, most likely under a more permissive
+license such as MIT.

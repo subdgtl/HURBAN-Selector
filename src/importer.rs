@@ -242,7 +242,7 @@ impl ImporterWorker {
     pub fn import_obj(&self, filename: &str) {
         self.request_sender
             .send(ImporterWorkerRequest::NewImport(filename.to_string()))
-            .expect("Failed to send new import message to improter worker");
+            .expect("Failed to send new import message to importer worker");
     }
 
     /// Reads response queue and returns last parsed obj in case there's any.
@@ -301,7 +301,7 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
             .map(|chunk| Point3::new(chunk[0], chunk[1], chunk[2]))
             .collect();
 
-        let vertex_normals = if model.mesh.normals.is_empty() {
+        let vertex_normals: Option<Vec<_>> = if model.mesh.normals.is_empty() {
             None
         } else {
             let normals = model
@@ -323,7 +323,7 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
 
         let geometry = if let Some(vertex_normals) = vertex_normals {
             Geometry::from_triangle_faces_with_vertices_and_normals(
-                faces_raw.into_iter().map(TriangleFace::from).collect(),
+                faces_raw.into_iter().map(TriangleFace::from),
                 vertex_positions,
                 vertex_normals,
             )
