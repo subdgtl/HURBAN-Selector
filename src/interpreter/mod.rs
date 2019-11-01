@@ -14,25 +14,29 @@ pub mod value;
 /// A name resolution error.
 #[derive(Debug, PartialEq)]
 pub enum ResolveError {
-    VarRedefinition { line: usize, var: VarIdent },
-    UndeclaredVarUse { line: usize, var: VarIdent },
-    UndeclaredFuncUse { line: usize, func: FuncIdent },
+    VarRedefinition { stmt_index: usize, var: VarIdent },
+    UndeclaredVarUse { stmt_index: usize, var: VarIdent },
+    UndeclaredFuncUse { stmt_index: usize, func: FuncIdent },
 }
 
 impl fmt::Display for ResolveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ResolveError::VarRedefinition { line, var } => write!(
+            ResolveError::VarRedefinition { stmt_index, var } => write!(
                 f,
-                "Re-definition of already declared variable {} on line {}",
-                var, line,
+                "Re-definition of already declared variable {} on stmt {}",
+                var, stmt_index,
             ),
-            ResolveError::UndeclaredVarUse { line, var } => {
-                write!(f, "Use of an undeclared variable {} on line {}", var, line)
-            }
-            ResolveError::UndeclaredFuncUse { line, func } => {
-                write!(f, "Use of an undeclared function {} on line {}", func, line)
-            }
+            ResolveError::UndeclaredVarUse { stmt_index, var } => write!(
+                f,
+                "Use of an undeclared variable {} on stmt {}",
+                var, stmt_index
+            ),
+            ResolveError::UndeclaredFuncUse { stmt_index, func } => write!(
+                f,
+                "Use of an undeclared function {} on stmt {}",
+                func, stmt_index
+            ),
         }
     }
 }
@@ -55,20 +59,20 @@ impl error::Error for TypecheckError {}
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
     ArgCountMismatch {
-        line: usize,
+        stmt_index: usize,
         call: ast::CallExpr,
         args_expected: usize,
         args_provided: usize,
     },
     ArgTyMismatch {
-        line: usize,
+        stmt_index: usize,
         call: ast::CallExpr,
         optional: bool,
         ty_expected: Ty,
         ty_provided: Ty,
     },
     ReturnTyMismatch {
-        line: usize,
+        stmt_index: usize,
         call: ast::CallExpr,
         ty_expected: Ty,
         ty_provided: Ty,
@@ -79,45 +83,45 @@ impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             RuntimeError::ArgCountMismatch {
-                line,
+                stmt_index,
                 call,
                 args_expected,
                 args_provided,
             } => write!(
                 f,
-                "Function {} declared with {} params, but provided with {} args on line {}",
+                "Function {} declared with {} params, but provided with {} args on stmt {}",
                 call.ident(),
                 args_expected,
                 args_provided,
-                line,
+                stmt_index,
             ),
             RuntimeError::ArgTyMismatch {
-                line,
+                stmt_index,
                 call,
                 optional,
                 ty_expected,
                 ty_provided,
             } => write!(
                 f,
-                "Function {} declared to take param (optional={}) type {}, but given {} on line {}",
+                "Function {} declared to take param (optional={}) type {}, but given {} on stmt {}",
                 call.ident(),
                 optional,
                 ty_expected,
                 ty_provided,
-                line,
+                stmt_index,
             ),
             RuntimeError::ReturnTyMismatch {
-                line,
+                stmt_index,
                 call,
                 ty_expected,
                 ty_provided,
             } => write!(
                 f,
-                "Function {} declared to return type {}, but returned {} on line {}",
+                "Function {} declared to return type {}, but returned {} on stmt {}",
                 call.ident(),
                 ty_expected,
                 ty_provided,
-                line,
+                stmt_index,
             ),
         }
     }
@@ -300,26 +304,26 @@ impl Interpreter {
 
         let mut var_scope = HashSet::new();
 
-        for (line, stmt) in self.prog.stmts().iter().enumerate() {
+        for (stmt_index, stmt) in self.prog.stmts().iter().enumerate() {
             match stmt {
                 ast::Stmt::VarDecl(var_decl) => {
                     if var_scope.contains(&var_decl.ident()) {
                         return Err(ResolveError::VarRedefinition {
-                            line,
+                            stmt_index,
                             var: var_decl.ident(),
                         });
                     }
 
                     let func = var_decl.init_expr().ident();
                     if self.funcs.get(&func).is_none() {
-                        return Err(ResolveError::UndeclaredFuncUse { line, func });
+                        return Err(ResolveError::UndeclaredFuncUse { stmt_index, func });
                     }
 
                     for arg in var_decl.init_expr().args() {
                         if let ast::Expr::Var(var) = arg {
                             if !var_scope.contains(&var.ident()) {
                                 return Err(ResolveError::UndeclaredVarUse {
-                                    line,
+                                    stmt_index,
                                     var: var.ident(),
                                 });
                             }
@@ -383,8 +387,8 @@ impl Interpreter {
         if self.pc <= index {
             // Run remaining operations, write results to vars
             let range = self.pc..=index;
-            for (line, stmt) in self.prog.stmts()[range].iter().enumerate() {
-                eval_stmt(line, stmt, &self.funcs, &mut self.env)?;
+            for (stmt_index, stmt) in self.prog.stmts()[range].iter().enumerate() {
+                eval_stmt(stmt_index, stmt, &self.funcs, &mut self.env)?;
                 self.pc += 1;
             }
 
@@ -566,18 +570,18 @@ impl Interpreter {
 }
 
 fn eval_stmt(
-    line: usize,
+    stmt_index: usize,
     stmt: &ast::Stmt,
     funcs: &HashMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<(), RuntimeError> {
     match stmt {
-        ast::Stmt::VarDecl(var_decl) => eval_var_decl_stmt(line, var_decl, funcs, env),
+        ast::Stmt::VarDecl(var_decl) => eval_var_decl_stmt(stmt_index, var_decl, funcs, env),
     }
 }
 
 fn eval_var_decl_stmt(
-    line: usize,
+    stmt_index: usize,
     var_decl: &ast::VarDeclStmt,
     funcs: &HashMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
@@ -600,7 +604,7 @@ fn eval_var_decl_stmt(
     {
         if !env.contains_key(&var_ident) {
             let init_expr = var_decl.init_expr();
-            let value = eval_call_expr(line, init_expr, funcs, env)?;
+            let value = eval_call_expr(stmt_index, init_expr, funcs, env)?;
 
             env.insert(
                 var_ident,
@@ -649,7 +653,7 @@ fn eval_var_expr(
 }
 
 fn eval_call_expr(
-    line: usize,
+    stmt_index: usize,
     call: &ast::CallExpr,
     funcs: &HashMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
@@ -659,7 +663,7 @@ fn eval_call_expr(
     let arg_exprs = call.args();
     if func.param_info().len() != arg_exprs.len() {
         return Err(RuntimeError::ArgCountMismatch {
-            line,
+            stmt_index,
             call: call.clone(),
             args_expected: func.param_info().len(),
             args_provided: arg_exprs.len(),
@@ -683,7 +687,7 @@ fn eval_call_expr(
             }
 
             return Err(RuntimeError::ArgTyMismatch {
-                line,
+                stmt_index,
                 call: call.clone(),
                 optional: info.optional,
                 ty_expected: param_ty,
@@ -698,7 +702,7 @@ fn eval_call_expr(
     let value_ty = value.ty();
     if return_ty != value_ty {
         return Err(RuntimeError::ReturnTyMismatch {
-            line,
+            stmt_index,
             call: call.clone(),
             ty_expected: return_ty,
             ty_provided: value_ty,
@@ -1435,7 +1439,7 @@ mod tests {
         assert_eq!(
             err,
             InterpretError::from(ResolveError::VarRedefinition {
-                line: 1,
+                stmt_index: 1,
                 var: VarIdent(0),
             }),
         );
@@ -1474,7 +1478,7 @@ mod tests {
         assert_eq!(
             err,
             InterpretError::from(ResolveError::UndeclaredVarUse {
-                line: 0,
+                stmt_index: 0,
                 var: VarIdent(42),
             }),
         );
@@ -1515,7 +1519,7 @@ mod tests {
         assert_eq!(
             err,
             InterpretError::from(ResolveError::UndeclaredVarUse {
-                line: 0,
+                stmt_index: 0,
                 var: VarIdent(0),
             }),
         );
@@ -1562,7 +1566,7 @@ mod tests {
         assert_eq!(
             err,
             InterpretError::from(ResolveError::UndeclaredVarUse {
-                line: 0,
+                stmt_index: 0,
                 var: VarIdent(1),
             }),
         );
@@ -1583,7 +1587,7 @@ mod tests {
         assert_eq!(
             err,
             InterpretError::from(ResolveError::UndeclaredFuncUse {
-                line: 0,
+                stmt_index: 0,
                 func: FuncIdent(0),
             }),
         );
@@ -1630,7 +1634,7 @@ mod tests {
         assert_eq!(
             err,
             InterpretError::from(RuntimeError::ArgCountMismatch {
-                line: 0,
+                stmt_index: 0,
                 call,
                 args_expected: 1,
                 args_provided: 2,
@@ -1669,7 +1673,7 @@ mod tests {
         assert_eq!(
             err,
             InterpretError::from(RuntimeError::ArgTyMismatch {
-                line: 0,
+                stmt_index: 0,
                 call,
                 optional: false,
                 ty_expected: Ty::Float,
@@ -1740,7 +1744,7 @@ mod tests {
         assert_eq!(
             err,
             InterpretError::from(RuntimeError::ArgTyMismatch {
-                line: 0,
+                stmt_index: 0,
                 call,
                 optional: true,
                 ty_expected: Ty::Float,
@@ -1772,7 +1776,7 @@ mod tests {
         assert_eq!(
             err,
             InterpretError::from(RuntimeError::ReturnTyMismatch {
-                line: 0,
+                stmt_index: 0,
                 call,
                 ty_expected: Ty::Float,
                 ty_provided: Ty::Int,
