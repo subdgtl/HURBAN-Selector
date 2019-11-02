@@ -8,14 +8,14 @@ use crate::convert::{cast_u32, cast_usize};
 use crate::geometry::{Face, Geometry, TriangleFace};
 use crate::mesh_topology_analysis::face_to_face_topology;
 
-/// Weld similar (close enough) vertices into one and reuse such vertices in
-/// connected faces
+/// Weld similar (their distance is within the given tolerance) vertices into
+/// one and reuse such vertices in connected faces.
 ///
-/// Weld is used to actually connect faces, which are connected merely visually
-/// (often resulting in a watertight mesh) or to reduce number of vertices in
-/// case when vertices are multiplied because vertices at the same coordinates
-/// are not referenced by more faces but rather each face references its own
-/// copy of the vertex.
+/// Weld is used to actually connect faces (often resulting in a watertight
+/// mesh), which are connected merely visually or to reduce number of vertices
+/// in case when vertices are multiplied because vertices at the same
+/// coordinates are not referenced by more faces but rather each face references
+/// its own copy of the vertex.
 ///
 /// Weld is one of the auto-fixes leading to a simplified, watertight or
 /// true-to-its-genus mesh geometries.
@@ -23,13 +23,14 @@ pub fn weld(geometry: &Geometry, tolerance: f32) -> Geometry {
     // key = rounded vertex position with a tolerance (it's expected that the
     // same value will be shared by more close vertices)
     // value = actual positions of close vertices
-    let mut vertex_proximity_map: HashMap<(u32, u32, u32), SmallVec<[usize; 8]>> = HashMap::new();
+    let mut vertex_proximity_map: HashMap<(i32, i32, i32), SmallVec<[usize; 8]>> = HashMap::new();
     for (current_vertex_index, vertex) in geometry.vertices().iter().enumerate() {
         let vertex_with_tolerance = (
-            (vertex.x / tolerance).floor() as u32,
-            (vertex.y / tolerance).floor() as u32,
-            (vertex.z / tolerance).floor() as u32,
+            (vertex.x / tolerance).round() as i32,
+            (vertex.y / tolerance).round() as i32,
+            (vertex.z / tolerance).round() as i32,
         );
+
         let close_vertices = vertex_proximity_map
             .entry(vertex_with_tolerance)
             .or_insert_with(SmallVec::new);
@@ -37,21 +38,22 @@ pub fn weld(geometry: &Geometry, tolerance: f32) -> Geometry {
     }
 
     // All vertices sorted into clusters of positionally close items. These will
-    // be later averaged into a single vertex
+    // be later averaged into a single vertex.
     let close_vertex_clusters = vertex_proximity_map.values();
 
-    // key = original vertex index value = new (averaged) vertex index It is
-    // expected that more keys will share the same value; more original vertices
-    // will be replaced by a single averaged vertex
-    let mut old_new_vertex_map: HashMap<usize, usize> = HashMap::new();
+    // key = original vertex index
+    // value = new (averaged) vertex index It is expected that more keys will
+    // share the same value; more original vertices will be replaced by a single
+    // averaged vertex
+    let mut old_new_vertex_map: HashMap<u32, u32> = HashMap::new();
     for (new_vertex_index, old_vertex_indices) in close_vertex_clusters.clone().enumerate() {
         for old_vertex_index in old_vertex_indices {
-            old_new_vertex_map.insert(*old_vertex_index, new_vertex_index);
+            old_new_vertex_map.insert(cast_u32(*old_vertex_index), cast_u32(new_vertex_index));
         }
     }
 
     // Vertices of the new geometry averaged from the clusters of original
-    // vertices
+    // vertices.
     let new_vertices = close_vertex_clusters.map(|old_vertex_indices| {
         old_vertex_indices
             .iter()
@@ -64,28 +66,21 @@ pub fn weld(geometry: &Geometry, tolerance: f32) -> Geometry {
     // New faces with renumbered vertex (and normal) indices. Some faces might
     // end up invalid (not referencing three distinct vertices). Those will be
     // removed as they don't affect the visual appearance of the mesh geometry.
-    #[allow(clippy::unnecessary_filter_map)]
     let new_faces = geometry
         .faces()
         .iter()
-        .filter_map(|old_face| match old_face {
-            Face::Triangle(f) => Some(Face::Triangle(TriangleFace::new(
-                cast_u32(
-                    *old_new_vertex_map
-                        .get(&cast_usize(f.vertices.0))
-                        .expect("Referencing non-existent vertex"),
-                ),
-                cast_u32(
-                    *old_new_vertex_map
-                        .get(&cast_usize(f.vertices.1))
-                        .expect("Referencing non-existent vertex"),
-                ),
-                cast_u32(
-                    *old_new_vertex_map
-                        .get(&cast_usize(f.vertices.2))
-                        .expect("Referencing non-existent vertex"),
-                ),
-            ))),
+        .map(|old_face| match old_face {
+            Face::Triangle(f) => Face::Triangle(TriangleFace::new(
+                *old_new_vertex_map
+                    .get(&f.vertices.0)
+                    .expect("Referencing non-existent vertex"),
+                *old_new_vertex_map
+                    .get(&f.vertices.1)
+                    .expect("Referencing non-existent vertex"),
+                *old_new_vertex_map
+                    .get(&f.vertices.2)
+                    .expect("Referencing non-existent vertex"),
+            )),
         })
         .filter(|new_face| match new_face {
             Face::Triangle(f) => f.vertices.0 != f.vertices.1 && f.vertices.0 != f.vertices.2,
@@ -104,20 +99,17 @@ pub fn weld(geometry: &Geometry, tolerance: f32) -> Geometry {
     for face in geometry.faces() {
         match face {
             Face::Triangle(f) => {
-                let vertex_indices: SmallVec<_> = SmallVec::from_buf([
+                let vertex_indices = [
                     (f.vertices.0, f.normals.0),
                     (f.vertices.1, f.normals.1),
                     (f.vertices.2, f.normals.2),
-                ]);
-                for (vertex_index, normal_index) in vertex_indices {
-                    let associated_normals = &mut old_vertex_normals_index_map
-                        .entry(vertex_index)
+                ];
+                for (vertex_index, normal_index) in &vertex_indices {
+                    let associated_normals = old_vertex_normals_index_map
+                        .entry(*vertex_index)
                         .or_insert_with(SmallVec::new);
-                    if associated_normals
-                        .iter()
-                        .all(|value| *value != normal_index)
-                    {
-                        associated_normals.push(normal_index);
+                    if associated_normals.iter().all(|value| value != normal_index) {
+                        associated_normals.push(*normal_index);
                     }
                 }
             }
@@ -128,10 +120,11 @@ pub fn weld(geometry: &Geometry, tolerance: f32) -> Geometry {
     let mut new_vertex_old_normals_index_map: Vec<SmallVec<[u32; 8]>> =
         vec![SmallVec::new(); new_vertices.len()];
     for (old_vertex_index, old_normals_indices) in old_vertex_normals_index_map {
-        if let Some(new_vertex_index) = old_new_vertex_map.get(&cast_usize(old_vertex_index)) {
-            new_vertex_old_normals_index_map[*new_vertex_index]
-                .extend_from_slice(&old_normals_indices);
-        };
+        let new_vertex_index = old_new_vertex_map
+            .get(&old_vertex_index)
+            .expect("The old vertex index not found in the old-new vertex map.");
+        new_vertex_old_normals_index_map[cast_usize(*new_vertex_index)]
+            .extend_from_slice(&old_normals_indices);
     }
 
     // Calculate an average normal for each new (averaged) vertex
@@ -209,6 +202,14 @@ mod tests {
     use crate::mesh_analysis;
 
     use super::*;
+
+    fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
+        Point3::new(
+            scale * x + translation[0],
+            scale * y + translation[1],
+            scale * z + translation[2],
+        )
+    }
 
     fn n(x: f32, y: f32, z: f32) -> Vector3<f32> {
         Vector3::new(x, y, z)
@@ -333,6 +334,158 @@ mod tests {
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
+    pub fn cube_sharp_same_len(position: [f32; 3], scale: f32) -> Geometry {
+        #[rustfmt::skip]
+    let vertex_positions = vec![
+        // back
+        v(-1.0,  1.0, -1.0, position, scale), //0
+        v(-1.0,  1.0,  1.0, position, scale), //1
+        v( 1.0,  1.0,  1.0, position, scale), //2
+        v( 1.0,  1.0, -1.0, position, scale), //3
+        // front
+        v(-1.0, -1.0, -1.0, position, scale), //4
+        v( 1.0, -1.0, -1.0, position, scale), //5
+        v( 1.0, -1.0,  1.0, position, scale), //6
+        v(-1.0, -1.0,  1.0, position, scale), //7
+        // top
+        v(-1.0,  1.0,  1.0, position, scale), //8
+        v(-1.0, -1.0,  1.0, position, scale), //9
+        v( 1.0, -1.0,  1.0, position, scale), //10
+        v( 1.0,  1.0,  1.0, position, scale), //11
+        // bottom
+        v(-1.0,  1.0, -1.0, position, scale), //12
+        v( 1.0,  1.0, -1.0, position, scale), //13
+        v( 1.0, -1.0, -1.0, position, scale), //14
+        v(-1.0, -1.0, -1.0, position, scale), //15
+        // right
+        v( 1.0,  1.0, -1.0, position, scale), //16
+        v( 1.0,  1.0,  1.0, position, scale), //17
+        v( 1.0, -1.0,  1.0, position, scale), //18
+        v( 1.0, -1.0, -1.0, position, scale), //19
+        // left
+        v(-1.0,  1.0, -1.0, position, scale), //20
+        v(-1.0, -1.0, -1.0, position, scale), //21
+        v(-1.0, -1.0,  1.0, position, scale), //22
+        v(-1.0,  1.0,  1.0, position, scale), //23
+    ];
+
+        #[rustfmt::skip]
+    let vertex_normals = vec![
+        // back
+        n( 0.0,  1.0,  0.0),
+        n( 0.0,  1.0,  0.0),
+        n( 0.0,  1.0,  0.0),
+        n( 0.0,  1.0,  0.0),
+        // front
+        n( 0.0, -1.0,  0.0),
+        n( 0.0, -1.0,  0.0),
+        n( 0.0, -1.0,  0.0),
+        n( 0.0, -1.0,  0.0),
+        // top
+        n( 0.0,  0.0,  1.0),
+        n( 0.0,  0.0,  1.0),
+        n( 0.0,  0.0,  1.0),
+        n( 0.0,  0.0,  1.0),
+        // bottom
+        n( 0.0,  0.0, -1.0),
+        n( 0.0,  0.0, -1.0),
+        n( 0.0,  0.0, -1.0),
+        n( 0.0,  0.0, -1.0),
+        // right
+        n( 1.0,  0.0,  0.0),
+        n( 1.0,  0.0,  0.0),
+        n( 1.0,  0.0,  0.0),
+        n( 1.0,  0.0,  0.0),
+        // left
+        n(-1.0,  0.0,  0.0),
+        n(-1.0,  0.0,  0.0),
+        n(-1.0,  0.0,  0.0),
+        n(-1.0,  0.0,  0.0),
+    ];
+
+        #[rustfmt::skip]
+    let faces = vec![
+        // back
+        TriangleFace::new(0, 1, 2),
+        TriangleFace::new(2, 3, 0),
+        // front
+        TriangleFace::new(4, 5, 6),
+        TriangleFace::new(6, 7, 4),
+        // top
+        TriangleFace::new(8, 9, 10),
+        TriangleFace::new(10, 11, 8),
+        // bottom
+        TriangleFace::new(12, 13, 14),
+        TriangleFace::new(14, 15, 12),
+        // right
+        TriangleFace::new(16, 17, 18),
+        TriangleFace::new(18, 19, 16),
+        // left
+        TriangleFace::new(20, 21, 22),
+        TriangleFace::new(22, 23, 20),
+    ];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces,
+            vertex_positions,
+            vertex_normals,
+        )
+    }
+
+    pub fn cube_sharp_var_len_smooth_normals(position: [f32; 3], scale: f32) -> Geometry {
+        let vertex_positions = vec![
+            // back
+            v(-1.0, 1.0, -1.0, position, scale),
+            v(-1.0, 1.0, 1.0, position, scale),
+            v(1.0, 1.0, 1.0, position, scale),
+            v(1.0, 1.0, -1.0, position, scale),
+            // front
+            v(-1.0, -1.0, -1.0, position, scale),
+            v(1.0, -1.0, -1.0, position, scale),
+            v(1.0, -1.0, 1.0, position, scale),
+            v(-1.0, -1.0, 1.0, position, scale),
+        ];
+
+        let vertex_normals = vec![
+            n(-1.0 / 3.0, 1.0 / 3.0, -1.0 / 3.0),
+            n(-1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+            n(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+            n(1.0 / 3.0, 1.0 / 3.0, -1.0 / 3.0),
+            // front
+            n(-1.0 / 3.0, -1.0 / 3.0, -1.0 / 3.0),
+            n(1.0 / 3.0, -1.0 / 3.0, -1.0 / 3.0),
+            n(1.0 / 3.0, -1.0 / 3.0, 1.0 / 3.0),
+            n(-1.0 / 3.0, -1.0 / 3.0, 1.0 / 3.0),
+        ];
+
+        let faces = vec![
+            // back
+            TriangleFace::new(0, 1, 2),
+            TriangleFace::new(2, 3, 0),
+            // front
+            TriangleFace::new(4, 5, 6),
+            TriangleFace::new(6, 7, 4),
+            // top
+            TriangleFace::new(7, 6, 1),
+            TriangleFace::new(2, 1, 6),
+            // bottom
+            TriangleFace::new(5, 0, 3),
+            TriangleFace::new(0, 5, 4),
+            // right
+            TriangleFace::new(6, 3, 2),
+            TriangleFace::new(3, 6, 5),
+            // left
+            TriangleFace::new(4, 7, 0),
+            TriangleFace::new(1, 0, 7),
+        ];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces,
+            vertex_positions,
+            vertex_normals,
+        )
+    }
+
     #[test]
     fn test_separate_isolated_meshes_returns_similar_for_tessellated_triangle() {
         let geometry = tessellated_triangle_geometry();
@@ -387,17 +540,28 @@ mod tests {
         }
     }
 
-    // FIXME: test on more geometries, check with updated visual similarity
-    // comparators
     #[test]
     fn test_weld_tesselated_triangle() {
         let geometry = tessellated_triangle_geometry_for_welding();
         let geometry_after_welding_correct = tessellated_triangle_geometry_after_welding();
 
-        // TODO: Vertex order fails
         let geometry_after_welding = weld(&geometry, 0.1);
 
-        assert!(mesh_analysis::are_visually_similar(
+        assert!(mesh_analysis::are_similar(
+            &geometry_after_welding_correct,
+            &geometry_after_welding
+        ));
+    }
+
+    #[test]
+    fn test_weld_cube_sharp_same_len() {
+        let geometry = cube_sharp_same_len([0.0, 0.0, 0.0], 1.0);
+        let geometry_after_welding_correct =
+            cube_sharp_var_len_smooth_normals([0.0, 0.0, 0.0], 1.0);
+
+        let geometry_after_welding = weld(&geometry, 0.1);
+
+        assert!(mesh_analysis::are_similar(
             &geometry_after_welding_correct,
             &geometry_after_welding
         ));

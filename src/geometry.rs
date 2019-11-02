@@ -977,37 +977,34 @@ pub fn cube_sharp_same_len(position: [f32; 3], scale: f32) -> Geometry {
 }
 
 pub fn cube_sharp_var_len(position: [f32; 3], scale: f32) -> Geometry {
-    #[rustfmt::skip]
     let vertex_positions = vec![
         // back
-        v(-1.0,  1.0, -1.0, position, scale),
-        v(-1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0, -1.0, position, scale),
+        v(-1.0, 1.0, -1.0, position, scale),
+        v(-1.0, 1.0, 1.0, position, scale),
+        v(1.0, 1.0, 1.0, position, scale),
+        v(1.0, 1.0, -1.0, position, scale),
         // front
         v(-1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0,  1.0, position, scale),
-        v(-1.0, -1.0,  1.0, position, scale),
+        v(1.0, -1.0, -1.0, position, scale),
+        v(1.0, -1.0, 1.0, position, scale),
+        v(-1.0, -1.0, 1.0, position, scale),
     ];
 
-    #[rustfmt::skip]
     let vertex_normals = vec![
         // back
-        n( 0.0,  1.0,  0.0),
+        n(0.0, 1.0, 0.0),
         // front
-        n( 0.0, -1.0,  0.0),
+        n(0.0, -1.0, 0.0),
         // top
-        n( 0.0,  0.0,  1.0),
+        n(0.0, 0.0, 1.0),
         // bottom
-        n( 0.0,  0.0, -1.0),
+        n(0.0, 0.0, -1.0),
         // right
-        n( 1.0,  0.0,  0.0),
+        n(1.0, 0.0, 0.0),
         // left
-        n(-1.0,  0.0,  0.0),
+        n(-1.0, 0.0, 0.0),
     ];
 
-    #[rustfmt::skip]
     let faces = vec![
         // back
         TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
@@ -1016,17 +1013,17 @@ pub fn cube_sharp_var_len(position: [f32; 3], scale: f32) -> Geometry {
         TriangleFace::new_separate(4, 5, 6, 1, 1, 1),
         TriangleFace::new_separate(6, 7, 4, 1, 1, 1),
         // top
-        TriangleFace::new_separate(7, 6, 2, 2, 2, 2),
-        TriangleFace::new_separate(2, 1, 7, 2, 2, 2),
+        TriangleFace::new_separate(7, 6, 1, 2, 2, 2),
+        TriangleFace::new_separate(2, 1, 6, 2, 2, 2),
         // bottom
-        TriangleFace::new_separate(4, 0, 3, 3, 3, 3),
-        TriangleFace::new_separate(3, 5, 4, 3, 3, 3),
+        TriangleFace::new_separate(5, 0, 3, 3, 3, 3),
+        TriangleFace::new_separate(0, 5, 4, 3, 3, 3),
         // right
-        TriangleFace::new_separate(5, 3, 2, 4, 4, 4),
-        TriangleFace::new_separate(2, 6, 5, 4, 4, 4),
+        TriangleFace::new_separate(6, 3, 2, 4, 4, 4),
+        TriangleFace::new_separate(3, 6, 5, 4, 4, 4),
         // left
-        TriangleFace::new_separate(4, 7, 1, 5, 5, 5),
-        TriangleFace::new_separate(1, 0, 4, 5, 5, 5),
+        TriangleFace::new_separate(4, 7, 0, 5, 5, 5),
+        TriangleFace::new_separate(1, 0, 7, 5, 5, 5),
     ];
 
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
@@ -1191,6 +1188,8 @@ fn compute_triangle_normal(p1: &Point3<f32>, p2: &Point3<f32>, p3: &Point3<f32>)
 
 #[cfg(test)]
 mod tests {
+    use std::collections::hash_map::DefaultHasher;
+
     use super::*;
 
     fn quad() -> (Vec<(u32, u32, u32)>, Vertices) {
@@ -1395,6 +1394,28 @@ mod tests {
         let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
         let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(2, 1));
         assert_ne!(unoriented_edge_one_way, unoriented_edge_other_way);
+    }
+
+    #[test]
+    fn test_unoriented_edge_hash_returns_true_because_same() {
+        let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        let mut hasher_1 = DefaultHasher::new();
+        let mut hasher_2 = DefaultHasher::new();
+        unoriented_edge_one_way.hash(&mut hasher_1);
+        unoriented_edge_other_way.hash(&mut hasher_2);
+        assert_eq!(hasher_1.finish(), hasher_2.finish());
+    }
+
+    #[test]
+    fn test_unoriented_edge_hash_returns_true_because_reverted() {
+        let unoriented_edge_one_way = UnorientedEdge(OrientedEdge::new(0, 1));
+        let unoriented_edge_other_way = UnorientedEdge(OrientedEdge::new(1, 0));
+        let mut hasher_1 = DefaultHasher::new();
+        let mut hasher_2 = DefaultHasher::new();
+        unoriented_edge_one_way.hash(&mut hasher_1);
+        unoriented_edge_other_way.hash(&mut hasher_2);
+        assert_eq!(hasher_1.finish(), hasher_2.finish());
     }
 
     #[test]

@@ -242,7 +242,7 @@ pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
 pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
 pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
-pub const FUNC_ID_WELD: FuncIdent = FuncIdent(6);
+pub const FUNC_ID_WELD: FuncIdent = FuncIdent(5);
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
