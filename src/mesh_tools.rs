@@ -432,7 +432,7 @@ mod tests {
         )
     }
 
-    pub fn cube_sharp_var_len_smooth_normals(position: [f32; 3], scale: f32) -> Geometry {
+    pub fn cube_smooth_var_len(position: [f32; 3], scale: f32) -> Geometry {
         let vertex_positions = vec![
             // back
             v(-1.0, 1.0, -1.0, position, scale),
@@ -556,8 +556,7 @@ mod tests {
     #[test]
     fn test_weld_cube_sharp_same_len() {
         let geometry = cube_sharp_same_len([0.0, 0.0, 0.0], 1.0);
-        let geometry_after_welding_correct =
-            cube_sharp_var_len_smooth_normals([0.0, 0.0, 0.0], 1.0);
+        let geometry_after_welding_correct = cube_smooth_var_len([0.0, 0.0, 0.0], 1.0);
 
         let geometry_after_welding = weld(&geometry, 0.1);
 
