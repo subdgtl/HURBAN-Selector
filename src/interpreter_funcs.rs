@@ -5,8 +5,10 @@ use std::sync::Arc;
 use nalgebra::base::Vector3;
 
 use crate::convert::cast_u32;
+use crate::edge_analysis;
 use crate::geometry;
 use crate::interpreter::{Func, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
+use crate::mesh_analysis;
 use crate::mesh_smoothing;
 use crate::mesh_tools;
 use crate::mesh_topology_analysis;
@@ -203,6 +205,69 @@ impl Func for FuncImplSeparateIsolatedMeshes {
     }
 }
 
+pub struct FuncImplRevertMeshFaces;
+impl Func for FuncImplRevertMeshFaces {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            ty: Ty::Geometry,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+        let geometry = args[0].unwrap_geometry();
+
+        let value = mesh_tools::revert_mesh_faces(geometry);
+        Value::Geometry(Arc::new(value))
+    }
+}
+
+pub struct FuncImplSynchronizeMeshFaces;
+impl Func for FuncImplSynchronizeMeshFaces {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            ty: Ty::Geometry,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+        let geometry = args[0].unwrap_refcounted_geometry();
+
+        let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let unoriented_edges: Vec<_> = geometry.unoriented_edges_iter().collect();
+        let edge_to_face =
+            mesh_topology_analysis::edge_to_face_topology(&geometry, &unoriented_edges);
+
+        if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
+            && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
+        {
+            Value::Geometry(Arc::new(mesh_tools::synchronize_mesh_winding(
+                &geometry,
+                &unoriented_edges,
+                &edge_to_face,
+            )))
+        } else {
+            Value::Geometry(geometry)
+        }
+    }
+}
+
 // IMPORTANT: Do not change these IDs, ever! When adding a new
 // function, always create a new, unique function identifier for it.
 
@@ -211,6 +276,8 @@ pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
 pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
 pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
+pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(5);
+pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(6);
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
@@ -227,6 +294,11 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(
         FUNC_ID_SEPARATE_ISOLATED_MESHES,
         Box::new(FuncImplSeparateIsolatedMeshes),
+    );
+    funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncImplRevertMeshFaces));
+    funcs.insert(
+        FUNC_ID_SYNCHRONIZE_MESH_FACES,
+        Box::new(FuncImplSynchronizeMeshFaces),
     );
 
     funcs

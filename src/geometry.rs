@@ -412,7 +412,7 @@ impl fmt::Display for Face {
 
 /// A triangular face. Contains indices to other geometry data, such
 /// as vertices and normals.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Eq)]
 pub struct TriangleFace {
     pub vertices: (u32, u32, u32),
     pub normals: (u32, u32, u32),
@@ -475,14 +475,60 @@ impl TriangleFace {
 
     /// Does the face contain the specific unoriented edge
     pub fn contains_unoriented_edge(self, unoriented_edge: UnorientedEdge) -> bool {
-        let [o_e_0, o_e_1, o_e_2] = self.to_unoriented_edges();
-        o_e_0 == unoriented_edge || o_e_1 == unoriented_edge || o_e_2 == unoriented_edge
+        let [u_e_0, u_e_1, u_e_2] = self.to_unoriented_edges();
+        u_e_0 == unoriented_edge || u_e_1 == unoriented_edge || u_e_2 == unoriented_edge
+    }
+
+    /// Does the face contain the specific oriented edge
+    pub fn contains_oriented_edge(self, oriented_edge: OrientedEdge) -> bool {
+        let [o_e_0, o_e_1, o_e_2] = self.to_oriented_edges();
+        o_e_0 == oriented_edge || o_e_1 == oriented_edge || o_e_2 == oriented_edge
+    }
+
+    /// Returns a the same face with reverted vertex and normal winding
+    pub fn to_reverted(&self) -> TriangleFace {
+        TriangleFace::new_separate(
+            self.vertices.2,
+            self.vertices.1,
+            self.vertices.0,
+            self.normals.2,
+            self.normals.1,
+            self.normals.0,
+        )
+    }
+
+    /// Checks if the other face is the same ith a reverted vertex and normal winding
+    pub fn is_reverted(&self, other: Self) -> bool {
+        self.to_reverted() == other
     }
 }
 
 impl From<(u32, u32, u32)> for TriangleFace {
     fn from((i1, i2, i3): (u32, u32, u32)) -> TriangleFace {
         TriangleFace::new(i1, i2, i3)
+    }
+}
+
+impl PartialEq for TriangleFace {
+    fn eq(&self, other: &Self) -> bool {
+        (self.vertices.0 == other.vertices.0
+            && self.vertices.1 == other.vertices.1
+            && self.vertices.2 == other.vertices.2
+            && self.normals.0 == other.normals.0
+            && self.normals.1 == other.normals.1
+            && self.normals.2 == other.normals.2)
+            || (self.vertices.0 == other.vertices.1
+                && self.vertices.1 == other.vertices.2
+                && self.vertices.2 == other.vertices.0
+                && self.normals.0 == other.normals.1
+                && self.normals.1 == other.normals.2
+                && self.normals.2 == other.normals.0)
+            || (self.vertices.0 == other.vertices.2
+                && self.vertices.1 == other.vertices.0
+                && self.vertices.2 == other.vertices.1
+                && self.normals.0 == other.normals.2
+                && self.normals.1 == other.normals.0
+                && self.normals.2 == other.normals.1)
     }
 }
 
@@ -522,6 +568,10 @@ impl OrientedEdge {
 
     pub fn contains_vertex(self, vertex_index: u32) -> bool {
         self.vertices.0 == vertex_index || self.vertices.1 == vertex_index
+    }
+
+    pub fn to_reverted(self) -> Self {
+        OrientedEdge::new(self.vertices.1, self.vertices.0)
     }
 }
 
@@ -1741,5 +1791,110 @@ mod tests {
         );
 
         assert!(geometry.has_no_orphan_vertices());
+    }
+
+    #[test]
+    fn test_triangle_face_to_reverted_should_pass_because_compared_to_reverted() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face_reverted_correct = TriangleFace::new_separate(3, 2, 1, 6, 5, 4);
+
+        let face_reverted_calculated = face.to_reverted();
+        assert_eq!(face_reverted_correct, face_reverted_calculated);
+    }
+
+    #[test]
+    fn test_triangle_face_to_reverted_should_fail_because_compared_to_same() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+
+        let face_reverted_calculated = face.to_reverted();
+        assert_ne!(face, face_reverted_calculated);
+    }
+
+    #[test]
+    fn test_triangle_face_to_reverted_should_pass_because_compared_to_reverted_and_shifted() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
+
+        let face_reverted_calculated = face.to_reverted();
+        assert_eq!(face_reverted_correct_shifted, face_reverted_calculated);
+    }
+
+    #[test]
+    fn test_triangle_face_is_reverted_should_should_return_true() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
+
+        assert!(face_reverted_correct_shifted.is_reverted(face));
+    }
+
+    #[test]
+    fn test_triangle_face_is_reverted_should_should_return_false() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+
+        assert!(!face.is_reverted(face));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_oriented_edge_returns_true_because_contains_all() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let oriented_edge_1 = OrientedEdge::new(1, 2);
+        let oriented_edge_2 = OrientedEdge::new(2, 3);
+        let oriented_edge_3 = OrientedEdge::new(3, 1);
+
+        assert!(face.contains_oriented_edge(oriented_edge_1));
+        assert!(face.contains_oriented_edge(oriented_edge_2));
+        assert!(face.contains_oriented_edge(oriented_edge_3));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_oriented_edge_returns_false_because_contains_all_reverted() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let oriented_edge_1 = OrientedEdge::new(2, 1);
+        let oriented_edge_2 = OrientedEdge::new(3, 2);
+        let oriented_edge_3 = OrientedEdge::new(1, 3);
+
+        assert!(!face.contains_oriented_edge(oriented_edge_1));
+        assert!(!face.contains_oriented_edge(oriented_edge_2));
+        assert!(!face.contains_oriented_edge(oriented_edge_3));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_oriented_edge_returns_false_because_different() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let oriented_edge = OrientedEdge::new(4, 5);
+
+        assert!(!face.contains_oriented_edge(oriented_edge));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_unoriented_edge_returns_true_because_contains_all() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let unoriented_edge_1 = UnorientedEdge(OrientedEdge::new(1, 2));
+        let unoriented_edge_2 = UnorientedEdge(OrientedEdge::new(2, 3));
+        let unoriented_edge_3 = UnorientedEdge(OrientedEdge::new(3, 1));
+
+        assert!(face.contains_unoriented_edge(unoriented_edge_1));
+        assert!(face.contains_unoriented_edge(unoriented_edge_2));
+        assert!(face.contains_unoriented_edge(unoriented_edge_3));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_unoriented_edge_returns_true_because_contains_all_reverted() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let unoriented_edge_1 = UnorientedEdge(OrientedEdge::new(2, 1));
+        let unoriented_edge_2 = UnorientedEdge(OrientedEdge::new(3, 2));
+        let unoriented_edge_3 = UnorientedEdge(OrientedEdge::new(1, 3));
+
+        assert!(face.contains_unoriented_edge(unoriented_edge_1));
+        assert!(face.contains_unoriented_edge(unoriented_edge_2));
+        assert!(face.contains_unoriented_edge(unoriented_edge_3));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_unoriented_edge_returns_false_because_different() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let unoriented_edge = UnorientedEdge(OrientedEdge::new(4, 5));
+
+        assert!(!face.contains_unoriented_edge(unoriented_edge));
     }
 }

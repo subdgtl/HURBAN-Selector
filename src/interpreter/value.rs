@@ -191,6 +191,17 @@ impl Value {
             _ => panic!("Value not geometry"),
         }
     }
+
+    /// Get the refcounted value if geometry, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when value is not a geometry.
+    pub fn unwrap_refcounted_geometry(&self) -> Arc<Geometry> {
+        match self {
+            Value::Geometry(geometry_ptr) => Arc::clone(geometry_ptr),
+            _ => panic!("Value not geometry"),
+        }
+    }
 }
 
 impl fmt::Display for Value {
