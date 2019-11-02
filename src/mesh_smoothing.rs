@@ -1,10 +1,13 @@
-use std::collections::HashMap;
+use std::cmp;
+use std::collections::hash_map::{Entry, HashMap};
+use std::hash::{Hash, Hasher};
 
+use nalgebra as na;
 use nalgebra::geometry::Point3;
 use smallvec::SmallVec;
 
-use crate::convert::cast_usize;
-use crate::geometry::Geometry;
+use crate::convert::{cast_u32, cast_usize};
+use crate::geometry::{Face, Geometry, NormalStrategy};
 
 /// Relaxes angles between mesh edges, resulting in a smoother geometry
 ///
@@ -88,6 +91,267 @@ pub fn laplacian_smoothing(
         ),
         iteration,
         stable,
+    )
+}
+
+/// Performs one iteration of Loop Subdivision on geometry.
+///
+/// The subdivision works in two steps:
+///
+/// 1) Split each triangle into 4 smaller triangles,
+/// 2) Update the position of each vertex of the mesh based on
+///    weighted averages of its neighboring vertex positions,
+///    depending on where the vertex is in the topology and whether
+///    the vertex is newly created, or did already exist.
+///
+/// The geometry **must** be triangulated.
+///
+/// Implementation based on [mdfisher's
+/// post](https://graphics.stanford.edu/~mdfisher/subdivision.html).
+pub fn loop_subdivision(
+    geometry: &Geometry,
+    vertex_to_vertex_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
+    face_to_face_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
+) -> Geometry {
+    #[derive(Debug, Eq)]
+    struct UnorderedPair(u32, u32);
+
+    impl PartialEq for UnorderedPair {
+        fn eq(&self, other: &Self) -> bool {
+            self.0 == other.0 && self.1 == other.1 || self.0 == other.1 && self.1 == other.0
+        }
+    }
+
+    impl Hash for UnorderedPair {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            cmp::min(self.0, self.1).hash(state);
+            cmp::max(self.0, self.1).hash(state);
+        }
+    }
+
+    let mut vertices: Vec<Point3<f32>> = geometry.vertices().iter().copied().collect();
+
+    // Relocate existing vertices first
+    for (i, vertex) in vertices.iter_mut().enumerate() {
+        let neighbors = &vertex_to_vertex_topology[&cast_u32(i)];
+
+        match neighbors.len() {
+            // N == 0 means this is an orphan vertex. N == 1 can't
+            // happen in our mesh representation.
+            0 | 1 => (),
+            2 => {
+                // N == 2 means this is a naked edge vertex.
+                // Use (3/4, 1/8, 1/8) relocation scheme.
+
+                let vi1 = cast_usize(neighbors[0]);
+                let vi2 = cast_usize(neighbors[1]);
+
+                let v0 = geometry.vertices()[i];
+                let v1 = geometry.vertices()[vi1];
+                let v2 = geometry.vertices()[vi2];
+
+                *vertex = Point3::origin()
+                    + v0.coords * 3.0 / 4.0
+                    + v1.coords * 1.0 / 8.0
+                    + v2.coords * 1.0 / 8.0;
+            }
+            3 => {
+                // N == 3 means the vertex is not a part of a naked edge.
+                // Use (1 - N*BETA, BETA, ...) relocation scheme, where
+                // BETA is 3/16.
+
+                const N: f32 = 3.0;
+                const BETA: f32 = 3.0 / 16.0;
+
+                let vi1 = cast_usize(neighbors[0]);
+                let vi2 = cast_usize(neighbors[1]);
+                let vi3 = cast_usize(neighbors[2]);
+
+                let v1 = geometry.vertices()[vi1];
+                let v2 = geometry.vertices()[vi2];
+                let v3 = geometry.vertices()[vi3];
+
+                *vertex = Point3::origin()
+                    + vertex.coords * (1.0 - N * BETA)
+                    + v1.coords * BETA
+                    + v2.coords * BETA
+                    + v3.coords * BETA;
+            }
+            n => {
+                // N >= 3 also means the vertex is not a part of a naked edge.
+                // Use (1 - N*BETA, BETA, ...) relocation scheme, where
+                // BETA is 3 / (8*N).
+
+                let n_f32 = n as f32;
+                let beta = 3.0 / (8.0 * n_f32);
+
+                *vertex = Point3::origin() + vertex.coords * (1.0 - n_f32 * beta);
+                for vi in neighbors {
+                    let v = geometry.vertices()[cast_usize(*vi)];
+                    *vertex += v.coords * beta;
+                }
+            }
+        }
+    }
+
+    // Subdivide existing triangle faces and create new vertices
+
+    let faces_len_estimate = geometry.faces().len() * 4;
+    let mut faces: Vec<(u32, u32, u32)> = Vec::with_capacity(faces_len_estimate);
+
+    // We will be creating new mid-edge vertices per face soon. Faces
+    // will share and re-use these newly created vertices.
+
+    // The key is an unordered pair of faces that share the mid-edge
+    // vertex. The value is the index of the vertex they share.
+    let mut created_mid_vertex_indices: HashMap<UnorderedPair, u32> = HashMap::new();
+
+    for (face_index, face) in geometry.faces().iter().enumerate() {
+        let face_index_u32 = cast_u32(face_index);
+        match face {
+            Face::Triangle(triangle_face) => {
+                let (vi1, vi2, vi3) = triangle_face.vertices;
+                let face_neighbors = &face_to_face_topology[&face_index_u32];
+
+                // Our current face should have up to 3 neighboring
+                // faces. The mid vertices we are going to create need
+                // to be shared with those faces if they exist, so
+                // that they are only created once. The array below
+                // will be filled with either vertices created here,
+                // or obtained from `created_mid_vertex_indices`
+                // cache.
+                let mut mid_vertex_indices: [Option<u32>; 3] = [None, None, None];
+
+                for (edge_index, (vi_from, vi_to)) in
+                    [(vi1, vi2), (vi2, vi3), (vi3, vi1)].iter().enumerate()
+                {
+                    let neighbor_face_index = face_neighbors
+                        .iter()
+                        .copied()
+                        .map(|i| (i, geometry.faces()[cast_usize(i)]))
+                        .find_map(|(i, face)| {
+                            if face.contains_vertex(*vi_from) && face.contains_vertex(*vi_to) {
+                                Some(i)
+                            } else {
+                                None
+                            }
+                        });
+
+                    let mid_vertex_index = if let Some(neighbor_face_index) = neighbor_face_index {
+                        let pair = UnorderedPair(face_index_u32, neighbor_face_index);
+
+                        match created_mid_vertex_indices.entry(pair) {
+                            // The vertex exists and was therefore
+                            // already relocated by visiting a
+                            // neighboring face in a previous
+                            // iteration
+                            Entry::Occupied(occupied) => *occupied.get(),
+                            Entry::Vacant(vacant) => {
+                                // Create and relocate the vertex
+                                // using the (1/8, 3/8, 3/8, 1/8)
+                                // scheme. Since there is a neighbor
+                                // face, we also write the created
+                                // vertex to the cache to be picked up
+                                // by subsequent iterations.
+
+                                let edge_vertex_from = geometry.vertices()[cast_usize(*vi_from)];
+                                let edge_vertex_to = geometry.vertices()[cast_usize(*vi_to)];
+
+                                let face1 = geometry.faces()[face_index];
+                                let face2 = geometry.faces()[cast_usize(neighbor_face_index)];
+
+                                // Find the two vertices that are
+                                // opposite to the shared edge of the
+                                // face pair.
+                                let (opposite_vertex_index1, opposite_vertex_index2) =
+                                    match (face1, face2) {
+                                        (
+                                            Face::Triangle(triangle_face1),
+                                            Face::Triangle(triangle_face2),
+                                        ) => {
+                                            let f1vi1 = triangle_face1.vertices.0;
+                                            let f1vi2 = triangle_face1.vertices.1;
+                                            let f1vi3 = triangle_face1.vertices.2;
+
+                                            let f2vi1 = triangle_face2.vertices.0;
+                                            let f2vi2 = triangle_face2.vertices.1;
+                                            let f2vi3 = triangle_face2.vertices.2;
+
+                                            let f1v = [f1vi1, f1vi2, f1vi3];
+                                            let f2v = [f2vi1, f2vi2, f2vi3];
+
+                                            let f1_opposite_vertex = f1v
+                                                .iter()
+                                                .copied()
+                                                .find(|vi| !f2v.contains(&vi))
+                                                .expect("Failed to find opposite vertex");
+                                            let f2_opposite_vertex = f2v
+                                                .iter()
+                                                .copied()
+                                                .find(|vi| !f1v.contains(&vi))
+                                                .expect("Failed to find opposite vertex");
+
+                                            (f1_opposite_vertex, f2_opposite_vertex)
+                                        }
+                                    };
+
+                                let opposite_vertex1 =
+                                    geometry.vertices()[cast_usize(opposite_vertex_index1)];
+                                let opposite_vertex2 =
+                                    geometry.vertices()[cast_usize(opposite_vertex_index2)];
+
+                                let new_vertex = Point3::origin()
+                                    + opposite_vertex1.coords * 1.0 / 8.0
+                                    + opposite_vertex2.coords * 1.0 / 8.0
+                                    + edge_vertex_from.coords * 3.0 / 8.0
+                                    + edge_vertex_to.coords * 3.0 / 8.0;
+
+                                let index = cast_u32(vertices.len());
+                                vacant.insert(index);
+                                vertices.push(new_vertex);
+
+                                index
+                            }
+                        }
+                    } else {
+                        // Create and relocate the vertex using the (1/2, 1/2) scheme
+                        let vertex_from = geometry.vertices()[cast_usize(*vi_from)];
+                        let vertex_to = geometry.vertices()[cast_usize(*vi_to)];
+
+                        let new_vertex = na::center(&vertex_from, &vertex_to);
+
+                        let index = cast_u32(vertices.len());
+                        vertices.push(new_vertex);
+
+                        index
+                    };
+
+                    mid_vertex_indices[edge_index] = Some(mid_vertex_index);
+                }
+
+                let mid_v1v2_index =
+                    mid_vertex_indices[0].expect("Must have been produced by earlier loop");
+                let mid_v2v3_index =
+                    mid_vertex_indices[1].expect("Must have been produced by earlier loop");
+                let mid_v3v1_index =
+                    mid_vertex_indices[2].expect("Must have been produced by earlier loop");
+
+                faces.push((vi1, mid_v1v2_index, mid_v3v1_index));
+                faces.push((vi2, mid_v2v3_index, mid_v1v2_index));
+                faces.push((vi3, mid_v3v1_index, mid_v2v3_index));
+                faces.push((mid_v1v2_index, mid_v2v3_index, mid_v3v1_index));
+            }
+        }
+    }
+
+    assert_eq!(faces.len(), faces_len_estimate);
+    assert_eq!(faces.capacity(), faces_len_estimate);
+
+    // FIXME: Calculate better normals here? Maybe use `Smooth` strategy once we have it?
+    Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        faces,
+        vertices,
+        NormalStrategy::Sharp,
     )
 }
 

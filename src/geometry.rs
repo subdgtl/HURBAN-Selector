@@ -396,6 +396,14 @@ pub enum Face {
     Triangle(TriangleFace),
 }
 
+impl Face {
+    pub fn contains_vertex(&self, vertex_index: u32) -> bool {
+        match self {
+            Face::Triangle(triangle_face) => triangle_face.contains_vertex(vertex_index),
+        }
+    }
+}
+
 impl From<TriangleFace> for Face {
     fn from(triangle_face: TriangleFace) -> Face {
         Face::Triangle(triangle_face)

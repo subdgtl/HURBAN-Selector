@@ -199,7 +199,58 @@ impl Func for FuncImplSeparateIsolatedMeshes {
         let values = mesh_tools::separate_isolated_meshes(geometry);
 
         // FIXME: This returns a slice of Geometries. Return all of them
-        Value::Geometry(Arc::new(values[0].clone()))
+        let first_value = values
+            .into_iter()
+            .next()
+            .expect("Need at least one geometry");
+
+        Value::Geometry(Arc::new(first_value))
+    }
+}
+
+pub struct FuncImplLoopSubdivision;
+impl Func for FuncImplLoopSubdivision {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+            ParamInfo {
+                ty: Ty::Uint,
+                optional: false,
+            },
+        ]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+        let geometry = args[0].unwrap_refcounted_geometry();
+        let iterations = args[1].unwrap_uint();
+        if iterations == 0 {
+            return Value::Geometry(geometry);
+        }
+
+        let mut v2v_topology = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let mut f2f_topology = mesh_topology_analysis::face_to_face_topology(&geometry);
+        let mut current_geometry =
+            mesh_smoothing::loop_subdivision(&geometry, &v2v_topology, &f2f_topology);
+
+        for _ in 1..iterations {
+            v2v_topology = mesh_topology_analysis::vertex_to_vertex_topology(&current_geometry);
+            f2f_topology = mesh_topology_analysis::face_to_face_topology(&current_geometry);
+            current_geometry =
+                mesh_smoothing::loop_subdivision(&current_geometry, &v2v_topology, &f2f_topology);
+        }
+
+        Value::Geometry(Arc::new(current_geometry))
     }
 }
 
@@ -211,6 +262,7 @@ pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
 pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
 pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
+pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(5);
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
@@ -228,6 +280,7 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
         FUNC_ID_SEPARATE_ISOLATED_MESHES,
         Box::new(FuncImplSeparateIsolatedMeshes),
     );
+    funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncImplLoopSubdivision));
 
     funcs
 }
