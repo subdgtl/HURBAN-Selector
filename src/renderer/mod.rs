@@ -1,12 +1,12 @@
-pub use self::scene_renderer::{SceneRendererGeometry, SceneRendererGeometryId};
+pub use self::scene_renderer::{AddGeometryError, DrawGeometryMode, GpuGeometry, GpuGeometryId};
 
 use std::fmt;
 
 use nalgebra::base::Matrix4;
 
-use self::imgui_renderer::{ImguiRenderer, ImguiRendererOptions};
+use self::imgui_renderer::{ImguiRenderer, Options as ImguiRendererOptions};
 use self::scene_renderer::{
-    SceneRenderer, SceneRendererAddGeometryError, SceneRendererClearFlags, SceneRendererOptions,
+    ClearFlags as SceneRendererClearFlags, Options as SceneRendererOptions, SceneRenderer,
 };
 
 #[macro_use]
@@ -19,7 +19,7 @@ const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RendererOptions {
+pub struct Options {
     /// Which multi-sampling setting to use.
     pub msaa: Msaa,
     /// Whether to run with VSync or not.
@@ -122,7 +122,7 @@ pub struct Renderer {
     depth_texture_view: wgpu::TextureView,
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
-    options: RendererOptions,
+    options: Options,
 }
 
 impl Renderer {
@@ -131,7 +131,7 @@ impl Renderer {
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
         imgui_font_atlas: imgui::FontAtlasRefMut,
-        options: RendererOptions,
+        options: Options,
     ) -> Self {
         let backends = match options.gpu_backend {
             Some(GpuBackend::Vulkan) => wgpu::BackendBit::VULKAN,
@@ -269,13 +269,13 @@ impl Renderer {
     /// will be available for drawing in subsequent render passes.
     pub fn add_scene_geometry(
         &mut self,
-        geometry: &SceneRendererGeometry,
-    ) -> Result<SceneRendererGeometryId, SceneRendererAddGeometryError> {
+        geometry: &GpuGeometry,
+    ) -> Result<GpuGeometryId, AddGeometryError> {
         self.scene_renderer.add_geometry(&self.device, geometry)
     }
 
     /// Remove geometry from the GPU.
-    pub fn remove_scene_geometry(&mut self, id: SceneRendererGeometryId) {
+    pub fn remove_scene_geometry(&mut self, id: GpuGeometryId) {
         self.scene_renderer.remove_geometry(id);
     }
 
@@ -345,7 +345,7 @@ impl RenderPass<'_> {
     /// Record a geometry drawing operation to the command
     /// buffer. Geometries with provided ids must be present in the
     /// renderer.
-    pub fn draw_geometry(&mut self, ids: &[SceneRendererGeometryId]) {
+    pub fn draw_geometry(&mut self, ids: &[GpuGeometryId], mode: DrawGeometryMode) {
         let mut clear_flags = SceneRendererClearFlags::empty();
         if self.color_needs_clearing {
             clear_flags.insert(SceneRendererClearFlags::COLOR);
@@ -355,6 +355,7 @@ impl RenderPass<'_> {
         }
 
         self.scene_renderer.draw_geometry(
+            mode,
             clear_flags,
             self.encoder
                 .as_mut()

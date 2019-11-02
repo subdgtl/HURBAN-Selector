@@ -10,7 +10,7 @@ use crate::input::InputManager;
 use crate::interpreter::ast;
 use crate::interpreter_funcs as funcs;
 use crate::interpreter_server::{InterpreterRequest, InterpreterResponse, InterpreterServer};
-use crate::renderer::{Renderer, RendererOptions, SceneRendererGeometry};
+use crate::renderer::{DrawGeometryMode, GpuGeometry, Options as RendererOptions, Renderer};
 use crate::ui::Ui;
 
 pub mod geometry;
@@ -85,6 +85,7 @@ pub fn init_and_run(options: Options) -> ! {
         },
     );
 
+    let mut renderer_draw_geometry_mode = DrawGeometryMode::Shaded;
     let mut renderer = Renderer::new(
         &window,
         &camera.projection_matrix(),
@@ -122,7 +123,7 @@ pub fn init_and_run(options: Options) -> ! {
 
     let mut scene_renderer_geometry_ids = Vec::with_capacity(scene_geometries.len());
     for geometry in &scene_geometries {
-        let renderer_geometry = SceneRendererGeometry::from_geometry(geometry);
+        let renderer_geometry = GpuGeometry::from_geometry(geometry);
         let renderer_geometry_id = renderer
             .add_scene_geometry(&renderer_geometry)
             .expect("Failed to add geometry to renderer");
@@ -206,8 +207,7 @@ pub fn init_and_run(options: Options) -> ! {
                             // ... and add everything we found to it
                             for model in models {
                                 let geometry = model.geometry;
-                                let renderer_geometry =
-                                    SceneRendererGeometry::from_geometry(&geometry);
+                                let renderer_geometry = GpuGeometry::from_geometry(&geometry);
                                 let renderer_geometry_id = renderer
                                     .add_scene_geometry(&renderer_geometry)
                                     .expect("Failed to add geometry to renderer");
@@ -309,8 +309,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                             for (_, value) in &value_set.used_values {
                                 let geometry = value.unwrap_geometry().clone();
-                                let renderer_geometry =
-                                    SceneRendererGeometry::from_geometry(&geometry);
+                                let renderer_geometry = GpuGeometry::from_geometry(&geometry);
                                 let renderer_geometry_id =
                                     renderer.add_scene_geometry(&renderer_geometry).unwrap();
 
@@ -320,8 +319,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                             for (_, value) in &value_set.unused_values {
                                 let geometry = value.unwrap_geometry().clone();
-                                let renderer_geometry =
-                                    SceneRendererGeometry::from_geometry(&geometry);
+                                let renderer_geometry = GpuGeometry::from_geometry(&geometry);
                                 let renderer_geometry_id =
                                     renderer.add_scene_geometry(&renderer_geometry).unwrap();
 
@@ -366,14 +364,16 @@ pub fn init_and_run(options: Options) -> ! {
                 // simplicity.
                 renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
 
-                #[cfg(debug_assertions)]
-                ui_frame.draw_fps_window();
+                ui_frame.draw_renderer_settings_window(&mut renderer_draw_geometry_mode);
 
                 let imgui_draw_data = ui_frame.render(&window);
 
                 let mut render_pass = renderer.begin_render_pass();
 
-                render_pass.draw_geometry(&scene_renderer_geometry_ids[..]);
+                render_pass.draw_geometry(
+                    &scene_renderer_geometry_ids[..],
+                    renderer_draw_geometry_mode,
+                );
                 render_pass.draw_ui(imgui_draw_data);
 
                 render_pass.submit();
