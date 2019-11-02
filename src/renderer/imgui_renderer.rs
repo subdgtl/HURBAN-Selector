@@ -8,12 +8,12 @@ use crate::include_shader;
 use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
 
 #[derive(Debug, Clone)]
-pub enum Error {
+pub enum ImguiRendererError {
     BadTexture(imgui::TextureId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Options {
+pub struct ImguiRendererOptions {
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
 }
@@ -32,8 +32,8 @@ impl ImguiRenderer {
         mut imgui_font_atlas: imgui::FontAtlasRefMut,
         device: &wgpu::Device,
         queue: &mut wgpu::Queue,
-        options: Options,
-    ) -> Result<ImguiRenderer, Error> {
+        options: ImguiRendererOptions,
+    ) -> Result<ImguiRenderer, ImguiRendererError> {
         // Link shaders
 
         let vs_spv: &[u8] = include_shader!("imgui.vert.spv");
@@ -262,7 +262,7 @@ impl ImguiRenderer {
         color_attachment: &wgpu::TextureView,
         msaa_attachment: Option<&wgpu::TextureView>,
         draw_data: &imgui::DrawData,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ImguiRendererError> {
         // This is mostly a transcript of the following:
         // https://github.com/ocornut/imgui/blob/master/examples/imgui_impl_opengl3.cpp
         // https://github.com/ocornut/imgui/blob/master/examples/imgui_impl_vulkan.cpp
@@ -401,7 +401,7 @@ impl ImguiRenderer {
                             let texture = self
                                 .texture_resources
                                 .get(texture_id)
-                                .ok_or_else(|| Error::BadTexture(texture_id))?;
+                                .ok_or_else(|| ImguiRendererError::BadTexture(texture_id))?;
 
                             rpass.set_bind_group(1, texture.bind_group(), &[]);
                             rpass.set_scissor_rect(

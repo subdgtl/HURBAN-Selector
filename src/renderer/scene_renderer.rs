@@ -3,7 +3,6 @@ use std::convert::TryFrom;
 use std::error;
 use std::fmt;
 use std::io;
-use std::iter;
 
 use bitflags::bitflags;
 use nalgebra::base::{Matrix4, Vector3};
@@ -14,20 +13,20 @@ use crate::geometry::{Face, Geometry};
 
 use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
 
-static SHADER_VIEWPORT_VERT: &[u8] = include_shader!("viewport.vert.spv");
-static SHADER_VIEWPORT_FRAG: &[u8] = include_shader!("viewport.frag.spv");
+const SHADER_MATCAP_VERT: &[u8] = include_shader!("matcap.vert.spv");
+const SHADER_MATCAP_FRAG: &[u8] = include_shader!("matcap.frag.spv");
 
-static MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../resources/matcap.png");
+const MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../resources/matcap.png");
 
 /// The geometry containing index and vertex data in same-length
 /// format as will be uploaded on the GPU.
 #[derive(Debug, Clone, PartialEq)]
-pub struct GpuGeometry {
-    indices: Option<Vec<GpuGeometryIndex>>,
-    vertex_data: Vec<GpuGeometryVertex>,
+pub struct SceneRendererGeometry {
+    indices: Option<Vec<GeometryIndex>>,
+    vertex_data: Vec<GeometryVertex>,
 }
 
-impl GpuGeometry {
+impl SceneRendererGeometry {
     /// Construct geometry with same-length per-vertex data from
     /// variable-length data `Geometry`.
     ///
@@ -45,7 +44,7 @@ impl GpuGeometry {
         // This capacity is a lower bound estimate. Given that
         // `Geometry` contains no orphan vertices, there should be
         // at least `vertices.len()` vertices present in the
-        // resulting `GpuGeometry`.
+        // resulting `SceneRendererGeometry`.
         let mut vertex_data = Vec::with_capacity(vertices.len());
 
         // This capacity is an upper bound estimate and will
@@ -62,10 +61,8 @@ impl GpuGeometry {
                     let v = triangle_face.vertices;
                     let n = triangle_face.normals;
 
-                    for &(vertex_index, normal_index, barycentric) in
-                        &[(v.0, n.0, 0x01), (v.1, n.1, 0x02), (v.2, n.2, 0x04)]
-                    {
-                        match index_map.entry((vertex_index, normal_index, barycentric)) {
+                    for &(vertex_index, normal_index) in &[(v.0, n.0), (v.1, n.1), (v.2, n.2)] {
+                        match index_map.entry((vertex_index, normal_index)) {
                             Entry::Occupied(occupied) => {
                                 // This concrete vertex/normal combination
                                 // was used before, re-use the vertex it
@@ -82,7 +79,7 @@ impl GpuGeometry {
                                 let renderer_index = next_renderer_index;
                                 let position = vertices[cast_usize(vertex_index)];
                                 let normal = normals[cast_usize(normal_index)];
-                                let vertex = Self::vertex(position, normal, barycentric);
+                                let vertex = Self::vertex((position, normal));
 
                                 vacant.insert(renderer_index);
                                 next_renderer_index += 1;
@@ -104,7 +101,7 @@ impl GpuGeometry {
 
         vertex_data.shrink_to_fit();
 
-        GpuGeometry {
+        SceneRendererGeometry {
             indices: Some(indices),
             vertex_data,
         }
@@ -135,8 +132,7 @@ impl GpuGeometry {
         let vertex_data = vertex_positions
             .into_iter()
             .zip(vertex_normals.into_iter())
-            .zip(barycentric_sequence_iter())
-            .map(|((position, normal), barycentric)| Self::vertex(position, normal, barycentric))
+            .map(Self::vertex)
             .collect();
 
         Self {
@@ -150,7 +146,7 @@ impl GpuGeometry {
     /// checking.
     #[allow(dead_code)]
     pub fn from_positions_and_normals_indexed(
-        indices: Vec<GpuGeometryIndex>,
+        indices: Vec<GeometryIndex>,
         vertex_positions: Vec<Point3<f32>>,
         vertex_normals: Vec<Vector3<f32>>,
     ) -> Self {
@@ -172,8 +168,7 @@ impl GpuGeometry {
         let vertex_data = vertex_positions
             .into_iter()
             .zip(vertex_normals.into_iter())
-            .zip(barycentric_sequence_iter())
-            .map(|((position, normal), barycentric)| Self::vertex(position, normal, barycentric))
+            .map(Self::vertex)
             .collect();
 
         Self {
@@ -182,27 +177,27 @@ impl GpuGeometry {
         }
     }
 
-    fn vertex(position: Point3<f32>, normal: Vector3<f32>, barycentric: u32) -> GpuGeometryVertex {
-        GpuGeometryVertex {
+    fn vertex((position, normal): (Point3<f32>, Vector3<f32>)) -> GeometryVertex {
+        GeometryVertex {
             position: [position[0], position[1], position[2], 1.0],
             normal: [normal[0], normal[1], normal[2], 0.0],
-            barycentric,
         }
     }
 }
 
 /// Opaque handle to geometry stored in scene renderer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GpuGeometryId(u64);
+pub struct SceneRendererGeometryId(u64);
 
 #[derive(Debug)]
-pub enum AddGeometryError {
+pub enum SceneRendererAddGeometryError {
     TooManyVertices(usize),
     TooManyIndices(usize),
 }
 
-impl fmt::Display for AddGeometryError {
+impl fmt::Display for SceneRendererAddGeometryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use SceneRendererAddGeometryError as AddGeometryError;
         match self {
             AddGeometryError::TooManyVertices(given) => write!(
                 f,
@@ -220,46 +215,33 @@ impl fmt::Display for AddGeometryError {
     }
 }
 
-impl error::Error for AddGeometryError {}
+impl error::Error for SceneRendererAddGeometryError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Options {
+pub struct SceneRendererOptions {
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
     pub output_depth_attachment_format: wgpu::TextureFormat,
 }
 
 bitflags! {
-    pub struct ClearFlags: u8 {
+    pub struct SceneRendererClearFlags: u8 {
         const COLOR = 0b_0000_0001;
         const DEPTH = 0b_0000_0010;
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DrawGeometryMode {
-    Shaded,
-    Edges,
-    ShadedEdges,
-    ShadedEdgesXray,
-}
-
 /// 3D renderer of the editor scene.
 ///
 /// Can be used to upload `Geometry` on the GPU and draw it in the
-/// viewport. Currently supports just shaded (matcap) and wireframe
-/// rendering, and their combinations.
+/// viewport. Currently supports just matcap rendering.
 pub struct SceneRenderer {
     geometry_resources: HashMap<u64, GeometryResource>,
     geometry_resources_next_id: u64,
-    matrix_buffer: wgpu::Buffer,
-    matrix_bind_group: wgpu::BindGroup,
-    shading_bind_group_shaded: wgpu::BindGroup,
-    shading_bind_group_edges: wgpu::BindGroup,
-    shading_bind_group_shaded_edges: wgpu::BindGroup,
+    global_matrix_buffer: wgpu::Buffer,
+    global_matrix_bind_group: wgpu::BindGroup,
     matcap_texture_bind_group: wgpu::BindGroup,
-    render_pipeline_opaque: wgpu::RenderPipeline,
-    render_pipeline_transparent: wgpu::RenderPipeline,
+    matcap_render_pipeline: wgpu::RenderPipeline,
 }
 
 impl SceneRenderer {
@@ -272,22 +254,22 @@ impl SceneRenderer {
         queue: &mut wgpu::Queue,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
-        options: Options,
+        options: SceneRendererOptions,
     ) -> Self {
-        let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_VIEWPORT_VERT))
+        let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_MATCAP_VERT))
             .expect("Couldn't read pre-built SPIR-V");
-        let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_VIEWPORT_FRAG))
+        let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_MATCAP_FRAG))
             .expect("Couldn't read pre-built SPIR-V");
         let vs_module = device.create_shader_module(&vs_words);
         let fs_module = device.create_shader_module(&fs_words);
 
-        let matrix_buffer_size = wgpu_size_of::<MatrixUniforms>();
-        let matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            size: matrix_buffer_size,
+        let global_matrix_buffer_size = wgpu_size_of::<GlobalMatrixUniforms>();
+        let global_matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            size: global_matrix_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         });
 
-        let matrix_bind_group_layout =
+        let global_matrix_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 bindings: &[wgpu::BindGroupLayoutBinding {
                     binding: 0,
@@ -295,103 +277,16 @@ impl SceneRenderer {
                     ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                 }],
             });
-        let matrix_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &matrix_bind_group_layout,
+        let global_matrix_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &global_matrix_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer {
-                    buffer: &matrix_buffer,
-                    range: 0..matrix_buffer_size,
+                    buffer: &global_matrix_buffer,
+                    range: 0..global_matrix_buffer_size,
                 },
             }],
         });
-        let matrix_uniforms = MatrixUniforms {
-            projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
-            view_matrix: view_matrix.clone().into(),
-        };
-
-        let shading_buffer_size = wgpu_size_of::<ShadingUniforms>();
-        let shading_buffer_shaded = device.create_buffer(&wgpu::BufferDescriptor {
-            size: shading_buffer_size,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        });
-        let shading_buffer_edges = device.create_buffer(&wgpu::BufferDescriptor {
-            size: shading_buffer_size,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        });
-        let shading_buffer_shaded_edges = device.create_buffer(&wgpu::BufferDescriptor {
-            size: shading_buffer_size,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        });
-
-        let shading_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
-                }],
-            });
-        let shading_bind_group_shaded = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &shading_bind_group_layout,
-            bindings: &[wgpu::Binding {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &shading_buffer_shaded,
-                    range: 0..shading_buffer_size,
-                },
-            }],
-        });
-        let shading_bind_group_edges = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &shading_bind_group_layout,
-            bindings: &[wgpu::Binding {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &shading_buffer_edges,
-                    range: 0..shading_buffer_size,
-                },
-            }],
-        });
-        let shading_bind_group_shaded_edges =
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &shading_bind_group_layout,
-                bindings: &[wgpu::Binding {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &shading_buffer_shaded_edges,
-                        range: 0..shading_buffer_size,
-                    },
-                }],
-            });
-
-        upload_matrix_buffer(device, queue, &matrix_buffer, matrix_uniforms);
-        upload_shading_buffer(
-            device,
-            queue,
-            &shading_buffer_shaded,
-            ShadingUniforms {
-                edge_color_and_face_alpha: [0.0, 0.0, 0.0, 1.0],
-                shading_mode: ShadingMode::SHADED,
-            },
-        );
-        upload_shading_buffer(
-            device,
-            queue,
-            &shading_buffer_edges,
-            ShadingUniforms {
-                edge_color_and_face_alpha: [0.2, 0.9, 0.3, 1.0],
-                shading_mode: ShadingMode::EDGES,
-            },
-        );
-        upload_shading_buffer(
-            device,
-            queue,
-            &shading_buffer_shaded_edges,
-            ShadingUniforms {
-                edge_color_and_face_alpha: [0.2, 0.9, 0.3, 1.0],
-                shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
-            },
-        );
 
         let (matcap_texture_width, matcap_texture_height, matcap_texture_data) = {
             let cursor = io::Cursor::new(MATCAP_TEXTURE_BYTES);
@@ -427,6 +322,16 @@ impl SceneRenderer {
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
+        let matcap_texture_view = matcap_texture.create_default_view();
+
+        upload_texture_rgba8_unorm(
+            device,
+            queue,
+            &matcap_texture,
+            matcap_texture_width,
+            matcap_texture_height,
+            &matcap_texture_data,
+        );
 
         let matcap_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -458,14 +363,13 @@ impl SceneRenderer {
                     },
                 ],
             });
+
         let matcap_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &matcap_texture_bind_group_layout,
             bindings: &[
                 wgpu::Binding {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &matcap_texture.create_default_view(),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&matcap_texture_view),
                 },
                 wgpu::Binding {
                     binding: 1,
@@ -474,47 +378,81 @@ impl SceneRenderer {
             ],
         });
 
-        upload_texture_rgba8_unorm(
-            device,
-            queue,
-            &matcap_texture,
-            matcap_texture_width,
-            matcap_texture_height,
-            &matcap_texture_data,
-        );
+        let matcap_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                bind_group_layouts: &[
+                    &global_matrix_bind_group_layout,
+                    &matcap_texture_bind_group_layout,
+                ],
+            });
 
-        let render_pipeline_opaque = create_pipeline(
-            device,
-            &vs_module,
-            &fs_module,
-            &matrix_bind_group_layout,
-            &shading_bind_group_layout,
-            &matcap_texture_bind_group_layout,
-            false,
-            options,
-        );
-        let render_pipeline_transparent = create_pipeline(
-            device,
-            &vs_module,
-            &fs_module,
-            &matrix_bind_group_layout,
-            &shading_bind_group_layout,
-            &matcap_texture_bind_group_layout,
-            true,
-            options,
-        );
+        let matcap_render_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                layout: &matcap_pipeline_layout,
+                vertex_stage: wgpu::ProgrammableStageDescriptor {
+                    module: &vs_module,
+                    entry_point: "main",
+                },
+                fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+                    module: &fs_module,
+                    entry_point: "main",
+                }),
+                // Default rasterization state means
+                // CullMode::None. We don't cull faces yet, because we
+                // work with potentially non-CCW geometries. We might
+                // implement special rendering for CW faces one day.
+                rasterization_state: None,
+                primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+                color_states: &[wgpu::ColorStateDescriptor {
+                    format: options.output_color_attachment_format,
+                    color_blend: wgpu::BlendDescriptor::REPLACE,
+                    alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                    write_mask: wgpu::ColorWrite::ALL,
+                }],
+                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                    format: options.output_depth_attachment_format,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_read_mask: 0,
+                    stencil_write_mask: 0,
+                }),
+                index_format: wgpu::IndexFormat::Uint32,
+                vertex_buffers: &[wgpu::VertexBufferDescriptor {
+                    stride: wgpu_size_of::<GeometryVertex>(),
+                    step_mode: wgpu::InputStepMode::Vertex,
+                    attributes: &[
+                        wgpu::VertexAttributeDescriptor {
+                            offset: 0,
+                            format: wgpu::VertexFormat::Float4,
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttributeDescriptor {
+                            offset: wgpu_size_of::<[f32; 4]>(), // 4 bytes * 4 components
+                            format: wgpu::VertexFormat::Float4,
+                            shader_location: 1,
+                        },
+                    ],
+                }],
+                sample_count: options.sample_count,
+                sample_mask: !0,
+                alpha_to_coverage_enabled: false,
+            });
+
+        let global_matrix_uniforms = GlobalMatrixUniforms {
+            projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
+            view_matrix: view_matrix.clone().into(),
+        };
+        upload_global_matrix_buffer(device, queue, &global_matrix_buffer, global_matrix_uniforms);
 
         Self {
             geometry_resources: HashMap::new(),
             geometry_resources_next_id: 0,
-            matrix_buffer,
-            matrix_bind_group,
-            shading_bind_group_shaded,
-            shading_bind_group_edges,
-            shading_bind_group_shaded_edges,
+            global_matrix_buffer,
+            global_matrix_bind_group,
             matcap_texture_bind_group,
-            render_pipeline_opaque,
-            render_pipeline_transparent,
+            matcap_render_pipeline,
         }
     }
 
@@ -526,11 +464,16 @@ impl SceneRenderer {
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
     ) {
-        let matrix_uniforms = MatrixUniforms {
+        let global_matrix_uniforms = GlobalMatrixUniforms {
             projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
             view_matrix: view_matrix.clone().into(),
         };
-        upload_matrix_buffer(device, queue, &self.matrix_buffer, matrix_uniforms);
+        upload_global_matrix_buffer(
+            device,
+            queue,
+            &self.global_matrix_buffer,
+            global_matrix_uniforms,
+        );
     }
 
     /// Upload geometry on the GPU.
@@ -541,9 +484,11 @@ impl SceneRenderer {
     pub fn add_geometry(
         &mut self,
         device: &wgpu::Device,
-        geometry: &GpuGeometry,
-    ) -> Result<GpuGeometryId, AddGeometryError> {
-        let id = GpuGeometryId(self.geometry_resources_next_id);
+        geometry: &SceneRendererGeometry,
+    ) -> Result<SceneRendererGeometryId, SceneRendererAddGeometryError> {
+        use SceneRendererAddGeometryError as AddGeometryError;
+
+        let id = SceneRendererGeometryId(self.geometry_resources_next_id);
 
         let vertex_data = &geometry.vertex_data[..];
         let vertex_data_count = u32::try_from(vertex_data.len())
@@ -595,7 +540,7 @@ impl SceneRenderer {
     }
 
     /// Remove a previously uploaded geometry from the GPU.
-    pub fn remove_geometry(&mut self, id: GpuGeometryId) {
+    pub fn remove_geometry(&mut self, id: SceneRendererGeometryId) {
         log::debug!("Removing geometry with {}", id.0);
         // Dropping the geometry descriptor here unstreams the buffers from device memory
         self.geometry_resources.remove(&id.0);
@@ -604,24 +549,22 @@ impl SceneRenderer {
     /// Optionally clear color and depth and draw previously uploaded
     /// geometries as one of the commands executed with the `encoder`
     /// to the `color_attachment`.
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_geometry(
         &self,
-        mode: DrawGeometryMode,
-        clear_flags: ClearFlags,
+        clear_flags: SceneRendererClearFlags,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
         msaa_attachment: Option<&wgpu::TextureView>,
         depth_attachment: &wgpu::TextureView,
-        ids: &[GpuGeometryId],
+        ids: &[SceneRendererGeometryId],
     ) {
-        let color_load_op = if clear_flags.contains(ClearFlags::COLOR) {
+        let color_load_op = if clear_flags.contains(SceneRendererClearFlags::COLOR) {
             wgpu::LoadOp::Clear
         } else {
             wgpu::LoadOp::Load
         };
 
-        let depth_load_op = if clear_flags.contains(ClearFlags::DEPTH) {
+        let depth_load_op = if clear_flags.contains(SceneRendererClearFlags::DEPTH) {
             wgpu::LoadOp::Clear
         } else {
             wgpu::LoadOp::Load
@@ -673,72 +616,11 @@ impl SceneRenderer {
         // set... Not sure if this is a bug or not.
         rpass.set_stencil_reference(0);
 
-        // FIXME: The current renderer architecture is enough for our
-        // current needs, but has some serious downsides.
-        //
-        // - We should be doing object sorting. We currently live
-        //   without it as the only transparent objects we have are
-        //   the edges and those do not show mis-blending artifacts,
-        //   because the area that of their fragments that is neither
-        //   fully transparent nor fully opaque is very small. If we
-        //   ever want to support transparency, we need to sort
-        //   objects.
-        //
-        // - We don't mitigate self-transparency issues (because we
-        //   don't experience them much). The simplest mitigation
-        //   would be to draw back and front faces separately, with 2
-        //   different pipelines (for culling settings). There are
-        //   also more advanced techniques, such as:
-        //
-        //   * Weighted Blended Order-Independent Transparency
-        //     http://jcgt.org/published/0002/02/09/
-        //   * Stochastic Transparency
-        //     http://www.cse.chalmers.se/~d00sint/StochasticTransparency_I3D2010.pdf
-        //   * Adaptive Transparency
-        //     https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
+        rpass.set_pipeline(&self.matcap_render_pipeline);
 
-        match mode {
-            DrawGeometryMode::Shaded => {
-                rpass.set_pipeline(&self.render_pipeline_opaque);
-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
+        rpass.set_bind_group(0, &self.global_matrix_bind_group, &[]);
+        rpass.set_bind_group(1, &self.matcap_texture_bind_group, &[]);
 
-                self.record_geometry_drawing(&mut rpass, ids);
-            }
-            DrawGeometryMode::Edges => {
-                rpass.set_pipeline(&self.render_pipeline_transparent);
-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
-
-                self.record_geometry_drawing(&mut rpass, ids);
-            }
-            DrawGeometryMode::ShadedEdges => {
-                rpass.set_pipeline(&self.render_pipeline_opaque);
-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                rpass.set_bind_group(1, &self.shading_bind_group_shaded_edges, &[]);
-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
-
-                self.record_geometry_drawing(&mut rpass, ids);
-            }
-            DrawGeometryMode::ShadedEdgesXray => {
-                rpass.set_pipeline(&self.render_pipeline_opaque);
-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
-
-                self.record_geometry_drawing(&mut rpass, ids);
-
-                rpass.set_pipeline(&self.render_pipeline_transparent);
-                rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
-
-                self.record_geometry_drawing(&mut rpass, ids);
-            }
-        }
-    }
-
-    fn record_geometry_drawing(&self, rpass: &mut wgpu::RenderPass, ids: &[GpuGeometryId]) {
         for id in ids {
             if let Some(geometry) = &self.geometry_resources.get(&id.0) {
                 let (vertex_buffer, vertex_count) = &geometry.vertices;
@@ -764,85 +646,53 @@ struct GeometryResource {
 /// The geometry vertex data as uploaded on the GPU.
 ///
 /// Positions and normals are internally `[f32; 4]` with the last
-/// component filled in as 1.0 or 0.0 for points and vectors
-/// respectively.
+/// component filled in as 0.0 or 1.0 depending on it being a position
+/// or vector.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct GpuGeometryVertex {
-    /// The position of the vertex in world-space. Last component is 1.
+struct GeometryVertex {
+    // These are defined as [f32; 4] for 2 reasons:
+    //
+    // - point vs vector clarity
+    // - padding: vec3 has the same size as vec4 in std140 layout.
+    //   https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL)
+    //
+    // We might decide to pack more useful data than just 0/1 in the
+    // last component later.
     pub position: [f32; 4],
-
-    /// The normal of the vertex in world-space. Last component is 0.
     pub normal: [f32; 4],
-
-    /// Barycentric coordinates of the current vertex within the
-    /// triangle primitive. First bit means `(1, 0, 0)`, second `(0,
-    /// 1, 0)`, and the third `(0, 0, 1)`. The rest of the bits are 0.
-    pub barycentric: u32,
 }
 
 // FIXME: @Optimization Determine u16/u32 dynamically per geometry to
 // save memory
-type GpuGeometryIndex = u32;
+type GeometryIndex = u32;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct MatrixUniforms {
+struct GlobalMatrixUniforms {
     projection_matrix: [[f32; 4]; 4],
     view_matrix: [[f32; 4]; 4],
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct ShadingUniforms {
-    edge_color_and_face_alpha: [f32; 4],
-    shading_mode: ShadingMode,
-}
-
-bitflags! {
-    pub struct ShadingMode: u32 {
-        const SHADED = 0x01;
-        const EDGES = 0x02;
-    }
-}
-
-fn upload_matrix_buffer(
+fn upload_global_matrix_buffer(
     device: &wgpu::Device,
     queue: &mut wgpu::Queue,
-    matrix_buffer: &wgpu::Buffer,
-    matrix_uniforms: MatrixUniforms,
+    global_matrix_buffer: &wgpu::Buffer,
+    global_matrix_uniforms: GlobalMatrixUniforms,
 ) {
-    let matrix_uniforms_size = wgpu_size_of::<MatrixUniforms>();
+    let global_matrix_uniforms_size = wgpu_size_of::<GlobalMatrixUniforms>();
 
     let transfer_buffer = device
         .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-        .fill_from_slice(&[matrix_uniforms]);
-
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-    encoder.copy_buffer_to_buffer(&transfer_buffer, 0, matrix_buffer, 0, matrix_uniforms_size);
-
-    queue.submit(&[encoder.finish()]);
-}
-
-fn upload_shading_buffer(
-    device: &wgpu::Device,
-    queue: &mut wgpu::Queue,
-    shading_buffer: &wgpu::Buffer,
-    shading_uniforms: ShadingUniforms,
-) {
-    let shading_uniforms_size = wgpu_size_of::<ShadingUniforms>();
-
-    let transfer_buffer = device
-        .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-        .fill_from_slice(&[shading_uniforms]);
+        .fill_from_slice(&[global_matrix_uniforms]);
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
     encoder.copy_buffer_to_buffer(
         &transfer_buffer,
         0,
-        shading_buffer,
+        global_matrix_buffer,
         0,
-        shading_uniforms_size,
+        global_matrix_uniforms_size,
     );
 
     queue.submit(&[encoder.finish()]);
@@ -869,123 +719,6 @@ fn apply_wgpu_correction_matrix(projection_matrix: &Matrix4<f32>) -> Matrix4<f32
     wgpu_correction_matrix * projection_matrix
 }
 
-/// Produces an infinite iterator over bit-packed barycentric
-/// coordinates of triangle vertices.
-///
-/// Barycentric coords (1, 0, 0), (0, 1, 0) and (0, 0, 1) are
-/// bit-packed into a single u32 to save space (possibly, depending on
-/// attribute data layout and alignment). They are unpacked on the
-/// vertex shader. Usage is to zip this iterator with other data
-/// iterators to produce vertex attributes for renderer geometry.
-fn barycentric_sequence_iter() -> impl Iterator<Item = u32> {
-    iter::successors(Some(0x01), |predecessor| match predecessor {
-        0x01 => Some(0x02),
-        0x02 => Some(0x04),
-        0x04 => Some(0x01),
-        _ => unreachable!(),
-    })
-}
-
-#[allow(clippy::too_many_arguments)]
-fn create_pipeline(
-    device: &wgpu::Device,
-    vs_module: &wgpu::ShaderModule,
-    fs_module: &wgpu::ShaderModule,
-    matrix_bind_group_layout: &wgpu::BindGroupLayout,
-    shading_bind_group_layout: &wgpu::BindGroupLayout,
-    matcap_texture_bind_group_layout: &wgpu::BindGroupLayout,
-    support_transparency: bool,
-    options: Options,
-) -> wgpu::RenderPipeline {
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        bind_group_layouts: &[
-            &matrix_bind_group_layout,
-            &shading_bind_group_layout,
-            &matcap_texture_bind_group_layout,
-        ],
-    });
-
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        layout: &pipeline_layout,
-        vertex_stage: wgpu::ProgrammableStageDescriptor {
-            module: vs_module,
-            entry_point: "main",
-        },
-        fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-            module: fs_module,
-            entry_point: "main",
-        }),
-        // FIXME: @Correctness Draw backfaces differently.
-        //
-        // Default rasterization state means CullMode::None. We don't
-        // cull faces yet, because we work with potentially non-CCW
-        // geometries. We might implement special rendering for CW
-        // faces one day.
-        rasterization_state: None,
-        primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-        color_states: &[wgpu::ColorStateDescriptor {
-            format: options.output_color_attachment_format,
-            color_blend: if support_transparency {
-                wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                }
-            } else {
-                wgpu::BlendDescriptor::REPLACE
-            },
-            alpha_blend: if support_transparency {
-                wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                }
-            } else {
-                wgpu::BlendDescriptor::REPLACE
-            },
-            write_mask: wgpu::ColorWrite::ALL,
-        }],
-        depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
-            format: options.output_depth_attachment_format,
-            depth_write_enabled: !support_transparency,
-            depth_compare: if support_transparency {
-                wgpu::CompareFunction::Always
-            } else {
-                wgpu::CompareFunction::Less
-            },
-            stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-            stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-            stencil_read_mask: 0,
-            stencil_write_mask: 0,
-        }),
-        index_format: wgpu::IndexFormat::Uint32,
-        vertex_buffers: &[wgpu::VertexBufferDescriptor {
-            stride: wgpu_size_of::<GpuGeometryVertex>(),
-            step_mode: wgpu::InputStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttributeDescriptor {
-                    offset: 0,
-                    format: wgpu::VertexFormat::Float4,
-                    shader_location: 0,
-                },
-                wgpu::VertexAttributeDescriptor {
-                    offset: wgpu_size_of::<[f32; 4]>(), // 4 bytes * 4 components * 1 attrib
-                    format: wgpu::VertexFormat::Float4,
-                    shader_location: 1,
-                },
-                wgpu::VertexAttributeDescriptor {
-                    offset: wgpu_size_of::<[f32; 4]>() * 2, // 4 bytes * 4 components * 2 attribs
-                    format: wgpu::VertexFormat::Uint,
-                    shader_location: 2,
-                },
-            ],
-        }],
-        sample_count: options.sample_count,
-        sample_mask: !0,
-        alpha_to_coverage_enabled: false,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use crate::geometry::TriangleFace;
@@ -1010,7 +743,7 @@ mod tests {
         (vertex_positions, vertex_normals)
     }
 
-    fn triangle_indexed() -> (Vec<GpuGeometryIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
+    fn triangle_indexed() -> (Vec<GeometryIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
         let (vertex_positions, vertex_normals) = triangle();
         let indices = vec![0, 1, 2];
 
@@ -1064,25 +797,22 @@ mod tests {
     #[test]
     fn test_renderer_geometry_from_positions_and_normals() {
         let (positions, normals) = triangle();
-        let geometry = GpuGeometry::from_positions_and_normals(positions, normals);
+        let geometry = SceneRendererGeometry::from_positions_and_normals(positions, normals);
 
         assert_eq!(
             geometry.vertex_data,
             vec![
-                GpuGeometryVertex {
+                GeometryVertex {
                     position: [-0.3, -0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
-                    barycentric: 0x01,
                 },
-                GpuGeometryVertex {
+                GeometryVertex {
                     position: [0.3, -0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
-                    barycentric: 0x02,
                 },
-                GpuGeometryVertex {
+                GeometryVertex {
                     position: [0.0, 0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
-                    barycentric: 0x04,
                 },
             ]
         );
@@ -1092,24 +822,14 @@ mod tests {
     #[test]
     fn test_renderer_geometry_from_positions_and_normals_indexed() {
         let (indices, positions, normals) = triangle_indexed();
-        let geometry = GpuGeometry::from_positions_and_normals_indexed(indices, positions, normals);
+        let geometry =
+            SceneRendererGeometry::from_positions_and_normals_indexed(indices, positions, normals);
 
+        #[rustfmt::skip]
         let expected_vertex_data = vec![
-            GpuGeometryVertex {
-                position: [-0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-                barycentric: 0x01,
-            },
-            GpuGeometryVertex {
-                position: [0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-                barycentric: 0x02,
-            },
-            GpuGeometryVertex {
-                position: [0.0, 0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-                barycentric: 0x04,
-            },
+            GeometryVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
         ];
 
         assert_eq!(geometry.vertex_data, expected_vertex_data);
@@ -1120,14 +840,17 @@ mod tests {
     #[should_panic(expected = "Per-vertex data must be same length")]
     fn test_renderer_geometry_from_positions_and_normals_panics_on_different_length_data() {
         let (_, normals) = triangle();
-        GpuGeometry::from_positions_and_normals(vec![Point3::new(1.0, 1.0, 1.0)], normals);
+        let _geometry = SceneRendererGeometry::from_positions_and_normals(
+            vec![Point3::new(1.0, 1.0, 1.0)],
+            normals,
+        );
     }
 
     #[test]
     #[should_panic(expected = "Per-vertex data must be same length")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_different_length_data() {
         let (indices, positions, _) = triangle_indexed();
-        GpuGeometry::from_positions_and_normals_indexed(
+        let _geometry = SceneRendererGeometry::from_positions_and_normals_indexed(
             indices,
             positions,
             vec![Vector3::new(1.0, 1.0, 1.0)],
@@ -1138,57 +861,49 @@ mod tests {
     #[should_panic(expected = "Vertex positions must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_positions() {
         let (_, normals) = triangle();
-        GpuGeometry::from_positions_and_normals(vec![], normals);
+        let _geometry = SceneRendererGeometry::from_positions_and_normals(vec![], normals);
     }
 
     #[test]
     #[should_panic(expected = "Vertex normals must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_positions() {
         let (positions, _) = triangle();
-        GpuGeometry::from_positions_and_normals(positions, vec![]);
+        let _geometry = SceneRendererGeometry::from_positions_and_normals(positions, vec![]);
     }
 
     #[test]
     #[should_panic(expected = "Vertex positions must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_normals() {
         let (indices, _, normals) = triangle_indexed();
-        GpuGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
+        let _geometry =
+            SceneRendererGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
     }
 
     #[test]
     #[should_panic(expected = "Vertex normals must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_normals() {
         let (indices, positions, _) = triangle_indexed();
-        GpuGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
+        let _geometry =
+            SceneRendererGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
     }
 
     #[test]
     #[should_panic(expected = "Indices must not be empty")]
     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_indices() {
         let (_, vertices, normals) = triangle_indexed();
-        GpuGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
+        let _geometry =
+            SceneRendererGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
     }
 
     #[test]
     fn test_renderer_geometry_from_geometry_preserves_already_same_len_geometry() {
-        let geometry = GpuGeometry::from_geometry(&triangle_geometry_same_len());
+        let geometry = SceneRendererGeometry::from_geometry(&triangle_geometry_same_len());
 
+        #[rustfmt::skip]
         let expected_vertex_data = vec![
-            GpuGeometryVertex {
-                position: [-0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-                barycentric: 0x01,
-            },
-            GpuGeometryVertex {
-                position: [0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-                barycentric: 0x02,
-            },
-            GpuGeometryVertex {
-                position: [0.0, 0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-                barycentric: 0x04,
-            },
+            GeometryVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
         ];
 
         assert_eq!(geometry.vertex_data, expected_vertex_data);
@@ -1197,24 +912,13 @@ mod tests {
 
     #[test]
     fn test_renderer_geometry_from_geometry_duplicates_normals_in_var_len_geometry() {
-        let geometry = GpuGeometry::from_geometry(&triangle_geometry_var_len());
+        let geometry = SceneRendererGeometry::from_geometry(&triangle_geometry_var_len());
 
+        #[rustfmt::skip]
         let expected_vertex_data = vec![
-            GpuGeometryVertex {
-                position: [-0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-                barycentric: 0x01,
-            },
-            GpuGeometryVertex {
-                position: [0.3, -0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-                barycentric: 0x02,
-            },
-            GpuGeometryVertex {
-                position: [0.0, 0.5, 0.0, 1.0],
-                normal: [0.0, 0.0, 1.0, 0.0],
-                barycentric: 0x04,
-            },
+            GeometryVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+            GeometryVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
         ];
 
         assert_eq!(geometry.vertex_data, expected_vertex_data);

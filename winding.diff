@@ -1,0 +1,2073 @@
+diff --git a/src/geometry.rs b/src/geometry.rs
+index 3f5dbb7..25f1857 100644
+--- a/src/geometry.rs
++++ b/src/geometry.rs
+@@ -412,7 +412,7 @@ impl fmt::Display for Face {
+ 
+ /// A triangular face. Contains indices to other geometry data, such
+ /// as vertices and normals.
+-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++#[derive(Debug, Clone, Copy, Eq)]
+ pub struct TriangleFace {
+     pub vertices: (u32, u32, u32),
+     pub normals: (u32, u32, u32),
+@@ -475,8 +475,31 @@ impl TriangleFace {
+ 
+     /// Does the face contain the specific unoriented edge
+     pub fn contains_unoriented_edge(self, unoriented_edge: UnorientedEdge) -> bool {
+-        let [o_e_0, o_e_1, o_e_2] = self.to_unoriented_edges();
+-        o_e_0 == unoriented_edge || o_e_1 == unoriented_edge || o_e_2 == unoriented_edge
++        let [u_e_0, u_e_1, u_e_2] = self.to_unoriented_edges();
++        u_e_0 == unoriented_edge || u_e_1 == unoriented_edge || u_e_2 == unoriented_edge
++    }
++
++    /// Does the face contain the specific oriented edge
++    pub fn contains_oriented_edge(self, oriented_edge: OrientedEdge) -> bool {
++        let [o_e_0, o_e_1, o_e_2] = self.to_oriented_edges();
++        o_e_0 == oriented_edge || o_e_1 == oriented_edge || o_e_2 == oriented_edge
++    }
++
++    /// Returns a the same face with reverted vertex and normal winding
++    pub fn to_reverted(&self) -> TriangleFace {
++        TriangleFace::new_separate(
++            self.vertices.2,
++            self.vertices.1,
++            self.vertices.0,
++            self.normals.2,
++            self.normals.1,
++            self.normals.0,
++        )
++    }
++
++    /// Checks if the other face is the same ith a reverted vertex and normal winding
++    pub fn is_reverted(&self, other: Self) -> bool {
++        self.to_reverted() == other
+     }
+ }
+ 
+@@ -486,6 +509,29 @@ impl From<(u32, u32, u32)> for TriangleFace {
+     }
+ }
+ 
++impl PartialEq for TriangleFace {
++    fn eq(&self, other: &Self) -> bool {
++        (self.vertices.0 == other.vertices.0
++            && self.vertices.1 == other.vertices.1
++            && self.vertices.2 == other.vertices.2
++            && self.normals.0 == other.normals.0
++            && self.normals.1 == other.normals.1
++            && self.normals.2 == other.normals.2)
++            || (self.vertices.0 == other.vertices.1
++                && self.vertices.1 == other.vertices.2
++                && self.vertices.2 == other.vertices.0
++                && self.normals.0 == other.normals.1
++                && self.normals.1 == other.normals.2
++                && self.normals.2 == other.normals.0)
++            || (self.vertices.0 == other.vertices.2
++                && self.vertices.1 == other.vertices.0
++                && self.vertices.2 == other.vertices.1
++                && self.normals.0 == other.normals.2
++                && self.normals.1 == other.normals.0
++                && self.normals.2 == other.normals.1)
++    }
++}
++
+ impl fmt::Display for TriangleFace {
+     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+         write!(
+@@ -523,6 +569,10 @@ impl OrientedEdge {
+     pub fn contains_vertex(self, vertex_index: u32) -> bool {
+         self.vertices.0 == vertex_index || self.vertices.1 == vertex_index
+     }
++
++    pub fn to_reverted(&self) -> Self {
++        OrientedEdge::new(self.vertices.1, self.vertices.0)
++    }
+ }
+ 
+ /// Implements orientation indifferent hash and equal methods
+@@ -1742,4 +1792,109 @@ mod tests {
+ 
+         assert!(geometry.has_no_orphan_vertices());
+     }
++
++    #[test]
++    fn test_triangle_face_to_reverted_should_pass_because_compared_to_reverted() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++        let face_reverted_correct = TriangleFace::new_separate(3, 2, 1, 6, 5, 4);
++
++        let face_reverted_calculated = face.to_reverted();
++        assert_eq!(face_reverted_correct, face_reverted_calculated);
++    }
++
++    #[test]
++    fn test_triangle_face_to_reverted_should_fail_because_compared_to_same() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++
++        let face_reverted_calculated = face.to_reverted();
++        assert_ne!(face, face_reverted_calculated);
++    }
++
++    #[test]
++    fn test_triangle_face_to_reverted_should_pass_because_compared_to_reverted_and_shifted() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++        let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
++
++        let face_reverted_calculated = face.to_reverted();
++        assert_eq!(face_reverted_correct_shifted, face_reverted_calculated);
++    }
++
++    #[test]
++    fn test_triangle_face_is_reverted_should_should_return_true() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++        let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
++
++        assert!(face_reverted_correct_shifted.is_reverted(face));
++    }
++
++    #[test]
++    fn test_triangle_face_is_reverted_should_should_return_false() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++
++        assert!(!face.is_reverted(face));
++    }
++
++    #[test]
++    fn test_triangle_face_contains_oriented_edge_returns_true_because_contains_all() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++        let oriented_edge_1 = OrientedEdge::new(1, 2);
++        let oriented_edge_2 = OrientedEdge::new(2, 3);
++        let oriented_edge_3 = OrientedEdge::new(3, 1);
++
++        assert!(face.contains_oriented_edge(oriented_edge_1));
++        assert!(face.contains_oriented_edge(oriented_edge_2));
++        assert!(face.contains_oriented_edge(oriented_edge_3));
++    }
++
++    #[test]
++    fn test_triangle_face_contains_oriented_edge_returns_false_because_contains_all_reverted() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++        let oriented_edge_1 = OrientedEdge::new(2, 1);
++        let oriented_edge_2 = OrientedEdge::new(3, 2);
++        let oriented_edge_3 = OrientedEdge::new(1, 3);
++
++        assert!(!face.contains_oriented_edge(oriented_edge_1));
++        assert!(!face.contains_oriented_edge(oriented_edge_2));
++        assert!(!face.contains_oriented_edge(oriented_edge_3));
++    }
++
++    #[test]
++    fn test_triangle_face_contains_oriented_edge_returns_false_because_different() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++        let oriented_edge = OrientedEdge::new(4, 5);
++
++        assert!(!face.contains_oriented_edge(oriented_edge));
++    }
++
++    #[test]
++    fn test_triangle_face_contains_unoriented_edge_returns_true_because_contains_all() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++        let unoriented_edge_1 = UnorientedEdge(OrientedEdge::new(1, 2));
++        let unoriented_edge_2 = UnorientedEdge(OrientedEdge::new(2, 3));
++        let unoriented_edge_3 = UnorientedEdge(OrientedEdge::new(3, 1));
++
++        assert!(face.contains_unoriented_edge(unoriented_edge_1));
++        assert!(face.contains_unoriented_edge(unoriented_edge_2));
++        assert!(face.contains_unoriented_edge(unoriented_edge_3));
++    }
++
++    #[test]
++    fn test_triangle_face_contains_unoriented_edge_returns_true_because_contains_all_reverted() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++        let unoriented_edge_1 = UnorientedEdge(OrientedEdge::new(2, 1));
++        let unoriented_edge_2 = UnorientedEdge(OrientedEdge::new(3, 2));
++        let unoriented_edge_3 = UnorientedEdge(OrientedEdge::new(1, 3));
++
++        assert!(face.contains_unoriented_edge(unoriented_edge_1));
++        assert!(face.contains_unoriented_edge(unoriented_edge_2));
++        assert!(face.contains_unoriented_edge(unoriented_edge_3));
++    }
++
++    #[test]
++    fn test_triangle_face_contains_unoriented_edge_returns_false_because_different() {
++        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
++        let unoriented_edge = UnorientedEdge(OrientedEdge::new(4, 5));
++
++        assert!(!face.contains_unoriented_edge(unoriented_edge));
++    }
+ }
+diff --git a/src/interpreter/value.rs b/src/interpreter/value.rs
+index 71ab161..669d3a3 100644
+--- a/src/interpreter/value.rs
++++ b/src/interpreter/value.rs
+@@ -191,6 +191,17 @@ impl Value {
+             _ => panic!("Value not geometry"),
+         }
+     }
++
++    /// Get the refcounted value if geometry, otherwise panic.
++    ///
++    /// # Panics
++    /// This function panics when value is not a geometry.
++    pub fn unwrap_refcounted_geometry(&self) -> Arc<Geometry> {
++        match self {
++            Value::Geometry(geometry_ptr) => Arc::clone(geometry_ptr),
++            _ => panic!("Value not geometry"),
++        }
++    }
+ }
+ 
+ impl fmt::Display for Value {
+diff --git a/src/interpreter_funcs.rs b/src/interpreter_funcs.rs
+index 6f26e69..e2e8b69 100644
+--- a/src/interpreter_funcs.rs
++++ b/src/interpreter_funcs.rs
+@@ -5,8 +5,10 @@ use std::sync::Arc;
+ use nalgebra::base::Vector3;
+ 
+ use crate::convert::cast_u32;
++use crate::edge_analysis;
+ use crate::geometry;
+ use crate::interpreter::{Func, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
++use crate::mesh_analysis;
+ use crate::mesh_smoothing;
+ use crate::mesh_tools;
+ use crate::mesh_topology_analysis;
+@@ -203,6 +205,69 @@ impl Func for FuncImplSeparateIsolatedMeshes {
+     }
+ }
+ 
++pub struct FuncImplRevertMeshFaces;
++impl Func for FuncImplRevertMeshFaces {
++    fn flags(&self) -> FuncFlags {
++        FuncFlags::PURE
++    }
++    fn param_info(&self) -> &[ParamInfo] {
++        &[ParamInfo {
++            ty: Ty::Geometry,
++            optional: false,
++        }]
++    }
++
++    fn return_ty(&self) -> Ty {
++        Ty::Geometry
++    }
++
++    fn call(&self, args: &[Value]) -> Value {
++        let geometry = args[0].unwrap_geometry();
++
++        let value = mesh_tools::revert_mesh_faces(geometry);
++        Value::Geometry(Arc::new(value))
++    }
++}
++
++pub struct FuncImplSynchronizeMeshFaces;
++impl Func for FuncImplSynchronizeMeshFaces {
++    fn flags(&self) -> FuncFlags {
++        FuncFlags::PURE
++    }
++    fn param_info(&self) -> &[ParamInfo] {
++        &[ParamInfo {
++            ty: Ty::Geometry,
++            optional: false,
++        }]
++    }
++
++    fn return_ty(&self) -> Ty {
++        Ty::Geometry
++    }
++
++    fn call(&self, args: &[Value]) -> Value {
++        let geometry = args[0].unwrap_refcounted_geometry();
++
++        let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
++        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
++        let unoriented_edges: Vec<_> = geometry.unoriented_edges_iter().collect();
++        let edge_to_face =
++            mesh_topology_analysis::edge_to_face_topology(&geometry, &unoriented_edges);
++
++        if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
++            && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
++        {
++            Value::Geometry(Arc::new(mesh_tools::synchronize_mesh_winding(
++                &geometry,
++                &unoriented_edges,
++                &edge_to_face,
++            )))
++        } else {
++            Value::Geometry(geometry)
++        }
++    }
++}
++
+ // IMPORTANT: Do not change these IDs, ever! When adding a new
+ // function, always create a new, unique function identifier for it.
+ 
+@@ -211,6 +276,8 @@ pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
+ pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
+ pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
+ pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
++pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(5);
++pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(6);
+ 
+ /// The global set of function definitions available to the
+ /// interpreter and it's clients.
+@@ -228,6 +295,11 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
+         FUNC_ID_SEPARATE_ISOLATED_MESHES,
+         Box::new(FuncImplSeparateIsolatedMeshes),
+     );
++    funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncImplRevertMeshFaces));
++    funcs.insert(
++        FUNC_ID_SYNCHRONIZE_MESH_FACES,
++        Box::new(FuncImplSynchronizeMeshFaces),
++    );
+ 
+     funcs
+ }
+diff --git a/src/lib.rs b/src/lib.rs
+index 1b637e0..cc73dde 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -10,7 +10,7 @@ use crate::input::InputManager;
+ use crate::interpreter::ast;
+ use crate::interpreter_funcs as funcs;
+ use crate::interpreter_server::{InterpreterRequest, InterpreterResponse, InterpreterServer};
+-use crate::renderer::{DrawGeometryMode, GpuGeometry, Options as RendererOptions, Renderer};
++use crate::renderer::{Renderer, RendererOptions, SceneRendererGeometry};
+ use crate::ui::Ui;
+ 
+ pub mod geometry;
+@@ -85,7 +85,6 @@ pub fn init_and_run(options: Options) -> ! {
+         },
+     );
+ 
+-    let mut renderer_draw_geometry_mode = DrawGeometryMode::Shaded;
+     let mut renderer = Renderer::new(
+         &window,
+         &camera.projection_matrix(),
+@@ -123,7 +122,7 @@ pub fn init_and_run(options: Options) -> ! {
+ 
+     let mut scene_renderer_geometry_ids = Vec::with_capacity(scene_geometries.len());
+     for geometry in &scene_geometries {
+-        let renderer_geometry = GpuGeometry::from_geometry(geometry);
++        let renderer_geometry = SceneRendererGeometry::from_geometry(geometry);
+         let renderer_geometry_id = renderer
+             .add_scene_geometry(&renderer_geometry)
+             .expect("Failed to add geometry to renderer");
+@@ -207,7 +206,8 @@ pub fn init_and_run(options: Options) -> ! {
+                             // ... and add everything we found to it
+                             for model in models {
+                                 let geometry = model.geometry;
+-                                let renderer_geometry = GpuGeometry::from_geometry(&geometry);
++                                let renderer_geometry =
++                                    SceneRendererGeometry::from_geometry(&geometry);
+                                 let renderer_geometry_id = renderer
+                                     .add_scene_geometry(&renderer_geometry)
+                                     .expect("Failed to add geometry to renderer");
+@@ -309,7 +309,8 @@ pub fn init_and_run(options: Options) -> ! {
+ 
+                             for (_, value) in &value_set.used_values {
+                                 let geometry = value.unwrap_geometry().clone();
+-                                let renderer_geometry = GpuGeometry::from_geometry(&geometry);
++                                let renderer_geometry =
++                                    SceneRendererGeometry::from_geometry(&geometry);
+                                 let renderer_geometry_id =
+                                     renderer.add_scene_geometry(&renderer_geometry).unwrap();
+ 
+@@ -319,7 +320,8 @@ pub fn init_and_run(options: Options) -> ! {
+ 
+                             for (_, value) in &value_set.unused_values {
+                                 let geometry = value.unwrap_geometry().clone();
+-                                let renderer_geometry = GpuGeometry::from_geometry(&geometry);
++                                let renderer_geometry =
++                                    SceneRendererGeometry::from_geometry(&geometry);
+                                 let renderer_geometry_id =
+                                     renderer.add_scene_geometry(&renderer_geometry).unwrap();
+ 
+@@ -364,16 +366,14 @@ pub fn init_and_run(options: Options) -> ! {
+                 // simplicity.
+                 renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
+ 
+-                ui_frame.draw_renderer_settings_window(&mut renderer_draw_geometry_mode);
++                #[cfg(debug_assertions)]
++                ui_frame.draw_fps_window();
+ 
+                 let imgui_draw_data = ui_frame.render(&window);
+ 
+                 let mut render_pass = renderer.begin_render_pass();
+ 
+-                render_pass.draw_geometry(
+-                    &scene_renderer_geometry_ids[..],
+-                    renderer_draw_geometry_mode,
+-                );
++                render_pass.draw_geometry(&scene_renderer_geometry_ids[..]);
+                 render_pass.draw_ui(imgui_draw_data);
+ 
+                 render_pass.submit();
+diff --git a/src/mesh_analysis.rs b/src/mesh_analysis.rs
+index 85bc996..3699aea 100644
+--- a/src/mesh_analysis.rs
++++ b/src/mesh_analysis.rs
+@@ -67,6 +67,12 @@ pub fn non_manifold_edges<'a>(
+         })
+ }
+ 
++// Checks if mesh contians onlu manifold or border edges
++pub fn is_mesh_manifold<'a>(edge_sharing: &'a EdgeSharingMap) -> bool {
++    let non_manifold_edges_vec: Vec<_> = non_manifold_edges(edge_sharing).collect();
++    non_manifold_edges_vec.len() == 0
++}
++
+ /// Finds border vertex indices in a mesh edge collection
+ ///
+ /// A vertex is border when its edge's valency is 1
+@@ -776,6 +782,36 @@ mod tests {
+         assert_eq!(oriented_edges_non_manifold_check.len(), 3);
+     }
+ 
++    #[test]
++    fn test_mesh_analysis_manifold_mesh_returns_false_because_non_manifold() {
++        let (faces, vertices) = non_manifold_shape();
++        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
++            faces.clone(),
++            vertices.clone(),
++            NormalStrategy::Sharp,
++        );
++
++        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
++        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
++
++        assert!(!is_mesh_manifold(&edge_sharing_map));
++    }
++
++    #[test]
++    fn test_mesh_analysis_manifold_mesh_returns_true_because_manifold() {
++        let (faces, vertices) = torus();
++        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
++            faces.clone(),
++            vertices.clone(),
++            NormalStrategy::Sharp,
++        );
++
++        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
++        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
++
++        assert!(is_mesh_manifold(&edge_sharing_map));
++    }
++
+     #[test]
+     fn test_mesh_analysis_border_vertex_indices() {
+         let (faces, vertices) = quad();
+diff --git a/src/mesh_tools.rs b/src/mesh_tools.rs
+index d19c020..389805c 100644
+--- a/src/mesh_tools.rs
++++ b/src/mesh_tools.rs
+@@ -2,15 +2,165 @@ use std::collections::{HashMap, HashSet};
+ 
+ use smallvec::SmallVec;
+ 
+-use crate::convert::cast_usize;
+-use crate::geometry::Geometry;
+-use crate::mesh_topology_analysis::face_to_face_topology;
++use crate::convert::{cast_u32, cast_usize};
++use crate::geometry::{Face, Geometry, OrientedEdge, TriangleFace, UnorientedEdge};
++use crate::mesh_topology_analysis;
++
++/// Make sure all the faces are oriented the same way - have the same winding
++/// (vertex order).
++///
++/// This function crawls the mesh geometry and flips all the faces, which are
++/// not facing the same way as the previous faces in the process, starting with
++/// the first face in the list. As a result, the entre mesh can end up facing
++/// inwards (be entirely reverted). At the moment we have no tools to detect
++/// such a case automatically, so we need to rely on the user to check it and
++/// potentially revert winding of the entire mesh.
++///
++/// The algorithm relies on the fact that in a proper non-manifold mesh, each
++/// oriented edge has exactly one (for watertight mesh geometry) or none (for
++/// mesh patches) counter-edge oriented the opposite direction. It crawls the
++/// geometry and if a face neighboring the current one doesn't have the proper
++/// winding, it's being reverted and only then triggers checking its own
++/// neighbors.
++///
++/// This method, doesn't flip the normals associated with the face vertices, as
++/// there is no unambiguous way to do so automatically.
++
++// FIXME: Flip also vertex normals if the visual/practical tests prove it's
++// needed
++pub fn synchronize_mesh_winding(
++    geometry: &Geometry,
++    unoriented_edges: &[UnorientedEdge],
++    edge_to_face_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
++) -> Geometry {
++    // All faces in the original mesh geometry
++    let original_triangle_faces: Vec<_> = geometry
++        .faces()
++        .iter()
++        .map(|face| match face {
++            Face::Triangle(f) => *f,
++        })
++        .collect();
++
++    // item index = face index; TRUE = the face was already checked, FALSE = the
++    // face hasn't yet been checked
++    let mut face_treatment_pattern = vec![false; original_triangle_faces.len()];
++
++    // Faces to be checked for winding, determined by the orientation of the
++    // OrientedEdge of the neighbor, which triggered the check. Current face has
++    // to contain a reverted edge to have the proper winding, otherwise it has
++    // to be reverted.
++    let mut edge_face_stack: Vec<(OrientedEdge, u32)> =
++        Vec::with_capacity(original_triangle_faces.len() / 2);
++
++    // Faces already checked and reverted if needed => all the faces in this
++    // list have the same vertex winding.
++    let mut synchronized_triangle_faces: Vec<TriangleFace> =
++        Vec::with_capacity(original_triangle_faces.len());
++
++    // Synchronize faces in all mesh geometry triangles
++    while synchronized_triangle_faces.len() < original_triangle_faces.len() {
++        // Start with the first untreated face in the list of the original mesh
++        // geometry faces. The winding of this face also determines the winding
++        // of the rest of the mesh geometry.
++        let mut current_face_index: u32 = 0;
++        while face_treatment_pattern[cast_usize(current_face_index)] {
++            current_face_index += 1;
++        }
++
++        face_treatment_pattern[cast_usize(current_face_index)] = true;
++        let mut current_test_edge: OrientedEdge =
++            original_triangle_faces[cast_usize(current_face_index)].to_oriented_edges()[0];
++
++        // Put the first edge-face couple to the stack
++        edge_face_stack.push((current_test_edge, current_face_index));
++
++        // Check and revert (if needed) faces in the stack as long as there is any
++        while !edge_face_stack.is_empty() {
++            // Get ready for the next iteration.
++            let next_edge_face = edge_face_stack.pop().expect("Popping from an empty vector");
++            current_test_edge = next_edge_face.0;
++            current_face_index = next_edge_face.1;
++
++            let current_face = original_triangle_faces[cast_usize(current_face_index)];
++            // Use if contains reverted edge, if not, revert and use. It should be
++            // safe to presume the face contains the edge one way or another because
++            // it's given by the topology generator.
++            let proper_current_face = if current_face.contains_oriented_edge(current_test_edge) {
++                current_face
++            } else {
++                current_face.to_reverted()
++            };
++            synchronized_triangle_faces.push(proper_current_face);
++
++            // Edge-to-index map for faster lookup
++            let mut unoriented_edge_index_map: HashMap<UnorientedEdge, u32> = HashMap::new();
++            for (unoriented_edge_index, unoriented_edge) in unoriented_edges.iter().enumerate() {
++                unoriented_edge_index_map.insert(*unoriented_edge, cast_u32(unoriented_edge_index));
++            }
++
++            // Find the indices of edges of the current face in the list of edges,
++            // from which the topology was created
++            let face_unoriented_edges = proper_current_face.to_unoriented_edges();
++            let face_unoriented_edge_indices =
++                face_unoriented_edges.iter().map(|unoriented_edge| {
++                    unoriented_edge_index_map
++                        .get(unoriented_edge)
++                        .expect("The current edge is not found in the edge collection")
++                });
++
++            // Convert into oriented edges so that the neighboring faces can check
++            // for correct winding
++            let face_oriented_edges: Vec<_> =
++                face_unoriented_edges.iter().map(|u_e| u_e.0).collect();
++            // For each face edge index
++            for (i, face_unoriented_edge_index) in face_unoriented_edge_indices.enumerate() {
++                // get the actual oriented edge
++                let face_oriented_edge = face_oriented_edges[i];
++                // and try to find it in the edge-to-face topology.
++                if let Some(edge_in_faces) = edge_to_face_topology.get(&face_unoriented_edge_index)
++                {
++                    // If it exists, iterate the faces containing the edge
++                    for face_index in edge_in_faces {
++                        // and if it was not already added to the stack or even checked
++                        if !face_treatment_pattern[cast_usize(*face_index)] {
++                            // add it to the stack with the expected edge orientation
++                            edge_face_stack.push((face_oriented_edge.to_reverted(), *face_index));
++                            // and mark it treated.
++                            face_treatment_pattern[cast_usize(*face_index)] = true;
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    // Rebuild the mesh geometry with the new faces and original faces and normals.
++    Geometry::from_triangle_faces_with_vertices_and_normals(
++        synchronized_triangle_faces,
++        geometry.vertices().to_vec(),
++        geometry.normals().to_vec(),
++    )
++}
++
++/// Reverts vertex and normal winding of all faces in the mesh geometry and
++/// returns a reverted mesh geometry
++pub fn revert_mesh_faces(geometry: &Geometry) -> Geometry {
++    let reverted_faces = geometry.faces().iter().map(|face| match face {
++        Face::Triangle(t_f) => t_f.to_reverted(),
++    });
++    Geometry::from_triangle_faces_with_vertices_and_normals(
++        reverted_faces,
++        geometry.vertices().to_vec(),
++        geometry.normals().to_vec(),
++    )
++}
+ 
+ /// Crawls the geometry to find continuous patches of geometry.
+ /// Returns a vector of new separated geometries.
+ pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
+-    let face_to_face = face_to_face_topology(geometry);
+-    let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
++    let face_to_face = mesh_topology_analysis::face_to_face_topology(geometry);
++    let mut available_face_indices: HashSet<u32> = face_to_face.keys().cloned().collect();
+     let mut patches: Vec<Geometry> = Vec::new();
+ 
+     while let Some(first_face_index) = available_face_indices.iter().next() {
+@@ -118,6 +268,32 @@ mod tests {
+         Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+     }
+ 
++    fn tessellated_triangle_with_island_geometry_with_flipped_face() -> Geometry {
++        let vertices = vec![
++            Point3::new(-2.0, -2.0, 0.0),
++            Point3::new(0.0, -2.0, 0.0),
++            Point3::new(2.0, -2.0, 0.0),
++            Point3::new(-1.0, 0.0, 0.0),
++            Point3::new(1.0, 0.0, 0.0),
++            Point3::new(0.0, 2.0, 0.0),
++            Point3::new(-1.0, 0.0, 1.0),
++            Point3::new(1.0, 0.0, 1.0),
++            Point3::new(0.0, 2.0, 1.0),
++        ];
++
++        let vertex_normals = vec![n(0.0, 0.0, 1.0)];
++
++        let faces = vec![
++            TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
++            TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
++            TriangleFace::new_separate(2, 4, 1, 0, 0, 0),
++            TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
++            TriangleFace::new_separate(6, 7, 8, 0, 0, 0),
++        ];
++
++        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
++    }
++
+     fn triangular_island_geometry() -> Geometry {
+         let vertices = vec![
+             Point3::new(-1.0, 0.0, 1.0),
+@@ -185,4 +361,40 @@ mod tests {
+             ));
+         }
+     }
++
++    #[test]
++    fn test_mesh_tools_revert_mesh_faces() {
++        let test_geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
++
++        let calculated_geometry = revert_mesh_faces(&test_geometry);
++
++        assert_eq!(
++            test_geometry.faces().len(),
++            calculated_geometry.faces().len()
++        );
++
++        assert!(calculated_geometry.faces().iter().all(|face| match face {
++            Face::Triangle(f) => test_geometry
++                .faces()
++                .iter()
++                .any(|other_face| match other_face {
++                    Face::Triangle(o_f) => o_f.is_reverted(*f),
++                }),
++        }));
++    }
++
++    #[test]
++    fn test_mesh_tools_synchronize_mesh_winding() {
++        let test_geometry = tessellated_triangle_with_island_geometry_with_flipped_face();
++        let test_geometry_correct = tessellated_triangle_with_island_geometry();
++
++        let unoriented_edges: Vec<_> = test_geometry.unoriented_edges_iter().collect();
++        let edge_to_face =
++            mesh_topology_analysis::edge_to_face_topology(&test_geometry, &unoriented_edges);
++
++        let calculated_geometry =
++            synchronize_mesh_winding(&test_geometry, &unoriented_edges, &edge_to_face);
++
++        assert_eq!(test_geometry_correct, calculated_geometry);
++    }
+ }
+diff --git a/src/renderer/imgui_renderer.rs b/src/renderer/imgui_renderer.rs
+index d534617..3fee45e 100644
+--- a/src/renderer/imgui_renderer.rs
++++ b/src/renderer/imgui_renderer.rs
+@@ -8,12 +8,12 @@ use crate::include_shader;
+ use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
+ 
+ #[derive(Debug, Clone)]
+-pub enum Error {
++pub enum ImguiRendererError {
+     BadTexture(imgui::TextureId),
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+-pub struct Options {
++pub struct ImguiRendererOptions {
+     pub sample_count: u32,
+     pub output_color_attachment_format: wgpu::TextureFormat,
+ }
+@@ -32,8 +32,8 @@ impl ImguiRenderer {
+         mut imgui_font_atlas: imgui::FontAtlasRefMut,
+         device: &wgpu::Device,
+         queue: &mut wgpu::Queue,
+-        options: Options,
+-    ) -> Result<ImguiRenderer, Error> {
++        options: ImguiRendererOptions,
++    ) -> Result<ImguiRenderer, ImguiRendererError> {
+         // Link shaders
+ 
+         let vs_spv: &[u8] = include_shader!("imgui.vert.spv");
+@@ -262,7 +262,7 @@ impl ImguiRenderer {
+         color_attachment: &wgpu::TextureView,
+         msaa_attachment: Option<&wgpu::TextureView>,
+         draw_data: &imgui::DrawData,
+-    ) -> Result<(), Error> {
++    ) -> Result<(), ImguiRendererError> {
+         // This is mostly a transcript of the following:
+         // https://github.com/ocornut/imgui/blob/master/examples/imgui_impl_opengl3.cpp
+         // https://github.com/ocornut/imgui/blob/master/examples/imgui_impl_vulkan.cpp
+@@ -401,7 +401,7 @@ impl ImguiRenderer {
+                             let texture = self
+                                 .texture_resources
+                                 .get(texture_id)
+-                                .ok_or_else(|| Error::BadTexture(texture_id))?;
++                                .ok_or_else(|| ImguiRendererError::BadTexture(texture_id))?;
+ 
+                             rpass.set_bind_group(1, texture.bind_group(), &[]);
+                             rpass.set_scissor_rect(
+diff --git a/src/renderer/mod.rs b/src/renderer/mod.rs
+index b30ec46..be0edaa 100644
+--- a/src/renderer/mod.rs
++++ b/src/renderer/mod.rs
+@@ -1,12 +1,12 @@
+-pub use self::scene_renderer::{AddGeometryError, DrawGeometryMode, GpuGeometry, GpuGeometryId};
++pub use self::scene_renderer::{SceneRendererGeometry, SceneRendererGeometryId};
+ 
+ use std::fmt;
+ 
+ use nalgebra::base::Matrix4;
+ 
+-use self::imgui_renderer::{ImguiRenderer, Options as ImguiRendererOptions};
++use self::imgui_renderer::{ImguiRenderer, ImguiRendererOptions};
+ use self::scene_renderer::{
+-    ClearFlags as SceneRendererClearFlags, Options as SceneRendererOptions, SceneRenderer,
++    SceneRenderer, SceneRendererAddGeometryError, SceneRendererClearFlags, SceneRendererOptions,
+ };
+ 
+ #[macro_use]
+@@ -19,7 +19,7 @@ const SWAP_CHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
+ const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+ 
+ #[derive(Debug, Clone, PartialEq)]
+-pub struct Options {
++pub struct RendererOptions {
+     /// Which multi-sampling setting to use.
+     pub msaa: Msaa,
+     /// Whether to run with VSync or not.
+@@ -122,7 +122,7 @@ pub struct Renderer {
+     depth_texture_view: wgpu::TextureView,
+     scene_renderer: SceneRenderer,
+     imgui_renderer: ImguiRenderer,
+-    options: Options,
++    options: RendererOptions,
+ }
+ 
+ impl Renderer {
+@@ -131,7 +131,7 @@ impl Renderer {
+         projection_matrix: &Matrix4<f32>,
+         view_matrix: &Matrix4<f32>,
+         imgui_font_atlas: imgui::FontAtlasRefMut,
+-        options: Options,
++        options: RendererOptions,
+     ) -> Self {
+         let backends = match options.gpu_backend {
+             Some(GpuBackend::Vulkan) => wgpu::BackendBit::VULKAN,
+@@ -269,13 +269,13 @@ impl Renderer {
+     /// will be available for drawing in subsequent render passes.
+     pub fn add_scene_geometry(
+         &mut self,
+-        geometry: &GpuGeometry,
+-    ) -> Result<GpuGeometryId, AddGeometryError> {
++        geometry: &SceneRendererGeometry,
++    ) -> Result<SceneRendererGeometryId, SceneRendererAddGeometryError> {
+         self.scene_renderer.add_geometry(&self.device, geometry)
+     }
+ 
+     /// Remove geometry from the GPU.
+-    pub fn remove_scene_geometry(&mut self, id: GpuGeometryId) {
++    pub fn remove_scene_geometry(&mut self, id: SceneRendererGeometryId) {
+         self.scene_renderer.remove_geometry(id);
+     }
+ 
+@@ -345,7 +345,7 @@ impl RenderPass<'_> {
+     /// Record a geometry drawing operation to the command
+     /// buffer. Geometries with provided ids must be present in the
+     /// renderer.
+-    pub fn draw_geometry(&mut self, ids: &[GpuGeometryId], mode: DrawGeometryMode) {
++    pub fn draw_geometry(&mut self, ids: &[SceneRendererGeometryId]) {
+         let mut clear_flags = SceneRendererClearFlags::empty();
+         if self.color_needs_clearing {
+             clear_flags.insert(SceneRendererClearFlags::COLOR);
+@@ -355,7 +355,6 @@ impl RenderPass<'_> {
+         }
+ 
+         self.scene_renderer.draw_geometry(
+-            mode,
+             clear_flags,
+             self.encoder
+                 .as_mut()
+diff --git a/src/renderer/scene_renderer.rs b/src/renderer/scene_renderer.rs
+index 7892d3f..9b81fdf 100644
+--- a/src/renderer/scene_renderer.rs
++++ b/src/renderer/scene_renderer.rs
+@@ -3,7 +3,6 @@ use std::convert::TryFrom;
+ use std::error;
+ use std::fmt;
+ use std::io;
+-use std::iter;
+ 
+ use bitflags::bitflags;
+ use nalgebra::base::{Matrix4, Vector3};
+@@ -14,20 +13,20 @@ use crate::geometry::{Face, Geometry};
+ 
+ use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
+ 
+-static SHADER_VIEWPORT_VERT: &[u8] = include_shader!("viewport.vert.spv");
+-static SHADER_VIEWPORT_FRAG: &[u8] = include_shader!("viewport.frag.spv");
++const SHADER_MATCAP_VERT: &[u8] = include_shader!("matcap.vert.spv");
++const SHADER_MATCAP_FRAG: &[u8] = include_shader!("matcap.frag.spv");
+ 
+-static MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../resources/matcap.png");
++const MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../resources/matcap.png");
+ 
+ /// The geometry containing index and vertex data in same-length
+ /// format as will be uploaded on the GPU.
+ #[derive(Debug, Clone, PartialEq)]
+-pub struct GpuGeometry {
+-    indices: Option<Vec<GpuGeometryIndex>>,
+-    vertex_data: Vec<GpuGeometryVertex>,
++pub struct SceneRendererGeometry {
++    indices: Option<Vec<GeometryIndex>>,
++    vertex_data: Vec<GeometryVertex>,
+ }
+ 
+-impl GpuGeometry {
++impl SceneRendererGeometry {
+     /// Construct geometry with same-length per-vertex data from
+     /// variable-length data `Geometry`.
+     ///
+@@ -45,7 +44,7 @@ impl GpuGeometry {
+         // This capacity is a lower bound estimate. Given that
+         // `Geometry` contains no orphan vertices, there should be
+         // at least `vertices.len()` vertices present in the
+-        // resulting `GpuGeometry`.
++        // resulting `SceneRendererGeometry`.
+         let mut vertex_data = Vec::with_capacity(vertices.len());
+ 
+         // This capacity is an upper bound estimate and will
+@@ -62,10 +61,8 @@ impl GpuGeometry {
+                     let v = triangle_face.vertices;
+                     let n = triangle_face.normals;
+ 
+-                    for &(vertex_index, normal_index, barycentric) in
+-                        &[(v.0, n.0, 0x01), (v.1, n.1, 0x02), (v.2, n.2, 0x04)]
+-                    {
+-                        match index_map.entry((vertex_index, normal_index, barycentric)) {
++                    for &(vertex_index, normal_index) in &[(v.0, n.0), (v.1, n.1), (v.2, n.2)] {
++                        match index_map.entry((vertex_index, normal_index)) {
+                             Entry::Occupied(occupied) => {
+                                 // This concrete vertex/normal combination
+                                 // was used before, re-use the vertex it
+@@ -82,7 +79,7 @@ impl GpuGeometry {
+                                 let renderer_index = next_renderer_index;
+                                 let position = vertices[cast_usize(vertex_index)];
+                                 let normal = normals[cast_usize(normal_index)];
+-                                let vertex = Self::vertex(position, normal, barycentric);
++                                let vertex = Self::vertex((position, normal));
+ 
+                                 vacant.insert(renderer_index);
+                                 next_renderer_index += 1;
+@@ -104,7 +101,7 @@ impl GpuGeometry {
+ 
+         vertex_data.shrink_to_fit();
+ 
+-        GpuGeometry {
++        SceneRendererGeometry {
+             indices: Some(indices),
+             vertex_data,
+         }
+@@ -135,8 +132,7 @@ impl GpuGeometry {
+         let vertex_data = vertex_positions
+             .into_iter()
+             .zip(vertex_normals.into_iter())
+-            .zip(barycentric_sequence_iter())
+-            .map(|((position, normal), barycentric)| Self::vertex(position, normal, barycentric))
++            .map(Self::vertex)
+             .collect();
+ 
+         Self {
+@@ -150,7 +146,7 @@ impl GpuGeometry {
+     /// checking.
+     #[allow(dead_code)]
+     pub fn from_positions_and_normals_indexed(
+-        indices: Vec<GpuGeometryIndex>,
++        indices: Vec<GeometryIndex>,
+         vertex_positions: Vec<Point3<f32>>,
+         vertex_normals: Vec<Vector3<f32>>,
+     ) -> Self {
+@@ -172,8 +168,7 @@ impl GpuGeometry {
+         let vertex_data = vertex_positions
+             .into_iter()
+             .zip(vertex_normals.into_iter())
+-            .zip(barycentric_sequence_iter())
+-            .map(|((position, normal), barycentric)| Self::vertex(position, normal, barycentric))
++            .map(Self::vertex)
+             .collect();
+ 
+         Self {
+@@ -182,27 +177,27 @@ impl GpuGeometry {
+         }
+     }
+ 
+-    fn vertex(position: Point3<f32>, normal: Vector3<f32>, barycentric: u32) -> GpuGeometryVertex {
+-        GpuGeometryVertex {
++    fn vertex((position, normal): (Point3<f32>, Vector3<f32>)) -> GeometryVertex {
++        GeometryVertex {
+             position: [position[0], position[1], position[2], 1.0],
+             normal: [normal[0], normal[1], normal[2], 0.0],
+-            barycentric,
+         }
+     }
+ }
+ 
+ /// Opaque handle to geometry stored in scene renderer.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+-pub struct GpuGeometryId(u64);
++pub struct SceneRendererGeometryId(u64);
+ 
+ #[derive(Debug)]
+-pub enum AddGeometryError {
++pub enum SceneRendererAddGeometryError {
+     TooManyVertices(usize),
+     TooManyIndices(usize),
+ }
+ 
+-impl fmt::Display for AddGeometryError {
++impl fmt::Display for SceneRendererAddGeometryError {
+     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
++        use SceneRendererAddGeometryError as AddGeometryError;
+         match self {
+             AddGeometryError::TooManyVertices(given) => write!(
+                 f,
+@@ -220,46 +215,33 @@ impl fmt::Display for AddGeometryError {
+     }
+ }
+ 
+-impl error::Error for AddGeometryError {}
++impl error::Error for SceneRendererAddGeometryError {}
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+-pub struct Options {
++pub struct SceneRendererOptions {
+     pub sample_count: u32,
+     pub output_color_attachment_format: wgpu::TextureFormat,
+     pub output_depth_attachment_format: wgpu::TextureFormat,
+ }
+ 
+ bitflags! {
+-    pub struct ClearFlags: u8 {
++    pub struct SceneRendererClearFlags: u8 {
+         const COLOR = 0b_0000_0001;
+         const DEPTH = 0b_0000_0010;
+     }
+ }
+ 
+-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+-pub enum DrawGeometryMode {
+-    Shaded,
+-    Edges,
+-    ShadedEdges,
+-    ShadedEdgesXray,
+-}
+-
+ /// 3D renderer of the editor scene.
+ ///
+ /// Can be used to upload `Geometry` on the GPU and draw it in the
+-/// viewport. Currently supports just shaded (matcap) and wireframe
+-/// rendering, and their combinations.
++/// viewport. Currently supports just matcap rendering.
+ pub struct SceneRenderer {
+     geometry_resources: HashMap<u64, GeometryResource>,
+     geometry_resources_next_id: u64,
+-    matrix_buffer: wgpu::Buffer,
+-    matrix_bind_group: wgpu::BindGroup,
+-    shading_bind_group_shaded: wgpu::BindGroup,
+-    shading_bind_group_edges: wgpu::BindGroup,
+-    shading_bind_group_shaded_edges: wgpu::BindGroup,
++    global_matrix_buffer: wgpu::Buffer,
++    global_matrix_bind_group: wgpu::BindGroup,
+     matcap_texture_bind_group: wgpu::BindGroup,
+-    render_pipeline_opaque: wgpu::RenderPipeline,
+-    render_pipeline_transparent: wgpu::RenderPipeline,
++    matcap_render_pipeline: wgpu::RenderPipeline,
+ }
+ 
+ impl SceneRenderer {
+@@ -272,22 +254,22 @@ impl SceneRenderer {
+         queue: &mut wgpu::Queue,
+         projection_matrix: &Matrix4<f32>,
+         view_matrix: &Matrix4<f32>,
+-        options: Options,
++        options: SceneRendererOptions,
+     ) -> Self {
+-        let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_VIEWPORT_VERT))
++        let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_MATCAP_VERT))
+             .expect("Couldn't read pre-built SPIR-V");
+-        let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_VIEWPORT_FRAG))
++        let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_MATCAP_FRAG))
+             .expect("Couldn't read pre-built SPIR-V");
+         let vs_module = device.create_shader_module(&vs_words);
+         let fs_module = device.create_shader_module(&fs_words);
+ 
+-        let matrix_buffer_size = wgpu_size_of::<MatrixUniforms>();
+-        let matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+-            size: matrix_buffer_size,
++        let global_matrix_buffer_size = wgpu_size_of::<GlobalMatrixUniforms>();
++        let global_matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
++            size: global_matrix_buffer_size,
+             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+         });
+ 
+-        let matrix_bind_group_layout =
++        let global_matrix_bind_group_layout =
+             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                 bindings: &[wgpu::BindGroupLayoutBinding {
+                     binding: 0,
+@@ -295,103 +277,16 @@ impl SceneRenderer {
+                     ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                 }],
+             });
+-        let matrix_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+-            layout: &matrix_bind_group_layout,
+-            bindings: &[wgpu::Binding {
+-                binding: 0,
+-                resource: wgpu::BindingResource::Buffer {
+-                    buffer: &matrix_buffer,
+-                    range: 0..matrix_buffer_size,
+-                },
+-            }],
+-        });
+-        let matrix_uniforms = MatrixUniforms {
+-            projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
+-            view_matrix: view_matrix.clone().into(),
+-        };
+-
+-        let shading_buffer_size = wgpu_size_of::<ShadingUniforms>();
+-        let shading_buffer_shaded = device.create_buffer(&wgpu::BufferDescriptor {
+-            size: shading_buffer_size,
+-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+-        });
+-        let shading_buffer_edges = device.create_buffer(&wgpu::BufferDescriptor {
+-            size: shading_buffer_size,
+-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+-        });
+-        let shading_buffer_shaded_edges = device.create_buffer(&wgpu::BufferDescriptor {
+-            size: shading_buffer_size,
+-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+-        });
+-
+-        let shading_bind_group_layout =
+-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+-                bindings: &[wgpu::BindGroupLayoutBinding {
+-                    binding: 0,
+-                    visibility: wgpu::ShaderStage::FRAGMENT,
+-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+-                }],
+-            });
+-        let shading_bind_group_shaded = device.create_bind_group(&wgpu::BindGroupDescriptor {
+-            layout: &shading_bind_group_layout,
++        let global_matrix_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
++            layout: &global_matrix_bind_group_layout,
+             bindings: &[wgpu::Binding {
+                 binding: 0,
+                 resource: wgpu::BindingResource::Buffer {
+-                    buffer: &shading_buffer_shaded,
+-                    range: 0..shading_buffer_size,
++                    buffer: &global_matrix_buffer,
++                    range: 0..global_matrix_buffer_size,
+                 },
+             }],
+         });
+-        let shading_bind_group_edges = device.create_bind_group(&wgpu::BindGroupDescriptor {
+-            layout: &shading_bind_group_layout,
+-            bindings: &[wgpu::Binding {
+-                binding: 0,
+-                resource: wgpu::BindingResource::Buffer {
+-                    buffer: &shading_buffer_edges,
+-                    range: 0..shading_buffer_size,
+-                },
+-            }],
+-        });
+-        let shading_bind_group_shaded_edges =
+-            device.create_bind_group(&wgpu::BindGroupDescriptor {
+-                layout: &shading_bind_group_layout,
+-                bindings: &[wgpu::Binding {
+-                    binding: 0,
+-                    resource: wgpu::BindingResource::Buffer {
+-                        buffer: &shading_buffer_shaded_edges,
+-                        range: 0..shading_buffer_size,
+-                    },
+-                }],
+-            });
+-
+-        upload_matrix_buffer(device, queue, &matrix_buffer, matrix_uniforms);
+-        upload_shading_buffer(
+-            device,
+-            queue,
+-            &shading_buffer_shaded,
+-            ShadingUniforms {
+-                edge_color_and_face_alpha: [0.0, 0.0, 0.0, 1.0],
+-                shading_mode: ShadingMode::SHADED,
+-            },
+-        );
+-        upload_shading_buffer(
+-            device,
+-            queue,
+-            &shading_buffer_edges,
+-            ShadingUniforms {
+-                edge_color_and_face_alpha: [0.2, 0.9, 0.3, 1.0],
+-                shading_mode: ShadingMode::EDGES,
+-            },
+-        );
+-        upload_shading_buffer(
+-            device,
+-            queue,
+-            &shading_buffer_shaded_edges,
+-            ShadingUniforms {
+-                edge_color_and_face_alpha: [0.2, 0.9, 0.3, 1.0],
+-                shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
+-            },
+-        );
+ 
+         let (matcap_texture_width, matcap_texture_height, matcap_texture_data) = {
+             let cursor = io::Cursor::new(MATCAP_TEXTURE_BYTES);
+@@ -427,6 +322,16 @@ impl SceneRenderer {
+             format: wgpu::TextureFormat::Rgba8Unorm,
+             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
+         });
++        let matcap_texture_view = matcap_texture.create_default_view();
++
++        upload_texture_rgba8_unorm(
++            device,
++            queue,
++            &matcap_texture,
++            matcap_texture_width,
++            matcap_texture_height,
++            &matcap_texture_data,
++        );
+ 
+         let matcap_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+             address_mode_u: wgpu::AddressMode::ClampToEdge,
+@@ -458,14 +363,13 @@ impl SceneRenderer {
+                     },
+                 ],
+             });
++
+         let matcap_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+             layout: &matcap_texture_bind_group_layout,
+             bindings: &[
+                 wgpu::Binding {
+                     binding: 0,
+-                    resource: wgpu::BindingResource::TextureView(
+-                        &matcap_texture.create_default_view(),
+-                    ),
++                    resource: wgpu::BindingResource::TextureView(&matcap_texture_view),
+                 },
+                 wgpu::Binding {
+                     binding: 1,
+@@ -474,47 +378,81 @@ impl SceneRenderer {
+             ],
+         });
+ 
+-        upload_texture_rgba8_unorm(
+-            device,
+-            queue,
+-            &matcap_texture,
+-            matcap_texture_width,
+-            matcap_texture_height,
+-            &matcap_texture_data,
+-        );
++        let matcap_pipeline_layout =
++            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
++                bind_group_layouts: &[
++                    &global_matrix_bind_group_layout,
++                    &matcap_texture_bind_group_layout,
++                ],
++            });
+ 
+-        let render_pipeline_opaque = create_pipeline(
+-            device,
+-            &vs_module,
+-            &fs_module,
+-            &matrix_bind_group_layout,
+-            &shading_bind_group_layout,
+-            &matcap_texture_bind_group_layout,
+-            false,
+-            options,
+-        );
+-        let render_pipeline_transparent = create_pipeline(
+-            device,
+-            &vs_module,
+-            &fs_module,
+-            &matrix_bind_group_layout,
+-            &shading_bind_group_layout,
+-            &matcap_texture_bind_group_layout,
+-            true,
+-            options,
+-        );
++        let matcap_render_pipeline =
++            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
++                layout: &matcap_pipeline_layout,
++                vertex_stage: wgpu::ProgrammableStageDescriptor {
++                    module: &vs_module,
++                    entry_point: "main",
++                },
++                fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
++                    module: &fs_module,
++                    entry_point: "main",
++                }),
++                // Default rasterization state means
++                // CullMode::None. We don't cull faces yet, because we
++                // work with potentially non-CCW geometries. We might
++                // implement special rendering for CW faces one day.
++                rasterization_state: None,
++                primitive_topology: wgpu::PrimitiveTopology::TriangleList,
++                color_states: &[wgpu::ColorStateDescriptor {
++                    format: options.output_color_attachment_format,
++                    color_blend: wgpu::BlendDescriptor::REPLACE,
++                    alpha_blend: wgpu::BlendDescriptor::REPLACE,
++                    write_mask: wgpu::ColorWrite::ALL,
++                }],
++                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
++                    format: options.output_depth_attachment_format,
++                    depth_write_enabled: true,
++                    depth_compare: wgpu::CompareFunction::Less,
++                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
++                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
++                    stencil_read_mask: 0,
++                    stencil_write_mask: 0,
++                }),
++                index_format: wgpu::IndexFormat::Uint32,
++                vertex_buffers: &[wgpu::VertexBufferDescriptor {
++                    stride: wgpu_size_of::<GeometryVertex>(),
++                    step_mode: wgpu::InputStepMode::Vertex,
++                    attributes: &[
++                        wgpu::VertexAttributeDescriptor {
++                            offset: 0,
++                            format: wgpu::VertexFormat::Float4,
++                            shader_location: 0,
++                        },
++                        wgpu::VertexAttributeDescriptor {
++                            offset: wgpu_size_of::<[f32; 4]>(), // 4 bytes * 4 components
++                            format: wgpu::VertexFormat::Float4,
++                            shader_location: 1,
++                        },
++                    ],
++                }],
++                sample_count: options.sample_count,
++                sample_mask: !0,
++                alpha_to_coverage_enabled: false,
++            });
++
++        let global_matrix_uniforms = GlobalMatrixUniforms {
++            projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
++            view_matrix: view_matrix.clone().into(),
++        };
++        upload_global_matrix_buffer(device, queue, &global_matrix_buffer, global_matrix_uniforms);
+ 
+         Self {
+             geometry_resources: HashMap::new(),
+             geometry_resources_next_id: 0,
+-            matrix_buffer,
+-            matrix_bind_group,
+-            shading_bind_group_shaded,
+-            shading_bind_group_edges,
+-            shading_bind_group_shaded_edges,
++            global_matrix_buffer,
++            global_matrix_bind_group,
+             matcap_texture_bind_group,
+-            render_pipeline_opaque,
+-            render_pipeline_transparent,
++            matcap_render_pipeline,
+         }
+     }
+ 
+@@ -526,11 +464,16 @@ impl SceneRenderer {
+         projection_matrix: &Matrix4<f32>,
+         view_matrix: &Matrix4<f32>,
+     ) {
+-        let matrix_uniforms = MatrixUniforms {
++        let global_matrix_uniforms = GlobalMatrixUniforms {
+             projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
+             view_matrix: view_matrix.clone().into(),
+         };
+-        upload_matrix_buffer(device, queue, &self.matrix_buffer, matrix_uniforms);
++        upload_global_matrix_buffer(
++            device,
++            queue,
++            &self.global_matrix_buffer,
++            global_matrix_uniforms,
++        );
+     }
+ 
+     /// Upload geometry on the GPU.
+@@ -541,9 +484,11 @@ impl SceneRenderer {
+     pub fn add_geometry(
+         &mut self,
+         device: &wgpu::Device,
+-        geometry: &GpuGeometry,
+-    ) -> Result<GpuGeometryId, AddGeometryError> {
+-        let id = GpuGeometryId(self.geometry_resources_next_id);
++        geometry: &SceneRendererGeometry,
++    ) -> Result<SceneRendererGeometryId, SceneRendererAddGeometryError> {
++        use SceneRendererAddGeometryError as AddGeometryError;
++
++        let id = SceneRendererGeometryId(self.geometry_resources_next_id);
+ 
+         let vertex_data = &geometry.vertex_data[..];
+         let vertex_data_count = u32::try_from(vertex_data.len())
+@@ -595,7 +540,7 @@ impl SceneRenderer {
+     }
+ 
+     /// Remove a previously uploaded geometry from the GPU.
+-    pub fn remove_geometry(&mut self, id: GpuGeometryId) {
++    pub fn remove_geometry(&mut self, id: SceneRendererGeometryId) {
+         log::debug!("Removing geometry with {}", id.0);
+         // Dropping the geometry descriptor here unstreams the buffers from device memory
+         self.geometry_resources.remove(&id.0);
+@@ -604,24 +549,22 @@ impl SceneRenderer {
+     /// Optionally clear color and depth and draw previously uploaded
+     /// geometries as one of the commands executed with the `encoder`
+     /// to the `color_attachment`.
+-    #[allow(clippy::too_many_arguments)]
+     pub fn draw_geometry(
+         &self,
+-        mode: DrawGeometryMode,
+-        clear_flags: ClearFlags,
++        clear_flags: SceneRendererClearFlags,
+         encoder: &mut wgpu::CommandEncoder,
+         color_attachment: &wgpu::TextureView,
+         msaa_attachment: Option<&wgpu::TextureView>,
+         depth_attachment: &wgpu::TextureView,
+-        ids: &[GpuGeometryId],
++        ids: &[SceneRendererGeometryId],
+     ) {
+-        let color_load_op = if clear_flags.contains(ClearFlags::COLOR) {
++        let color_load_op = if clear_flags.contains(SceneRendererClearFlags::COLOR) {
+             wgpu::LoadOp::Clear
+         } else {
+             wgpu::LoadOp::Load
+         };
+ 
+-        let depth_load_op = if clear_flags.contains(ClearFlags::DEPTH) {
++        let depth_load_op = if clear_flags.contains(SceneRendererClearFlags::DEPTH) {
+             wgpu::LoadOp::Clear
+         } else {
+             wgpu::LoadOp::Load
+@@ -673,72 +616,11 @@ impl SceneRenderer {
+         // set... Not sure if this is a bug or not.
+         rpass.set_stencil_reference(0);
+ 
+-        // FIXME: The current renderer architecture is enough for our
+-        // current needs, but has some serious downsides.
+-        //
+-        // - We should be doing object sorting. We currently live
+-        //   without it as the only transparent objects we have are
+-        //   the edges and those do not show mis-blending artifacts,
+-        //   because the area that of their fragments that is neither
+-        //   fully transparent nor fully opaque is very small. If we
+-        //   ever want to support transparency, we need to sort
+-        //   objects.
+-        //
+-        // - We don't mitigate self-transparency issues (because we
+-        //   don't experience them much). The simplest mitigation
+-        //   would be to draw back and front faces separately, with 2
+-        //   different pipelines (for culling settings). There are
+-        //   also more advanced techniques, such as:
+-        //
+-        //   * Weighted Blended Order-Independent Transparency
+-        //     http://jcgt.org/published/0002/02/09/
+-        //   * Stochastic Transparency
+-        //     http://www.cse.chalmers.se/~d00sint/StochasticTransparency_I3D2010.pdf
+-        //   * Adaptive Transparency
+-        //     https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
+-
+-        match mode {
+-            DrawGeometryMode::Shaded => {
+-                rpass.set_pipeline(&self.render_pipeline_opaque);
+-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
+-                rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
+-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
+-
+-                self.record_geometry_drawing(&mut rpass, ids);
+-            }
+-            DrawGeometryMode::Edges => {
+-                rpass.set_pipeline(&self.render_pipeline_transparent);
+-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
+-                rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
+-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
+-
+-                self.record_geometry_drawing(&mut rpass, ids);
+-            }
+-            DrawGeometryMode::ShadedEdges => {
+-                rpass.set_pipeline(&self.render_pipeline_opaque);
+-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
+-                rpass.set_bind_group(1, &self.shading_bind_group_shaded_edges, &[]);
+-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
+-
+-                self.record_geometry_drawing(&mut rpass, ids);
+-            }
+-            DrawGeometryMode::ShadedEdgesXray => {
+-                rpass.set_pipeline(&self.render_pipeline_opaque);
+-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
+-                rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
+-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
+-
+-                self.record_geometry_drawing(&mut rpass, ids);
+-
+-                rpass.set_pipeline(&self.render_pipeline_transparent);
+-                rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
++        rpass.set_pipeline(&self.matcap_render_pipeline);
+ 
+-                self.record_geometry_drawing(&mut rpass, ids);
+-            }
+-        }
+-    }
++        rpass.set_bind_group(0, &self.global_matrix_bind_group, &[]);
++        rpass.set_bind_group(1, &self.matcap_texture_bind_group, &[]);
+ 
+-    fn record_geometry_drawing(&self, rpass: &mut wgpu::RenderPass, ids: &[GpuGeometryId]) {
+         for id in ids {
+             if let Some(geometry) = &self.geometry_resources.get(&id.0) {
+                 let (vertex_buffer, vertex_count) = &geometry.vertices;
+@@ -764,85 +646,53 @@ struct GeometryResource {
+ /// The geometry vertex data as uploaded on the GPU.
+ ///
+ /// Positions and normals are internally `[f32; 4]` with the last
+-/// component filled in as 1.0 or 0.0 for points and vectors
+-/// respectively.
++/// component filled in as 0.0 or 1.0 depending on it being a position
++/// or vector.
+ #[repr(C)]
+ #[derive(Debug, Clone, Copy, PartialEq)]
+-struct GpuGeometryVertex {
+-    /// The position of the vertex in world-space. Last component is 1.
++struct GeometryVertex {
++    // These are defined as [f32; 4] for 2 reasons:
++    //
++    // - point vs vector clarity
++    // - padding: vec3 has the same size as vec4 in std140 layout.
++    //   https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL)
++    //
++    // We might decide to pack more useful data than just 0/1 in the
++    // last component later.
+     pub position: [f32; 4],
+-
+-    /// The normal of the vertex in world-space. Last component is 0.
+     pub normal: [f32; 4],
+-
+-    /// Barycentric coordinates of the current vertex within the
+-    /// triangle primitive. First bit means `(1, 0, 0)`, second `(0,
+-    /// 1, 0)`, and the third `(0, 0, 1)`. The rest of the bits are 0.
+-    pub barycentric: u32,
+ }
+ 
+ // FIXME: @Optimization Determine u16/u32 dynamically per geometry to
+ // save memory
+-type GpuGeometryIndex = u32;
++type GeometryIndex = u32;
+ 
+ #[repr(C)]
+ #[derive(Debug, Clone, Copy, PartialEq)]
+-struct MatrixUniforms {
++struct GlobalMatrixUniforms {
+     projection_matrix: [[f32; 4]; 4],
+     view_matrix: [[f32; 4]; 4],
+ }
+ 
+-#[repr(C)]
+-#[derive(Debug, Clone, Copy, PartialEq)]
+-struct ShadingUniforms {
+-    edge_color_and_face_alpha: [f32; 4],
+-    shading_mode: ShadingMode,
+-}
+-
+-bitflags! {
+-    pub struct ShadingMode: u32 {
+-        const SHADED = 0x01;
+-        const EDGES = 0x02;
+-    }
+-}
+-
+-fn upload_matrix_buffer(
++fn upload_global_matrix_buffer(
+     device: &wgpu::Device,
+     queue: &mut wgpu::Queue,
+-    matrix_buffer: &wgpu::Buffer,
+-    matrix_uniforms: MatrixUniforms,
++    global_matrix_buffer: &wgpu::Buffer,
++    global_matrix_uniforms: GlobalMatrixUniforms,
+ ) {
+-    let matrix_uniforms_size = wgpu_size_of::<MatrixUniforms>();
++    let global_matrix_uniforms_size = wgpu_size_of::<GlobalMatrixUniforms>();
+ 
+     let transfer_buffer = device
+         .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+-        .fill_from_slice(&[matrix_uniforms]);
+-
+-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+-    encoder.copy_buffer_to_buffer(&transfer_buffer, 0, matrix_buffer, 0, matrix_uniforms_size);
+-
+-    queue.submit(&[encoder.finish()]);
+-}
+-
+-fn upload_shading_buffer(
+-    device: &wgpu::Device,
+-    queue: &mut wgpu::Queue,
+-    shading_buffer: &wgpu::Buffer,
+-    shading_uniforms: ShadingUniforms,
+-) {
+-    let shading_uniforms_size = wgpu_size_of::<ShadingUniforms>();
+-
+-    let transfer_buffer = device
+-        .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+-        .fill_from_slice(&[shading_uniforms]);
++        .fill_from_slice(&[global_matrix_uniforms]);
+ 
+     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+     encoder.copy_buffer_to_buffer(
+         &transfer_buffer,
+         0,
+-        shading_buffer,
++        global_matrix_buffer,
+         0,
+-        shading_uniforms_size,
++        global_matrix_uniforms_size,
+     );
+ 
+     queue.submit(&[encoder.finish()]);
+@@ -869,123 +719,6 @@ fn apply_wgpu_correction_matrix(projection_matrix: &Matrix4<f32>) -> Matrix4<f32
+     wgpu_correction_matrix * projection_matrix
+ }
+ 
+-/// Produces an infinite iterator over bit-packed barycentric
+-/// coordinates of triangle vertices.
+-///
+-/// Barycentric coords (1, 0, 0), (0, 1, 0) and (0, 0, 1) are
+-/// bit-packed into a single u32 to save space (possibly, depending on
+-/// attribute data layout and alignment). They are unpacked on the
+-/// vertex shader. Usage is to zip this iterator with other data
+-/// iterators to produce vertex attributes for renderer geometry.
+-fn barycentric_sequence_iter() -> impl Iterator<Item = u32> {
+-    iter::successors(Some(0x01), |predecessor| match predecessor {
+-        0x01 => Some(0x02),
+-        0x02 => Some(0x04),
+-        0x04 => Some(0x01),
+-        _ => unreachable!(),
+-    })
+-}
+-
+-#[allow(clippy::too_many_arguments)]
+-fn create_pipeline(
+-    device: &wgpu::Device,
+-    vs_module: &wgpu::ShaderModule,
+-    fs_module: &wgpu::ShaderModule,
+-    matrix_bind_group_layout: &wgpu::BindGroupLayout,
+-    shading_bind_group_layout: &wgpu::BindGroupLayout,
+-    matcap_texture_bind_group_layout: &wgpu::BindGroupLayout,
+-    support_transparency: bool,
+-    options: Options,
+-) -> wgpu::RenderPipeline {
+-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+-        bind_group_layouts: &[
+-            &matrix_bind_group_layout,
+-            &shading_bind_group_layout,
+-            &matcap_texture_bind_group_layout,
+-        ],
+-    });
+-
+-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+-        layout: &pipeline_layout,
+-        vertex_stage: wgpu::ProgrammableStageDescriptor {
+-            module: vs_module,
+-            entry_point: "main",
+-        },
+-        fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+-            module: fs_module,
+-            entry_point: "main",
+-        }),
+-        // FIXME: @Correctness Draw backfaces differently.
+-        //
+-        // Default rasterization state means CullMode::None. We don't
+-        // cull faces yet, because we work with potentially non-CCW
+-        // geometries. We might implement special rendering for CW
+-        // faces one day.
+-        rasterization_state: None,
+-        primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+-        color_states: &[wgpu::ColorStateDescriptor {
+-            format: options.output_color_attachment_format,
+-            color_blend: if support_transparency {
+-                wgpu::BlendDescriptor {
+-                    src_factor: wgpu::BlendFactor::SrcAlpha,
+-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+-                    operation: wgpu::BlendOperation::Add,
+-                }
+-            } else {
+-                wgpu::BlendDescriptor::REPLACE
+-            },
+-            alpha_blend: if support_transparency {
+-                wgpu::BlendDescriptor {
+-                    src_factor: wgpu::BlendFactor::SrcAlpha,
+-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+-                    operation: wgpu::BlendOperation::Add,
+-                }
+-            } else {
+-                wgpu::BlendDescriptor::REPLACE
+-            },
+-            write_mask: wgpu::ColorWrite::ALL,
+-        }],
+-        depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+-            format: options.output_depth_attachment_format,
+-            depth_write_enabled: !support_transparency,
+-            depth_compare: if support_transparency {
+-                wgpu::CompareFunction::Always
+-            } else {
+-                wgpu::CompareFunction::Less
+-            },
+-            stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+-            stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+-            stencil_read_mask: 0,
+-            stencil_write_mask: 0,
+-        }),
+-        index_format: wgpu::IndexFormat::Uint32,
+-        vertex_buffers: &[wgpu::VertexBufferDescriptor {
+-            stride: wgpu_size_of::<GpuGeometryVertex>(),
+-            step_mode: wgpu::InputStepMode::Vertex,
+-            attributes: &[
+-                wgpu::VertexAttributeDescriptor {
+-                    offset: 0,
+-                    format: wgpu::VertexFormat::Float4,
+-                    shader_location: 0,
+-                },
+-                wgpu::VertexAttributeDescriptor {
+-                    offset: wgpu_size_of::<[f32; 4]>(), // 4 bytes * 4 components * 1 attrib
+-                    format: wgpu::VertexFormat::Float4,
+-                    shader_location: 1,
+-                },
+-                wgpu::VertexAttributeDescriptor {
+-                    offset: wgpu_size_of::<[f32; 4]>() * 2, // 4 bytes * 4 components * 2 attribs
+-                    format: wgpu::VertexFormat::Uint,
+-                    shader_location: 2,
+-                },
+-            ],
+-        }],
+-        sample_count: options.sample_count,
+-        sample_mask: !0,
+-        alpha_to_coverage_enabled: false,
+-    })
+-}
+-
+ #[cfg(test)]
+ mod tests {
+     use crate::geometry::TriangleFace;
+@@ -1010,7 +743,7 @@ mod tests {
+         (vertex_positions, vertex_normals)
+     }
+ 
+-    fn triangle_indexed() -> (Vec<GpuGeometryIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
++    fn triangle_indexed() -> (Vec<GeometryIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
+         let (vertex_positions, vertex_normals) = triangle();
+         let indices = vec![0, 1, 2];
+ 
+@@ -1064,25 +797,22 @@ mod tests {
+     #[test]
+     fn test_renderer_geometry_from_positions_and_normals() {
+         let (positions, normals) = triangle();
+-        let geometry = GpuGeometry::from_positions_and_normals(positions, normals);
++        let geometry = SceneRendererGeometry::from_positions_and_normals(positions, normals);
+ 
+         assert_eq!(
+             geometry.vertex_data,
+             vec![
+-                GpuGeometryVertex {
++                GeometryVertex {
+                     position: [-0.3, -0.5, 0.0, 1.0],
+                     normal: [0.0, 0.0, 1.0, 0.0],
+-                    barycentric: 0x01,
+                 },
+-                GpuGeometryVertex {
++                GeometryVertex {
+                     position: [0.3, -0.5, 0.0, 1.0],
+                     normal: [0.0, 0.0, 1.0, 0.0],
+-                    barycentric: 0x02,
+                 },
+-                GpuGeometryVertex {
++                GeometryVertex {
+                     position: [0.0, 0.5, 0.0, 1.0],
+                     normal: [0.0, 0.0, 1.0, 0.0],
+-                    barycentric: 0x04,
+                 },
+             ]
+         );
+@@ -1092,24 +822,14 @@ mod tests {
+     #[test]
+     fn test_renderer_geometry_from_positions_and_normals_indexed() {
+         let (indices, positions, normals) = triangle_indexed();
+-        let geometry = GpuGeometry::from_positions_and_normals_indexed(indices, positions, normals);
++        let geometry =
++            SceneRendererGeometry::from_positions_and_normals_indexed(indices, positions, normals);
+ 
++        #[rustfmt::skip]
+         let expected_vertex_data = vec![
+-            GpuGeometryVertex {
+-                position: [-0.3, -0.5, 0.0, 1.0],
+-                normal: [0.0, 0.0, 1.0, 0.0],
+-                barycentric: 0x01,
+-            },
+-            GpuGeometryVertex {
+-                position: [0.3, -0.5, 0.0, 1.0],
+-                normal: [0.0, 0.0, 1.0, 0.0],
+-                barycentric: 0x02,
+-            },
+-            GpuGeometryVertex {
+-                position: [0.0, 0.5, 0.0, 1.0],
+-                normal: [0.0, 0.0, 1.0, 0.0],
+-                barycentric: 0x04,
+-            },
++            GeometryVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
++            GeometryVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
++            GeometryVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+         ];
+ 
+         assert_eq!(geometry.vertex_data, expected_vertex_data);
+@@ -1120,14 +840,17 @@ mod tests {
+     #[should_panic(expected = "Per-vertex data must be same length")]
+     fn test_renderer_geometry_from_positions_and_normals_panics_on_different_length_data() {
+         let (_, normals) = triangle();
+-        GpuGeometry::from_positions_and_normals(vec![Point3::new(1.0, 1.0, 1.0)], normals);
++        let _geometry = SceneRendererGeometry::from_positions_and_normals(
++            vec![Point3::new(1.0, 1.0, 1.0)],
++            normals,
++        );
+     }
+ 
+     #[test]
+     #[should_panic(expected = "Per-vertex data must be same length")]
+     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_different_length_data() {
+         let (indices, positions, _) = triangle_indexed();
+-        GpuGeometry::from_positions_and_normals_indexed(
++        let _geometry = SceneRendererGeometry::from_positions_and_normals_indexed(
+             indices,
+             positions,
+             vec![Vector3::new(1.0, 1.0, 1.0)],
+@@ -1138,57 +861,49 @@ mod tests {
+     #[should_panic(expected = "Vertex positions must not be empty")]
+     fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_positions() {
+         let (_, normals) = triangle();
+-        GpuGeometry::from_positions_and_normals(vec![], normals);
++        let _geometry = SceneRendererGeometry::from_positions_and_normals(vec![], normals);
+     }
+ 
+     #[test]
+     #[should_panic(expected = "Vertex normals must not be empty")]
+     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_positions() {
+         let (positions, _) = triangle();
+-        GpuGeometry::from_positions_and_normals(positions, vec![]);
++        let _geometry = SceneRendererGeometry::from_positions_and_normals(positions, vec![]);
+     }
+ 
+     #[test]
+     #[should_panic(expected = "Vertex positions must not be empty")]
+     fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_normals() {
+         let (indices, _, normals) = triangle_indexed();
+-        GpuGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
++        let _geometry =
++            SceneRendererGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
+     }
+ 
+     #[test]
+     #[should_panic(expected = "Vertex normals must not be empty")]
+     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_normals() {
+         let (indices, positions, _) = triangle_indexed();
+-        GpuGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
++        let _geometry =
++            SceneRendererGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
+     }
+ 
+     #[test]
+     #[should_panic(expected = "Indices must not be empty")]
+     fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_indices() {
+         let (_, vertices, normals) = triangle_indexed();
+-        GpuGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
++        let _geometry =
++            SceneRendererGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
+     }
+ 
+     #[test]
+     fn test_renderer_geometry_from_geometry_preserves_already_same_len_geometry() {
+-        let geometry = GpuGeometry::from_geometry(&triangle_geometry_same_len());
++        let geometry = SceneRendererGeometry::from_geometry(&triangle_geometry_same_len());
+ 
++        #[rustfmt::skip]
+         let expected_vertex_data = vec![
+-            GpuGeometryVertex {
+-                position: [-0.3, -0.5, 0.0, 1.0],
+-                normal: [0.0, 0.0, 1.0, 0.0],
+-                barycentric: 0x01,
+-            },
+-            GpuGeometryVertex {
+-                position: [0.3, -0.5, 0.0, 1.0],
+-                normal: [0.0, 0.0, 1.0, 0.0],
+-                barycentric: 0x02,
+-            },
+-            GpuGeometryVertex {
+-                position: [0.0, 0.5, 0.0, 1.0],
+-                normal: [0.0, 0.0, 1.0, 0.0],
+-                barycentric: 0x04,
+-            },
++            GeometryVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
++            GeometryVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
++            GeometryVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+         ];
+ 
+         assert_eq!(geometry.vertex_data, expected_vertex_data);
+@@ -1197,24 +912,13 @@ mod tests {
+ 
+     #[test]
+     fn test_renderer_geometry_from_geometry_duplicates_normals_in_var_len_geometry() {
+-        let geometry = GpuGeometry::from_geometry(&triangle_geometry_var_len());
++        let geometry = SceneRendererGeometry::from_geometry(&triangle_geometry_var_len());
+ 
++        #[rustfmt::skip]
+         let expected_vertex_data = vec![
+-            GpuGeometryVertex {
+-                position: [-0.3, -0.5, 0.0, 1.0],
+-                normal: [0.0, 0.0, 1.0, 0.0],
+-                barycentric: 0x01,
+-            },
+-            GpuGeometryVertex {
+-                position: [0.3, -0.5, 0.0, 1.0],
+-                normal: [0.0, 0.0, 1.0, 0.0],
+-                barycentric: 0x02,
+-            },
+-            GpuGeometryVertex {
+-                position: [0.0, 0.5, 0.0, 1.0],
+-                normal: [0.0, 0.0, 1.0, 0.0],
+-                barycentric: 0x04,
+-            },
++            GeometryVertex { position: [-0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
++            GeometryVertex { position: [ 0.3, -0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
++            GeometryVertex { position: [ 0.0,  0.5,  0.0,  1.0], normal: [ 0.0,  0.0,  1.0,  0.0] },
+         ];
+ 
+         assert_eq!(geometry.vertex_data, expected_vertex_data);
+diff --git a/src/shaders/imgui.frag b/src/shaders/imgui.frag
+index 2d5d0d6..7490c9c 100644
+--- a/src/shaders/imgui.frag
++++ b/src/shaders/imgui.frag
+@@ -6,8 +6,8 @@ layout(set = 1, binding = 1) uniform sampler u_sampler;
+ layout(location = 0) in vec2 v_tex_coords;
+ layout(location = 1) in vec4 v_color;
+ 
+-layout(location = 0) out vec4 f_color;
++layout(location = 0) out vec4 o_color;
+ 
+ void main() {
+-    f_color = v_color * texture(sampler2D(u_texture, u_sampler), v_tex_coords);
+-}
++    o_color = v_color * texture(sampler2D(u_texture, u_sampler), v_tex_coords);
++}
+\ No newline at end of file
+diff --git a/src/shaders/matcap.frag b/src/shaders/matcap.frag
+new file mode 100644
+index 0000000..da763ba
+--- /dev/null
++++ b/src/shaders/matcap.frag
+@@ -0,0 +1,12 @@
++#version 450
++
++layout(set = 1, binding = 0) uniform texture2D u_matcap_texture;
++layout(set = 1, binding = 1) uniform sampler u_matcap_sampler;
++
++layout(location = 0) in vec2 v_matcap_tex_coords;
++
++layout(location = 0) out vec4 o_color;
++
++void main() {
++    o_color = texture(sampler2D(u_matcap_texture, u_matcap_sampler), v_matcap_tex_coords);
++}
+diff --git a/src/shaders/viewport.vert b/src/shaders/matcap.vert
+similarity index 63%
+rename from src/shaders/viewport.vert
+rename to src/shaders/matcap.vert
+index 4a258c2..85ea429 100644
+--- a/src/shaders/viewport.vert
++++ b/src/shaders/matcap.vert
+@@ -7,32 +7,19 @@ layout(set = 0, binding = 0, std140) uniform GlobalMatrix {
+ 
+ layout(location = 0) in vec4 a_position;
+ layout(location = 1) in vec4 a_normal;
+-layout(location = 2) in uint a_barycentric;
+ 
+ layout(location = 0) out vec2 v_matcap_tex_coords;
+-layout(location = 1) out vec3 v_barycentric;
+ 
+ float remap(float value, vec2 from, vec2 to) {
+     return (value - from.x) / (from.y - from.x) * (to.y - to.x) + to.x;
+ }
+ 
+-vec3 get_barycentric_coord(uint barycentric) {
+-    const uint barycentric_x = 0x01;
+-    const uint barycentric_y = 0x02;
+-    const uint barycentric_z = 0x04;
+-
+-    return vec3(barycentric & barycentric_x,
+-                barycentric & barycentric_y,
+-                barycentric & barycentric_z);
+-}
+-
+ void main() {
+     // FIXME: @Optimization Should we assume it is normalized already?
+     vec4 viewspace_normal = u_view_matrix * normalize(a_normal);
+ 
+     v_matcap_tex_coords = vec2(remap(viewspace_normal.x, vec2(-1, 1), vec2(0, 1)),
+                                remap(viewspace_normal.y, vec2(-1, 1), vec2(0, 1)));
+-    v_barycentric = get_barycentric_coord(a_barycentric);
+ 
+     gl_Position = u_projection_matrix * u_view_matrix * a_position;
+ }
+diff --git a/src/shaders/viewport.frag b/src/shaders/viewport.frag
+deleted file mode 100644
+index a6e614e..0000000
+--- a/src/shaders/viewport.frag
++++ /dev/null
+@@ -1,53 +0,0 @@
+-#version 450
+-
+-layout(set = 1, binding = 0, std140) uniform Shading {
+-    vec4 u_edge_color_and_face_alpha;
+-    uint u_shading_mode;
+-};
+-
+-layout(set = 2, binding = 0) uniform texture2D u_matcap_texture;
+-layout(set = 2, binding = 1) uniform sampler u_matcap_sampler;
+-
+-layout(location = 0) in vec2 v_matcap_tex_coords;
+-layout(location = 1) in vec3 v_barycentric;
+-
+-layout(location = 0) out vec4 f_color;
+-
+-const uint SHADING_MODE_SHADED = 0x01;
+-const uint SHADING_MODE_EDGES = 0x02;
+-
+-const float EDGE_THICKNESS_MIN = 0.75;
+-const float EDGE_THICKNESS_MAX = 1.00;
+-
+-void main() {
+-    vec3 edge_color = u_edge_color_and_face_alpha.rgb;
+-    float face_alpha = u_edge_color_and_face_alpha.a;
+-
+-    // Find which edge this pixel is the closest to by finding the
+-    // barycentric coordinate of the farthest away vertex within this
+-    // triangle.
+-    float opposite_vertex = min(v_barycentric.x, min(v_barycentric.y, v_barycentric.z));
+-    float d_opposite_vertex = fwidth(opposite_vertex);
+-
+-    // Dividing by the fragment derivative will both sharpen the edge
+-    // (the derivative becomes larger once we get further away from
+-    // the edge) and keep the line of constant width in screenspace.
+-    float thickness = opposite_vertex / d_opposite_vertex;
+-
+-    // Smoothen the alpha value so the lines are smooth even without
+-    // antialiasing.
+-    float edge_alpha = 1.0 - smoothstep(EDGE_THICKNESS_MIN, EDGE_THICKNESS_MAX, thickness);
+-
+-    vec4 matcap_color = texture(sampler2D(u_matcap_texture, u_matcap_sampler), v_matcap_tex_coords);
+-
+-    bool shaded_mode_enabled = bool(u_shading_mode & SHADING_MODE_SHADED);
+-    bool edges_mode_enabled = bool(u_shading_mode & SHADING_MODE_EDGES);
+-
+-    if (shaded_mode_enabled && edges_mode_enabled) {
+-        f_color = mix(vec4(matcap_color.rgb, face_alpha), vec4(edge_color, 1), edge_alpha);
+-    } else if (shaded_mode_enabled) {
+-        f_color = vec4(matcap_color.rgb, face_alpha);
+-    } else if (edges_mode_enabled) {
+-        f_color = vec4(edge_color, edge_alpha);
+-    }
+-}
+diff --git a/src/ui.rs b/src/ui.rs
+index 20469a5..288a9f7 100644
+--- a/src/ui.rs
++++ b/src/ui.rs
+@@ -1,7 +1,5 @@
+ use imgui_winit_support::{HiDpiMode, WinitPlatform};
+ 
+-use crate::renderer::DrawGeometryMode;
+-
+ const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
+ const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Bold.ttf");
+ const OPENSANS_LIGHT_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Light.ttf");
+@@ -136,29 +134,14 @@ impl<'a> UiFrame<'a> {
+         self.imgui_ui.render()
+     }
+ 
+-    pub fn draw_renderer_settings_window(&self, draw_mode: &mut DrawGeometryMode) {
++    #[cfg(debug_assertions)]
++    pub fn draw_fps_window(&self) {
+         let ui = &self.imgui_ui;
+ 
+-        imgui::Window::new(imgui::im_str!("Renderer Settings"))
+-            .size([250.0, 200.0], imgui::Condition::Once)
++        imgui::Window::new(imgui::im_str!("FPS"))
++            .position([450.0, 50.0], imgui::Condition::Always)
+             .build(ui, || {
+                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
+-                ui.radio_button(
+-                    imgui::im_str!("Shaded"),
+-                    draw_mode,
+-                    DrawGeometryMode::Shaded,
+-                );
+-                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawGeometryMode::Edges);
+-                ui.radio_button(
+-                    imgui::im_str!("Shaded with Edges"),
+-                    draw_mode,
+-                    DrawGeometryMode::ShadedEdges,
+-                );
+-                ui.radio_button(
+-                    imgui::im_str!("Shaded with Edges (X-RAY)"),
+-                    draw_mode,
+-                    DrawGeometryMode::ShadedEdgesXray,
+-                );
+             });
+     }
+ }

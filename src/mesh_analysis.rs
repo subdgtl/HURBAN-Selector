@@ -67,6 +67,12 @@ pub fn non_manifold_edges<'a>(
         })
 }
 
+// Checks if mesh contians onlu manifold or border edges
+pub fn is_mesh_manifold<'a>(edge_sharing: &'a EdgeSharingMap) -> bool {
+    let non_manifold_edges_vec: Vec<_> = non_manifold_edges(edge_sharing).collect();
+    non_manifold_edges_vec.len() == 0
+}
+
 /// Finds border vertex indices in a mesh edge collection
 ///
 /// A vertex is border when its edge's valency is 1
@@ -774,6 +780,36 @@ mod tests {
         }
 
         assert_eq!(oriented_edges_non_manifold_check.len(), 3);
+    }
+
+    #[test]
+    fn test_mesh_analysis_manifold_mesh_returns_false_because_non_manifold() {
+        let (faces, vertices) = non_manifold_shape();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+
+        assert!(!is_mesh_manifold(&edge_sharing_map));
+    }
+
+    #[test]
+    fn test_mesh_analysis_manifold_mesh_returns_true_because_manifold() {
+        let (faces, vertices) = torus();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+
+        assert!(is_mesh_manifold(&edge_sharing_map));
     }
 
     #[test]
