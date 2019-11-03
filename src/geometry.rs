@@ -768,44 +768,37 @@ fn remove_orphan_vertices_and_normals(
 }
 
 pub fn plane_same_len(position: [f32; 3], scale: f32) -> Geometry {
-    #[rustfmt::skip]
     let vertex_positions = vec![
-        v(-1.0, -1.0,  0.0, position, scale),
-        v( 1.0, -1.0,  0.0, position, scale),
-        v( 1.0,  1.0,  0.0, position, scale),
-        v( 1.0,  1.0,  0.0, position, scale),
-        v(-1.0,  1.0,  0.0, position, scale),
-        v(-1.0, -1.0,  0.0, position, scale),
+        v(-1.0, -1.0, 0.0, position, scale),
+        v(1.0, -1.0, 0.0, position, scale),
+        v(1.0, 1.0, 0.0, position, scale),
+        v(1.0, 1.0, 0.0, position, scale),
+        v(-1.0, 1.0, 0.0, position, scale),
+        v(-1.0, -1.0, 0.0, position, scale),
     ];
 
-    #[rustfmt::skip]
     let vertex_normals = vec![
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
+        n(0.0, 0.0, 1.0),
+        n(0.0, 0.0, 1.0),
+        n(0.0, 0.0, 1.0),
+        n(0.0, 0.0, 1.0),
+        n(0.0, 0.0, 1.0),
+        n(0.0, 0.0, 1.0),
     ];
 
-    #[rustfmt::skip]
-    let faces = vec![
-        TriangleFace::new(0, 1, 2),
-        TriangleFace::new(3, 4, 5),
-    ];
+    let faces = vec![TriangleFace::new(0, 1, 2), TriangleFace::new(3, 4, 5)];
 
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
 pub fn plane_var_len(position: [f32; 3], scale: f32) -> Geometry {
-    #[rustfmt::skip]
     let vertex_positions = vec![
-        v(-1.0, -1.0,  0.0, position, scale),
-        v( 1.0, -1.0,  0.0, position, scale),
-        v( 1.0,  1.0,  0.0, position, scale),
-        v( 1.0,  1.0,  0.0, position, scale),
-        v(-1.0,  1.0,  0.0, position, scale),
-        v(-1.0, -1.0,  0.0, position, scale),
+        v(-1.0, -1.0, 0.0, position, scale),
+        v(1.0, -1.0, 0.0, position, scale),
+        v(1.0, 1.0, 0.0, position, scale),
+        v(1.0, 1.0, 0.0, position, scale),
+        v(-1.0, 1.0, 0.0, position, scale),
+        v(-1.0, -1.0, 0.0, position, scale),
     ];
 
     #[rustfmt::skip]
@@ -813,7 +806,6 @@ pub fn plane_var_len(position: [f32; 3], scale: f32) -> Geometry {
         n( 0.0,  0.0,  1.0),
     ];
 
-    #[rustfmt::skip]
     let faces = vec![
         TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
         TriangleFace::new_separate(3, 4, 5, 0, 0, 0),
@@ -823,39 +815,36 @@ pub fn plane_var_len(position: [f32; 3], scale: f32) -> Geometry {
 }
 
 pub fn cube_smooth_same_len(position: [f32; 3], scale: f32) -> Geometry {
-    #[rustfmt::skip]
     let vertex_positions = vec![
         // back
-        v(-1.0,  1.0, -1.0, position, scale),
-        v(-1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0, -1.0, position, scale),
+        v(-1.0, 1.0, -1.0, position, scale),
+        v(-1.0, 1.0, 1.0, position, scale),
+        v(1.0, 1.0, 1.0, position, scale),
+        v(1.0, 1.0, -1.0, position, scale),
         // front
         v(-1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0,  1.0, position, scale),
-        v(-1.0, -1.0,  1.0, position, scale),
+        v(1.0, -1.0, -1.0, position, scale),
+        v(1.0, -1.0, 1.0, position, scale),
+        v(-1.0, -1.0, 1.0, position, scale),
     ];
 
     // FIXME: make const once float arithmetic is stabilized in const fns
     // let sqrt_3 = 3.0f32.sqrt();
     let frac_1_sqrt_3 = 1.0 / 3.0_f32.sqrt();
 
-    #[rustfmt::skip]
     let vertex_normals = vec![
         // back
-        n(-frac_1_sqrt_3,  frac_1_sqrt_3, -frac_1_sqrt_3),
-        n(-frac_1_sqrt_3,  frac_1_sqrt_3,  frac_1_sqrt_3),
-        n( frac_1_sqrt_3,  frac_1_sqrt_3,  frac_1_sqrt_3),
-        n( frac_1_sqrt_3,  frac_1_sqrt_3, -frac_1_sqrt_3),
+        n(-frac_1_sqrt_3, frac_1_sqrt_3, -frac_1_sqrt_3),
+        n(-frac_1_sqrt_3, frac_1_sqrt_3, frac_1_sqrt_3),
+        n(frac_1_sqrt_3, frac_1_sqrt_3, frac_1_sqrt_3),
+        n(frac_1_sqrt_3, frac_1_sqrt_3, -frac_1_sqrt_3),
         // front
         n(-frac_1_sqrt_3, -frac_1_sqrt_3, -frac_1_sqrt_3),
-        n( frac_1_sqrt_3, -frac_1_sqrt_3, -frac_1_sqrt_3),
-        n( frac_1_sqrt_3, -frac_1_sqrt_3,  frac_1_sqrt_3),
-        n(-frac_1_sqrt_3, -frac_1_sqrt_3,  frac_1_sqrt_3),
+        n(frac_1_sqrt_3, -frac_1_sqrt_3, -frac_1_sqrt_3),
+        n(frac_1_sqrt_3, -frac_1_sqrt_3, frac_1_sqrt_3),
+        n(-frac_1_sqrt_3, -frac_1_sqrt_3, frac_1_sqrt_3),
     ];
 
-    #[rustfmt::skip]
     let faces = vec![
         // back
         TriangleFace::new(0, 1, 2),
@@ -883,75 +872,72 @@ pub fn cube_smooth_same_len(position: [f32; 3], scale: f32) -> Geometry {
 #[deprecated(note = "Don't use, generates open geometry")]
 // FIXME: Remove eventually
 pub fn cube_sharp_same_len(position: [f32; 3], scale: f32) -> Geometry {
-    #[rustfmt::skip]
     let vertex_positions = vec![
         // back
-        v(-1.0,  1.0, -1.0, position, scale),
-        v(-1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0, -1.0, position, scale),
+        v(-1.0, 1.0, -1.0, position, scale),
+        v(-1.0, 1.0, 1.0, position, scale),
+        v(1.0, 1.0, 1.0, position, scale),
+        v(1.0, 1.0, -1.0, position, scale),
         // front
         v(-1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0,  1.0, position, scale),
-        v(-1.0, -1.0,  1.0, position, scale),
+        v(1.0, -1.0, -1.0, position, scale),
+        v(1.0, -1.0, 1.0, position, scale),
+        v(-1.0, -1.0, 1.0, position, scale),
         // top
-        v(-1.0,  1.0,  1.0, position, scale),
-        v(-1.0, -1.0,  1.0, position, scale),
-        v( 1.0, -1.0,  1.0, position, scale),
-        v( 1.0,  1.0,  1.0, position, scale),
+        v(-1.0, 1.0, 1.0, position, scale),
+        v(-1.0, -1.0, 1.0, position, scale),
+        v(1.0, -1.0, 1.0, position, scale),
+        v(1.0, 1.0, 1.0, position, scale),
         // bottom
-        v(-1.0,  1.0, -1.0, position, scale),
-        v( 1.0,  1.0, -1.0, position, scale),
-        v( 1.0, -1.0, -1.0, position, scale),
+        v(-1.0, 1.0, -1.0, position, scale),
+        v(1.0, 1.0, -1.0, position, scale),
+        v(1.0, -1.0, -1.0, position, scale),
         v(-1.0, -1.0, -1.0, position, scale),
         // right
-        v( 1.0,  1.0, -1.0, position, scale),
-        v( 1.0,  1.0,  1.0, position, scale),
-        v( 1.0, -1.0,  1.0, position, scale),
-        v( 1.0, -1.0, -1.0, position, scale),
+        v(1.0, 1.0, -1.0, position, scale),
+        v(1.0, 1.0, 1.0, position, scale),
+        v(1.0, -1.0, 1.0, position, scale),
+        v(1.0, -1.0, -1.0, position, scale),
         // left
-        v(-1.0,  1.0, -1.0, position, scale),
+        v(-1.0, 1.0, -1.0, position, scale),
         v(-1.0, -1.0, -1.0, position, scale),
-        v(-1.0, -1.0,  1.0, position, scale),
-        v(-1.0,  1.0,  1.0, position, scale),
+        v(-1.0, -1.0, 1.0, position, scale),
+        v(-1.0, 1.0, 1.0, position, scale),
     ];
 
-    #[rustfmt::skip]
     let vertex_normals = vec![
         // back
-        n( 0.0,  1.0,  0.0),
-        n( 0.0,  1.0,  0.0),
-        n( 0.0,  1.0,  0.0),
-        n( 0.0,  1.0,  0.0),
+        n(0.0, 1.0, 0.0),
+        n(0.0, 1.0, 0.0),
+        n(0.0, 1.0, 0.0),
+        n(0.0, 1.0, 0.0),
         // front
-        n( 0.0, -1.0,  0.0),
-        n( 0.0, -1.0,  0.0),
-        n( 0.0, -1.0,  0.0),
-        n( 0.0, -1.0,  0.0),
+        n(0.0, -1.0, 0.0),
+        n(0.0, -1.0, 0.0),
+        n(0.0, -1.0, 0.0),
+        n(0.0, -1.0, 0.0),
         // top
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
+        n(0.0, 0.0, 1.0),
+        n(0.0, 0.0, 1.0),
+        n(0.0, 0.0, 1.0),
+        n(0.0, 0.0, 1.0),
         // bottom
-        n( 0.0,  0.0, -1.0),
-        n( 0.0,  0.0, -1.0),
-        n( 0.0,  0.0, -1.0),
-        n( 0.0,  0.0, -1.0),
+        n(0.0, 0.0, -1.0),
+        n(0.0, 0.0, -1.0),
+        n(0.0, 0.0, -1.0),
+        n(0.0, 0.0, -1.0),
         // right
-        n( 1.0,  0.0,  0.0),
-        n( 1.0,  0.0,  0.0),
-        n( 1.0,  0.0,  0.0),
-        n( 1.0,  0.0,  0.0),
+        n(1.0, 0.0, 0.0),
+        n(1.0, 0.0, 0.0),
+        n(1.0, 0.0, 0.0),
+        n(1.0, 0.0, 0.0),
         // left
-        n(-1.0,  0.0,  0.0),
-        n(-1.0,  0.0,  0.0),
-        n(-1.0,  0.0,  0.0),
-        n(-1.0,  0.0,  0.0),
+        n(-1.0, 0.0, 0.0),
+        n(-1.0, 0.0, 0.0),
+        n(-1.0, 0.0, 0.0),
+        n(-1.0, 0.0, 0.0),
     ];
 
-    #[rustfmt::skip]
     let faces = vec![
         // back
         TriangleFace::new(0, 1, 2),
@@ -1193,12 +1179,11 @@ mod tests {
     use super::*;
 
     fn quad() -> (Vec<(u32, u32, u32)>, Vertices) {
-        #[rustfmt::skip]
         let vertices = vec![
-            v(-1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
         ];
 
         #[rustfmt::skip]
@@ -1211,20 +1196,18 @@ mod tests {
     }
 
     fn quad_with_normals() -> (Vec<TriangleFace>, Vertices, Normals) {
-        #[rustfmt::skip]
         let vertices = vec![
-            v(-1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0, -1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v( 1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0,  1.0,  0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
         ];
 
-        #[rustfmt::skip]
         let normals = vec![
-            n( 0.0,  0.0,  1.0),
-            n( 0.0,  0.0,  1.0),
-            n( 0.0,  0.0,  1.0),
-            n( 0.0,  0.0,  1.0),
+            n(0.0, 0.0, 1.0),
+            n(0.0, 0.0, 1.0),
+            n(0.0, 0.0, 1.0),
+            n(0.0, 0.0, 1.0),
         ];
 
         #[rustfmt::skip]
