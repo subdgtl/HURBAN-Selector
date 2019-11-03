@@ -205,9 +205,6 @@ impl Func for FuncImplSeparateIsolatedMeshes {
 
 pub struct FuncImplWeld;
 impl Func for FuncImplWeld {
-    fn flags(&self) -> FuncFlags {
-        FuncFlags::empty()
-    }
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
