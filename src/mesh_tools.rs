@@ -534,14 +534,14 @@ mod tests {
             Point3::new(0.0, 2.0, 1.0),
         ];
 
-        let vertex_normals = vec![n(0.0, 0.0, 1.0)];
+        let vertex_normals = vec![n(0.0, 0.0, 1.0), n(0.0, 0.0, 1.0)];
 
         let faces = vec![
             TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
             TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
             TriangleFace::new_separate(2, 4, 1, 0, 0, 0),
             TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
-            TriangleFace::new_separate(6, 7, 8, 0, 0, 0),
+            TriangleFace::new_separate(6, 7, 8, 1, 1, 1),
         ];
 
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -799,7 +799,7 @@ mod tests {
 
         assert_eq!(test_geometry_correct, calculated_geometry);
     }
-    
+
     #[test]
     fn test_weld_tesselated_triangle() {
         let geometry = tessellated_triangle_geometry_for_welding();

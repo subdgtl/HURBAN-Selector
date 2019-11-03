@@ -207,11 +207,11 @@ impl Func for FuncImplSeparateIsolatedMeshes {
 
 pub struct FuncImplJoinMeshes;
 impl Func for FuncImplJoinMeshes {
-  fn flags(&self) -> FuncFlags {
+    fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
     fn param_info(&self) -> &[ParamInfo] {
-      &[
+        &[
             ParamInfo {
                 ty: Ty::Geometry,
                 optional: false,
@@ -221,18 +221,18 @@ impl Func for FuncImplJoinMeshes {
                 optional: false,
             },
         ]
-      }
+    }
 
     fn return_ty(&self) -> Ty {
         Ty::Geometry
     }
 
     fn call(&self, args: &[Value]) -> Value {
-      let first_geometry = args[0].unwrap_geometry();
+        let first_geometry = args[0].unwrap_geometry();
         let second_geometry = args[1].unwrap_geometry();
 
         let value = mesh_tools::join_meshes(first_geometry, second_geometry);
-      Value::Geometry(Arc::new(value))
+        Value::Geometry(Arc::new(value))
     }
 }
 
@@ -249,42 +249,42 @@ impl Func for FuncImplWeld {
                 optional: false,
             },
         ]
-      }
+    }
 
     fn return_ty(&self) -> Ty {
         Ty::Geometry
     }
 
     fn call(&self, args: &[Value]) -> Value {
-       let geometry = args[0].unwrap_geometry();
+        let geometry = args[0].unwrap_geometry();
         let tolerance = args[1].unwrap_float();
 
         let value = mesh_tools::weld(geometry, tolerance);
 
         Value::Geometry(Arc::new(value))
-          }
+    }
 }
 
-    
 pub struct FuncImplRevertMeshFaces;
 impl Func for FuncImplRevertMeshFaces {
+    fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
             ty: Ty::Geometry,
             optional: false,
         }]
-   }
+    }
 
     fn return_ty(&self) -> Ty {
         Ty::Geometry
     }
 
     fn call(&self, args: &[Value]) -> Value {
-       let geometry = args[0].unwrap_geometry();
+        let geometry = args[0].unwrap_geometry();
 
         let value = mesh_tools::revert_mesh_faces(geometry);
-       Value::Geometry(Arc::new(value))
+        Value::Geometry(Arc::new(value))
     }
-}       
+}
 
 pub struct FuncImplSynchronizeMeshFaces;
 impl Func for FuncImplSynchronizeMeshFaces {
@@ -296,14 +296,14 @@ impl Func for FuncImplSynchronizeMeshFaces {
             ty: Ty::Geometry,
             optional: false,
         }]
-      }
+    }
 
     fn return_ty(&self) -> Ty {
         Ty::Geometry
     }
 
     fn call(&self, args: &[Value]) -> Value {
-      let geometry = args[0].unwrap_refcounted_geometry();
+        let geometry = args[0].unwrap_refcounted_geometry();
 
         let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
@@ -322,7 +322,7 @@ impl Func for FuncImplSynchronizeMeshFaces {
         } else {
             Value::Geometry(geometry)
         }
-          }
+    }
 }
 
 // IMPORTANT: Do not change these IDs, ever! When adding a new
@@ -337,7 +337,6 @@ pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(5);
 pub const FUNC_ID_WELD: FuncIdent = FuncIdent(6);
 pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(7);
 pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(8);
-
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
