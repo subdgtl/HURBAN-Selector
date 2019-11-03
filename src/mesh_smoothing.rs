@@ -106,8 +106,8 @@ pub fn laplacian_smoothing(
 ///
 /// The geometry **must** be triangulated.
 ///
-/// Implementation based on [mdfisher's
-/// post](https://graphics.stanford.edu/~mdfisher/subdivision.html).
+/// Implementation based on [mdfisher]
+/// (https://graphics.stanford.edu/~mdfisher/subdivision.html).
 pub fn loop_subdivision(
     geometry: &Geometry,
     vertex_to_vertex_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
@@ -140,25 +140,23 @@ pub fn loop_subdivision(
             // happen in our mesh representation.
             0 | 1 => (),
             2 => {
-                // N == 2 means this is a naked edge vertex.
-                // Use (3/4, 1/8, 1/8) relocation scheme.
+                // For edge valency N == 2 (a naked edge vertex), use
+                // (3/4, 1/8, 1/8) relocation scheme.
 
                 let vi1 = cast_usize(neighbors[0]);
                 let vi2 = cast_usize(neighbors[1]);
 
-                let v0 = geometry.vertices()[i];
                 let v1 = geometry.vertices()[vi1];
                 let v2 = geometry.vertices()[vi2];
 
                 *vertex = Point3::origin()
-                    + v0.coords * 3.0 / 4.0
+                    + vertex.coords * 3.0 / 4.0
                     + v1.coords * 1.0 / 8.0
                     + v2.coords * 1.0 / 8.0;
             }
             3 => {
-                // N == 3 means the vertex is not a part of a naked edge.
-                // Use (1 - N*BETA, BETA, ...) relocation scheme, where
-                // BETA is 3/16.
+                // For edge valency N == 3, use (1 - N*BETA, BETA,
+                // BETA, BETA) relocation scheme, where BETA is 3/16.
 
                 const N: f32 = 3.0;
                 const BETA: f32 = 3.0 / 16.0;
@@ -178,9 +176,8 @@ pub fn loop_subdivision(
                     + v3.coords * BETA;
             }
             n => {
-                // N >= 3 also means the vertex is not a part of a naked edge.
-                // Use (1 - N*BETA, BETA, ...) relocation scheme, where
-                // BETA is 3 / (8*N).
+                // For edge valency N >= 3, use (1 - N*BETA, BETA,
+                // ...) relocation scheme, where BETA is 3 / (8*N).
 
                 let n_f32 = n as f32;
                 let beta = 3.0 / (8.0 * n_f32);
