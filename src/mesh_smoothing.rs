@@ -129,6 +129,11 @@ pub fn loop_subdivision(
         }
     }
 
+    assert!(
+        geometry.is_triangulated(),
+        "Loop Subdivision is only defined for triangulated meshes",
+    );
+
     let mut vertices: Vec<Point3<f32>> = geometry.vertices().iter().copied().collect();
 
     // Relocate existing vertices first
