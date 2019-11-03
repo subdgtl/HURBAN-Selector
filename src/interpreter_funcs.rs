@@ -232,8 +232,13 @@ impl Func for FuncImplLoopSubdivision {
     }
 
     fn call(&self, args: &[Value]) -> Value {
+        // FIXME: add the max value to the param info so that that the
+        // gui doesn't mislead
+        const MAX_ITERATIONS: u32 = 3;
+
         let geometry = args[0].unwrap_refcounted_geometry();
-        let iterations = args[1].unwrap_uint();
+        let iterations = cmp::min(args[1].unwrap_uint(), MAX_ITERATIONS);
+
         if iterations == 0 {
             return Value::Geometry(geometry);
         }
