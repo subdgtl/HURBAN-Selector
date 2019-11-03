@@ -59,7 +59,7 @@ fn crawl_faces(
     connected_face_indices
 }
 
-/// Joins two mesh geometries into one
+/// Joins two mesh geometries into one.
 ///
 /// Concatenates vertex and normal slices, while keeping the first mesh
 /// geometry's element indices intact and second geometry's indices offset by

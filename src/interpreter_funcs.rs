@@ -208,6 +208,7 @@ impl Func for FuncImplJoinMeshes {
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
+
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
