@@ -215,6 +215,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                 if input_state.tmp_submit_prog_and_run {
                     let prog = ast::Prog::new(vec![
+                        // sphere
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(0),
                             ast::CallExpr::new(
@@ -238,7 +239,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 ],
                             ),
                         )),
-                        // 1 iteration
+                        // sphere - 1 iteration
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(2),
                             ast::CallExpr::new(
@@ -261,7 +262,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 ],
                             ),
                         )),
-                        // 2 iterations
+                        // sphere - 2 iterations
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(4),
                             ast::CallExpr::new(
@@ -284,7 +285,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 ],
                             ),
                         )),
-                        // 3 iterations
+                        // sphere - 3 iterations
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(6),
                             ast::CallExpr::new(
@@ -307,8 +308,98 @@ pub fn init_and_run(options: Options) -> ! {
                                 ],
                             ),
                         )),
-                        // TODO: create a plane constructing operation
-                        // and test Loop Subdivision on it!
+                        // plane
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(8),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_CREATE_PLANE,
+                                vec![
+                                    ast::Expr::Lit(ast::LitExpr::Float3([0.0, 40.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Float(10.0)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(9),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(8))),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        // plane - 1 iteration
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(10),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_LOOP_SUBDIVISION,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(8))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(1)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(11),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(10))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([20.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        // plane - 2 iterations
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(12),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_LOOP_SUBDIVISION,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(8))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(2)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(13),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(12))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([40.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        // plane - 3 iterations
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(14),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_LOOP_SUBDIVISION,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(8))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(3)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(15),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(14))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([60.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
                     ]);
 
                     interpreter_server.submit_request(InterpreterRequest::SetProg(prog));

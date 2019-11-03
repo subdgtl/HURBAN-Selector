@@ -259,6 +259,39 @@ impl Func for FuncImplLoopSubdivision {
     }
 }
 
+pub struct FuncImplCreatePlane;
+impl Func for FuncImplCreatePlane {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[
+            ParamInfo {
+                ty: Ty::Float3,
+                optional: true,
+            },
+            ParamInfo {
+                ty: Ty::Float,
+                optional: true,
+            },
+        ]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, values: &[Value]) -> Value {
+        let position = values[0].get_float3().unwrap_or([0.0; 3]);
+        let scale = values[1].get_float().unwrap_or(1.0);
+
+        let value = geometry::plane(position, scale);
+
+        Value::Geometry(Arc::new(value))
+    }
+}
+
 // IMPORTANT: Do not change these IDs, ever! When adding a new
 // function, always create a new, unique function identifier for it.
 
@@ -268,6 +301,7 @@ pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
 pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
 pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
 pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(5);
+pub const FUNC_ID_CREATE_PLANE: FuncIdent = FuncIdent(6);
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
@@ -286,6 +320,7 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
         Box::new(FuncImplSeparateIsolatedMeshes),
     );
     funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncImplLoopSubdivision));
+    funcs.insert(FUNC_ID_CREATE_PLANE, Box::new(FuncImplCreatePlane));
 
     funcs
 }

@@ -775,45 +775,13 @@ fn remove_orphan_vertices_and_normals(
     (faces_renumbered, vertices_reduced, normals_reduced)
 }
 
-pub fn plane_same_len(position: [f32; 3], scale: f32) -> Geometry {
+pub fn plane(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
         v(-1.0, -1.0,  0.0, position, scale),
         v( 1.0, -1.0,  0.0, position, scale),
         v( 1.0,  1.0,  0.0, position, scale),
-        v( 1.0,  1.0,  0.0, position, scale),
         v(-1.0,  1.0,  0.0, position, scale),
-        v(-1.0, -1.0,  0.0, position, scale),
-    ];
-
-    #[rustfmt::skip]
-    let vertex_normals = vec![
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-        n( 0.0,  0.0,  1.0),
-    ];
-
-    #[rustfmt::skip]
-    let faces = vec![
-        TriangleFace::new(0, 1, 2),
-        TriangleFace::new(3, 4, 5),
-    ];
-
-    Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
-}
-
-pub fn plane_var_len(position: [f32; 3], scale: f32) -> Geometry {
-    #[rustfmt::skip]
-    let vertex_positions = vec![
-        v(-1.0, -1.0,  0.0, position, scale),
-        v( 1.0, -1.0,  0.0, position, scale),
-        v( 1.0,  1.0,  0.0, position, scale),
-        v( 1.0,  1.0,  0.0, position, scale),
-        v(-1.0,  1.0,  0.0, position, scale),
-        v(-1.0, -1.0,  0.0, position, scale),
     ];
 
     #[rustfmt::skip]
@@ -824,7 +792,7 @@ pub fn plane_var_len(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let faces = vec![
         TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
-        TriangleFace::new_separate(3, 4, 5, 0, 0, 0),
+        TriangleFace::new_separate(2, 3, 0, 0, 0, 0),
     ];
 
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
