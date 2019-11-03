@@ -205,29 +205,86 @@ impl Func for FuncImplSeparateIsolatedMeshes {
     }
 }
 
-pub struct FuncImplRevertMeshFaces;
-impl Func for FuncImplRevertMeshFaces {
-    fn flags(&self) -> FuncFlags {
+pub struct FuncImplJoinMeshes;
+impl Func for FuncImplJoinMeshes {
+  fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
     fn param_info(&self) -> &[ParamInfo] {
-        &[ParamInfo {
-            ty: Ty::Geometry,
-            optional: false,
-        }]
-    }
+      &[
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+        ]
+      }
 
     fn return_ty(&self) -> Ty {
         Ty::Geometry
     }
 
     fn call(&self, args: &[Value]) -> Value {
-        let geometry = args[0].unwrap_geometry();
+      let first_geometry = args[0].unwrap_geometry();
+        let second_geometry = args[1].unwrap_geometry();
 
-        let value = mesh_tools::revert_mesh_faces(geometry);
-        Value::Geometry(Arc::new(value))
+        let value = mesh_tools::join_meshes(first_geometry, second_geometry);
+      Value::Geometry(Arc::new(value))
     }
 }
+
+pub struct FuncImplWeld;
+impl Func for FuncImplWeld {
+    fn param_info(&self) -> &[ParamInfo] {
+        &[
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+            ParamInfo {
+                ty: Ty::Float,
+                optional: false,
+            },
+        ]
+      }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+       let geometry = args[0].unwrap_geometry();
+        let tolerance = args[1].unwrap_float();
+
+        let value = mesh_tools::weld(geometry, tolerance);
+
+        Value::Geometry(Arc::new(value))
+          }
+}
+
+    
+pub struct FuncImplRevertMeshFaces;
+impl Func for FuncImplRevertMeshFaces {
+        &[ParamInfo {
+            ty: Ty::Geometry,
+            optional: false,
+        }]
+   }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+       let geometry = args[0].unwrap_geometry();
+
+        let value = mesh_tools::revert_mesh_faces(geometry);
+       Value::Geometry(Arc::new(value))
+    }
+}       
 
 pub struct FuncImplSynchronizeMeshFaces;
 impl Func for FuncImplSynchronizeMeshFaces {
@@ -239,14 +296,14 @@ impl Func for FuncImplSynchronizeMeshFaces {
             ty: Ty::Geometry,
             optional: false,
         }]
-    }
+      }
 
     fn return_ty(&self) -> Ty {
         Ty::Geometry
     }
 
     fn call(&self, args: &[Value]) -> Value {
-        let geometry = args[0].unwrap_refcounted_geometry();
+      let geometry = args[0].unwrap_refcounted_geometry();
 
         let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
@@ -265,7 +322,7 @@ impl Func for FuncImplSynchronizeMeshFaces {
         } else {
             Value::Geometry(geometry)
         }
-    }
+          }
 }
 
 // IMPORTANT: Do not change these IDs, ever! When adding a new
@@ -276,8 +333,11 @@ pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
 pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
 pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
-pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(5);
-pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(6);
+pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(5);
+pub const FUNC_ID_WELD: FuncIdent = FuncIdent(6);
+pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(7);
+pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(8);
+
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
@@ -295,6 +355,8 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
         FUNC_ID_SEPARATE_ISOLATED_MESHES,
         Box::new(FuncImplSeparateIsolatedMeshes),
     );
+    funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncImplJoinMeshes));
+    funcs.insert(FUNC_ID_WELD, Box::new(FuncImplWeld));
     funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncImplRevertMeshFaces));
     funcs.insert(
         FUNC_ID_SYNCHRONIZE_MESH_FACES,
