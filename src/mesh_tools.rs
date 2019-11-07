@@ -150,47 +150,34 @@ pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
     let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
     let mut patches: Vec<Geometry> = Vec::new();
 
-    while let Some(first_face_index) = available_face_indices.iter().next() {
-        let connected_indices = crawl_faces(*first_face_index, &face_to_face);
+    while let Some(start_face_index) = available_face_indices.iter().cloned().next() {
+        available_face_indices.remove(&start_face_index);
+        let mut index_stack = vec![start_face_index];
+        let mut connected_face_indices = HashSet::new();
+
+        while let Some(current_face_index) = index_stack.pop() {
+            if connected_face_indices.insert(current_face_index) {
+                for neighbor_index in &face_to_face[&current_face_index] {
+                    if available_face_indices.contains(neighbor_index) {
+                        index_stack.push(*neighbor_index);
+                        available_face_indices.remove(neighbor_index);
+                    }
+                }
+            }
+        }
 
         patches.push(
             Geometry::from_faces_with_vertices_and_normals_remove_orphans(
-                connected_indices
+                connected_face_indices
                     .iter()
                     .map(|face_index| geometry.faces()[cast_usize(*face_index)]),
                 geometry.vertices().to_vec(),
                 geometry.normals().to_vec(),
             ),
         );
-
-        for c in &connected_indices {
-            available_face_indices.remove(c);
-        }
     }
 
     patches
-}
-
-fn crawl_faces(
-    start_face_index: u32,
-    face_to_face: &HashMap<u32, SmallVec<[u32; 8]>>,
-) -> HashSet<u32> {
-    let mut index_stack = vec![start_face_index];
-    index_stack.push(start_face_index);
-
-    let mut connected_face_indices = HashSet::new();
-
-    while let Some(current_face_index) = index_stack.pop() {
-        if connected_face_indices.insert(current_face_index) {
-            for neighbor in &face_to_face[&current_face_index] {
-                index_stack.push(neighbor.clone());
-            }
-        }
-    }
-
-    connected_face_indices.shrink_to_fit();
-
-    connected_face_indices
 }
 
 /// Joins two mesh geometries into one.
