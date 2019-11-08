@@ -22,6 +22,7 @@ pub mod renderer;
 mod camera;
 mod convert;
 mod edge_analysis;
+mod face_tools;
 mod input;
 mod interpreter;
 mod interpreter_funcs;
@@ -33,6 +34,7 @@ mod mesh_tools;
 mod mesh_topology_analysis;
 mod platform;
 mod ui;
+mod vertex_tools;
 
 const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 
