@@ -3,8 +3,6 @@ use nalgebra::base::Vector3;
 use crate::convert::cast_usize;
 use crate::geometry::{Geometry, TriangleFace};
 
-/// Calculate a normalized vector perpendicular to the face pointing outwards
-/// following the right-hand rule.
 #[allow(dead_code)]
 pub fn calculate_triangle_face_normal(
     triangle_face: &TriangleFace,
@@ -23,10 +21,9 @@ pub fn calculate_triangle_face_normal(
 
 #[cfg(test)]
 mod tests {
-    use crate::geometry::NormalStrategy;
     use nalgebra::geometry::Point3;
 
-    use crate::geometry::Face;
+    use crate::geometry::{Face, NormalStrategy};
 
     use super::*;
 
