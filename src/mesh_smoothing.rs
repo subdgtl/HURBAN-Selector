@@ -364,7 +364,7 @@ mod tests {
     use nalgebra;
 
     use crate::edge_analysis;
-    use crate::geometry::{Geometry, NormalStrategy, OrientedEdge, Vertices};
+    use crate::geometry::{self, Geometry, NormalStrategy, OrientedEdge, Vertices};
     use crate::mesh_analysis;
     use crate::mesh_topology_analysis;
 
@@ -960,5 +960,33 @@ mod tests {
                 0.001,
             ));
         }
+    }
+
+    #[test]
+    fn test_loop_subdivision_snapshot_uv_sphere() {
+        let geometry = geometry::uv_sphere([0.0; 3], 1.0, 2, 3);
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
+
+        let subdivided_geometry = loop_subdivision(&geometry, &v2v, &f2f);
+
+        insta::assert_json_snapshot!(
+            "uv_sphere_2_3_after_1_iteration_of_loop_subdivision",
+            &subdivided_geometry
+        );
+    }
+
+    #[test]
+    fn test_loop_subdivision_snapshot_cube_sharp() {
+        let geometry = geometry::cube_sharp_var_len([0.0; 3], 1.0);
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
+
+        let subdivided_geometry = loop_subdivision(&geometry, &v2v, &f2f);
+
+        insta::assert_json_snapshot!(
+            "cube_sharp_after_1_iteration_of_loop_subdivision",
+            &subdivided_geometry
+        );
     }
 }

@@ -32,7 +32,7 @@ pub type Normals = Vec<Vector3<f32>>;
 ///
 /// The geometry data lives in right-handed coordinate space with the
 /// XY plane being the ground and Z axis growing upwards.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Geometry {
     faces: Vec<Face>,
     vertices: Vertices,
@@ -391,7 +391,7 @@ impl fmt::Display for Geometry {
 }
 
 /// A geometry index. Describes topology of geometry data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum Face {
     Triangle(TriangleFace),
 }
@@ -420,7 +420,7 @@ impl fmt::Display for Face {
 
 /// A triangular face. Contains indices to other geometry data, such
 /// as vertices and normals.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct TriangleFace {
     pub vertices: (u32, u32, u32),
     pub normals: (u32, u32, u32),
