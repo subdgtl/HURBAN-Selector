@@ -292,6 +292,67 @@ impl Func for FuncImplCreatePlane {
     }
 }
 
+pub struct FuncImplJoinMeshes;
+impl Func for FuncImplJoinMeshes {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+    fn param_info(&self) -> &[ParamInfo] {
+        &[
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+        ]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+        let first_geometry = args[0].unwrap_geometry();
+        let second_geometry = args[1].unwrap_geometry();
+
+        let value = mesh_tools::join_meshes(first_geometry, second_geometry);
+
+        Value::Geometry(Arc::new(value))
+    }
+}
+
+pub struct FuncImplWeld;
+impl Func for FuncImplWeld {
+    fn param_info(&self) -> &[ParamInfo] {
+        &[
+            ParamInfo {
+                ty: Ty::Geometry,
+                optional: false,
+            },
+            ParamInfo {
+                ty: Ty::Float,
+                optional: false,
+            },
+        ]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&self, args: &[Value]) -> Value {
+        let geometry = args[0].unwrap_geometry();
+        let tolerance = args[1].unwrap_float();
+
+        let value = mesh_tools::weld(geometry, tolerance);
+
+        Value::Geometry(Arc::new(value))
+    }
+}
+
 // IMPORTANT: Do not change these IDs, ever! When adding a new
 // function, always create a new, unique function identifier for it.
 
@@ -302,6 +363,8 @@ pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
 pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
 pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(5);
 pub const FUNC_ID_CREATE_PLANE: FuncIdent = FuncIdent(6);
+pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(7);
+pub const FUNC_ID_WELD: FuncIdent = FuncIdent(8);
 
 /// The global set of function definitions available to the
 /// interpreter and it's clients.
@@ -321,6 +384,8 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
     );
     funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncImplLoopSubdivision));
     funcs.insert(FUNC_ID_CREATE_PLANE, Box::new(FuncImplCreatePlane));
+    funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncImplJoinMeshes));
+    funcs.insert(FUNC_ID_WELD, Box::new(FuncImplWeld));
 
     funcs
 }
