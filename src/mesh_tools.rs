@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn test_separate_isolated_meshes_returns_similar_for_cube() {
-        let geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
+        let geometry = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
 
         let calculated_geometries = separate_isolated_meshes(&geometry);
 
