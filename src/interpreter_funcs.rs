@@ -170,7 +170,7 @@ impl Func for FuncImplLaplacianSmoothing {
 
         let (g, _, _) = mesh_smoothing::laplacian_smoothing(
             geometry,
-            vertex_to_vertex_topology,
+            &vertex_to_vertex_topology,
             cmp::min(255, iterations),
             &[],
             false,
