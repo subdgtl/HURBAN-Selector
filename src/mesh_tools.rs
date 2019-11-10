@@ -149,11 +149,13 @@ pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
     let face_to_face = face_to_face_topology(geometry);
     let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
     let mut patches: Vec<Geometry> = Vec::new();
+    let mut index_stack: Vec<u32> = Vec::new();
+    let mut connected_face_indices = HashSet::new();
 
-    while let Some(start_face_index) = available_face_indices.iter().cloned().next() {
+    while let Some(start_face_index) = available_face_indices.iter().copied().next() {
         available_face_indices.remove(&start_face_index);
-        let mut index_stack = vec![start_face_index];
-        let mut connected_face_indices = HashSet::new();
+        index_stack.push(start_face_index);
+        connected_face_indices.clear();
 
         while let Some(current_face_index) = index_stack.pop() {
             if connected_face_indices.insert(current_face_index) {
