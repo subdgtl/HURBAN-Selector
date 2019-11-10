@@ -231,7 +231,7 @@ impl<'a> UiFrame<'a> {
                             OpParamUiRepr::IntSlider => {
                                 imgui::Slider::new(&label, 1..=10).build(ui, value);
                             }
-                            OpParamUiRepr::Dropdown(ref choices) => {
+                            OpParamUiRepr::GeometryDropdown(ref choices) => {
                                 // Imgui's combo box requires usize, but our Uint
                                 // values are u32, so we need to cast them before
                                 // and after.

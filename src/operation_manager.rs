@@ -27,7 +27,7 @@ pub enum OpParamUiRepr {
     Checkbox,
     #[allow(unused)]
     Radio,
-    Dropdown(Vec<(u64, String)>),
+    GeometryDropdown(Vec<(u64, String)>),
 }
 
 #[derive(Debug, Clone)]
@@ -101,7 +101,7 @@ impl OperationManager {
 
         for param in &operation.params {
             let expr = match param.repr {
-                OpParamUiRepr::Dropdown(_) => match param.value {
+                OpParamUiRepr::GeometryDropdown(_) => match param.value {
                     ast::LitExpr::Uint(uint) => {
                         ast::Expr::Var(ast::VarExpr::new(VarIdent(u64::from(uint))))
                     }
@@ -239,7 +239,7 @@ impl OperationManager {
                     &self.geometry_metadata[0..num_available_geos as usize];
 
                 for param in &mut selected_op.op.params {
-                    if let OpParamUiRepr::Dropdown(ref mut choices) = param.repr {
+                    if let OpParamUiRepr::GeometryDropdown(ref mut choices) = param.repr {
                         choices.clear();
                         choices.extend(
                             available_geo_metadata
@@ -327,7 +327,7 @@ pub fn operations_ui_definitions() -> HashMap<String, Op> {
             params: vec![
                 OpUiParam {
                     name: "Geometry".to_string(),
-                    repr: OpParamUiRepr::Dropdown(vec![]),
+                    repr: OpParamUiRepr::GeometryDropdown(vec![]),
                     value: ast::LitExpr::Uint(0),
                 },
                 OpUiParam {
