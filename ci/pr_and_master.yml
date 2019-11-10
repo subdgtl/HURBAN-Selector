@@ -15,14 +15,8 @@ jobs:
       TOOLCHAIN: 1.38.0
 
   - job: macOS
-    strategy:
-      matrix:
-        macos-10_13:
-          imageName: macos-10.13
-        macos-10_14:
-          imageName: macos-10.14
     pool:
-      vmImage: $(imageName)
+      vmImage: macos-10.14
     steps:
       - template: test-all-debug.yml
     variables:
