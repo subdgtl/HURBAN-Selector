@@ -43,6 +43,23 @@ We use standard `cargo` workflows:
 - `cargo build` to build,
 - `cargo run` to run.
 
+### Testing
+
+Apart from unit and integration tests, we do have a fair amount of
+snapshot tests. These are used mostly to check for regressions in
+operation implementations. The workflow is to always manually review
+the new snapshot, if the operation's output has changed.
+
+Snapshots are handled by the
+[insta](https://docs.rs/insta/0.12.0/insta/) crate. The `cargo insta`
+plugin, while not strictly necessary, is also useful in the
+workflow. Get it with `cargo install cargo-insta`.
+
+To make a new snapshot test, add a standard test and use
+`insta::assert_json_snapshot("name_of_snapshot", &data)`. The test
+will fail at first, as there is no snapshot to compare against. Use
+the `cargo insta review` to review snapshot diffs or new snapshots.
+
 ### Environment Variables
 
 **HS_GPU_BACKEND (optional)**: Force a GPU backend.
