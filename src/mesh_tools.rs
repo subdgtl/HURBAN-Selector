@@ -8,7 +8,7 @@ use crate::convert::{cast_u32, cast_usize};
 use crate::geometry::{Face, Geometry, OrientedEdge, TriangleFace, UnorientedEdge};
 use crate::mesh_topology_analysis;
 
-/// Make sure all the faces are oriented the same way - have the same winding
+/// Makes sure all the faces are oriented the same way - have the same winding
 /// (vertex order).
 ///
 /// This function crawls the mesh geometry and flips all the faces, which are
@@ -25,7 +25,7 @@ use crate::mesh_topology_analysis;
 /// winding, it's being reverted and only then triggers checking its own
 /// neighbors.
 ///
-/// This method, doesn't flip the normals associated with the face vertices, as
+/// This method doesn't flip the normals associated with the face vertices, as
 /// there is no unambiguous way to do so automatically.
 
 // FIXME: Flip also vertex normals if the visual/practical tests prove it's
@@ -46,7 +46,7 @@ pub fn synchronize_mesh_winding(
 
     // item index = face index; TRUE = the face was already checked, FALSE = the
     // face hasn't yet been checked
-    let mut face_treatment_pattern = vec![false; original_triangle_faces.len()];
+    let mut face_processed_pattern = vec![false; original_triangle_faces.len()];
 
     // Faces to be checked for winding, determined by the orientation of the
     // OrientedEdge of the neighbor, which triggered the check. Current face has
@@ -60,17 +60,26 @@ pub fn synchronize_mesh_winding(
     let mut synchronized_triangle_faces: Vec<TriangleFace> =
         Vec::with_capacity(original_triangle_faces.len());
 
+    // Edge-to-index map for faster lookup
+    let mut unoriented_edge_index_map: HashMap<UnorientedEdge, u32> =
+        HashMap::with_capacity(unoriented_edges.len());
+    for (unoriented_edge_index, unoriented_edge) in unoriented_edges.iter().enumerate() {
+        unoriented_edge_index_map.insert(*unoriented_edge, cast_u32(unoriented_edge_index));
+    }
+
     // Synchronize faces in all mesh geometry triangles
     while synchronized_triangle_faces.len() < original_triangle_faces.len() {
         // Start with the first untreated face in the list of the original mesh
         // geometry faces. The winding of this face also determines the winding
         // of the rest of the mesh geometry.
-        let mut current_face_index: u32 = 0;
-        while face_treatment_pattern[cast_usize(current_face_index)] {
-            current_face_index += 1;
-        }
+        let mut current_face_index = cast_u32(
+            face_processed_pattern
+                .iter()
+                .position(|&v| !v)
+                .expect("Face index not found"),
+        );
 
-        face_treatment_pattern[cast_usize(current_face_index)] = true;
+        face_processed_pattern[cast_usize(current_face_index)] = true;
         let mut current_test_edge: OrientedEdge =
             original_triangle_faces[cast_usize(current_face_index)].to_oriented_edges()[0];
 
@@ -94,12 +103,6 @@ pub fn synchronize_mesh_winding(
                 current_face.to_reverted()
             };
             synchronized_triangle_faces.push(proper_current_face);
-
-            // Edge-to-index map for faster lookup
-            let mut unoriented_edge_index_map: HashMap<UnorientedEdge, u32> = HashMap::new();
-            for (unoriented_edge_index, unoriented_edge) in unoriented_edges.iter().enumerate() {
-                unoriented_edge_index_map.insert(*unoriented_edge, cast_u32(unoriented_edge_index));
-            }
 
             // Find the indices of edges of the current face in the list of edges,
             // from which the topology was created
@@ -125,11 +128,11 @@ pub fn synchronize_mesh_winding(
                     // If it exists, iterate the faces containing the edge
                     for face_index in edge_in_faces {
                         // and if it was not already added to the stack or even checked
-                        if !face_treatment_pattern[cast_usize(*face_index)] {
+                        if !face_processed_pattern[cast_usize(*face_index)] {
                             // add it to the stack with the expected edge orientation
                             edge_face_stack.push((face_oriented_edge.to_reverted(), *face_index));
                             // and mark it treated.
-                            face_treatment_pattern[cast_usize(*face_index)] = true;
+                            face_processed_pattern[cast_usize(*face_index)] = true;
                         }
                     }
                 }
@@ -297,7 +300,7 @@ pub fn weld(geometry: &Geometry, tolerance: f32) -> Geometry {
 /// Returns a vector of new separated geometries.
 pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
     let face_to_face = mesh_topology_analysis::face_to_face_topology(geometry);
-    let mut available_face_indices: HashSet<u32> = face_to_face.keys().cloned().collect();
+    let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
     let mut patches: Vec<Geometry> = Vec::new();
 
     while let Some(first_face_index) = available_face_indices.iter().next() {

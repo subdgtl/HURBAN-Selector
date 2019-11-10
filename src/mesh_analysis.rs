@@ -49,7 +49,6 @@ pub fn manifold_edges<'a>(
 }
 
 /// Finds non-manifold (erroneous) edges in a mesh edge collection
-#[allow(dead_code)]
 pub fn non_manifold_edges<'a>(
     edge_sharing: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
@@ -67,7 +66,7 @@ pub fn non_manifold_edges<'a>(
         })
 }
 
-// Checks if mesh contains only manifold or border edges
+/// Checks if mesh contains only manifold or border edges
 pub fn is_mesh_manifold(edge_sharing: &EdgeSharingMap) -> bool {
     non_manifold_edges(edge_sharing).next().is_none()
 }
