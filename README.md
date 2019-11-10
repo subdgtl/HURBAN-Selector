@@ -1,6 +1,6 @@
 # HURBAN Selector
 
-[![Build Status](https://dev.azure.com/subdigital/HURBAN-selector/_apis/build/status/sub-digital.HURBAN-Selector?branchName=master)](https://dev.azure.com/subdigital/HURBAN-selector/_build/latest?definitionId=1&branchName=master)
+[![Build Status](https://dev.azure.com/subdgtl/HURBAN-Selector/_apis/build/status/Master%20and%20PR?branchName=master)](https://dev.azure.com/subdgtl/HURBAN-Selector/_build/latest?definitionId=1&branchName=master)
 
 H.U.R.B.A.N. Selector is a software experiment sponsored by the [Slovak
 Center of Design](https://www.scd.sk/). It is meant to test the
