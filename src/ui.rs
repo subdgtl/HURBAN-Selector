@@ -143,9 +143,15 @@ impl<'a> UiFrame<'a> {
 
     pub fn draw_renderer_settings_window(&self, draw_mode: &mut DrawGeometryMode) {
         let ui = &self.imgui_ui;
+        let window_width = 250.0;
+        let window_position = [
+            self.imgui_ui.io().display_size[0] - window_width - 50.0,
+            50.0,
+        ];
 
         imgui::Window::new(imgui::im_str!("Renderer Settings"))
-            .size([250.0, 200.0], imgui::Condition::Once)
+            .position(window_position, imgui::Condition::Always)
+            .size([window_width, 200.0], imgui::Condition::Once)
             .build(ui, || {
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
                 ui.radio_button(
@@ -293,9 +299,12 @@ impl<'a> UiFrame<'a> {
         let mut run_button_clicked = false;
         let mut remove_button_clicked = false;
         let last_operation_successful = operation_ui.last_operation_successful();
+        let window_height = self.imgui_ui.io().display_size[1] - 100.0;
 
         imgui::Window::new(&imgui::im_str!("Operations"))
-            .size([1000.0, 1000.0], imgui::Condition::FirstUseEver)
+            .movable(false)
+            .position([50.0, 50.0], imgui::Condition::Always)
+            .size([500.0, window_height], imgui::Condition::FirstUseEver)
             .build(ui, || {
                 if last_operation_successful {
                     for (name, ui_op) in available_operations {
