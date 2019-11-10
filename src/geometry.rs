@@ -797,7 +797,7 @@ pub fn plane(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn cube_smooth_same_len(position: [f32; 3], scale: f32) -> Geometry {
+pub fn cube_smooth(position: [f32; 3], scale: f32) -> Geometry {
     let vertex_positions = vec![
         // back
         v(-1.0, 1.0, -1.0, position, scale),
@@ -852,100 +852,7 @@ pub fn cube_smooth_same_len(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-#[deprecated(note = "Don't use, generates open geometry")]
-// FIXME: Remove eventually
-pub fn cube_sharp_same_len(position: [f32; 3], scale: f32) -> Geometry {
-    let vertex_positions = vec![
-        // back
-        v(-1.0, 1.0, -1.0, position, scale),
-        v(-1.0, 1.0, 1.0, position, scale),
-        v(1.0, 1.0, 1.0, position, scale),
-        v(1.0, 1.0, -1.0, position, scale),
-        // front
-        v(-1.0, -1.0, -1.0, position, scale),
-        v(1.0, -1.0, -1.0, position, scale),
-        v(1.0, -1.0, 1.0, position, scale),
-        v(-1.0, -1.0, 1.0, position, scale),
-        // top
-        v(-1.0, 1.0, 1.0, position, scale),
-        v(-1.0, -1.0, 1.0, position, scale),
-        v(1.0, -1.0, 1.0, position, scale),
-        v(1.0, 1.0, 1.0, position, scale),
-        // bottom
-        v(-1.0, 1.0, -1.0, position, scale),
-        v(1.0, 1.0, -1.0, position, scale),
-        v(1.0, -1.0, -1.0, position, scale),
-        v(-1.0, -1.0, -1.0, position, scale),
-        // right
-        v(1.0, 1.0, -1.0, position, scale),
-        v(1.0, 1.0, 1.0, position, scale),
-        v(1.0, -1.0, 1.0, position, scale),
-        v(1.0, -1.0, -1.0, position, scale),
-        // left
-        v(-1.0, 1.0, -1.0, position, scale),
-        v(-1.0, -1.0, -1.0, position, scale),
-        v(-1.0, -1.0, 1.0, position, scale),
-        v(-1.0, 1.0, 1.0, position, scale),
-    ];
-
-    let vertex_normals = vec![
-        // back
-        n(0.0, 1.0, 0.0),
-        n(0.0, 1.0, 0.0),
-        n(0.0, 1.0, 0.0),
-        n(0.0, 1.0, 0.0),
-        // front
-        n(0.0, -1.0, 0.0),
-        n(0.0, -1.0, 0.0),
-        n(0.0, -1.0, 0.0),
-        n(0.0, -1.0, 0.0),
-        // top
-        n(0.0, 0.0, 1.0),
-        n(0.0, 0.0, 1.0),
-        n(0.0, 0.0, 1.0),
-        n(0.0, 0.0, 1.0),
-        // bottom
-        n(0.0, 0.0, -1.0),
-        n(0.0, 0.0, -1.0),
-        n(0.0, 0.0, -1.0),
-        n(0.0, 0.0, -1.0),
-        // right
-        n(1.0, 0.0, 0.0),
-        n(1.0, 0.0, 0.0),
-        n(1.0, 0.0, 0.0),
-        n(1.0, 0.0, 0.0),
-        // left
-        n(-1.0, 0.0, 0.0),
-        n(-1.0, 0.0, 0.0),
-        n(-1.0, 0.0, 0.0),
-        n(-1.0, 0.0, 0.0),
-    ];
-
-    let faces = vec![
-        // back
-        TriangleFace::new(0, 1, 2),
-        TriangleFace::new(2, 3, 0),
-        // front
-        TriangleFace::new(4, 5, 6),
-        TriangleFace::new(6, 7, 4),
-        // top
-        TriangleFace::new(8, 9, 10),
-        TriangleFace::new(10, 11, 8),
-        // bottom
-        TriangleFace::new(12, 13, 14),
-        TriangleFace::new(14, 15, 12),
-        // right
-        TriangleFace::new(16, 17, 18),
-        TriangleFace::new(18, 19, 16),
-        // left
-        TriangleFace::new(20, 21, 22),
-        TriangleFace::new(22, 23, 20),
-    ];
-
-    Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
-}
-
-pub fn cube_sharp_var_len(position: [f32; 3], scale: f32) -> Geometry {
+pub fn cube_sharp(position: [f32; 3], scale: f32) -> Geometry {
     let vertex_positions = vec![
         // back
         v(-1.0, 1.0, -1.0, position, scale),

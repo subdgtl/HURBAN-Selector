@@ -37,7 +37,7 @@ use crate::geometry::{Face, Geometry, NormalStrategy};
 /// returns (smooth_geometry: Geometry, executed_iterations: u32, stable: bool)
 pub fn laplacian_smoothing(
     geometry: &Geometry,
-    vertex_to_vertex_topology: HashMap<u32, SmallVec<[u32; 8]>>,
+    vertex_to_vertex_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
     iterations: u32,
     fixed_vertex_indices: &[u32],
     stop_when_stable: bool,
@@ -483,156 +483,6 @@ mod tests {
         (faces, vertices)
     }
 
-    fn triple_torus_laplacian_1_iteration() -> (Vec<(u32, u32, u32)>, Vertices) {
-        let vertices = vec![
-            Point3::new(15.005895, -0.096932, 0.035714),
-            Point3::new(15.032319, 1.381472, 0.076923),
-            Point3::new(14.85898, 0.023604, -0.071429),
-            Point3::new(15.036084, 0.0625, 0.125),
-            Point3::new(14.766747, -0.404006, 0.0625),
-            Point3::new(15.922696, 0.790144, 0.0625),
-            Point3::new(15.740019, 1.252744, -0.03125),
-            Point3::new(16.038675, 1.159188, 0.0),
-            Point3::new(15.546142, 0.945945, 0.025),
-            Point3::new(15.369418, 0.614067, 0.083333),
-            Point3::new(14.954895, 2.278926, -0.125),
-            Point3::new(15.005895, 2.578983, 0.035714),
-            Point3::new(15.1, 2.505256, 0.1),
-            Point3::new(14.670096, 2.557051, 0.1),
-            Point3::new(15.010316, 1.241025, -0.125),
-            Point3::new(15.082797, 0.190284, 0.0625),
-            Point3::new(15.082797, 2.315204, 0.0625),
-            Point3::new(15.378551, 1.849819, -0.03125),
-            Point3::new(15.381446, 1.805484, 0.0),
-        ];
-
-        let faces = vec![
-            (4, 3, 0),
-            (0, 9, 1),
-            (2, 1, 3),
-            (7, 5, 9),
-            (5, 6, 9),
-            (6, 7, 18),
-            (15, 4, 0),
-            (3, 15, 9),
-            (10, 1, 11),
-            (11, 18, 12),
-            (13, 12, 1),
-            (14, 2, 15),
-            (1, 14, 15),
-            (8, 0, 2),
-            (8, 14, 6),
-            (16, 13, 10),
-            (12, 16, 1),
-            (17, 8, 7),
-            (18, 9, 8),
-            (14, 17, 6),
-            (17, 11, 16),
-            (18, 17, 16),
-            (14, 10, 17),
-            (3, 9, 0),
-            (0, 1, 2),
-            (2, 3, 4),
-            (7, 9, 18),
-            (6, 1, 9),
-            (6, 18, 1),
-            (15, 0, 8),
-            (15, 8, 9),
-            (1, 18, 11),
-            (11, 12, 13),
-            (13, 1, 10),
-            (2, 4, 15),
-            (1, 15, 3),
-            (8, 2, 14),
-            (8, 6, 5),
-            (16, 10, 14),
-            (16, 14, 1),
-            (8, 5, 7),
-            (18, 8, 17),
-            (17, 7, 6),
-            (11, 13, 16),
-            (18, 16, 12),
-            (10, 11, 17),
-        ];
-
-        (faces, vertices)
-    }
-
-    fn triple_torus_laplacian_3_iterations() -> (Vec<(u32, u32, u32)>, Vertices) {
-        let vertices = vec![
-            Point3::new(15.151657, 0.617585, 0.028723),
-            Point3::new(15.151801, 1.310818, 0.028865),
-            Point3::new(15.125829, 0.671169, 0.02456),
-            Point3::new(15.127048, 0.592897, 0.035489),
-            Point3::new(15.066285, 0.408004, 0.039398),
-            Point3::new(15.453969, 1.037088, 0.016901),
-            Point3::new(15.381245, 1.231292, 0.013342),
-            Point3::new(15.440678, 1.208557, 0.014121),
-            Point3::new(15.327691, 1.020512, 0.021627),
-            Point3::new(15.303463, 0.935796, 0.024711),
-            Point3::new(15.140347, 1.774271, 0.009292),
-            Point3::new(15.139611, 1.857752, 0.020585),
-            Point3::new(15.130695, 1.858242, 0.023035),
-            Point3::new(15.063364, 1.914324, 0.024865),
-            Point3::new(15.19091, 1.26172, 0.012169),
-            Point3::new(15.161481, 0.691733, 0.027817),
-            Point3::new(15.150735, 1.794786, 0.020292),
-            Point3::new(15.269145, 1.541168, 0.013697),
-            Point3::new(15.27197, 1.492211, 0.016929),
-        ];
-
-        let faces = vec![
-            (4, 3, 0),
-            (0, 9, 1),
-            (2, 1, 3),
-            (7, 5, 9),
-            (5, 6, 9),
-            (6, 7, 18),
-            (15, 4, 0),
-            (3, 15, 9),
-            (10, 1, 11),
-            (11, 18, 12),
-            (13, 12, 1),
-            (14, 2, 15),
-            (1, 14, 15),
-            (8, 0, 2),
-            (8, 14, 6),
-            (16, 13, 10),
-            (12, 16, 1),
-            (17, 8, 7),
-            (18, 9, 8),
-            (14, 17, 6),
-            (17, 11, 16),
-            (18, 17, 16),
-            (14, 10, 17),
-            (3, 9, 0),
-            (0, 1, 2),
-            (2, 3, 4),
-            (7, 9, 18),
-            (6, 1, 9),
-            (6, 18, 1),
-            (15, 0, 8),
-            (15, 8, 9),
-            (1, 18, 11),
-            (11, 12, 13),
-            (13, 1, 10),
-            (2, 4, 15),
-            (1, 15, 3),
-            (8, 2, 14),
-            (8, 6, 5),
-            (16, 10, 14),
-            (16, 14, 1),
-            (8, 5, 7),
-            (18, 8, 17),
-            (17, 7, 6),
-            (11, 13, 16),
-            (18, 16, 12),
-            (10, 11, 17),
-        ];
-
-        (faces, vertices)
-    }
-
     fn shape_for_smoothing_with_anchors() -> (Vec<(u32, u32, u32)>, Vertices) {
         let vertices = vec![
             Point3::new(30.21796, -6.119943, 0.0),
@@ -705,11 +555,11 @@ mod tests {
         let vertex_to_vertex_topology =
             mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
         let (relaxed_geometry_0, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 0, &[], false);
+            laplacian_smoothing(&geometry, &vertex_to_vertex_topology, 0, &[], false);
         let (relaxed_geometry_1, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 1, &[], false);
+            laplacian_smoothing(&geometry, &vertex_to_vertex_topology, 1, &[], false);
         let (relaxed_geometry_10, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 10, &[], false);
+            laplacian_smoothing(&geometry, &vertex_to_vertex_topology, 10, &[], false);
 
         assert_eq!(relaxed_geometry_0.faces().len(), geometry.faces().len(),);
         assert_eq!(relaxed_geometry_1.faces().len(), geometry.faces().len(),);
@@ -735,85 +585,68 @@ mod tests {
     }
 
     #[test]
-    fn test_laplacian_smoothing() {
+    fn test_laplacian_smoothing_preserves_original_geometry_with_0_iterations() {
         let (faces, vertices) = triple_torus();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
 
-        let (faces_1_i, vertices_1_i) = triple_torus_laplacian_1_iteration();
-        let test_geometry_1_i = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces_1_i.clone(),
-            vertices_1_i.clone(),
+        let (relaxed_geometry, _, _) = laplacian_smoothing(&geometry, &v2v, 0, &[], false);
+        assert_eq!(geometry, relaxed_geometry);
+    }
+
+    #[test]
+    fn test_laplacian_smoothing_snapshot_triple_torus_1_iteration() {
+        let (faces, vertices) = triple_torus();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
 
-        let (faces_3_i, vertices_3_i) = triple_torus_laplacian_3_iterations();
-        let test_geometry_3_i = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces_3_i.clone(),
-            vertices_3_i.clone(),
+        let (relaxed_geometry, _, _) = laplacian_smoothing(&geometry, &v2v, 1, &[], false);
+        insta::assert_json_snapshot!(
+            "triple_torus_after_1_iteration_of_laplacian_smoothing",
+            &relaxed_geometry
+        );
+    }
+
+    #[test]
+    fn test_laplacian_smoothing_snapshot_triple_torus_2_iterations() {
+        let (faces, vertices) = triple_torus();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
 
-        let vertex_to_vertex_topology =
-            mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry_0_i, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 0, &[], false);
-        let (relaxed_geometry_1_i, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 1, &[], false);
-        let (relaxed_geometry_3_i, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 3, &[], false);
+        let (relaxed_geometry, _, _) = laplacian_smoothing(&geometry, &v2v, 2, &[], false);
+        insta::assert_json_snapshot!(
+            "triple_torus_after_2_iteration2_of_laplacian_smoothing",
+            &relaxed_geometry
+        );
+    }
 
-        let relaxed_geometry_0_i_faces = relaxed_geometry_0_i.faces();
-        let relaxed_geometry_1_i_faces = relaxed_geometry_1_i.faces();
-        let test_geometry_0_i_faces = geometry.faces();
-        let test_geometry_1_i_faces = test_geometry_1_i.faces();
-        let relaxed_geometry_3_i_faces = relaxed_geometry_3_i.faces();
-        let test_geometry_3_i_faces = test_geometry_3_i.faces();
+    #[test]
+    fn test_laplacian_smoothing_snapshot_triple_torus_3_iterations() {
+        let (faces, vertices) = triple_torus();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
+            NormalStrategy::Sharp,
+        );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
 
-        assert_eq!(relaxed_geometry_0_i_faces, test_geometry_0_i_faces);
-        assert_eq!(relaxed_geometry_1_i_faces, test_geometry_1_i_faces);
-        assert_eq!(relaxed_geometry_3_i_faces, test_geometry_3_i_faces);
-
-        const TOLERANCE_SQUARED: f32 = 0.01 * 0.01;
-
-        let relaxed_geometry_0_i_vertices = relaxed_geometry_0_i.vertices();
-        let test_geometry_0_i_vertices = geometry.vertices();
-
-        for i in 0..test_geometry_0_i_vertices.len() {
-            assert!(
-                nalgebra::distance_squared(
-                    &test_geometry_0_i_vertices[i],
-                    &relaxed_geometry_0_i_vertices[i]
-                ) < TOLERANCE_SQUARED
-            );
-        }
-
-        let relaxed_geometry_1_i_vertices = relaxed_geometry_1_i.vertices();
-        let test_geometry_1_i_vertices = test_geometry_1_i.vertices();
-
-        for i in 0..test_geometry_1_i_vertices.len() {
-            assert!(
-                nalgebra::distance_squared(
-                    &test_geometry_1_i_vertices[i],
-                    &relaxed_geometry_1_i_vertices[i]
-                ) < TOLERANCE_SQUARED
-            );
-        }
-
-        let relaxed_geometry_3_i_vertices = relaxed_geometry_3_i.vertices();
-        let test_geometry_3_i_vertices = test_geometry_3_i.vertices();
-
-        for i in 0..test_geometry_3_i_vertices.len() {
-            assert!(
-                nalgebra::distance_squared(
-                    &test_geometry_3_i_vertices[i],
-                    &relaxed_geometry_3_i_vertices[i]
-                ) < TOLERANCE_SQUARED
-            );
-        }
+        let (relaxed_geometry, _, _) = laplacian_smoothing(&geometry, &v2v, 3, &[], false);
+        insta::assert_json_snapshot!(
+            "triple_torus_after_3_iterations_of_laplacian_smoothing",
+            &relaxed_geometry
+        );
     }
 
     #[test]
@@ -835,15 +668,9 @@ mod tests {
                 NormalStrategy::Sharp,
             );
 
-        let vertex_to_vertex_topology =
-            mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry, _, _) = laplacian_smoothing(
-            &geometry,
-            vertex_to_vertex_topology,
-            50,
-            &fixed_vertex_indices,
-            false,
-        );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let (relaxed_geometry, _, _) =
+            laplacian_smoothing(&geometry, &v2v, 50, &fixed_vertex_indices, false);
 
         let relaxed_geometry_faces = relaxed_geometry.faces();
         let test_geometry_faces = test_geometry_correct.faces();
@@ -886,15 +713,9 @@ mod tests {
                 vertices_correct.clone(),
                 NormalStrategy::Sharp,
             );
-        let vertex_to_vertex_topology =
-            mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry, _, _) = laplacian_smoothing(
-            &geometry,
-            vertex_to_vertex_topology,
-            50,
-            &fixed_vertex_indices,
-            false,
-        );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let (relaxed_geometry, _, _) =
+            laplacian_smoothing(&geometry, &v2v, 50, &fixed_vertex_indices, false);
 
         let relaxed_geometry_faces = relaxed_geometry.faces();
         let test_geometry_faces = test_geometry_correct.faces();
@@ -935,15 +756,9 @@ mod tests {
                 NormalStrategy::Sharp,
             );
 
-        let vertex_to_vertex_topology =
-            mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry, _, _) = laplacian_smoothing(
-            &geometry,
-            vertex_to_vertex_topology,
-            255,
-            &fixed_vertex_indices,
-            true,
-        );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let (relaxed_geometry, _, _) =
+            laplacian_smoothing(&geometry, &v2v, 255, &fixed_vertex_indices, true);
 
         let relaxed_geometry_faces = relaxed_geometry.faces();
         let test_geometry_faces = test_geometry_correct.faces();
@@ -978,7 +793,7 @@ mod tests {
 
     #[test]
     fn test_loop_subdivision_snapshot_cube_sharp() {
-        let geometry = geometry::cube_sharp_var_len([0.0; 3], 1.0);
+        let geometry = geometry::cube_sharp([0.0; 3], 1.0);
         let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
         let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
 

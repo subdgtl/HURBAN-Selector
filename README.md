@@ -1,6 +1,6 @@
 # HURBAN Selector
 
-[![Build Status](https://dev.azure.com/subdigital/HURBAN-selector/_apis/build/status/sub-digital.HURBAN-Selector?branchName=master)](https://dev.azure.com/subdigital/HURBAN-selector/_build/latest?definitionId=1&branchName=master)
+[![Build Status](https://dev.azure.com/subdgtl/HURBAN-Selector/_apis/build/status/Master%20and%20PR?branchName=master)](https://dev.azure.com/subdgtl/HURBAN-Selector/_build/latest?definitionId=1&branchName=master)
 
 H.U.R.B.A.N. Selector is a software experiment sponsored by the [Slovak
 Center of Design](https://www.scd.sk/). It is meant to test the
@@ -42,6 +42,23 @@ We use standard `cargo` workflows:
   `--document-private-items`),
 - `cargo build` to build,
 - `cargo run` to run.
+
+### Testing
+
+Apart from unit and integration tests, we do have a fair amount of
+snapshot tests. These are used mostly to check for regressions in
+operation implementations. The workflow is to always manually review
+the new snapshot, if the operation's output has changed.
+
+Snapshots are handled by the
+[insta](https://docs.rs/insta/0.12.0/insta/) crate. The `cargo insta`
+plugin, while not strictly necessary, is also useful in the
+workflow. Get it with `cargo install cargo-insta`.
+
+To make a new snapshot test, add a standard test and use
+`insta::assert_json_snapshot("name_of_snapshot", &data)`. The test
+will fail at first, as there is no snapshot to compare against. Use
+the `cargo insta review` to review snapshot diffs or new snapshots.
 
 ### Environment Variables
 
