@@ -474,13 +474,13 @@ impl TriangleFace {
     }
 
     /// Does the face contain the specific unoriented edge
-    pub fn contains_unoriented_edge(self, unoriented_edge: UnorientedEdge) -> bool {
+    pub fn contains_unoriented_edge(&self, unoriented_edge: UnorientedEdge) -> bool {
         let [u_e_0, u_e_1, u_e_2] = self.to_unoriented_edges();
         u_e_0 == unoriented_edge || u_e_1 == unoriented_edge || u_e_2 == unoriented_edge
     }
 
     /// Does the face contain the specific oriented edge
-    pub fn contains_oriented_edge(self, oriented_edge: OrientedEdge) -> bool {
+    pub fn contains_oriented_edge(&self, oriented_edge: OrientedEdge) -> bool {
         let [o_e_0, o_e_1, o_e_2] = self.to_oriented_edges();
         o_e_0 == oriented_edge || o_e_1 == oriented_edge || o_e_2 == oriented_edge
     }
@@ -497,9 +497,10 @@ impl TriangleFace {
         )
     }
 
-    /// Checks if the other face is the same ith a reverted vertex and normal winding
-    pub fn is_reverted(&self, other: Self) -> bool {
-        self.to_reverted() == other
+    /// Checks if the other face is the references the same vertices and normals
+    /// in a reverted order
+    pub fn is_reverted(&self, other: &Self) -> bool {
+        self.to_reverted() == *other
     }
 }
 
@@ -529,6 +530,33 @@ impl PartialEq for TriangleFace {
                 && self.normals.0 == other.normals.2
                 && self.normals.1 == other.normals.0
                 && self.normals.2 == other.normals.1)
+    }
+}
+
+impl Hash for TriangleFace {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        if self.vertices.0 < self.vertices.1 && self.vertices.0 < self.vertices.2 {
+            self.vertices.0.hash(state);
+            self.vertices.1.hash(state);
+            self.vertices.2.hash(state);
+            self.normals.0.hash(state);
+            self.normals.1.hash(state);
+            self.normals.2.hash(state);
+        } else if self.vertices.1 < self.vertices.0 && self.vertices.1 < self.vertices.2 {
+            self.vertices.1.hash(state);
+            self.vertices.2.hash(state);
+            self.vertices.0.hash(state);
+            self.normals.1.hash(state);
+            self.normals.2.hash(state);
+            self.normals.0.hash(state);
+        } else {
+            self.vertices.2.hash(state);
+            self.vertices.0.hash(state);
+            self.vertices.1.hash(state);
+            self.normals.2.hash(state);
+            self.normals.0.hash(state);
+            self.normals.1.hash(state);
+        }
     }
 }
 
@@ -1774,7 +1802,7 @@ mod tests {
     }
 
     #[test]
-    fn test_triangle_face_to_reverted_should_pass_because_compared_to_reverted() {
+    fn test_triangle_face_to_reverted_comparison_to_reverted() {
         let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
         let face_reverted_correct = TriangleFace::new_separate(3, 2, 1, 6, 5, 4);
 
@@ -1783,7 +1811,7 @@ mod tests {
     }
 
     #[test]
-    fn test_triangle_face_to_reverted_should_fail_because_compared_to_same() {
+    fn test_triangle_face_to_reverted_comparison_to_same() {
         let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
 
         let face_reverted_calculated = face.to_reverted();
@@ -1791,7 +1819,7 @@ mod tests {
     }
 
     #[test]
-    fn test_triangle_face_to_reverted_should_pass_because_compared_to_reverted_and_shifted() {
+    fn test_triangle_face_to_reverted_comparison_to_reverted_and_shifted() {
         let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
         let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
 
@@ -1800,18 +1828,18 @@ mod tests {
     }
 
     #[test]
-    fn test_triangle_face_is_reverted_should_should_return_true() {
+    fn test_triangle_face_is_reverted_comparison_to_reverted_and_shifted() {
         let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
         let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
 
-        assert!(face_reverted_correct_shifted.is_reverted(face));
+        assert!(face_reverted_correct_shifted.is_reverted(&face));
     }
 
     #[test]
-    fn test_triangle_face_is_reverted_should_should_return_false() {
+    fn test_triangle_face_is_reverted_comparison_to_self() {
         let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
 
-        assert!(!face.is_reverted(face));
+        assert!(!face.is_reverted(&face));
     }
 
     #[test]

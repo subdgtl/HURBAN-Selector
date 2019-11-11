@@ -267,6 +267,10 @@ impl Func for FuncImplWeld {
 
 pub struct FuncImplRevertMeshFaces;
 impl Func for FuncImplRevertMeshFaces {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
             ty: Ty::Geometry,
@@ -291,6 +295,7 @@ impl Func for FuncImplSynchronizeMeshFaces {
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
+
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
             ty: Ty::Geometry,
@@ -307,13 +312,14 @@ impl Func for FuncImplSynchronizeMeshFaces {
 
         let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
-        let unoriented_edges: Vec<_> = geometry.unoriented_edges_iter().collect();
-        let edge_to_face =
-            mesh_topology_analysis::edge_to_face_topology(&geometry, &unoriented_edges);
 
         if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
             && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
         {
+            let unoriented_edges: Vec<_> = geometry.unoriented_edges_iter().collect();
+            let edge_to_face =
+                mesh_topology_analysis::edge_to_face_topology(&geometry, &unoriented_edges);
+
             Value::Geometry(Arc::new(mesh_tools::synchronize_mesh_winding(
                 &geometry,
                 &unoriented_edges,

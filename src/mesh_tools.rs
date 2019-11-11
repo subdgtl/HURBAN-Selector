@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
@@ -18,12 +19,12 @@ use crate::mesh_topology_analysis;
 /// such a case automatically, so we need to rely on the user to check it and
 /// potentially revert winding of the entire mesh.
 ///
-/// The algorithm relies on the fact that in a proper non-manifold mesh, each
+/// The algorithm relies on the fact that in a proper manifold mesh, each
 /// oriented edge has exactly one (for watertight mesh geometry) or none (for
-/// mesh patches) counter-edge oriented the opposite direction. It crawls the
-/// geometry and if a face neighboring the current one doesn't have the proper
-/// winding, it's being reverted and only then triggers checking its own
-/// neighbors.
+/// mesh patch naked edges) counter-edge oriented the opposite direction. It
+/// crawls the geometry and if a face neighboring the current one doesn't have
+/// the proper winding, it's being reverted and only then triggers checking its
+/// own neighbors.
 ///
 /// This method doesn't flip the normals associated with the face vertices, as
 /// there is no unambiguous way to do so automatically.
@@ -52,8 +53,7 @@ pub fn synchronize_mesh_winding(
     // OrientedEdge of the neighbor, which triggered the check. Current face has
     // to contain a reverted edge to have the proper winding, otherwise it has
     // to be reverted.
-    let mut edge_face_stack: Vec<(OrientedEdge, u32)> =
-        Vec::with_capacity(original_triangle_faces.len() / 2);
+    let mut edge_face_stack: Vec<(OrientedEdge, u32)> = Vec::new();
 
     // Faces already checked and reverted if needed => all the faces in this
     // list have the same vertex winding.
@@ -61,11 +61,12 @@ pub fn synchronize_mesh_winding(
         Vec::with_capacity(original_triangle_faces.len());
 
     // Edge-to-index map for faster lookup
-    let mut unoriented_edge_index_map: HashMap<UnorientedEdge, u32> =
-        HashMap::with_capacity(unoriented_edges.len());
-    for (unoriented_edge_index, unoriented_edge) in unoriented_edges.iter().enumerate() {
-        unoriented_edge_index_map.insert(*unoriented_edge, cast_u32(unoriented_edge_index));
-    }
+    let unoriented_edge_index_map: HashMap<UnorientedEdge, u32> =
+        HashMap::from_iter(unoriented_edges.iter().enumerate().map(
+            |(unoriented_edge_index, unoriented_edge)| {
+                (*unoriented_edge, cast_u32(unoriented_edge_index))
+            },
+        ));
 
     // Synchronize faces in all mesh geometry triangles
     while synchronized_triangle_faces.len() < original_triangle_faces.len() {
@@ -87,9 +88,8 @@ pub fn synchronize_mesh_winding(
         edge_face_stack.push((current_test_edge, current_face_index));
 
         // Check and revert (if needed) faces in the stack as long as there is any
-        while !edge_face_stack.is_empty() {
+        while let Some(next_edge_face) = edge_face_stack.pop() {
             // Get ready for the next iteration.
-            let next_edge_face = edge_face_stack.pop().expect("Popping from an empty vector");
             current_test_edge = next_edge_face.0;
             current_face_index = next_edge_face.1;
 
@@ -114,26 +114,22 @@ pub fn synchronize_mesh_winding(
                         .expect("The current edge is not found in the edge collection")
                 });
 
-            // Convert into oriented edges so that the neighboring faces can check
-            // for correct winding
-            let face_oriented_edges: Vec<_> =
-                face_unoriented_edges.iter().map(|u_e| u_e.0).collect();
             // For each face edge index
             for (i, face_unoriented_edge_index) in face_unoriented_edge_indices.enumerate() {
                 // get the actual oriented edge
-                let face_oriented_edge = face_oriented_edges[i];
+                let face_oriented_edge = face_unoriented_edges[i].0;
                 // and try to find it in the edge-to-face topology.
-                if let Some(edge_in_faces) = edge_to_face_topology.get(&face_unoriented_edge_index)
-                {
-                    // If it exists, iterate the faces containing the edge
-                    for face_index in edge_in_faces {
-                        // and if it was not already added to the stack or even checked
-                        if !face_processed_pattern[cast_usize(*face_index)] {
-                            // add it to the stack with the expected edge orientation
-                            edge_face_stack.push((face_oriented_edge.to_reverted(), *face_index));
-                            // and mark it treated.
-                            face_processed_pattern[cast_usize(*face_index)] = true;
-                        }
+                let edge_in_faces = edge_to_face_topology
+                    .get(&face_unoriented_edge_index)
+                    .expect("Edge not found in the topology");
+                // If it exists, iterate the faces containing the edge
+                for face_index in edge_in_faces {
+                    // and if it was not already added to the stack or even checked
+                    if !face_processed_pattern[cast_usize(*face_index)] {
+                        // add it to the stack with the expected edge orientation
+                        edge_face_stack.push((face_oriented_edge.to_reverted(), *face_index));
+                        // and mark it treated.
+                        face_processed_pattern[cast_usize(*face_index)] = true;
                     }
                 }
             }
@@ -143,8 +139,8 @@ pub fn synchronize_mesh_winding(
     // Rebuild the mesh geometry with the new faces and original faces and normals.
     Geometry::from_triangle_faces_with_vertices_and_normals(
         synchronized_triangle_faces,
-        geometry.vertices().to_vec(),
-        geometry.normals().to_vec(),
+        geometry.vertices().iter().copied(),
+        geometry.normals().iter().copied(),
     )
 }
 
@@ -156,8 +152,8 @@ pub fn revert_mesh_faces(geometry: &Geometry) -> Geometry {
     });
     Geometry::from_triangle_faces_with_vertices_and_normals(
         reverted_faces,
-        geometry.vertices().to_vec(),
-        geometry.normals().to_vec(),
+        geometry.vertices().iter().copied(),
+        geometry.normals().iter().copied(),
     )
 }
 
@@ -542,7 +538,7 @@ mod tests {
         let faces = vec![
             TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
             TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
-            TriangleFace::new_separate(2, 4, 1, 0, 0, 0),
+            TriangleFace::new_separate(2, 4, 1, 0, 0, 0), // flipped
             TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
             TriangleFace::new_separate(6, 7, 8, 1, 1, 1),
         ];
@@ -783,7 +779,7 @@ mod tests {
                 .faces()
                 .iter()
                 .any(|other_face| match other_face {
-                    Face::Triangle(o_f) => o_f.is_reverted(*f),
+                    Face::Triangle(o_f) => o_f.is_reverted(f),
                 }),
         }));
     }

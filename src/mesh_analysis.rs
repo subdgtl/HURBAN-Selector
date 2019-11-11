@@ -781,7 +781,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_analysis_manifold_mesh_returns_false_because_non_manifold() {
+    fn test_mesh_analysis_is_mesh_manifold_returns_false_because_non_manifold() {
         let (faces, vertices) = non_manifold_shape();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
@@ -796,7 +796,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_analysis_manifold_mesh_returns_true_because_manifold() {
+    fn test_mesh_analysis_is_mesh_manifold_returns_true_because_manifold() {
         let (faces, vertices) = torus();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
