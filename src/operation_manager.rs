@@ -30,11 +30,47 @@ pub enum OpParamUiRepr {
     GeometryDropdown(Vec<(u64, String)>),
 }
 
+/// Value aware of its current and previous state.
+///
+/// This is useful for determining what changed and if operation containing
+/// this value should be marked as dirty for purposes of interpreter program
+/// invalidation.
+#[derive(Debug, Clone)]
+pub struct Value {
+    previous_value: ast::LitExpr,
+    current_value: ast::LitExpr,
+}
+
+impl Value {
+    pub fn new(value: ast::LitExpr) -> Self {
+        Self {
+            current_value: value.clone(),
+            previous_value: value.clone(),
+        }
+    }
+
+    pub fn consume(&mut self) {
+        self.previous_value = self.current_value.clone();
+    }
+
+    pub fn get(&self) -> &ast::LitExpr {
+        &self.current_value
+    }
+
+    pub fn get_mut(&mut self) -> &mut ast::LitExpr {
+        &mut self.current_value
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.previous_value != self.current_value
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct OpUiParam {
     pub name: String,
     pub repr: OpParamUiRepr,
-    pub value: ast::LitExpr,
+    pub value: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -44,10 +80,22 @@ pub struct Op {
     pub op: ast::FuncIdent,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SelectedOp {
     pub op: Op,
     pub status: OpStatus,
+}
+
+impl SelectedOp {
+    pub fn param_values_dirty(&self) -> bool {
+        self.op.params.iter().any(|param| param.value.is_dirty())
+    }
+
+    pub fn consume_all_values(&mut self) {
+        for param in &mut self.op.params {
+            param.value.consume();
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -90,32 +138,15 @@ impl OperationManager {
     /// Submitted statement is non-blocking, but it is processed in intepreter
     /// server thread.
     pub fn add_operation(&mut self, operation: Op) {
-        let var_ident = ast::VarIdent(self.selected_ops.len() as u64);
-
         self.selected_ops.push(SelectedOp {
             op: operation.clone(),
             status: OpStatus::Ready,
         });
 
-        let mut args: Vec<ast::Expr> = vec![];
-
-        for param in &operation.params {
-            let expr = match param.repr {
-                OpParamUiRepr::GeometryDropdown(_) => match param.value {
-                    ast::LitExpr::Uint(uint) => {
-                        ast::Expr::Var(ast::VarExpr::new(VarIdent(u64::from(uint))))
-                    }
-                    _ => ast::Expr::Var(ast::VarExpr::new(VarIdent(0 as u64))),
-                },
-                _ => ast::Expr::Lit(param.value.clone()),
-            };
-            args.push(expr);
-        }
+        let var_decl = build_operation_var_ident(&operation, self.selected_ops.len() as u64);
 
         self.interpreter_server
-            .submit_request(InterpreterRequest::PushProgStmt(ast::Stmt::VarDecl(
-                ast::VarDeclStmt::new(var_ident, ast::CallExpr::new(operation.op, args)),
-            )));
+            .submit_request(InterpreterRequest::PushProgStmt(var_decl));
     }
 
     /// Removes last operation, cleans up any of its data and returns geometry
@@ -156,11 +187,29 @@ impl OperationManager {
     /// Submits program to interpreter and sets status of last operation
     /// to "running".
     pub fn submit_program(&mut self) {
-        let last_op = self
-            .selected_ops
-            .last_mut()
-            .expect("Failed to get last selected operation");
-        last_op.status = OpStatus::Running;
+        let mut invalidate_statements = false;
+
+        for (i, selected_op) in self.selected_ops.iter_mut().enumerate() {
+            selected_op.status = OpStatus::Running;
+
+            if !invalidate_statements && selected_op.param_values_dirty() {
+                invalidate_statements = true;
+
+                log::info!(
+                    "Operation \"{}\" is marked as dirty. All subsequent operations will be invalidated.",
+                    selected_op.op.name
+                );
+
+                selected_op.consume_all_values();
+            }
+
+            if invalidate_statements {
+                let var_decl = build_operation_var_ident(&selected_op.op, i as u64);
+
+                self.interpreter_server
+                    .submit_request(InterpreterRequest::SetProgStmtAt(i, var_decl));
+            }
+        }
 
         self.interpreter_server
             .submit_request(InterpreterRequest::Interpret);
@@ -291,6 +340,29 @@ impl OperationManager {
     }
 }
 
+fn build_operation_var_ident(operation: &Op, var_ident_id: u64) -> ast::Stmt {
+    let var_ident = ast::VarIdent(var_ident_id);
+    let mut args = vec![];
+
+    for param in &operation.params {
+        let expr = match param.repr {
+            OpParamUiRepr::GeometryDropdown(_) => match param.value.get() {
+                ast::LitExpr::Uint(uint) => {
+                    ast::Expr::Var(ast::VarExpr::new(VarIdent(u64::from(*uint))))
+                }
+                _ => unreachable!(),
+            },
+            _ => ast::Expr::Lit(param.value.get().clone()),
+        };
+        args.push(expr);
+    }
+
+    ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+        var_ident,
+        ast::CallExpr::new(operation.op, args),
+    ))
+}
+
 pub fn operations_ui_definitions() -> HashMap<String, Op> {
     let mut ops = HashMap::new();
 
@@ -303,17 +375,17 @@ pub fn operations_ui_definitions() -> HashMap<String, Op> {
                 OpUiParam {
                     name: "Scale".to_string(),
                     repr: OpParamUiRepr::FloatInput,
-                    value: ast::LitExpr::Float(0.0),
+                    value: Value::new(ast::LitExpr::Float(0.0)),
                 },
                 OpUiParam {
                     name: "Parallels".to_string(),
                     repr: OpParamUiRepr::IntInput,
-                    value: ast::LitExpr::Uint(2),
+                    value: Value::new(ast::LitExpr::Uint(2)),
                 },
                 OpUiParam {
                     name: "Meridians".to_string(),
                     repr: OpParamUiRepr::IntInput,
-                    value: ast::LitExpr::Uint(3),
+                    value: Value::new(ast::LitExpr::Uint(3)),
                 },
             ],
         },
@@ -328,12 +400,12 @@ pub fn operations_ui_definitions() -> HashMap<String, Op> {
                 OpUiParam {
                     name: "Geometry".to_string(),
                     repr: OpParamUiRepr::GeometryDropdown(vec![]),
-                    value: ast::LitExpr::Uint(0),
+                    value: Value::new(ast::LitExpr::Uint(0)),
                 },
                 OpUiParam {
                     name: "Sphere density".to_string(),
                     repr: OpParamUiRepr::IntSlider,
-                    value: ast::LitExpr::Uint(3),
+                    value: Value::new(ast::LitExpr::Uint(3)),
                 },
             ],
         },

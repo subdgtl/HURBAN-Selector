@@ -207,7 +207,7 @@ impl<'a> UiFrame<'a> {
                     // ours are gonna be empty, we need to provide them manually.
                     let token = ui.push_id(id_counter as i32);
 
-                    match param.value {
+                    match param.value.get_mut() {
                         LitExpr::Int(ref mut value) => match param.repr {
                             OpParamUiRepr::IntInput => {
                                 ui.input_int(&label, value).build();
