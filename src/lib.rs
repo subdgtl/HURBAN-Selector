@@ -101,16 +101,8 @@ pub fn init_and_run(options: Options) -> ! {
         },
     );
 
-    let mut scene_geometries = Vec::new();
-    let mut scene_renderer_geometry_ids = Vec::new();
-
-    for geometry in &scene_geometries {
-        let renderer_geometry = GpuGeometry::from_geometry(geometry);
-        let renderer_geometry_id = renderer
-            .add_scene_geometry(&renderer_geometry)
-            .expect("Failed to add geometry to renderer");
-        scene_renderer_geometry_ids.push(renderer_geometry_id);
-    }
+    let mut scene_geometries = vec![];
+    let mut scene_renderer_geometry_ids = vec![];
 
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
 
@@ -221,7 +213,11 @@ pub fn init_and_run(options: Options) -> ! {
                         .add_scene_geometry(&renderer_geometry)
                         .expect("Failed to add geometry to renderer");
 
+                    scene_geometries.push(geometry_metadata.geometry.clone());
                     scene_renderer_geometry_ids.push(renderer_geometry_id);
+
+                    camera_interpolation =
+                        Some(CameraInterpolation::new(&camera, &scene_geometries, time));
 
                     renderer_geometry_id
                 });
@@ -281,6 +277,10 @@ pub fn init_and_run(options: Options) -> ! {
                             if let Some(index) = index {
                                 scene_renderer_geometry_ids.remove(index);
                                 renderer.remove_scene_geometry(geometry_id);
+
+                                scene_geometries
+                                    .pop()
+                                    .expect("Failed to pop geometry from scene");
                             }
                         }
                     }
