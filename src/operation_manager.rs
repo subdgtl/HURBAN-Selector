@@ -21,6 +21,7 @@ pub enum OpParamUiRepr {
     IntInput,
     IntSlider,
     FloatInput,
+    Float3Input,
     #[allow(unused)]
     FloatSlider,
     #[allow(unused)]
@@ -490,6 +491,36 @@ pub fn operations_ui_definitions() -> HashMap<String, Op> {
                     name: "Sphere density".to_string(),
                     repr: OpParamUiRepr::IntSlider,
                     value: Value::new(ast::LitExpr::Uint(3)),
+                },
+            ],
+        },
+    );
+
+    ops.insert(
+        "Transform".to_string(),
+        Op {
+            name: "Transform".to_string(),
+            op: interpreter_funcs::FUNC_ID_TRANSFORM,
+            params: vec![
+                OpUiParam {
+                    name: "Geometry".to_string(),
+                    repr: OpParamUiRepr::GeometryDropdown(vec![]),
+                    value: Value::new(ast::LitExpr::Uint(0)),
+                },
+                OpUiParam {
+                    name: "Translate".to_string(),
+                    repr: OpParamUiRepr::Float3Input,
+                    value: Value::new(ast::LitExpr::Float3([0.0, 0.0, 0.0])),
+                },
+                OpUiParam {
+                    name: "Rotate".to_string(),
+                    repr: OpParamUiRepr::Float3Input,
+                    value: Value::new(ast::LitExpr::Float3([0.0, 0.0, 0.0])),
+                },
+                OpUiParam {
+                    name: "Scale".to_string(),
+                    repr: OpParamUiRepr::Float3Input,
+                    value: Value::new(ast::LitExpr::Float3([0.0, 0.0, 0.0])),
                 },
             ],
         },

@@ -258,6 +258,12 @@ impl<'a> UiFrame<'a> {
                             _ => {}
                         },
 
+                        LitExpr::Float3(ref mut value) => {
+                            if let OpParamUiRepr::Float3Input = param.repr {
+                                ui.input_float3(&label, value).build();
+                            }
+                        }
+
                         LitExpr::Boolean(ref mut value) => match param.repr {
                             OpParamUiRepr::Checkbox => {
                                 ui.checkbox(&label, value);
