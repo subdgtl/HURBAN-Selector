@@ -21,14 +21,12 @@ pub enum PollResponseError {
 /// the interpreter.
 #[derive(Debug)]
 pub enum InterpreterRequest {
+    #[allow(dead_code)]
     SetProg(Prog),
     #[allow(dead_code)]
     ClearProg,
-    #[allow(dead_code)]
     PushProgStmt(Stmt),
-    #[allow(dead_code)]
     PopProgStmt,
-    #[allow(dead_code)]
     SetProgStmtAt(usize, Stmt),
     Interpret,
     #[allow(dead_code)]

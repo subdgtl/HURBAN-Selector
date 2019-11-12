@@ -33,6 +33,7 @@ pub struct Prog {
 }
 
 impl Prog {
+    #[allow(dead_code)]
     pub fn new(stmts: Vec<Stmt>) -> Self {
         Self { stmts }
     }
@@ -149,6 +150,7 @@ pub enum LitExpr {
     Int(i32),
     Uint(u32),
     Float(f32),
+    #[allow(dead_code)]
     Float3([f32; 3]),
 }
 
