@@ -208,12 +208,13 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 operation_ui.poll_interpreter_response(|geometry_metadata| {
-                    let renderer_geometry = GpuGeometry::from_geometry(&geometry_metadata.geometry);
+                    let renderer_geometry =
+                        GpuGeometry::from_geometry(geometry_metadata.geometry());
                     let renderer_geometry_id = renderer
                         .add_scene_geometry(&renderer_geometry)
                         .expect("Failed to add geometry to renderer");
 
-                    scene_geometries.push(geometry_metadata.geometry.clone());
+                    scene_geometries.push(geometry_metadata.geometry().clone());
                     scene_renderer_geometry_ids.push(renderer_geometry_id);
 
                     camera_interpolation =

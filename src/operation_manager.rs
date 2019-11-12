@@ -105,10 +105,16 @@ impl SelectedOp {
 #[derive(Debug)]
 pub struct GeometryMetadata {
     name: String,
-    pub geometry: Geometry,
+    geometry: Geometry,
     var_ident: u64,
     geometry_id: Option<GpuGeometryId>,
     used: bool,
+}
+
+impl GeometryMetadata {
+    pub fn geometry(&self) -> &Geometry {
+        &self.geometry
+    }
 }
 
 /// Manages operations and geometries they produce.
