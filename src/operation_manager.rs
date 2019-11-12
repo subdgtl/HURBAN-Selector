@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::geometry::Geometry;
 use crate::interpreter::ast;
@@ -88,7 +88,11 @@ pub struct SelectedOp {
 
 impl SelectedOp {
     pub fn param_values_dirty(&self) -> bool {
-        self.op.params.iter().any(|param| param.value.is_dirty())
+        if self.status == OpStatus::Ready {
+            true
+        } else {
+            self.op.params.iter().any(|param| param.value.is_dirty())
+        }
     }
 
     pub fn consume_all_values(&mut self) {
@@ -184,35 +188,89 @@ impl OperationManager {
         None
     }
 
-    /// Submits program to interpreter and sets status of last operation
-    /// to "running".
-    pub fn submit_program(&mut self) {
+    /// Submits program to interpreter, invalidates stale geometries and sets
+    /// status of last operation to "running". Returns number of unused
+    /// geometries that should be removed from scene.
+    ///
+    /// Each operation is checked for dirty (changed) values and all subsequent
+    /// operations are marked as invalidated. This means that new statements
+    /// are submitted to interpreter, invalid geometries popped out of geometry
+    /// stacks and number of geometries to be removed from scene returned. In
+    /// case nothing changed, interpreter doesn't run.
+    pub fn submit_program(&mut self) -> usize {
         let mut invalidate_statements = false;
+        let mut results_to_invalidate = 0;
+        let mut should_interpret = false;
 
-        for (i, selected_op) in self.selected_ops.iter_mut().enumerate() {
-            selected_op.status = OpStatus::Running;
+        // Find out which operations should be invalidated.
 
+        for (var_ident_id, selected_op) in self.selected_ops.iter_mut().enumerate() {
+            // First dirty operation marks all subsequent ones as invalidated.
             if !invalidate_statements && selected_op.param_values_dirty() {
                 invalidate_statements = true;
 
-                log::info!(
-                    "Operation \"{}\" is marked as dirty. All subsequent operations will be invalidated.",
-                    selected_op.op.name
-                );
+                log::info!("Operation \"{}\" is marked as dirty.", selected_op.op.name);
 
                 selected_op.consume_all_values();
             }
 
             if invalidate_statements {
-                let var_decl = build_operation_var_ident(&selected_op.op, i as u64);
+                let var_decl = build_operation_var_ident(&selected_op.op, var_ident_id as u64);
 
                 self.interpreter_server
-                    .submit_request(InterpreterRequest::SetProgStmtAt(i, var_decl));
+                    .submit_request(InterpreterRequest::SetProgStmtAt(var_ident_id, var_decl));
+
+                // If this operation wasn't even run, there is nothing to
+                // invalidate.
+                if selected_op.status == OpStatus::Finished {
+                    results_to_invalidate += 1;
+                }
+
+                should_interpret = true;
+                selected_op.status = OpStatus::Running;
             }
         }
 
-        self.interpreter_server
-            .submit_request(InterpreterRequest::Interpret);
+        log::info!(
+            "Geometries from {} operations will be invalidated.",
+            results_to_invalidate
+        );
+
+        let mut geometries_to_invalidate: usize = 0;
+
+        // Find out which geometries should be invalidated.
+
+        for _ in 0..results_to_invalidate {
+            let result_geometries = self
+                .geometry_stack
+                .pop()
+                .expect("Failed to pop value off geometry stack");
+
+            for _ in 0..result_geometries {
+                let geometry_metadata = self
+                    .geometry_metadata
+                    .pop()
+                    .expect("Failed to pop value off geometry metadata");
+
+                // Since frontend shows only unused geometries, only those
+                // should be counted.
+                if !geometry_metadata.used {
+                    geometries_to_invalidate += 1;
+                }
+            }
+        }
+
+        if should_interpret {
+            self.interpreter_server
+                .submit_request(InterpreterRequest::Interpret);
+        }
+
+        log::info!(
+            "{} geometries can be removed from the scene.",
+            geometries_to_invalidate
+        );
+
+        geometries_to_invalidate
     }
 
     /// Polls for respone from interpreter server and runs the handler function
@@ -243,22 +301,59 @@ impl OperationManager {
                         .name
                         .clone();
 
-                    for (_, value) in &value_set.used_values {
-                        self.add_unused_geometries(&op_name, &[value.unwrap_geometry().clone()]);
+                    // We care only about results with var idents larger than
+                    // the geometry stack length. This means that only new
+                    // geometries are going to be processed.
+                    let last_used_var_ident = self.geometry_stack.len();
+                    let mut new_geometry_metadata = HashMap::new();
+                    let mut var_idents = HashSet::new();
+
+                    for (var_ident, value) in &value_set.used_values {
+                        if var_ident.0 + 1 > last_used_var_ident as u64 {
+                            let geometry_metadata = GeometryMetadata {
+                                name: format!("Geometry #{} from {}", 1, op_name),
+                                geometry: value.unwrap_geometry().clone(),
+                                var_ident: var_ident.0,
+                                used: true,
+                                geometry_id: None,
+                            };
+                            new_geometry_metadata.insert(var_ident.0, geometry_metadata);
+                            var_idents.insert(var_ident.0);
+                        }
                     }
 
-                    for (i, (var_ident, value)) in value_set.unused_values.iter().enumerate() {
-                        let mut geometry_metadata = GeometryMetadata {
-                            name: format!("Geometry #{} from {}", i + 1, &op_name),
-                            geometry: value.unwrap_geometry().clone(),
-                            var_ident: var_ident.0,
-                            geometry_id: None,
-                            used: false,
-                        };
+                    for (var_ident, value) in value_set.unused_values {
+                        if var_ident.0 + 1 > last_used_var_ident as u64 {
+                            let geometry_metadata = GeometryMetadata {
+                                name: format!("Geometry #{} from {}", 1, op_name),
+                                geometry: value.unwrap_geometry().clone(),
+                                var_ident: var_ident.0,
+                                used: false,
+                                geometry_id: None,
+                            };
+                            new_geometry_metadata.insert(var_ident.0, geometry_metadata);
+                            var_idents.insert(var_ident.0);
+                        }
+                    }
 
-                        let geometry_id = geometry_handler(&mut geometry_metadata);
+                    // Since ordering matters in case of stacks, var idents need
+                    // to be sorted.
+                    let mut var_idents: Vec<_> = var_idents.iter().collect();
+                    var_idents.sort();
 
-                        geometry_metadata.geometry_id = Some(geometry_id);
+                    // Geometry metadata are pushed onto geometry stacks in order.
+                    // Geometry handler runs for each unused geometry so it can
+                    // be added to scene.
+                    for var_ident in var_idents {
+                        let mut geometry_metadata = new_geometry_metadata
+                            .remove(&var_ident)
+                            .expect("Failed to remove new geometry");
+
+                        if !geometry_metadata.used {
+                            let geometry_id = geometry_handler(&mut geometry_metadata);
+
+                            geometry_metadata.geometry_id = Some(geometry_id);
+                        }
 
                         self.geometry_metadata.push(geometry_metadata);
                         self.geometry_stack.push(1);
@@ -320,23 +415,6 @@ impl OperationManager {
 
     pub fn runnable(&self) -> bool {
         !self.selected_ops.is_empty()
-    }
-
-    fn add_unused_geometries(&mut self, op_name: &str, geometries: &[Geometry]) {
-        let geometry_metadata =
-            geometries
-                .iter()
-                .enumerate()
-                .map(|(i, geometry)| GeometryMetadata {
-                    name: format!("Geometry #{} from {}", i + 1, op_name),
-                    geometry: geometry.clone(),
-                    var_ident: i as u64,
-                    used: false,
-                    geometry_id: None,
-                });
-
-        self.geometry_metadata.extend(geometry_metadata);
-        self.geometry_stack.push(geometries.len());
     }
 }
 

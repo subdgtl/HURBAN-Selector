@@ -264,7 +264,15 @@ pub fn init_and_run(options: Options) -> ! {
                     ui_frame.draw_operations_window(&ops_reprs, &mut operation_ui);
 
                 if run_button_clicked {
-                    operation_ui.submit_program();
+                    let geometries_to_invalidate = operation_ui.submit_program();
+
+                    for _ in 0..geometries_to_invalidate {
+                        scene_geometries.pop();
+                        let geometry_id = scene_renderer_geometry_ids
+                            .pop()
+                            .expect("Failed to pop renderer geometry ID");
+                        renderer.remove_scene_geometry(geometry_id);
+                    }
                 }
 
                 if remove_button_clicked {
