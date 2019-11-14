@@ -2,6 +2,7 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::error;
 use std::fmt;
+use std::ptr;
 
 pub use self::ast::{FuncIdent, VarIdent};
 pub use self::func::{Func, FuncFlags, ParamInfo};
@@ -55,6 +56,31 @@ impl fmt::Display for TypecheckError {
 
 impl error::Error for TypecheckError {}
 
+/// A dynamic func error.
+#[derive(Debug)]
+pub struct FuncError(Box<dyn error::Error + Send>);
+
+impl FuncError {
+    pub fn new<E: error::Error + Send + 'static>(error: E) -> Self {
+        Self(Box::new(error))
+    }
+}
+
+impl PartialEq for FuncError {
+    /// Compares whether two func errors are exactly the same instance.
+    fn eq(&self, other: &FuncError) -> bool {
+        ptr::eq(&self.0, &other.0)
+    }
+}
+
+impl fmt::Display for FuncError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl error::Error for FuncError {}
+
 /// A runtime error.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
@@ -76,6 +102,11 @@ pub enum RuntimeError {
         call: ast::CallExpr,
         ty_expected: Ty,
         ty_provided: Ty,
+    },
+    Func {
+        stmt_index: usize,
+        call: ast::CallExpr,
+        func_error: FuncError,
     },
 }
 
@@ -121,6 +152,17 @@ impl fmt::Display for RuntimeError {
                 call.ident(),
                 ty_expected,
                 ty_provided,
+                stmt_index,
+            ),
+            RuntimeError::Func {
+                stmt_index,
+                call,
+                func_error,
+            } => write!(
+                f,
+                "Function {} errored with \"{}\" on stmt {}",
+                call.ident(),
+                func_error,
                 stmt_index,
             ),
         }
@@ -697,20 +739,29 @@ fn eval_call_expr(
         }
     }
 
-    let value = func.call(&args);
+    let result = func.call(&args);
+    match result {
+        Ok(value) => {
+            let return_ty = func.return_ty();
+            let value_ty = value.ty();
 
-    let return_ty = func.return_ty();
-    let value_ty = value.ty();
-    if return_ty != value_ty {
-        return Err(RuntimeError::ReturnTyMismatch {
+            if return_ty != value_ty {
+                return Err(RuntimeError::ReturnTyMismatch {
+                    stmt_index,
+                    call: call.clone(),
+                    ty_expected: return_ty,
+                    ty_provided: value_ty,
+                });
+            }
+
+            Ok(value)
+        }
+        Err(func_error) => Err(RuntimeError::Func {
             stmt_index,
             call: call.clone(),
-            ty_expected: return_ty,
-            ty_provided: value_ty,
-        });
+            func_error,
+        }),
     }
-
-    Ok(value)
 }
 
 #[cfg(test)]
@@ -751,8 +802,8 @@ mod tests {
             self.return_ty
         }
 
-        fn call(&self, values: &[Value]) -> Value {
-            (self.func)(values)
+        fn call(&self, values: &[Value]) -> Result<Value, FuncError> {
+            Ok((self.func)(values))
         }
     }
 

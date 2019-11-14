@@ -1,17 +1,44 @@
 use std::cmp;
 use std::collections::HashMap;
+use std::error;
+use std::fmt;
 use std::sync::Arc;
 
 use nalgebra::base::Vector3;
 
 use crate::convert::cast_u32;
 use crate::geometry;
-use crate::interpreter::{Func, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
+use crate::interpreter::{Func, FuncError, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
 use crate::mesh_smoothing;
 use crate::mesh_tools;
 use crate::mesh_topology_analysis;
 use crate::operations::shrink_wrap::{self, ShrinkWrapParams};
 use crate::operations::transform;
+
+#[derive(Debug, PartialEq)]
+pub enum FuncCreateUvSphereError {
+    TooFewParallels { parallels_provided: u32 },
+    TooFewMeridians { meridians_provided: u32 },
+}
+
+impl fmt::Display for FuncCreateUvSphereError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FuncCreateUvSphereError::TooFewParallels { parallels_provided } => write!(
+                f,
+                "Create UV Sphere requires at least 2 parallels, but only {} provided",
+                parallels_provided,
+            ),
+            FuncCreateUvSphereError::TooFewMeridians { meridians_provided } => write!(
+                f,
+                "Create UV Sphere requires at least 3 meridians, but only {} provided",
+                meridians_provided,
+            ),
+        }
+    }
+}
+
+impl error::Error for FuncCreateUvSphereError {}
 
 pub struct FuncImplCreateUvSphere;
 impl Func for FuncImplCreateUvSphere {
@@ -40,14 +67,28 @@ impl Func for FuncImplCreateUvSphere {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Value {
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
         let scale = args[0].unwrap_float();
         let n_parallels = args[1].unwrap_uint();
         let n_meridians = args[2].unwrap_uint();
 
+        const MIN_PARALLELS: u32 = 2;
+        const MIN_MERIDIANS: u32 = 3;
+
+        if n_parallels < MIN_PARALLELS {
+            return Err(FuncError::new(FuncCreateUvSphereError::TooFewParallels {
+                parallels_provided: n_parallels,
+            }));
+        }
+        if n_meridians < MIN_MERIDIANS {
+            return Err(FuncError::new(FuncCreateUvSphereError::TooFewMeridians {
+                meridians_provided: n_meridians,
+            }));
+        }
+
         let value = geometry::uv_sphere([0.0, 0.0, 0.0], scale, n_parallels, n_meridians);
 
-        Value::Geometry(Arc::new(value))
+        Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
@@ -74,13 +115,13 @@ impl Func for FuncImplShrinkWrap {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Value {
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
         let value = shrink_wrap::shrink_wrap(ShrinkWrapParams {
             geometry: args[0].unwrap_geometry(),
             sphere_density: cast_u32(args[1].unwrap_uint()),
         });
 
-        Value::Geometry(Arc::new(value))
+        Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
@@ -115,7 +156,7 @@ impl Func for FuncImplTransform {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Value {
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
 
         let translate = args[1].get_float3().map(Vector3::from);
@@ -137,7 +178,7 @@ impl Func for FuncImplTransform {
             },
         );
 
-        Value::Geometry(Arc::new(value))
+        Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
@@ -163,7 +204,7 @@ impl Func for FuncImplLaplacianSmoothing {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Value {
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
         let iterations = args[1].unwrap_uint();
         let vertex_to_vertex_topology = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
@@ -176,7 +217,7 @@ impl Func for FuncImplLaplacianSmoothing {
             false,
         );
 
-        Value::Geometry(Arc::new(g))
+        Ok(Value::Geometry(Arc::new(g)))
     }
 }
 
@@ -193,7 +234,7 @@ impl Func for FuncImplSeparateIsolatedMeshes {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Value {
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
 
         let values = mesh_tools::separate_isolated_meshes(geometry);
@@ -204,7 +245,7 @@ impl Func for FuncImplSeparateIsolatedMeshes {
             .next()
             .expect("Need at least one geometry");
 
-        Value::Geometry(Arc::new(first_value))
+        Ok(Value::Geometry(Arc::new(first_value)))
     }
 }
 
@@ -230,13 +271,13 @@ impl Func for FuncImplJoinMeshes {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Value {
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
         let first_geometry = args[0].unwrap_geometry();
         let second_geometry = args[1].unwrap_geometry();
 
         let value = mesh_tools::join_meshes(first_geometry, second_geometry);
 
-        Value::Geometry(Arc::new(value))
+        Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
@@ -259,13 +300,13 @@ impl Func for FuncImplWeld {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Value {
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
         let tolerance = args[1].unwrap_float();
 
         let value = mesh_tools::weld(geometry, tolerance);
 
-        Value::Geometry(Arc::new(value))
+        Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
@@ -292,7 +333,7 @@ impl Func for FuncImplLoopSubdivision {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Value {
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
         // FIXME: add the max value to the param info so that that the
         // gui doesn't mislead
         const MAX_ITERATIONS: u32 = 3;
@@ -301,7 +342,7 @@ impl Func for FuncImplLoopSubdivision {
         let iterations = cmp::min(args[1].unwrap_uint(), MAX_ITERATIONS);
 
         if iterations == 0 {
-            return Value::Geometry(geometry);
+            return Ok(Value::Geometry(geometry));
         }
 
         let mut v2v_topology = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
@@ -316,7 +357,7 @@ impl Func for FuncImplLoopSubdivision {
                 mesh_smoothing::loop_subdivision(&current_geometry, &v2v_topology, &f2f_topology);
         }
 
-        Value::Geometry(Arc::new(current_geometry))
+        Ok(Value::Geometry(Arc::new(current_geometry)))
     }
 }
 
@@ -343,13 +384,13 @@ impl Func for FuncImplCreatePlane {
         Ty::Geometry
     }
 
-    fn call(&self, values: &[Value]) -> Value {
+    fn call(&self, values: &[Value]) -> Result<Value, FuncError> {
         let position = values[0].get_float3().unwrap_or([0.0; 3]);
         let scale = values[1].get_float().unwrap_or(1.0);
 
         let value = geometry::plane(position, scale);
 
-        Value::Geometry(Arc::new(value))
+        Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
