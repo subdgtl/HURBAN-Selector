@@ -27,7 +27,7 @@ pub enum OpParamUiRepr {
     Checkbox,
     #[allow(unused)]
     Radio,
-    GeometryDropdown(Vec<(u64, String)>),
+    GeometryDropdown,
 }
 
 /// Value aware of its current and previous state.
@@ -84,6 +84,9 @@ pub struct Op {
 pub struct SelectedOp {
     pub op: Op,
     pub status: OpStatus,
+
+    /// Indices to geometry_metadata
+    pub available_geometries: std::ops::Range<usize>,
 }
 
 impl SelectedOp {
@@ -150,12 +153,15 @@ impl OperationManager {
         self.selected_ops.push(SelectedOp {
             op: operation.clone(),
             status: OpStatus::Ready,
+            available_geometries: 0..0,
         });
 
         let var_decl = build_operation_var_ident(&operation, self.selected_ops.len() as u64);
 
         self.interpreter_server
             .submit_request(InterpreterRequest::PushProgStmt(var_decl));
+
+        // TODO: build available geometries for added op
     }
 
     /// Removes last operation, cleans up any of its data and returns geometry
@@ -363,33 +369,14 @@ impl OperationManager {
                 }
             }
         }
-    }
 
-    /// Populates geometry dropdowns with geometries produced in previous
-    /// operations.
-    pub fn prepare_ops(&mut self) {
+        // TODO: rebuild available_geometries for all operations
+
         for (i, selected_op) in self.selected_ops.iter_mut().enumerate() {
-            if i == 0 {
-                continue;
-            }
-
             let num_available_geos: usize = self.geometry_stack[0..i].iter().sum();
 
             if num_available_geos > 0 {
-                let available_geo_metadata =
-                    &self.geometry_metadata[0..num_available_geos as usize];
-
-                for param in &mut selected_op.op.params {
-                    if let OpParamUiRepr::GeometryDropdown(ref mut choices) = param.repr {
-                        choices.clear();
-                        choices.extend(
-                            available_geo_metadata
-                                .iter()
-                                .enumerate()
-                                .map(|(i, geo_metadata)| (i as u64, geo_metadata.name.clone())),
-                        );
-                    }
-                }
+                selected_op.available_geometries = 0..num_available_geos;
             }
         }
     }

@@ -4,7 +4,9 @@ use std::convert::TryFrom;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
 use crate::interpreter::ast::LitExpr;
-use crate::operation_manager::{Op, OpParamUiRepr, OpStatus, OpUiParam, OperationManager};
+use crate::operation_manager::{
+    GeometryMetadata, Op, OpParamUiRepr, OpStatus, OpUiParam, OperationManager,
+};
 use crate::renderer::DrawGeometryMode;
 
 const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
@@ -174,7 +176,13 @@ impl<'a> UiFrame<'a> {
     }
 
     /// Draws child window for a single operation.
-    pub fn draw_operation_window(&self, name: &str, params: &mut [OpUiParam], status: OpStatus) {
+    pub fn draw_operation_window(
+        &self,
+        name: &str,
+        available_geometries: &[GeometryMetadata],
+        params: &mut [OpUiParam],
+        status: OpStatus,
+    ) {
         let ui = &self.imgui_ui;
 
         let border_color = match status {
@@ -231,7 +239,7 @@ impl<'a> UiFrame<'a> {
                             OpParamUiRepr::IntSlider => {
                                 imgui::Slider::new(&label, 1..=10).build(ui, value);
                             }
-                            OpParamUiRepr::GeometryDropdown(ref choices) => {
+                            OpParamUiRepr::GeometryDropdown => {
                                 // Imgui's combo box requires usize, but our Uint
                                 // values are u32, so we need to cast them before
                                 // and after.
@@ -323,6 +331,7 @@ impl<'a> UiFrame<'a> {
                 for (i, selected_op) in &mut operation_ui.selected_ops_iter_mut().enumerate() {
                     self.draw_operation_window(
                         &format!("{} #{}", &selected_op.op.name, i),
+                        &mut selected_op.available_geometries,
                         &mut selected_op.op.params,
                         selected_op.status,
                     );
