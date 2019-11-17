@@ -219,8 +219,6 @@ pub fn init_and_run(options: Options) -> ! {
 
                     camera_interpolation =
                         Some(CameraInterpolation::new(&camera, &scene_geometries, time));
-
-                    renderer_geometry_id
                 });
 
                 if input_state.close_requested {
@@ -277,21 +275,11 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 if remove_button_clicked {
-                    if let Some(geometry_ids) = operation_ui.remove_last_operation() {
-                        for geometry_id in geometry_ids {
-                            let index = scene_renderer_geometry_ids
-                                .iter()
-                                .position(|x| *x == geometry_id);
-
-                            if let Some(index) = index {
-                                scene_renderer_geometry_ids.remove(index);
-                                renderer.remove_scene_geometry(geometry_id);
-
-                                scene_geometries
-                                    .pop()
-                                    .expect("Failed to pop geometry from scene");
-                            }
-                        }
+                    let number_of_geometries_to_remove = operation_ui.remove_last_operation();
+                    for _ in 0..number_of_geometries_to_remove {
+                        scene_geometries.pop().unwrap();
+                        let id = scene_renderer_geometry_ids.pop().unwrap();
+                        renderer.remove_scene_geometry(id);
                     }
                 }
 

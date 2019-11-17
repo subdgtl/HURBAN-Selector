@@ -5,7 +5,6 @@ use crate::interpreter::ast;
 use crate::interpreter::VarIdent;
 use crate::interpreter_funcs;
 use crate::interpreter_server::{InterpreterRequest, InterpreterResponse, InterpreterServer};
-use crate::renderer::GpuGeometryId;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OpStatus {
@@ -108,7 +107,6 @@ pub struct GeometryMetadata {
     name: String,
     geometry: Geometry,
     var_ident: u64,
-    geometry_id: Option<GpuGeometryId>,
     used: bool,
 }
 
@@ -165,9 +163,9 @@ impl OperationManager {
     ///
     /// Removed statement is non-blocking, but it is processed in intepreter
     /// server thread.
-    pub fn remove_last_operation(&mut self) -> Option<Vec<GpuGeometryId>> {
+    pub fn remove_last_operation(&mut self) -> usize {
         if self.selected_ops.is_empty() {
-            return None;
+            return 0;
         }
 
         self.interpreter_server
@@ -182,17 +180,13 @@ impl OperationManager {
         if removed_op.status == OpStatus::Finished {
             if let Some(geometries_len) = self.geometry_stack.pop() {
                 let first_index = self.geometry_metadata.len() - geometries_len;
-                let geometry_ids = self
-                    .geometry_metadata
-                    .drain(first_index..)
-                    .filter_map(|geometry_metadata| geometry_metadata.geometry_id)
-                    .collect();
+                self.geometry_metadata.drain(first_index..);
 
-                return Some(geometry_ids);
+                return geometries_len;
             }
         }
 
-        None
+        0
     }
 
     /// Submits program to interpreter, invalidates stale geometries and sets
@@ -288,7 +282,7 @@ impl OperationManager {
     /// assigned.
     pub fn poll_interpreter_response<F>(&mut self, mut geometry_handler: F)
     where
-        F: FnMut(&mut GeometryMetadata) -> GpuGeometryId,
+        F: FnMut(&mut GeometryMetadata),
     {
         if let Ok((request_id, response)) = self.interpreter_server.poll_response() {
             match response {
@@ -315,19 +309,18 @@ impl OperationManager {
                     let mut new_geometry_metadata = HashMap::new();
                     let mut var_idents = HashSet::new();
 
-                    for (var_ident, value) in &value_set.used_values {
-                        if var_ident.0 + 1 > last_used_var_ident as u64 {
-                            let geometry_metadata = GeometryMetadata {
-                                name: format!("Geometry #{} from {}", 1, op_name),
-                                geometry: value.unwrap_geometry().clone(),
-                                var_ident: var_ident.0,
-                                used: true,
-                                geometry_id: None,
-                            };
-                            new_geometry_metadata.insert(var_ident.0, geometry_metadata);
-                            var_idents.insert(var_ident.0);
-                        }
-                    }
+                    // for (var_ident, value) in &value_set.used_values {
+                    //     if var_ident.0 + 1 > last_used_var_ident as u64 {
+                    //         let geometry_metadata = GeometryMetadata {
+                    //             name: format!("Geometry #{} from {}", 1, op_name),
+                    //             geometry: value.unwrap_geometry().clone(),
+                    //             var_ident: var_ident.0,
+                    //             used: true,
+                    //         };
+                    //         new_geometry_metadata.insert(var_ident.0, geometry_metadata);
+                    //         var_idents.insert(var_ident.0);
+                    //     }
+                    // }
 
                     for (var_ident, value) in value_set.unused_values {
                         if var_ident.0 + 1 > last_used_var_ident as u64 {
@@ -336,7 +329,6 @@ impl OperationManager {
                                 geometry: value.unwrap_geometry().clone(),
                                 var_ident: var_ident.0,
                                 used: false,
-                                geometry_id: None,
                             };
                             new_geometry_metadata.insert(var_ident.0, geometry_metadata);
                             var_idents.insert(var_ident.0);
@@ -357,9 +349,7 @@ impl OperationManager {
                             .expect("Failed to remove new geometry");
 
                         if !geometry_metadata.used {
-                            let geometry_id = geometry_handler(&mut geometry_metadata);
-
-                            geometry_metadata.geometry_id = Some(geometry_id);
+                            geometry_handler(&mut geometry_metadata);
                         }
 
                         self.geometry_metadata.push(geometry_metadata);
