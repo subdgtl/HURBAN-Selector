@@ -7,7 +7,7 @@ use std::iter::IntoIterator;
 use arrayvec::ArrayVec;
 use nalgebra as na;
 use nalgebra::base::Vector3;
-use nalgebra::geometry::Point3;
+use nalgebra::Point3;
 
 use crate::convert::{cast_u32, cast_usize};
 
@@ -1165,11 +1165,15 @@ fn n(x: f32, y: f32, z: f32) -> Vector3<f32> {
     Vector3::new(x, y, z)
 }
 
-fn compute_triangle_normal(p1: &Point3<f32>, p2: &Point3<f32>, p3: &Point3<f32>) -> Vector3<f32> {
+pub fn compute_triangle_normal(
+    p1: &Point3<f32>,
+    p2: &Point3<f32>,
+    p3: &Point3<f32>,
+) -> Vector3<f32> {
     let u = p2 - p1;
     let v = p3 - p1;
 
-    Vector3::cross(&u, &v)
+    Vector3::cross(&u, &v).normalize()
 }
 
 #[cfg(test)]
@@ -1721,5 +1725,83 @@ mod tests {
         );
 
         assert!(geometry.has_no_orphan_vertices());
+    }
+
+    #[test]
+    fn test_face_tools_compute_triangle_normal_returns_z_vector_for_horizontal_triangle() {
+        let faces = vec![(0, 1, 2)];
+        let vertices = vec![
+            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(-0.866025, -0.5, 0.0),
+            Point3::new(0.866025, -0.5, 0.0),
+        ];
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let normal_correct = Vector3::new(0.0, 0.0, 1.0);
+
+        let Face::Triangle(t_f) = geometry.faces()[0];
+        let normal_calculated = compute_triangle_normal(
+            &geometry.vertices()[cast_usize(t_f.vertices.0)],
+            &geometry.vertices()[cast_usize(t_f.vertices.1)],
+            &geometry.vertices()[cast_usize(t_f.vertices.2)],
+        );
+
+        assert_eq!(normal_correct, normal_calculated);
+    }
+
+    #[test]
+    fn test_face_tools_compute_triangle_normal_returns_x_vector_for_vertical_triangle() {
+        let faces = vec![(0, 1, 2)];
+        let vertices = vec![
+            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(0.0, -0.5, 0.866025),
+            Point3::new(0.0, -0.5, -0.866025),
+        ];
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let normal_correct = Vector3::new(1.0, 0.0, 0.0);
+
+        let Face::Triangle(t_f) = geometry.faces()[0];
+        let normal_calculated = compute_triangle_normal(
+            &geometry.vertices()[cast_usize(t_f.vertices.0)],
+            &geometry.vertices()[cast_usize(t_f.vertices.1)],
+            &geometry.vertices()[cast_usize(t_f.vertices.2)],
+        );
+
+        assert_eq!(normal_correct, normal_calculated);
+    }
+
+    #[test]
+    fn test_face_tools_compute_triangle_normal_returns_vector_for_arbitrary_triangle() {
+        let faces = vec![(0, 1, 2)];
+        let vertices = vec![
+            Point3::new(0.268023, 0.8302, 0.392469),
+            Point3::new(-0.870844, -0.462665, 0.215034),
+            Point3::new(0.334798, -0.197734, -0.999972),
+        ];
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let normal_correct = Vector3::new(0.62270945, -0.614937, 0.48382375);
+
+        let Face::Triangle(t_f) = geometry.faces()[0];
+        let normal_calculated = compute_triangle_normal(
+            &geometry.vertices()[cast_usize(t_f.vertices.0)],
+            &geometry.vertices()[cast_usize(t_f.vertices.1)],
+            &geometry.vertices()[cast_usize(t_f.vertices.2)],
+        );
+
+        assert_eq!(normal_correct, normal_calculated);
     }
 }

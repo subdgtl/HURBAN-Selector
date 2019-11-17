@@ -5,8 +5,7 @@ use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 
 use crate::convert::cast_usize;
-use crate::face_tools;
-use crate::geometry::{Face, Geometry, UnorientedEdge};
+use crate::geometry::{self, Face, Geometry, UnorientedEdge};
 
 /// The Möller–Trumbore ray-triangle intersection algorithm is a fast method for
 /// calculating the intersection of a ray and a triangle in three dimensions
@@ -112,13 +111,14 @@ pub fn pull_point_to_mesh(
 ) -> PulledPoint {
     let vertices = geometry.vertices();
     let all_mesh_faces_with_normals = geometry.faces().iter().map(|Face::Triangle(t_f)| {
+        let face_vertices = (
+            &vertices[cast_usize(t_f.vertices.0)],
+            &vertices[cast_usize(t_f.vertices.1)],
+            &vertices[cast_usize(t_f.vertices.2)],
+        );
         (
-            (
-                &vertices[cast_usize(t_f.vertices.0)],
-                &vertices[cast_usize(t_f.vertices.1)],
-                &vertices[cast_usize(t_f.vertices.2)],
-            ),
-            face_tools::calculate_triangle_face_normal(t_f, geometry),
+            face_vertices,
+            geometry::compute_triangle_normal(face_vertices.0, face_vertices.1, face_vertices.2),
         )
     });
     let points_pulled_to_faces =

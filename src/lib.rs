@@ -22,7 +22,6 @@ pub mod renderer;
 mod camera;
 mod convert;
 mod edge_analysis;
-mod face_tools;
 mod input;
 mod interpreter;
 mod interpreter_funcs;
