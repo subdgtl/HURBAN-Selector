@@ -103,25 +103,9 @@ pub fn init_and_run(options: Options) -> ! {
         },
     );
 
-    let mut scene_geometries = vec![
-        // FIXME: This is just temporary code so that we can see
-        // something in the scene and know the renderer works.
-        geometry::uv_sphere([0.0, 0.0, 0.0], 5.0, 2, 3),
-        geometry::uv_sphere([20.0, 0.0, 0.0], 5.0, 3, 3),
-        geometry::uv_sphere([40.0, 0.0, 0.0], 5.0, 4, 4),
-        geometry::uv_sphere([60.0, 0.0, 0.0], 5.0, 5, 5),
-        geometry::uv_sphere([80.0, 0.0, 0.0], 5.0, 6, 6),
-        geometry::uv_sphere([100.0, 0.0, 0.0], 5.0, 7, 7),
-        geometry::uv_sphere([120.0, 0.0, 0.0], 5.0, 8, 8),
-        geometry::uv_sphere([170.0, 0.0, 0.0], 20.0, 20, 20),
-        geometry::cube_sharp_var_len([220.0, 0.0, 0.0], 5.0),
-        geometry::cube_smooth_same_len([260.0, 0.0, 0.0], 5.0),
-        geometry::cube_smooth_same_len([280.0, 0.0, 0.0], 5.0),
-        geometry::plane_same_len([300.0, 0.0, 0.0], 5.0),
-        geometry::plane_var_len([320.0, 0.0, 0.0], 5.0),
-    ];
+    let mut scene_geometries = Vec::new();
+    let mut scene_renderer_geometry_ids = Vec::new();
 
-    let mut scene_renderer_geometry_ids = Vec::with_capacity(scene_geometries.len());
     for geometry in &scene_geometries {
         let renderer_geometry = GpuGeometry::from_geometry(geometry);
         let renderer_geometry_id = renderer
@@ -231,36 +215,38 @@ pub fn init_and_run(options: Options) -> ! {
 
                 if input_state.tmp_submit_prog_and_run {
                     let prog = ast::Prog::new(vec![
+                        // sphere
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(0),
                             ast::CallExpr::new(
                                 funcs::FUNC_ID_CREATE_UV_SPHERE,
                                 vec![
-                                    ast::Expr::Lit(ast::LitExpr::Float(500.0)),
-                                    ast::Expr::Lit(ast::LitExpr::Uint(20)),
-                                    ast::Expr::Lit(ast::LitExpr::Uint(20)),
+                                    ast::Expr::Lit(ast::LitExpr::Float(10.0)),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(2)),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(3)),
                                 ],
                             ),
                         )),
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(1),
                             ast::CallExpr::new(
-                                funcs::FUNC_ID_SHRINK_WRAP,
+                                funcs::FUNC_ID_TRANSFORM,
                                 vec![
                                     ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(0))),
-                                    ast::Expr::Lit(ast::LitExpr::Uint(30)),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
                                 ],
                             ),
                         )),
+                        // sphere - 1 iteration
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(2),
                             ast::CallExpr::new(
-                                funcs::FUNC_ID_TRANSFORM,
+                                funcs::FUNC_ID_LOOP_SUBDIVISION,
                                 vec![
-                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(1))),
-                                    ast::Expr::Lit(ast::LitExpr::Float3([2000.0, 0.0, 0.0])),
-                                    ast::Expr::Lit(ast::LitExpr::Nil),
-                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(0))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(1)),
                                 ],
                             ),
                         )),
@@ -269,22 +255,148 @@ pub fn init_and_run(options: Options) -> ! {
                             ast::CallExpr::new(
                                 funcs::FUNC_ID_TRANSFORM,
                                 vec![
-                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(1))),
-                                    ast::Expr::Lit(ast::LitExpr::Float3([4000.0, 0.0, 0.0])),
-                                    ast::Expr::Lit(ast::LitExpr::Float3([30.0, 0.0, 0.0])),
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(2))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([20.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
                                     ast::Expr::Lit(ast::LitExpr::Nil),
                                 ],
                             ),
                         )),
+                        // sphere - 2 iterations
                         ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                             ast::VarIdent(4),
                             ast::CallExpr::new(
+                                funcs::FUNC_ID_LOOP_SUBDIVISION,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(0))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(2)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(5),
+                            ast::CallExpr::new(
                                 funcs::FUNC_ID_TRANSFORM,
                                 vec![
-                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(1))),
-                                    ast::Expr::Lit(ast::LitExpr::Float3([6000.0, 0.0, 0.0])),
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(4))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([40.0, 0.0, 0.0])),
                                     ast::Expr::Lit(ast::LitExpr::Nil),
-                                    ast::Expr::Lit(ast::LitExpr::Float3([2.0, 2.0, 5.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        // sphere - 3 iterations
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(6),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_LOOP_SUBDIVISION,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(0))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(3)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(7),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(6))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([60.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        // plane
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(8),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_CREATE_PLANE,
+                                vec![
+                                    ast::Expr::Lit(ast::LitExpr::Float3([0.0, 40.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Float(10.0)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(9),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(8))),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        // plane - 1 iteration
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(10),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_LOOP_SUBDIVISION,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(8))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(1)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(11),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(10))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([20.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        // plane - 2 iterations
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(12),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_LOOP_SUBDIVISION,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(8))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(2)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(13),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(12))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([40.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                ],
+                            ),
+                        )),
+                        // plane - 3 iterations
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(14),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_LOOP_SUBDIVISION,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(8))),
+                                    ast::Expr::Lit(ast::LitExpr::Uint(3)),
+                                ],
+                            ),
+                        )),
+                        ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                            ast::VarIdent(15),
+                            ast::CallExpr::new(
+                                funcs::FUNC_ID_TRANSFORM,
+                                vec![
+                                    ast::Expr::Var(ast::VarExpr::new(ast::VarIdent(14))),
+                                    ast::Expr::Lit(ast::LitExpr::Float3([60.0, 0.0, 0.0])),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
+                                    ast::Expr::Lit(ast::LitExpr::Nil),
                                 ],
                             ),
                         )),
@@ -306,16 +418,6 @@ pub fn init_and_run(options: Options) -> ! {
                             );
 
                             let value_set = result.unwrap();
-
-                            for (_, value) in &value_set.used_values {
-                                let geometry = value.unwrap_geometry().clone();
-                                let renderer_geometry = GpuGeometry::from_geometry(&geometry);
-                                let renderer_geometry_id =
-                                    renderer.add_scene_geometry(&renderer_geometry).unwrap();
-
-                                scene_geometries.push(geometry);
-                                scene_renderer_geometry_ids.push(renderer_geometry_id);
-                            }
 
                             for (_, value) in &value_set.unused_values {
                                 let geometry = value.unwrap_geometry().clone();

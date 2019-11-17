@@ -298,48 +298,37 @@ pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
     let face_to_face = mesh_topology_analysis::face_to_face_topology(geometry);
     let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
     let mut patches: Vec<Geometry> = Vec::new();
+    let mut index_stack: Vec<u32> = Vec::new();
+    let mut connected_face_indices = HashSet::new();
 
-    while let Some(first_face_index) = available_face_indices.iter().next() {
-        let connected_indices = crawl_faces(*first_face_index, &face_to_face);
+    while let Some(start_face_index) = available_face_indices.iter().copied().next() {
+        available_face_indices.remove(&start_face_index);
+        index_stack.push(start_face_index);
+        connected_face_indices.clear();
+
+        while let Some(current_face_index) = index_stack.pop() {
+            if connected_face_indices.insert(current_face_index) {
+                for neighbor_index in &face_to_face[&current_face_index] {
+                    if available_face_indices.contains(neighbor_index) {
+                        index_stack.push(*neighbor_index);
+                        available_face_indices.remove(neighbor_index);
+                    }
+                }
+            }
+        }
 
         patches.push(
             Geometry::from_faces_with_vertices_and_normals_remove_orphans(
-                connected_indices
+                connected_face_indices
                     .iter()
                     .map(|face_index| geometry.faces()[cast_usize(*face_index)]),
                 geometry.vertices().to_vec(),
                 geometry.normals().to_vec(),
             ),
         );
-
-        for c in &connected_indices {
-            available_face_indices.remove(c);
-        }
     }
 
     patches
-}
-
-fn crawl_faces(
-    start_face_index: u32,
-    face_to_face: &HashMap<u32, SmallVec<[u32; 8]>>,
-) -> HashSet<u32> {
-    let mut index_stack = vec![start_face_index];
-    index_stack.push(start_face_index);
-
-    let mut connected_face_indices = HashSet::new();
-
-    while let Some(current_face_index) = index_stack.pop() {
-        if connected_face_indices.insert(current_face_index) {
-            for neighbor in &face_to_face[&current_face_index] {
-                index_stack.push(neighbor.clone());
-            }
-        }
-    }
-
-    connected_face_indices.shrink_to_fit();
-
-    connected_face_indices
 }
 
 /// Joins two mesh geometries into one.
@@ -725,7 +714,7 @@ mod tests {
 
     #[test]
     fn test_separate_isolated_meshes_returns_similar_for_cube() {
-        let geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
+        let geometry = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
 
         let calculated_geometries = separate_isolated_meshes(&geometry);
 
@@ -765,7 +754,7 @@ mod tests {
 
     #[test]
     fn test_mesh_tools_revert_mesh_faces() {
-        let test_geometry = geometry::cube_sharp_var_len([0.0, 0.0, 0.0], 1.0);
+        let test_geometry = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
 
         let calculated_geometry = revert_mesh_faces(&test_geometry);
 
