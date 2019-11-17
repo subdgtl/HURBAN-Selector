@@ -13,7 +13,7 @@ use crate::geometry::{self, Face, Geometry, UnorientedEdge};
 /// the triangle.
 ///
 /// https://en.wikipedia.org/wiki/Möller–Trumbore_intersection_algorithm
-/// https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection
+///  http://webserver2.tecgraf.puc-rio.br/~mgattass/cg/trbRR/Fast%20MinimumStorage%20RayTriangle%20Intersection.pdf
 #[allow(dead_code)]
 pub fn ray_intersects_triangle(
     ray_origin: &Point3<f32>,
@@ -50,7 +50,7 @@ pub fn ray_intersects_triangle(
     }
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PointOnLine {
     clamped: Point3<f32>,
     unclamped: Point3<f32>,
@@ -58,16 +58,15 @@ pub struct PointOnLine {
 
 /// Pulls arbitrary point to an arbitrary line.
 ///
-/// Returns both, a clamped point on the line adn an unclamped points on an
+/// Returns both, a clamped point on the line and an unclamped points on an
 /// endless ray.
 ///
 /// https://stackoverflow.com/questions/3120357/get-closest-point-to-a-line
 pub fn pull_point_to_line(
     point: &Point3<f32>,
-    line_points: (&Point3<f32>, &Point3<f32>),
+    line_start: &Point3<f32>,
+    line_end: &Point3<f32>,
 ) -> PointOnLine {
-    let line_start = line_points.0;
-    let line_end = line_points.1;
     let start_to_point = point - line_start;
     let start_to_end = line_end - line_start;
 
@@ -91,7 +90,7 @@ pub fn pull_point_to_line(
     }
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PulledPoint {
     closest_point: Point3<f32>,
     distance: f32,
@@ -122,19 +121,19 @@ pub fn pull_point_to_mesh(
         )
     });
     let points_pulled_to_faces =
-        all_mesh_faces_with_normals.filter_map(|(unwrapped_face, face_normal)| {
-            ray_intersects_triangle(point, &(-1.0 * face_normal), unwrapped_face)
+        all_mesh_faces_with_normals.filter_map(|(face_vertices, face_normal)| {
+            ray_intersects_triangle(point, &(-1.0 * face_normal), face_vertices)
         });
-    let unwrapped_edges = unoriented_edges.iter().map(|u_e| {
-        (
+
+    let points_pulled_to_edges = unoriented_edges.iter().map(|u_e| {
+        let closest_point = pull_point_to_line(
+            point,
             &vertices[cast_usize(u_e.0.vertices.0)],
             &vertices[cast_usize(u_e.0.vertices.1)],
-        )
-    });
-    let points_pulled_to_edges = unwrapped_edges.map(|e| {
-        let closest_point = pull_point_to_line(point, e);
+        );
         closest_point.clamped
     });
+
     let all_pulled_points = points_pulled_to_faces.chain(points_pulled_to_edges);
 
     let (closest_point_distance_squared, closest_point_option) =
@@ -148,7 +147,8 @@ pub fn pull_point_to_mesh(
         });
 
     PulledPoint {
-        closest_point: closest_point_option.expect("Invalid point on mesh"),
+        closest_point: closest_point_option
+            .expect("Invalid point on mesh, Geometry might be empty"),
         distance: closest_point_distance_squared.sqrt(),
     }
 }
@@ -237,33 +237,14 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_pull_point_to_line_center() {
-        let line_points = (&Point3::new(-1.0, 0.0, 0.0), &Point3::new(1.0, 0.0, 0.0));
+        let line_start = &Point3::new(-1.0, 0.0, 0.0);
+        let line_end = &Point3::new(1.0, 0.0, 0.0);
         let test_point = Point3::new(0.0, 1.0, 1.0);
 
         let point_on_line_clamped_correct = Point3::new(0.0, 0.0, 0.0);
         let point_on_line_unclamped_correct = Point3::new(0.0, 0.0, 0.0);
 
-        let point_on_line_calculated = pull_point_to_line(&test_point, line_points);
-
-        assert_eq!(
-            point_on_line_clamped_correct,
-            point_on_line_calculated.clamped
-        );
-        assert_eq!(
-            point_on_line_unclamped_correct,
-            point_on_line_calculated.unclamped
-        );
-    }
-
-    #[test]
-    fn test_vertex_tools_pull_point_to_line_quarter() {
-        let line_points = (&Point3::new(-1.0, 0.0, 0.0), &Point3::new(1.0, 0.0, 0.0));
-        let test_point = Point3::new(-0.5, 1.0, 1.0);
-
-        let point_on_line_clamped_correct = Point3::new(-0.5, 0.0, 0.0);
-        let point_on_line_unclamped_correct = Point3::new(-0.5, 0.0, 0.0);
-
-        let point_on_line_calculated = pull_point_to_line(&test_point, line_points);
+        let point_on_line_calculated = pull_point_to_line(&test_point, line_start, line_end);
 
         assert_eq!(
             point_on_line_clamped_correct,
@@ -277,13 +258,14 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_pull_point_to_line_below_start() {
-        let line_points = (&Point3::new(-1.0, 0.0, 0.0), &Point3::new(1.0, 0.0, 0.0));
+        let line_start = &Point3::new(-1.0, 0.0, 0.0);
+        let line_end = &Point3::new(1.0, 0.0, 0.0);
         let test_point = Point3::new(-2.0, 1.0, 1.0);
 
         let point_on_line_clamped_correct = Point3::new(-1.0, 0.0, 0.0);
         let point_on_line_unclamped_correct = Point3::new(-2.0, 0.0, 0.0);
 
-        let point_on_line_calculated = pull_point_to_line(&test_point, line_points);
+        let point_on_line_calculated = pull_point_to_line(&test_point, line_start, line_end);
 
         assert_eq!(
             point_on_line_clamped_correct,
@@ -297,13 +279,14 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_pull_point_to_line_beyond_end() {
-        let line_points = (&Point3::new(-1.0, 0.0, 0.0), &Point3::new(1.0, 0.0, 0.0));
+        let line_start = &Point3::new(-1.0, 0.0, 0.0);
+        let line_end = &Point3::new(1.0, 0.0, 0.0);
         let test_point = Point3::new(2.0, 1.0, 1.0);
 
         let point_on_line_clamped_correct = Point3::new(1.0, 0.0, 0.0);
         let point_on_line_unclamped_correct = Point3::new(2.0, 0.0, 0.0);
 
-        let point_on_line_calculated = pull_point_to_line(&test_point, line_points);
+        let point_on_line_calculated = pull_point_to_line(&test_point, line_start, line_end);
 
         assert_eq!(
             point_on_line_clamped_correct,
@@ -370,7 +353,7 @@ mod tests {
             pulled_point_on_mesh_calculated.closest_point
         );
         assert_eq!(
-            ((3.0 * 0.25 * 0.25) as f32).sqrt(),
+            nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.closest_point),
             pulled_point_on_mesh_calculated.distance
         );
     }
@@ -391,7 +374,7 @@ mod tests {
             pulled_point_on_mesh_calculated.closest_point
         );
         assert_eq!(
-            ((2.0 * 0.25 * 0.25) as f32).sqrt(),
+            nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.closest_point),
             pulled_point_on_mesh_calculated.distance
         );
     }
