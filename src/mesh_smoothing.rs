@@ -1,10 +1,13 @@
-use std::collections::HashMap;
+use std::cmp;
+use std::collections::hash_map::{Entry, HashMap};
+use std::hash::{Hash, Hasher};
 
+use nalgebra as na;
 use nalgebra::geometry::Point3;
 use smallvec::SmallVec;
 
-use crate::convert::cast_usize;
-use crate::geometry::Geometry;
+use crate::convert::{cast_u32, cast_usize};
+use crate::geometry::{Face, Geometry, NormalStrategy};
 
 /// Relaxes angles between mesh edges, resulting in a smoother geometry
 ///
@@ -34,7 +37,7 @@ use crate::geometry::Geometry;
 /// returns (smooth_geometry: Geometry, executed_iterations: u32, stable: bool)
 pub fn laplacian_smoothing(
     geometry: &Geometry,
-    vertex_to_vertex_topology: HashMap<u32, SmallVec<[u32; 8]>>,
+    vertex_to_vertex_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
     iterations: u32,
     fixed_vertex_indices: &[u32],
     stop_when_stable: bool,
@@ -91,6 +94,269 @@ pub fn laplacian_smoothing(
     )
 }
 
+/// Performs one iteration of Loop Subdivision on geometry.
+///
+/// The subdivision works in two steps:
+///
+/// 1) Split each triangle into 4 smaller triangles,
+/// 2) Update the position of each vertex of the mesh based on
+///    weighted averages of its neighboring vertex positions,
+///    depending on where the vertex is in the topology and whether
+///    the vertex is newly created, or did already exist.
+///
+/// The geometry **must** be triangulated.
+///
+/// Implementation based on [mdfisher]
+/// (https://graphics.stanford.edu/~mdfisher/subdivision.html).
+pub fn loop_subdivision(
+    geometry: &Geometry,
+    vertex_to_vertex_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
+    face_to_face_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
+) -> Geometry {
+    #[derive(Debug, Eq)]
+    struct UnorderedPair(u32, u32);
+
+    impl PartialEq for UnorderedPair {
+        fn eq(&self, other: &Self) -> bool {
+            self.0 == other.0 && self.1 == other.1 || self.0 == other.1 && self.1 == other.0
+        }
+    }
+
+    impl Hash for UnorderedPair {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            cmp::min(self.0, self.1).hash(state);
+            cmp::max(self.0, self.1).hash(state);
+        }
+    }
+
+    assert!(
+        geometry.is_triangulated(),
+        "Loop Subdivision is only defined for triangulated meshes",
+    );
+
+    let mut vertices: Vec<Point3<f32>> = geometry.vertices().iter().copied().collect();
+
+    // Relocate existing vertices first
+    for (i, vertex) in vertices.iter_mut().enumerate() {
+        let neighbors = &vertex_to_vertex_topology[&cast_u32(i)];
+
+        match neighbors.len() {
+            // N == 0 means this is an orphan vertex. N == 1 can't
+            // happen in our mesh representation.
+            0 | 1 => (),
+            2 => {
+                // For edge valency N == 2 (a naked edge vertex), use
+                // (3/4, 1/8, 1/8) relocation scheme.
+
+                let vi1 = cast_usize(neighbors[0]);
+                let vi2 = cast_usize(neighbors[1]);
+
+                let v1 = geometry.vertices()[vi1];
+                let v2 = geometry.vertices()[vi2];
+
+                *vertex = Point3::origin()
+                    + vertex.coords * 3.0 / 4.0
+                    + v1.coords * 1.0 / 8.0
+                    + v2.coords * 1.0 / 8.0;
+            }
+            3 => {
+                // For edge valency N == 3, use (1 - N*BETA, BETA,
+                // BETA, BETA) relocation scheme, where BETA is 3/16.
+
+                const N: f32 = 3.0;
+                const BETA: f32 = 3.0 / 16.0;
+
+                let vi1 = cast_usize(neighbors[0]);
+                let vi2 = cast_usize(neighbors[1]);
+                let vi3 = cast_usize(neighbors[2]);
+
+                let v1 = geometry.vertices()[vi1];
+                let v2 = geometry.vertices()[vi2];
+                let v3 = geometry.vertices()[vi3];
+
+                *vertex = Point3::origin()
+                    + vertex.coords * (1.0 - N * BETA)
+                    + v1.coords * BETA
+                    + v2.coords * BETA
+                    + v3.coords * BETA;
+            }
+            n => {
+                // For edge valency N >= 3, use (1 - N*BETA, BETA,
+                // ...) relocation scheme, where BETA is 3 / (8*N).
+
+                let n_f32 = n as f32;
+                let beta = 3.0 / (8.0 * n_f32);
+
+                *vertex = Point3::origin() + vertex.coords * (1.0 - n_f32 * beta);
+                for vi in neighbors {
+                    let v = geometry.vertices()[cast_usize(*vi)];
+                    *vertex += v.coords * beta;
+                }
+            }
+        }
+    }
+
+    // Subdivide existing triangle faces and create new vertices
+
+    let faces_len_estimate = geometry.faces().len() * 4;
+    let mut faces: Vec<(u32, u32, u32)> = Vec::with_capacity(faces_len_estimate);
+
+    // We will be creating new mid-edge vertices per face soon. Faces
+    // will share and re-use these newly created vertices.
+
+    // The key is an unordered pair of faces that share the mid-edge
+    // vertex. The value is the index of the vertex they share.
+    let mut created_mid_vertex_indices: HashMap<UnorderedPair, u32> = HashMap::new();
+
+    for (face_index, face) in geometry.faces().iter().enumerate() {
+        let face_index_u32 = cast_u32(face_index);
+        match face {
+            Face::Triangle(triangle_face) => {
+                let (vi1, vi2, vi3) = triangle_face.vertices;
+                let face_neighbors = &face_to_face_topology[&face_index_u32];
+
+                // Our current face should have up to 3 neighboring
+                // faces. The mid vertices we are going to create need
+                // to be shared with those faces if they exist, so
+                // that they are only created once. The array below
+                // will be filled with either vertices created here,
+                // or obtained from `created_mid_vertex_indices`
+                // cache.
+                let mut mid_vertex_indices: [Option<u32>; 3] = [None, None, None];
+
+                for (edge_index, (vi_from, vi_to)) in
+                    [(vi1, vi2), (vi2, vi3), (vi3, vi1)].iter().enumerate()
+                {
+                    let neighbor_face_index = face_neighbors
+                        .iter()
+                        .copied()
+                        .map(|i| (i, geometry.faces()[cast_usize(i)]))
+                        .find_map(|(i, face)| {
+                            if face.contains_vertex(*vi_from) && face.contains_vertex(*vi_to) {
+                                Some(i)
+                            } else {
+                                None
+                            }
+                        });
+
+                    let mid_vertex_index = if let Some(neighbor_face_index) = neighbor_face_index {
+                        let pair = UnorderedPair(face_index_u32, neighbor_face_index);
+
+                        match created_mid_vertex_indices.entry(pair) {
+                            // The vertex exists and was therefore
+                            // already relocated by visiting a
+                            // neighboring face in a previous
+                            // iteration
+                            Entry::Occupied(occupied) => *occupied.get(),
+                            Entry::Vacant(vacant) => {
+                                // Create and relocate the vertex
+                                // using the (1/8, 3/8, 3/8, 1/8)
+                                // scheme. Since there is a neighbor
+                                // face, we also write the created
+                                // vertex to the cache to be picked up
+                                // by subsequent iterations.
+
+                                let edge_vertex_from = geometry.vertices()[cast_usize(*vi_from)];
+                                let edge_vertex_to = geometry.vertices()[cast_usize(*vi_to)];
+
+                                let face1 = geometry.faces()[face_index];
+                                let face2 = geometry.faces()[cast_usize(neighbor_face_index)];
+
+                                // Find the two vertices that are
+                                // opposite to the shared edge of the
+                                // face pair.
+                                let (opposite_vertex_index1, opposite_vertex_index2) =
+                                    match (face1, face2) {
+                                        (
+                                            Face::Triangle(triangle_face1),
+                                            Face::Triangle(triangle_face2),
+                                        ) => {
+                                            let f1vi1 = triangle_face1.vertices.0;
+                                            let f1vi2 = triangle_face1.vertices.1;
+                                            let f1vi3 = triangle_face1.vertices.2;
+
+                                            let f2vi1 = triangle_face2.vertices.0;
+                                            let f2vi2 = triangle_face2.vertices.1;
+                                            let f2vi3 = triangle_face2.vertices.2;
+
+                                            let f1v = [f1vi1, f1vi2, f1vi3];
+                                            let f2v = [f2vi1, f2vi2, f2vi3];
+
+                                            let f1_opposite_vertex = f1v
+                                                .iter()
+                                                .copied()
+                                                .find(|vi| !f2v.contains(&vi))
+                                                .expect("Failed to find opposite vertex");
+                                            let f2_opposite_vertex = f2v
+                                                .iter()
+                                                .copied()
+                                                .find(|vi| !f1v.contains(&vi))
+                                                .expect("Failed to find opposite vertex");
+
+                                            (f1_opposite_vertex, f2_opposite_vertex)
+                                        }
+                                    };
+
+                                let opposite_vertex1 =
+                                    geometry.vertices()[cast_usize(opposite_vertex_index1)];
+                                let opposite_vertex2 =
+                                    geometry.vertices()[cast_usize(opposite_vertex_index2)];
+
+                                let new_vertex = Point3::origin()
+                                    + opposite_vertex1.coords * 1.0 / 8.0
+                                    + opposite_vertex2.coords * 1.0 / 8.0
+                                    + edge_vertex_from.coords * 3.0 / 8.0
+                                    + edge_vertex_to.coords * 3.0 / 8.0;
+
+                                let index = cast_u32(vertices.len());
+                                vacant.insert(index);
+                                vertices.push(new_vertex);
+
+                                index
+                            }
+                        }
+                    } else {
+                        // Create and relocate the vertex using the (1/2, 1/2) scheme
+                        let vertex_from = geometry.vertices()[cast_usize(*vi_from)];
+                        let vertex_to = geometry.vertices()[cast_usize(*vi_to)];
+
+                        let new_vertex = na::center(&vertex_from, &vertex_to);
+
+                        let index = cast_u32(vertices.len());
+                        vertices.push(new_vertex);
+
+                        index
+                    };
+
+                    mid_vertex_indices[edge_index] = Some(mid_vertex_index);
+                }
+
+                let mid_v1v2_index =
+                    mid_vertex_indices[0].expect("Must have been produced by earlier loop");
+                let mid_v2v3_index =
+                    mid_vertex_indices[1].expect("Must have been produced by earlier loop");
+                let mid_v3v1_index =
+                    mid_vertex_indices[2].expect("Must have been produced by earlier loop");
+
+                faces.push((vi1, mid_v1v2_index, mid_v3v1_index));
+                faces.push((vi2, mid_v2v3_index, mid_v1v2_index));
+                faces.push((vi3, mid_v3v1_index, mid_v2v3_index));
+                faces.push((mid_v1v2_index, mid_v2v3_index, mid_v3v1_index));
+            }
+        }
+    }
+
+    assert_eq!(faces.len(), faces_len_estimate);
+    assert_eq!(faces.capacity(), faces_len_estimate);
+
+    // FIXME: Calculate better normals here? Maybe use `Smooth` strategy once we have it?
+    Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        faces,
+        vertices,
+        NormalStrategy::Sharp,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::iter::FromIterator;
@@ -98,7 +364,7 @@ mod tests {
     use nalgebra;
 
     use crate::edge_analysis;
-    use crate::geometry::{Geometry, NormalStrategy, OrientedEdge, Vertices};
+    use crate::geometry::{self, Geometry, NormalStrategy, OrientedEdge, Vertices};
     use crate::mesh_analysis;
     use crate::mesh_topology_analysis;
 
@@ -163,156 +429,6 @@ mod tests {
             Point3::new(14.5, 3.348076, -0.5),
             Point3::new(16.108253, 2.294551, -0.5),
             Point3::new(16.433012, 2.482051, 0.25),
-        ];
-
-        let faces = vec![
-            (4, 3, 0),
-            (0, 9, 1),
-            (2, 1, 3),
-            (7, 5, 9),
-            (5, 6, 9),
-            (6, 7, 18),
-            (15, 4, 0),
-            (3, 15, 9),
-            (10, 1, 11),
-            (11, 18, 12),
-            (13, 12, 1),
-            (14, 2, 15),
-            (1, 14, 15),
-            (8, 0, 2),
-            (8, 14, 6),
-            (16, 13, 10),
-            (12, 16, 1),
-            (17, 8, 7),
-            (18, 9, 8),
-            (14, 17, 6),
-            (17, 11, 16),
-            (18, 17, 16),
-            (14, 10, 17),
-            (3, 9, 0),
-            (0, 1, 2),
-            (2, 3, 4),
-            (7, 9, 18),
-            (6, 1, 9),
-            (6, 18, 1),
-            (15, 0, 8),
-            (15, 8, 9),
-            (1, 18, 11),
-            (11, 12, 13),
-            (13, 1, 10),
-            (2, 4, 15),
-            (1, 15, 3),
-            (8, 2, 14),
-            (8, 6, 5),
-            (16, 10, 14),
-            (16, 14, 1),
-            (8, 5, 7),
-            (18, 8, 17),
-            (17, 7, 6),
-            (11, 13, 16),
-            (18, 16, 12),
-            (10, 11, 17),
-        ];
-
-        (faces, vertices)
-    }
-
-    fn triple_torus_laplacian_1_iteration() -> (Vec<(u32, u32, u32)>, Vertices) {
-        let vertices = vec![
-            Point3::new(15.005895, -0.096932, 0.035714),
-            Point3::new(15.032319, 1.381472, 0.076923),
-            Point3::new(14.85898, 0.023604, -0.071429),
-            Point3::new(15.036084, 0.0625, 0.125),
-            Point3::new(14.766747, -0.404006, 0.0625),
-            Point3::new(15.922696, 0.790144, 0.0625),
-            Point3::new(15.740019, 1.252744, -0.03125),
-            Point3::new(16.038675, 1.159188, 0.0),
-            Point3::new(15.546142, 0.945945, 0.025),
-            Point3::new(15.369418, 0.614067, 0.083333),
-            Point3::new(14.954895, 2.278926, -0.125),
-            Point3::new(15.005895, 2.578983, 0.035714),
-            Point3::new(15.1, 2.505256, 0.1),
-            Point3::new(14.670096, 2.557051, 0.1),
-            Point3::new(15.010316, 1.241025, -0.125),
-            Point3::new(15.082797, 0.190284, 0.0625),
-            Point3::new(15.082797, 2.315204, 0.0625),
-            Point3::new(15.378551, 1.849819, -0.03125),
-            Point3::new(15.381446, 1.805484, 0.0),
-        ];
-
-        let faces = vec![
-            (4, 3, 0),
-            (0, 9, 1),
-            (2, 1, 3),
-            (7, 5, 9),
-            (5, 6, 9),
-            (6, 7, 18),
-            (15, 4, 0),
-            (3, 15, 9),
-            (10, 1, 11),
-            (11, 18, 12),
-            (13, 12, 1),
-            (14, 2, 15),
-            (1, 14, 15),
-            (8, 0, 2),
-            (8, 14, 6),
-            (16, 13, 10),
-            (12, 16, 1),
-            (17, 8, 7),
-            (18, 9, 8),
-            (14, 17, 6),
-            (17, 11, 16),
-            (18, 17, 16),
-            (14, 10, 17),
-            (3, 9, 0),
-            (0, 1, 2),
-            (2, 3, 4),
-            (7, 9, 18),
-            (6, 1, 9),
-            (6, 18, 1),
-            (15, 0, 8),
-            (15, 8, 9),
-            (1, 18, 11),
-            (11, 12, 13),
-            (13, 1, 10),
-            (2, 4, 15),
-            (1, 15, 3),
-            (8, 2, 14),
-            (8, 6, 5),
-            (16, 10, 14),
-            (16, 14, 1),
-            (8, 5, 7),
-            (18, 8, 17),
-            (17, 7, 6),
-            (11, 13, 16),
-            (18, 16, 12),
-            (10, 11, 17),
-        ];
-
-        (faces, vertices)
-    }
-
-    fn triple_torus_laplacian_3_iterations() -> (Vec<(u32, u32, u32)>, Vertices) {
-        let vertices = vec![
-            Point3::new(15.151657, 0.617585, 0.028723),
-            Point3::new(15.151801, 1.310818, 0.028865),
-            Point3::new(15.125829, 0.671169, 0.02456),
-            Point3::new(15.127048, 0.592897, 0.035489),
-            Point3::new(15.066285, 0.408004, 0.039398),
-            Point3::new(15.453969, 1.037088, 0.016901),
-            Point3::new(15.381245, 1.231292, 0.013342),
-            Point3::new(15.440678, 1.208557, 0.014121),
-            Point3::new(15.327691, 1.020512, 0.021627),
-            Point3::new(15.303463, 0.935796, 0.024711),
-            Point3::new(15.140347, 1.774271, 0.009292),
-            Point3::new(15.139611, 1.857752, 0.020585),
-            Point3::new(15.130695, 1.858242, 0.023035),
-            Point3::new(15.063364, 1.914324, 0.024865),
-            Point3::new(15.19091, 1.26172, 0.012169),
-            Point3::new(15.161481, 0.691733, 0.027817),
-            Point3::new(15.150735, 1.794786, 0.020292),
-            Point3::new(15.269145, 1.541168, 0.013697),
-            Point3::new(15.27197, 1.492211, 0.016929),
         ];
 
         let faces = vec![
@@ -439,11 +555,11 @@ mod tests {
         let vertex_to_vertex_topology =
             mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
         let (relaxed_geometry_0, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 0, &[], false);
+            laplacian_smoothing(&geometry, &vertex_to_vertex_topology, 0, &[], false);
         let (relaxed_geometry_1, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 1, &[], false);
+            laplacian_smoothing(&geometry, &vertex_to_vertex_topology, 1, &[], false);
         let (relaxed_geometry_10, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 10, &[], false);
+            laplacian_smoothing(&geometry, &vertex_to_vertex_topology, 10, &[], false);
 
         assert_eq!(relaxed_geometry_0.faces().len(), geometry.faces().len(),);
         assert_eq!(relaxed_geometry_1.faces().len(), geometry.faces().len(),);
@@ -469,85 +585,68 @@ mod tests {
     }
 
     #[test]
-    fn test_laplacian_smoothing() {
+    fn test_laplacian_smoothing_preserves_original_geometry_with_0_iterations() {
         let (faces, vertices) = triple_torus();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
 
-        let (faces_1_i, vertices_1_i) = triple_torus_laplacian_1_iteration();
-        let test_geometry_1_i = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces_1_i.clone(),
-            vertices_1_i.clone(),
+        let (relaxed_geometry, _, _) = laplacian_smoothing(&geometry, &v2v, 0, &[], false);
+        assert_eq!(geometry, relaxed_geometry);
+    }
+
+    #[test]
+    fn test_laplacian_smoothing_snapshot_triple_torus_1_iteration() {
+        let (faces, vertices) = triple_torus();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
 
-        let (faces_3_i, vertices_3_i) = triple_torus_laplacian_3_iterations();
-        let test_geometry_3_i = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces_3_i.clone(),
-            vertices_3_i.clone(),
+        let (relaxed_geometry, _, _) = laplacian_smoothing(&geometry, &v2v, 1, &[], false);
+        insta::assert_json_snapshot!(
+            "triple_torus_after_1_iteration_of_laplacian_smoothing",
+            &relaxed_geometry
+        );
+    }
+
+    #[test]
+    fn test_laplacian_smoothing_snapshot_triple_torus_2_iterations() {
+        let (faces, vertices) = triple_torus();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
 
-        let vertex_to_vertex_topology =
-            mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry_0_i, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 0, &[], false);
-        let (relaxed_geometry_1_i, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 1, &[], false);
-        let (relaxed_geometry_3_i, _, _) =
-            laplacian_smoothing(&geometry, vertex_to_vertex_topology.clone(), 3, &[], false);
+        let (relaxed_geometry, _, _) = laplacian_smoothing(&geometry, &v2v, 2, &[], false);
+        insta::assert_json_snapshot!(
+            "triple_torus_after_2_iteration2_of_laplacian_smoothing",
+            &relaxed_geometry
+        );
+    }
 
-        let relaxed_geometry_0_i_faces = relaxed_geometry_0_i.faces();
-        let relaxed_geometry_1_i_faces = relaxed_geometry_1_i.faces();
-        let test_geometry_0_i_faces = geometry.faces();
-        let test_geometry_1_i_faces = test_geometry_1_i.faces();
-        let relaxed_geometry_3_i_faces = relaxed_geometry_3_i.faces();
-        let test_geometry_3_i_faces = test_geometry_3_i.faces();
+    #[test]
+    fn test_laplacian_smoothing_snapshot_triple_torus_3_iterations() {
+        let (faces, vertices) = triple_torus();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
+            NormalStrategy::Sharp,
+        );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
 
-        assert_eq!(relaxed_geometry_0_i_faces, test_geometry_0_i_faces);
-        assert_eq!(relaxed_geometry_1_i_faces, test_geometry_1_i_faces);
-        assert_eq!(relaxed_geometry_3_i_faces, test_geometry_3_i_faces);
-
-        const TOLERANCE_SQUARED: f32 = 0.01 * 0.01;
-
-        let relaxed_geometry_0_i_vertices = relaxed_geometry_0_i.vertices();
-        let test_geometry_0_i_vertices = geometry.vertices();
-
-        for i in 0..test_geometry_0_i_vertices.len() {
-            assert!(
-                nalgebra::distance_squared(
-                    &test_geometry_0_i_vertices[i],
-                    &relaxed_geometry_0_i_vertices[i]
-                ) < TOLERANCE_SQUARED
-            );
-        }
-
-        let relaxed_geometry_1_i_vertices = relaxed_geometry_1_i.vertices();
-        let test_geometry_1_i_vertices = test_geometry_1_i.vertices();
-
-        for i in 0..test_geometry_1_i_vertices.len() {
-            assert!(
-                nalgebra::distance_squared(
-                    &test_geometry_1_i_vertices[i],
-                    &relaxed_geometry_1_i_vertices[i]
-                ) < TOLERANCE_SQUARED
-            );
-        }
-
-        let relaxed_geometry_3_i_vertices = relaxed_geometry_3_i.vertices();
-        let test_geometry_3_i_vertices = test_geometry_3_i.vertices();
-
-        for i in 0..test_geometry_3_i_vertices.len() {
-            assert!(
-                nalgebra::distance_squared(
-                    &test_geometry_3_i_vertices[i],
-                    &relaxed_geometry_3_i_vertices[i]
-                ) < TOLERANCE_SQUARED
-            );
-        }
+        let (relaxed_geometry, _, _) = laplacian_smoothing(&geometry, &v2v, 3, &[], false);
+        insta::assert_json_snapshot!(
+            "triple_torus_after_3_iterations_of_laplacian_smoothing",
+            &relaxed_geometry
+        );
     }
 
     #[test]
@@ -569,15 +668,9 @@ mod tests {
                 NormalStrategy::Sharp,
             );
 
-        let vertex_to_vertex_topology =
-            mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry, _, _) = laplacian_smoothing(
-            &geometry,
-            vertex_to_vertex_topology,
-            50,
-            &fixed_vertex_indices,
-            false,
-        );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let (relaxed_geometry, _, _) =
+            laplacian_smoothing(&geometry, &v2v, 50, &fixed_vertex_indices, false);
 
         let relaxed_geometry_faces = relaxed_geometry.faces();
         let test_geometry_faces = test_geometry_correct.faces();
@@ -620,15 +713,9 @@ mod tests {
                 vertices_correct.clone(),
                 NormalStrategy::Sharp,
             );
-        let vertex_to_vertex_topology =
-            mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry, _, _) = laplacian_smoothing(
-            &geometry,
-            vertex_to_vertex_topology,
-            50,
-            &fixed_vertex_indices,
-            false,
-        );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let (relaxed_geometry, _, _) =
+            laplacian_smoothing(&geometry, &v2v, 50, &fixed_vertex_indices, false);
 
         let relaxed_geometry_faces = relaxed_geometry.faces();
         let test_geometry_faces = test_geometry_correct.faces();
@@ -669,15 +756,9 @@ mod tests {
                 NormalStrategy::Sharp,
             );
 
-        let vertex_to_vertex_topology =
-            mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let (relaxed_geometry, _, _) = laplacian_smoothing(
-            &geometry,
-            vertex_to_vertex_topology,
-            255,
-            &fixed_vertex_indices,
-            true,
-        );
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let (relaxed_geometry, _, _) =
+            laplacian_smoothing(&geometry, &v2v, 255, &fixed_vertex_indices, true);
 
         let relaxed_geometry_faces = relaxed_geometry.faces();
         let test_geometry_faces = test_geometry_correct.faces();
@@ -694,5 +775,33 @@ mod tests {
                 0.001,
             ));
         }
+    }
+
+    #[test]
+    fn test_loop_subdivision_snapshot_uv_sphere() {
+        let geometry = geometry::uv_sphere([0.0; 3], 1.0, 2, 3);
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
+
+        let subdivided_geometry = loop_subdivision(&geometry, &v2v, &f2f);
+
+        insta::assert_json_snapshot!(
+            "uv_sphere_2_3_after_1_iteration_of_loop_subdivision",
+            &subdivided_geometry
+        );
+    }
+
+    #[test]
+    fn test_loop_subdivision_snapshot_cube_sharp() {
+        let geometry = geometry::cube_sharp([0.0; 3], 1.0);
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
+
+        let subdivided_geometry = loop_subdivision(&geometry, &v2v, &f2f);
+
+        insta::assert_json_snapshot!(
+            "cube_sharp_after_1_iteration_of_loop_subdivision",
+            &subdivided_geometry
+        );
     }
 }
