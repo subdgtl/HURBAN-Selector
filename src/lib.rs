@@ -257,8 +257,6 @@ pub fn init_and_run(options: Options) -> ! {
 
                 ui_frame.draw_renderer_settings_window(&mut renderer_draw_geometry_mode);
 
-                operation_ui.prepare_ops();
-
                 let (run_button_clicked, remove_button_clicked) =
                     ui_frame.draw_operations_window(&ops_reprs, &mut operation_ui);
 

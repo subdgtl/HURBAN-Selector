@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::ops::Range;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
@@ -179,7 +180,8 @@ impl<'a> UiFrame<'a> {
     pub fn draw_operation_window(
         &self,
         name: &str,
-        available_geometries: &[GeometryMetadata],
+        geometry_metadata: &[GeometryMetadata],
+        available_geometries: Range<usize>,
         params: &mut [OpUiParam],
         status: OpStatus,
     ) {
@@ -247,8 +249,8 @@ impl<'a> UiFrame<'a> {
                                 imgui::ComboBox::new(&label).build_simple(
                                     ui,
                                     &mut usize_value,
-                                    choices,
-                                    &|item| std::borrow::Cow::from(imgui::im_str!("{}", item.1)),
+                                    &geometry_metadata[available_geometries.clone()],
+                                    &|item| std::borrow::Cow::from(imgui::im_str!("{}", item.name)),
                                 );
                                 *value = u32::try_from(usize_value)
                                     .expect("Failed to convert signed int to unsigned int");
@@ -328,10 +330,14 @@ impl<'a> UiFrame<'a> {
                     }
                 }
 
-                for (i, selected_op) in &mut operation_ui.selected_ops_iter_mut().enumerate() {
+                // TODO: this clone is a hack
+                let geometry_metadata = operation_ui.geometry_metadata().to_vec();
+
+                for (i, selected_op) in operation_ui.selected_ops_iter_mut().enumerate() {
                     self.draw_operation_window(
                         &format!("{} #{}", &selected_op.op.name, i),
-                        &mut selected_op.available_geometries,
+                        &geometry_metadata,
+                        selected_op.available_geometries.clone(),
                         &mut selected_op.op.params,
                         selected_op.status,
                     );

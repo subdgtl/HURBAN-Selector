@@ -105,12 +105,12 @@ impl SelectedOp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GeometryMetadata {
-    name: String,
-    geometry: Geometry,
-    var_ident: u64,
-    used: bool,
+    pub name: String,
+    pub geometry: Geometry,
+    pub var_ident: u64,
+    pub used: bool,
 }
 
 impl GeometryMetadata {
@@ -143,6 +143,10 @@ impl OperationManager {
             geometry_metadata: Vec::new(),
             geometry_stack: Vec::new(),
         }
+    }
+
+    pub fn geometry_metadata(&self) -> &[GeometryMetadata] {
+        &self.geometry_metadata
     }
 
     /// Adds operation and submits its interpreter statement.
@@ -403,12 +407,14 @@ impl OperationManager {
 }
 
 fn build_operation_var_ident(operation: &Op, var_ident_id: u64) -> ast::Stmt {
+    // TODO: don't substitute uint literals for variables
+
     let var_ident = ast::VarIdent(var_ident_id);
     let mut args = vec![];
 
     for param in &operation.params {
         let expr = match param.repr {
-            OpParamUiRepr::GeometryDropdown(_) => match param.value.get() {
+            OpParamUiRepr::GeometryDropdown => match param.value.get() {
                 ast::LitExpr::Uint(uint) => {
                     ast::Expr::Var(ast::VarExpr::new(VarIdent(u64::from(*uint))))
                 }
@@ -461,7 +467,7 @@ pub fn operations_ui_definitions() -> HashMap<String, Op> {
             params: vec![
                 OpUiParam {
                     name: "Geometry".to_string(),
-                    repr: OpParamUiRepr::GeometryDropdown(vec![]),
+                    repr: OpParamUiRepr::GeometryDropdown,
                     value: Value::new(ast::LitExpr::Uint(0)),
                 },
                 OpUiParam {
@@ -481,7 +487,7 @@ pub fn operations_ui_definitions() -> HashMap<String, Op> {
             params: vec![
                 OpUiParam {
                     name: "Geometry".to_string(),
-                    repr: OpParamUiRepr::GeometryDropdown(vec![]),
+                    repr: OpParamUiRepr::GeometryDropdown,
                     value: Value::new(ast::LitExpr::Uint(0)),
                 },
                 OpUiParam {
