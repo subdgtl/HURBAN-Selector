@@ -22,25 +22,32 @@ pub fn ray_intersects_triangle(
 ) -> Option<Point3<f32>> {
     let edge_1_vector = triangle_vertices.1 - triangle_vertices.0;
     let edge_2_vector = triangle_vertices.2 - triangle_vertices.0;
+    // If the ray is parallel to the triangle, a vector perpendicular to the ray
+    // and one of the triangle edges
     let perpendicular_vector = ray_vector.cross(&edge_2_vector);
+    // will be also perpendicular to the other triangle edge.
     let determinant = edge_1_vector.dot(&perpendicular_vector);
-    // This ray is parallel to this triangle.
+    // Which means the ray is parallel to the tested triangle.
     if approx::relative_eq!(determinant, 0.0) {
         return None;
     }
     let inverse_determinant = 1.0 / determinant;
     let tangent_vector = ray_origin - triangle_vertices.0;
     let u_parameter = inverse_determinant * tangent_vector.dot(&perpendicular_vector);
+    // The ray intersects the triangle plane outside of the triangle -> the ray
+    // doesn't intersect the triangle
     if u_parameter < 0.0 || u_parameter > 1.0 {
         return None;
     }
     let q_vector = tangent_vector.cross(&edge_1_vector);
     let v_parameter = inverse_determinant * ray_vector.dot(&q_vector);
+    // The ray intersects the triangle plane outside of the triangle -> the ray
+    // doesn't intersect the triangle
     if v_parameter < 0.0 || u_parameter + v_parameter > 1.0 {
         return None;
     }
-    // At this stage we can compute t_parameter to find out where the
-    // intersection point is on the line.
+    // The t_parameter is the relative position of the intersection point on the
+    // ray line.
     let t_parameter = inverse_determinant * edge_2_vector.dot(&q_vector);
     // Ray-triangle intersection
     if t_parameter > f32::EPSILON && t_parameter < 1.0 / f32::EPSILON {
