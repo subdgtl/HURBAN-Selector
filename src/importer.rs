@@ -357,11 +357,15 @@ mod tests {
 
     use super::*;
 
-    fn create_tobj_model(indices: Vec<u32>, positions: Vec<f32>, normals: Vec<f32>) -> tobj::Model {
+    fn create_tobj_model(
+        face_vertex_indices: Vec<u32>,
+        positions: Vec<f32>,
+        normals: Vec<f32>,
+    ) -> tobj::Model {
         tobj::Model {
             name: String::from("Test model"),
             mesh: tobj::Mesh {
-                indices,
+                indices: face_vertex_indices,
                 positions,
                 normals,
                 texcoords: vec![],
