@@ -78,6 +78,11 @@ impl Geometry {
                     .map(Face::from)
                     .collect();
 
+                assert!(
+                    !faces_collection.is_empty(),
+                    "Empty (faceless) meshes are not supported",
+                );
+
                 let vertices_collection: Vec<_> = vertices.into_iter().collect();
                 let mut normals_collection = Vec::with_capacity(faces_collection.len());
 
@@ -209,6 +214,11 @@ impl Geometry {
         N: IntoIterator<Item = Vector3<f32>>,
     {
         let faces_collection: Vec<_> = faces.into_iter().collect();
+        assert!(
+            !faces_collection.is_empty(),
+            "Empty (faceless) meshes are not supported.",
+        );
+
         let vertices_collection: Vec<_> = vertices.into_iter().collect();
         let normals_collection: Vec<_> = normals.into_iter().collect();
 
@@ -1107,6 +1117,55 @@ mod tests {
         ];
 
         (faces, vertices, normals)
+    }
+
+    #[test]
+    #[should_panic = "Empty (faceless) meshes are not supported"]
+    fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals_empty_geometry() {
+        Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            vec![],
+            vec![],
+            NormalStrategy::Sharp,
+        );
+    }
+
+    #[test]
+    #[should_panic = "Empty (faceless) meshes are not supported"]
+    fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals_remove_orphans_empty_geometry(
+    ) {
+        Geometry::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
+            vec![],
+            vec![],
+            NormalStrategy::Sharp,
+        );
+    }
+
+    #[test]
+    #[should_panic = "Empty (faceless) meshes are not supported"]
+    fn test_geometry_from_triangle_faces_with_vertices_and_normals_empty_geometry() {
+        Geometry::from_triangle_faces_with_vertices_and_normals(vec![], vec![], vec![]);
+    }
+
+    #[test]
+    #[should_panic = "Empty (faceless) meshes are not supported"]
+    fn test_geometry_from_triangle_faces_with_vertices_and_normals_remove_orphans_empty_geometry() {
+        Geometry::from_triangle_faces_with_vertices_and_normals_remove_orphans(
+            vec![],
+            vec![],
+            vec![],
+        );
+    }
+
+    #[test]
+    #[should_panic = "Empty (faceless) meshes are not supported"]
+    fn test_geometry_from_faces_with_vertices_and_normals_empty_geometry() {
+        Geometry::from_faces_with_vertices_and_normals(vec![], vec![], vec![]);
+    }
+
+    #[test]
+    #[should_panic = "Empty (faceless) meshes are not supported"]
+    fn test_geometry_from_faces_with_vertices_and_normals_remove_orphans_empty_geometry() {
+        Geometry::from_faces_with_vertices_and_normals_remove_orphans(vec![], vec![], vec![]);
     }
 
     #[test]

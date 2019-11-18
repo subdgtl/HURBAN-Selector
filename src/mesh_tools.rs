@@ -324,16 +324,6 @@ mod tests {
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    fn empty_geometry() -> Geometry {
-        let vertices = vec![];
-
-        let vertex_normals = vec![];
-
-        let faces = vec![];
-
-        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
-    }
-
     fn tessellated_triangle_with_island_geometry() -> Geometry {
         let vertices = vec![
             Point3::new(-2.0, -2.0, 0.0),
@@ -602,26 +592,6 @@ mod tests {
             &geometry_after_welding_correct,
             &geometry_after_welding
         ));
-    }
-
-    #[test]
-    fn test_join_meshes_tessellated_triangle_and_empty() {
-        let tessellated_triangle_geometry = tessellated_triangle_geometry();
-        let empty_geometry = empty_geometry();
-
-        let calculated_geometry = join_meshes(&tessellated_triangle_geometry, &empty_geometry);
-
-        assert_eq!(&tessellated_triangle_geometry, &calculated_geometry);
-    }
-
-    #[test]
-    fn test_join_meshes_tessellated_empty_and_triangle() {
-        let empty_geometry = empty_geometry();
-        let tessellated_triangle_geometry = tessellated_triangle_geometry();
-
-        let calculated_geometry = join_meshes(&empty_geometry, &tessellated_triangle_geometry);
-
-        assert_eq!(&tessellated_triangle_geometry, &calculated_geometry);
     }
 
     #[test]
