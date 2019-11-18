@@ -2,6 +2,7 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::error;
 use std::fmt;
+use std::ptr;
 
 pub use self::ast::{FuncIdent, VarIdent};
 pub use self::func::{Func, FuncFlags, ParamInfo};
@@ -55,6 +56,34 @@ impl fmt::Display for TypecheckError {
 
 impl error::Error for TypecheckError {}
 
+/// A dynamic func error.
+#[derive(Debug)]
+pub struct FuncError(Box<dyn error::Error + Send>);
+
+impl FuncError {
+    pub fn new<E: error::Error + Send + 'static>(error: E) -> Self {
+        Self(Box::new(error))
+    }
+}
+
+impl PartialEq for FuncError {
+    /// Compares whether two func errors are exactly the same instance.
+    fn eq(&self, other: &FuncError) -> bool {
+        // FIXME: @Correctness Can we somehow make this equality deep
+        // so we don't have to do downcasting shenanigans when
+        // comparing?
+        ptr::eq(&self.0, &other.0)
+    }
+}
+
+impl fmt::Display for FuncError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl error::Error for FuncError {}
+
 /// A runtime error.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
@@ -76,6 +105,11 @@ pub enum RuntimeError {
         call: ast::CallExpr,
         ty_expected: Ty,
         ty_provided: Ty,
+    },
+    Func {
+        stmt_index: usize,
+        call: ast::CallExpr,
+        func_error: FuncError,
     },
 }
 
@@ -121,6 +155,17 @@ impl fmt::Display for RuntimeError {
                 call.ident(),
                 ty_expected,
                 ty_provided,
+                stmt_index,
+            ),
+            RuntimeError::Func {
+                stmt_index,
+                call,
+                func_error,
+            } => write!(
+                f,
+                "Function {} errored with \"{}\" on stmt {}",
+                call.ident(),
+                func_error,
                 stmt_index,
             ),
         }
@@ -697,20 +742,29 @@ fn eval_call_expr(
         }
     }
 
-    let value = func.call(&args);
+    let result = func.call(&args);
+    match result {
+        Ok(value) => {
+            let return_ty = func.return_ty();
+            let value_ty = value.ty();
 
-    let return_ty = func.return_ty();
-    let value_ty = value.ty();
-    if return_ty != value_ty {
-        return Err(RuntimeError::ReturnTyMismatch {
+            if return_ty != value_ty {
+                return Err(RuntimeError::ReturnTyMismatch {
+                    stmt_index,
+                    call: call.clone(),
+                    ty_expected: return_ty,
+                    ty_provided: value_ty,
+                });
+            }
+
+            Ok(value)
+        }
+        Err(func_error) => Err(RuntimeError::Func {
             stmt_index,
             call: call.clone(),
-            ty_expected: return_ty,
-            ty_provided: value_ty,
-        });
+            func_error,
+        }),
     }
-
-    Ok(value)
 }
 
 #[cfg(test)]
@@ -720,14 +774,20 @@ mod tests {
 
     use super::*;
 
-    struct TestFunc<F: Fn(&[Value]) -> Value> {
+    struct TestFunc<F>
+    where
+        F: Fn(&[Value]) -> Result<Value, FuncError>,
+    {
         func: F,
         flags: FuncFlags,
         param_info: Vec<ParamInfo>,
         return_ty: Ty,
     }
 
-    impl<F: Fn(&[Value]) -> Value> TestFunc<F> {
+    impl<F> TestFunc<F>
+    where
+        F: Fn(&[Value]) -> Result<Value, FuncError>,
+    {
         pub fn new(func: F, flags: FuncFlags, param_info: Vec<ParamInfo>, return_ty: Ty) -> Self {
             Self {
                 flags,
@@ -738,7 +798,10 @@ mod tests {
         }
     }
 
-    impl<F: Fn(&[Value]) -> Value> Func for TestFunc<F> {
+    impl<F> Func for TestFunc<F>
+    where
+        F: Fn(&[Value]) -> Result<Value, FuncError>,
+    {
         fn flags(&self) -> FuncFlags {
             self.flags
         }
@@ -751,8 +814,8 @@ mod tests {
             self.return_ty
         }
 
-        fn call(&self, values: &[Value]) -> Value {
-            (self.func)(values)
+        fn call(&self, values: &[Value]) -> Result<Value, FuncError> {
+            ((self.func)(values))
         }
     }
 
@@ -784,7 +847,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |_| Value::Boolean(true),
+                |_| Ok(Value::Boolean(true)),
                 FuncFlags::PURE,
                 vec![],
                 Ty::Boolean,
@@ -811,7 +874,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Boolean(values[0].unwrap_boolean()),
+                |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Boolean,
@@ -841,7 +904,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |_| Value::Boolean(true),
+                |_| Ok(Value::Boolean(true)),
                 FuncFlags::empty(),
                 vec![],
                 Ty::Boolean,
@@ -868,7 +931,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Boolean(values[0].unwrap_boolean()),
+                |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::empty(),
                 vec![ParamInfo {
                     ty: Ty::Boolean,
@@ -898,7 +961,7 @@ mod tests {
         let (func_id1, func1) = (
             FuncIdent(0),
             TestFunc::new(
-                |_| Value::Boolean(true),
+                |_| Ok(Value::Boolean(true)),
                 FuncFlags::PURE,
                 vec![],
                 Ty::Boolean,
@@ -907,7 +970,7 @@ mod tests {
         let (func_id2, func2) = (
             FuncIdent(1),
             TestFunc::new(
-                |values| Value::Boolean(values[0].unwrap_boolean()),
+                |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Boolean,
@@ -947,7 +1010,7 @@ mod tests {
         let (func_id1, func1) = (
             FuncIdent(0),
             TestFunc::new(
-                |_| Value::Boolean(true),
+                |_| Ok(Value::Boolean(true)),
                 FuncFlags::empty(),
                 vec![],
                 Ty::Boolean,
@@ -956,7 +1019,7 @@ mod tests {
         let (func_id2, func2) = (
             FuncIdent(1),
             TestFunc::new(
-                |values| Value::Boolean(values[0].unwrap_boolean()),
+                |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::empty(),
                 vec![ParamInfo {
                     ty: Ty::Boolean,
@@ -1021,7 +1084,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |_| Value::Boolean(true),
+                |_| Ok(Value::Boolean(true)),
                 FuncFlags::PURE,
                 vec![],
                 Ty::Boolean,
@@ -1047,7 +1110,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |_| Value::Boolean(true),
+                |_| Ok(Value::Boolean(true)),
                 FuncFlags::PURE,
                 vec![],
                 Ty::Boolean,
@@ -1087,7 +1150,7 @@ mod tests {
             TestFunc::new(
                 move |values| {
                     c.inc();
-                    Value::Boolean(values[0].unwrap_boolean())
+                    Ok(Value::Boolean(values[0].unwrap_boolean()))
                 },
                 FuncFlags::PURE,
                 vec![ParamInfo {
@@ -1127,7 +1190,7 @@ mod tests {
             TestFunc::new(
                 move |values| {
                     c.inc();
-                    Value::Boolean(values[0].unwrap_boolean())
+                    Ok(Value::Boolean(values[0].unwrap_boolean()))
                 },
                 FuncFlags::empty(),
                 vec![ParamInfo {
@@ -1170,9 +1233,9 @@ mod tests {
                     let value = values[0].unwrap_boolean();
                     let negate = values[1].unwrap_boolean();
                     if negate {
-                        Value::Boolean(!value)
+                        Ok(Value::Boolean(!value))
                     } else {
-                        Value::Boolean(value)
+                        Ok(Value::Boolean(value))
                     }
                 },
                 FuncFlags::PURE,
@@ -1245,9 +1308,9 @@ mod tests {
                     let value = values[0].unwrap_boolean();
                     let negate = values[1].unwrap_boolean();
                     if negate {
-                        Value::Boolean(!value)
+                        Ok(Value::Boolean(!value))
                     } else {
-                        Value::Boolean(value)
+                        Ok(Value::Boolean(value))
                     }
                 },
                 FuncFlags::PURE,
@@ -1273,9 +1336,9 @@ mod tests {
                     let value = values[0].unwrap_boolean();
                     let negate = values[1].unwrap_boolean();
                     if negate {
-                        Value::Boolean(!value)
+                        Ok(Value::Boolean(!value))
                     } else {
-                        Value::Boolean(value)
+                        Ok(Value::Boolean(value))
                     }
                 },
                 FuncFlags::PURE,
@@ -1348,7 +1411,7 @@ mod tests {
             TestFunc::new(
                 move |_| {
                     c1.inc();
-                    Value::Boolean(true)
+                    Ok(Value::Boolean(true))
                 },
                 FuncFlags::empty(),
                 vec![],
@@ -1361,7 +1424,7 @@ mod tests {
             TestFunc::new(
                 move |values| {
                     c2.inc();
-                    Value::Boolean(values[0].unwrap_boolean())
+                    Ok(Value::Boolean(values[0].unwrap_boolean()))
                 },
                 FuncFlags::PURE,
                 vec![ParamInfo {
@@ -1412,7 +1475,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |_| Value::Boolean(true),
+                |_| Ok(Value::Boolean(true)),
                 FuncFlags::PURE,
                 vec![],
                 Ty::Boolean,
@@ -1451,7 +1514,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Boolean(values[0].unwrap_boolean()),
+                |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Boolean,
@@ -1490,7 +1553,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Boolean(values[0].unwrap_boolean()),
+                |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Boolean,
@@ -1531,7 +1594,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Boolean(values[0].unwrap_boolean()),
+                |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Boolean,
@@ -1603,7 +1666,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Float(values[0].unwrap_float() + 1.0),
+                |values| Ok(Value::Float(values[0].unwrap_float() + 1.0)),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Float,
@@ -1648,7 +1711,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Float(values[0].unwrap_float() + 1.0),
+                |values| Ok(Value::Float(values[0].unwrap_float() + 1.0)),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Float,
@@ -1688,7 +1751,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Float(values[0].get_float().unwrap_or(1.0)),
+                |values| Ok(Value::Float(values[0].get_float().unwrap_or(1.0))),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Float,
@@ -1719,7 +1782,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Float(values[0].get_float().unwrap_or(1.0)),
+                |values| Ok(Value::Float(values[0].get_float().unwrap_or(1.0))),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Float,
@@ -1758,7 +1821,7 @@ mod tests {
     fn test_interpreter_interpret_single_func_dynamic_return_ty_error() {
         let (func_id, func) = (
             FuncIdent(0),
-            TestFunc::new(|_| Value::Int(-1), FuncFlags::PURE, vec![], Ty::Float),
+            TestFunc::new(|_| Ok(Value::Int(-1)), FuncFlags::PURE, vec![], Ty::Float),
         );
 
         let call = ast::CallExpr::new(func_id, vec![]);
@@ -1785,6 +1848,64 @@ mod tests {
         );
     }
 
+    // Func runtime erorrs tests
+
+    #[test]
+    fn test_interpreter_interpret_single_func_runtime_error() {
+        #[derive(Debug, PartialEq)]
+        struct ConcreteFuncError(i32);
+
+        impl fmt::Display for ConcreteFuncError {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "Concrete func error with code {}", self.0)
+            }
+        }
+
+        impl error::Error for ConcreteFuncError {}
+
+        let (func_id, func) = (
+            FuncIdent(0),
+            TestFunc::new(
+                |_| Err(FuncError::new(ConcreteFuncError(42))),
+                FuncFlags::empty(),
+                vec![],
+                Ty::Boolean,
+            ),
+        );
+
+        let call = ast::CallExpr::new(func_id, vec![]);
+        let prog = ast::Prog::new(vec![ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(0),
+            call.clone(),
+        ))]);
+
+        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        funcs.insert(func_id, Box::new(func));
+
+        let mut interpreter = Interpreter::new(funcs);
+        interpreter.set_prog(prog);
+
+        let err = interpreter.interpret().unwrap_err();
+
+        match err {
+            InterpretError::Runtime(RuntimeError::Func {
+                stmt_index: runtime_error_stmt_index,
+                call: runtime_error_call,
+                func_error: runtime_error_func_error,
+            }) => {
+                assert_eq!(runtime_error_stmt_index, 0);
+                assert_eq!(runtime_error_call, call);
+
+                let concrete_error = runtime_error_func_error
+                    .0
+                    .downcast_ref::<ConcreteFuncError>()
+                    .unwrap();
+                assert_eq!(concrete_error, &ConcreteFuncError(42));
+            }
+            _ => panic!(),
+        }
+    }
+
     // ValueSet tests
 
     #[test]
@@ -1792,7 +1913,7 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Value::Float(values[0].unwrap_float() * 2.0),
+                |values| Ok(Value::Float(values[0].unwrap_float() * 2.0)),
                 FuncFlags::PURE,
                 vec![ParamInfo {
                     ty: Ty::Float,
