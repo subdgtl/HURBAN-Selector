@@ -31,8 +31,10 @@ mod mesh_analysis;
 mod mesh_smoothing;
 mod mesh_tools;
 mod mesh_topology_analysis;
+mod plane_tools;
 mod platform;
 mod ui;
+mod vertex_tools;
 
 const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 

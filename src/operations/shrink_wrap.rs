@@ -10,7 +10,7 @@ pub struct ShrinkWrapParams<'a> {
 
 pub fn shrink_wrap(params: ShrinkWrapParams) -> Geometry {
     let (center, radius) = geometry::compute_bounding_sphere(slice::from_ref(&params.geometry));
-    let mut sphere_geometry = geometry::uv_sphere(
+    let mut sphere_geometry = geometry::uv_sphere_geometry(
         center.coords.into(),
         radius,
         params.sphere_density,

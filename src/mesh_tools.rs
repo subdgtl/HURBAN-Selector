@@ -324,6 +324,16 @@ mod tests {
         Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
+    fn empty_geometry() -> Geometry {
+        let vertices = vec![];
+
+        let vertex_normals = vec![];
+
+        let faces = vec![];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+    }
+
     fn tessellated_triangle_with_island_geometry() -> Geometry {
         let vertices = vec![
             Point3::new(-2.0, -2.0, 0.0),
@@ -529,7 +539,7 @@ mod tests {
 
     #[test]
     fn test_separate_isolated_meshes_returns_similar_for_cube() {
-        let geometry = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
 
         let calculated_geometries = separate_isolated_meshes(&geometry);
 
@@ -568,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn test_weld_tesselated_triangle() {
+    fn test_weld_tessellated_triangle() {
         let geometry = tessellated_triangle_geometry_for_welding();
         let geometry_after_welding_correct = tessellated_triangle_geometry_after_welding();
 
@@ -592,6 +602,26 @@ mod tests {
             &geometry_after_welding_correct,
             &geometry_after_welding
         ));
+    }
+
+    #[test]
+    fn test_join_meshes_tessellated_triangle_and_empty() {
+        let tessellated_triangle_geometry = tessellated_triangle_geometry();
+        let empty_geometry = empty_geometry();
+
+        let calculated_geometry = join_meshes(&tessellated_triangle_geometry, &empty_geometry);
+
+        assert_eq!(&tessellated_triangle_geometry, &calculated_geometry);
+    }
+
+    #[test]
+    fn test_join_meshes_tessellated_empty_and_triangle() {
+        let empty_geometry = empty_geometry();
+        let tessellated_triangle_geometry = tessellated_triangle_geometry();
+
+        let calculated_geometry = join_meshes(&empty_geometry, &tessellated_triangle_geometry);
+
+        assert_eq!(&tessellated_triangle_geometry, &calculated_geometry);
     }
 
     #[test]

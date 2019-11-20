@@ -6,7 +6,7 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 
 fn bench_shrink_wrap(c: &mut Criterion) {
     let mut group = c.benchmark_group("shrink_wrap");
-    let geometry = geometry::uv_sphere([0.0, 0.0, 0.0], 1.0, 3, 3);
+    let geometry = geometry::uv_sphere_geometry([0.0, 0.0, 0.0], 1.0, 3, 3);
 
     for density in (10u32..=50u32).step_by(10) {
         group.bench_with_input(
