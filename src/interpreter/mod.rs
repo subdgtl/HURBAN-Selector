@@ -323,8 +323,11 @@ impl Interpreter {
     }
 
     pub fn set_prog_stmt_at(&mut self, index: usize, stmt: ast::Stmt) {
-        // Mark the stmt and everything following it for re-execution
-        self.pc = index;
+        // Mark the stmt and everything following it for re-execution,
+        // if we already executed that far
+        if self.pc > index {
+            self.pc = index;
+        }
 
         let stmt_mut = self
             .prog
@@ -1467,6 +1470,43 @@ mod tests {
     }
 
     // FIXME: Prog manipulation tests
+
+    #[test]
+    fn test_interpreter_set_prog_stmt_does_not_advance_pc_to_unexecuted_stmts() {
+        let func_id = FuncIdent(0);
+        let prog = ast::Prog::new(vec![
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(0),
+                ast::CallExpr::new(func_id, vec![]),
+            )),
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(1),
+                ast::CallExpr::new(func_id, vec![]),
+            )),
+        ]);
+
+        let mut interpreter = Interpreter::new(HashMap::new());
+        interpreter.set_prog(prog);
+        assert_eq!(interpreter.pc, 0);
+
+        interpreter.set_prog_stmt_at(
+            0,
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(0),
+                ast::CallExpr::new(func_id, vec![]),
+            )),
+        );
+        assert_eq!(interpreter.pc, 0);
+
+        interpreter.set_prog_stmt_at(
+            0,
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                VarIdent(0),
+                ast::CallExpr::new(func_id, vec![]),
+            )),
+        );
+        assert_eq!(interpreter.pc, 0);
+    }
 
     // Name resolution tests
 
