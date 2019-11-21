@@ -1,9 +1,9 @@
 use bitflags::bitflags;
 
-use super::{Ty, Value};
+use super::{FuncError, Ty, Value};
 
 bitflags! {
-    /// Information about the function behaviour.
+    /// Information about the function behavior.
     ///
     /// Unset bits are always the safe default. Set bits may trigger
     /// interpreter optimizations. Incorrectly set bits may result in
@@ -39,7 +39,7 @@ pub struct ParamInfo {
 ///
 /// [`Nil`]: ../value/enum.Ty.html#variant.Nil
 pub trait Func {
-    /// Information about the function behaviour.
+    /// Information about the function behavior.
     ///
     /// See [`FuncFlags`] for more.
     ///
@@ -71,5 +71,5 @@ pub trait Func {
     ///
     /// [`param_info`]: trait.Func.html#tymethod.param_info
     /// [`return_ty`]: trait.Func.html#tymethod.return_ty
-    fn call(&self, args: &[Value]) -> Value;
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError>;
 }

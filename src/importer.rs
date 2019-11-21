@@ -357,17 +357,29 @@ mod tests {
 
     use super::*;
 
-    fn create_tobj_model(indices: Vec<u32>, positions: Vec<f32>, normals: Vec<f32>) -> tobj::Model {
+    fn create_tobj_model(
+        face_vertex_indices: Vec<u32>,
+        positions: Vec<f32>,
+        normals: Vec<f32>,
+    ) -> tobj::Model {
         tobj::Model {
             name: String::from("Test model"),
             mesh: tobj::Mesh {
-                indices,
+                indices: face_vertex_indices,
                 positions,
                 normals,
                 texcoords: vec![],
                 material_id: None,
             },
         }
+    }
+
+    fn triangle() -> tobj::Model {
+        create_tobj_model(
+            vec![0, 1, 2],
+            vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+        )
     }
 
     #[test]
@@ -513,7 +525,7 @@ mod tests {
             checksum,
             last_modified: SystemTime::now(),
         };
-        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+        let models = tobj_to_internal(vec![triangle()]);
 
         cache.set(path.clone(), metadata, &models);
 
@@ -536,18 +548,14 @@ mod tests {
             checksum,
             last_modified: SystemTime::now(),
         };
-        let models = tobj_to_internal(vec![create_tobj_model(
-            vec![0],
-            vec![4.0, 5.0, 6.0],
-            vec![1.0, 1.0, 1.0],
-        )]);
+        let models = tobj_to_internal(vec![triangle()]);
 
         cache.set(path.clone(), metadata, &models);
 
         let new_models = tobj_to_internal(vec![create_tobj_model(
-            vec![0],
-            vec![4.0, 5.0, 6.0],
-            vec![0.0, 0.0, 0.0],
+            vec![0, 1, 2],
+            vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0],
+            vec![0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0],
         )]);
 
         cache.set(path.clone(), metadata, &new_models);
@@ -571,7 +579,7 @@ mod tests {
             checksum: 1u32,
             last_modified: now,
         };
-        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+        let models = tobj_to_internal(vec![triangle()]);
         cache.set(path.clone(), metadata, &models);
 
         let loaded_models = cache.get_if_not_modified(&path, now);
@@ -588,7 +596,7 @@ mod tests {
             checksum: 1u32,
             last_modified: now,
         };
-        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+        let models = tobj_to_internal(vec![triangle()]);
         cache.set(path.clone(), metadata, &models);
 
         let loaded_models = cache.get_if_not_modified(
@@ -609,7 +617,7 @@ mod tests {
             checksum,
             last_modified: SystemTime::now(),
         };
-        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+        let models = tobj_to_internal(vec![triangle()]);
         cache.set(path.clone(), metadata, &models);
 
         let loaded_models = cache.get_by_checksum(checksum);
@@ -626,7 +634,7 @@ mod tests {
             checksum,
             last_modified: SystemTime::now(),
         };
-        let models = tobj_to_internal(vec![create_tobj_model(vec![], vec![], vec![])]);
+        let models = tobj_to_internal(vec![triangle()]);
         cache.set(path.clone(), metadata, &models);
 
         let loaded_models = cache.get_by_checksum(checksum + 1);
