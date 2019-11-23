@@ -1499,7 +1499,7 @@ mod tests {
         assert_eq!(interpreter.pc, 0);
 
         interpreter.set_prog_stmt_at(
-            0,
+            1,
             ast::Stmt::VarDecl(ast::VarDeclStmt::new(
                 VarIdent(0),
                 ast::CallExpr::new(func_id, vec![]),
