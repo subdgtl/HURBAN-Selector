@@ -43,21 +43,25 @@ pub fn synchronize_mesh_winding_bfs(
         .collect();
 
     while proper_faces.len() < original_triangle_faces.len() {
-        let current_face_index = visited.iter().position(|v| !v).expect("All faces visited");
+        let current_face_index =
+            cast_u32(visited.iter().position(|v| !v).expect("All faces visited"));
 
         queue.push_front((
-            current_face_index as u32,
-            oriented_edges[cast_usize(face_to_oriented_edge_topo[current_face_index][0])],
+            current_face_index,
+            oriented_edges
+                [cast_usize(face_to_oriented_edge_topo[cast_usize(current_face_index)][0])],
         ));
-        visited[current_face_index] = true;
+        visited[cast_usize(current_face_index)] = true;
 
-        while let Some((face_index, oriented_edge)) = queue.pop_front() {
+        while let Some((face_index, desired_oriented_edge)) = queue.pop_front() {
             let face = original_triangle_faces[cast_usize(face_index)];
-            if face.contains_oriented_edge(oriented_edge) {
+            let is_face_reverted = if face.contains_oriented_edge(desired_oriented_edge) {
                 proper_faces.push(face);
+                false
             } else {
-                proper_faces.push(face.to_reverted())
-            }
+                proper_faces.push(face.to_reverted());
+                true
+            };
 
             let face_oriented_edge_indices = &face_to_oriented_edge_topo[cast_usize(face_index)];
 
@@ -65,8 +69,14 @@ pub fn synchronize_mesh_winding_bfs(
                 face_oriented_edge_indices.iter().map(|o_e_i| {
                     let unoriented_edge_index =
                         cast_u32(oriented_to_unoriented_edge_index[cast_usize(*o_e_i)]);
-                    let oriented_edge = oriented_edges[cast_usize(*o_e_i)];
-                    (unoriented_edge_index, oriented_edge)
+                    // TODO: try to understand why this is this way and not the
+                    // other way around
+                    let neighbors_desired_oriented_edge = if is_face_reverted {
+                        oriented_edges[cast_usize(*o_e_i)].to_reverted()
+                    } else {
+                        oriented_edges[cast_usize(*o_e_i)]
+                    };
+                    (unoriented_edge_index, neighbors_desired_oriented_edge)
                 });
 
             let mut faces_containing_current_faces_edges_zip_with_oriented_edge = Vec::new();
@@ -893,6 +903,9 @@ mod tests {
             &face_to_oriented_edge_topo,
             &unoriented_edge_to_face_topo,
         );
+
+        println!("Correct {}", test_geometry_correct);
+        println!("Calculated {}", calculated_geometry);
 
         assert!(mesh_analysis::are_similar(
             &test_geometry_correct,
