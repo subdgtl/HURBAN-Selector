@@ -79,7 +79,7 @@ impl InterpreterServer {
         let thread = thread::spawn(move || {
             log::info!("Interpreter server starting up");
 
-            let mut interpreter = Interpreter::new(interpreter_funcs::global_definitions());
+            let mut interpreter = Interpreter::new(interpreter_funcs::create_function_table());
 
             loop {
                 let request: Request = request_receiver
