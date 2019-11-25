@@ -667,7 +667,7 @@ mod tests {
         let test_point = Point3::new(0.25, 0.25, 0.25);
         let unoriented_edges: Vec<_> = cube_geometry.unoriented_edges_iter().collect();
 
-        // any fo the following points on mesh would be correct
+        // any of the following points on mesh would be correct
         let points_on_mesh_correct = vec![
             Point3::new(1.0, 0.25, 0.25),
             Point3::new(0.25, 1.0, 0.25),

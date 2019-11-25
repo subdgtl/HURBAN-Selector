@@ -1,5 +1,3 @@
-use std::f32;
-
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 

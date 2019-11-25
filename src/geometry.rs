@@ -1,6 +1,5 @@
 use std::cmp;
 use std::collections::HashSet;
-use std::f32;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::IntoIterator;
@@ -791,21 +790,19 @@ fn remove_orphan_vertices_and_normals(
 /// The plane is endless, has an origin, orientation defined by mutually
 /// perpendicular X and Y direction vectors. Such plane doesn't allow for
 /// distortions or scaling.
-///
-/// The X vector is leading and its direction is kept in the plane unchanged.
-/// The Y vector is only a hint and is being recalculated to be perpendicular to
-/// the leading X vector.
-///
-/// # Panics
-/// Panics if the X and Y vectors are parallel (identical or reverted).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Plane {
     pub origin: Point3<f32>,
+    /// The X vector is leading and its direction is kept in the plane unchanged.
     pub x_vector: Vector3<f32>,
+    /// The Y vector is only a hint and is being recalculated to be perpendicular to
+    /// the leading X vector.
     pub y_vector: Vector3<f32>,
 }
 
 impl Plane {
+    /// # Panics
+    /// Panics if the X and Y vectors are parallel (identical or reverted).
     pub fn new(
         origin: &Point3<f32>,
         x_vector: &Vector3<f32>,
@@ -816,11 +813,11 @@ impl Plane {
 
         assert!(
             x_vector_normalized != y_vector_hint_normalized,
-            "The X and Y vectors defining a plane must be different."
+            "The X and Y vectors defining a plane must be different"
         );
         assert!(
             x_vector_normalized != -1.0 * y_vector_hint_normalized,
-            "The X and Y vectors defining a plane can't form a 180 degree angle."
+            "The X and Y vectors defining a plane can't form a 180 degree angle"
         );
 
         // Make sure the Y vector is perpendicular to the leading X vector
@@ -1833,5 +1830,25 @@ mod tests {
         );
 
         assert_eq!(test_plane.y_vector, Vector3::new(0.0, 1.0, 0.0));
+    }
+
+    #[test]
+    #[should_panic = "The X and Y vectors defining a plane must be different"]
+    fn test_geometry_plane_new_fail_because_x_and_y_vectors_identical() {
+        Plane::new(
+            &Point3::new(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 0.0, 0.0),
+            &Vector3::new(2.0, 0.0, 0.0),
+        );
+    }
+
+    #[test]
+    #[should_panic = "The X and Y vectors defining a plane can't form a 180 degree angle"]
+    fn test_geometry_plane_new_fail_because_x_and_y_vectors_reverted() {
+        Plane::new(
+            &Point3::new(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 0.0, 0.0),
+            &Vector3::new(-2.0, 0.0, 0.0),
+        );
     }
 }
