@@ -447,7 +447,9 @@ impl<C: ObjCache> Func for FuncImplImportObjMesh<C> {
         let result = self.importer.import_obj(path);
         match result {
             Ok(models) => {
-                // FIXME: @Correctness Return all geometries once we support all of them
+                // FIXME: @Correctness Join all meshes into one once
+                // we have join implemented for more than just 2
+                // meshes
                 let first_model = models.into_iter().next();
                 if let Some(first_model) = first_model {
                     Ok(Value::Geometry(Arc::new(first_model.geometry)))
