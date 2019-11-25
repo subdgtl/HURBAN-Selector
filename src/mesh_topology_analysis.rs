@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use smallvec::SmallVec;
 
 use crate::convert::cast_u32;
-use crate::geometry::{Face, Geometry, UnorientedEdge};
+use crate::geometry::{Face, Geometry, OrientedEdge, UnorientedEdge};
 
 /// Calculates topological relations (neighborhood) of mesh face -> faces.
 /// Returns a Map (key: face index, value: list of its neighboring faces indices)
 #[allow(dead_code)]
-pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
-    let mut f2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 1]>> {
+    let mut f2f: HashMap<u32, SmallVec<[u32; 1]>> = HashMap::new();
 
     for (from_face_index, from_face) in geometry.faces().iter().enumerate() {
         let from_face_index_u32 = cast_u32(from_face_index);
@@ -75,6 +75,58 @@ pub fn edge_to_face_topology(
     }
 
     e2f
+}
+
+/// Calculates topological relations (containment) of mesh face -> its oriented
+/// edges.
+///
+/// Returns an iterator (index: face index, value: list of indices of oriented
+/// edges it contains
+#[allow(dead_code)]
+pub fn face_to_oriented_edge_topology<'a>(
+    geometry: &'a Geometry,
+    oriented_edges: &'a [OrientedEdge],
+) -> impl Iterator<Item = SmallVec<[u32; 3]>> + 'a {
+    geometry.faces().iter().map(move |f| match f {
+        Face::Triangle(t_f) => SmallVec::from_vec(
+            t_f.to_oriented_edges()
+                .iter()
+                .map(|o_e| {
+                    cast_u32(
+                        oriented_edges
+                            .iter()
+                            .position(|e| e == o_e)
+                            .expect("The edge not found in the list"),
+                    )
+                })
+                .collect(),
+        ),
+    })
+}
+
+/// Calculates topological relations (containment) of mesh oriented edge ->
+/// faces containing it
+///
+/// Returns an iterator (index: oriented edge index, value: list of faces
+/// containing it
+#[allow(dead_code)]
+pub fn unoriented_edge_to_face_topology<'a>(
+    geometry: &'a Geometry,
+    edges: &'a [UnorientedEdge],
+) -> impl Iterator<Item = SmallVec<[u32; 2]>> + 'a {
+    edges.iter().map(move |e| {
+        SmallVec::from_vec(
+            geometry
+                .faces()
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| match f {
+                    Face::Triangle(t_f) => t_f.contains_unoriented_edge(*e),
+                })
+                .map(|(i, _)| cast_u32(i))
+                .collect(),
+        )
+    })
 }
 
 /// Calculates topological relations (neighborhood) of mesh vertex -> faces.
@@ -209,7 +261,7 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let mut face_to_face_topology_correct: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+        let mut face_to_face_topology_correct: HashMap<u32, SmallVec<[u32; 1]>> = HashMap::new();
         face_to_face_topology_correct.insert(0, smallvec![1]);
         face_to_face_topology_correct.insert(1, smallvec![0, 2, 3]);
         face_to_face_topology_correct.insert(2, smallvec![1]);

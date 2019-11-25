@@ -418,9 +418,12 @@ impl Func for FuncImplSynchronizeMeshFaces {
             let edge_to_face =
                 mesh_topology_analysis::edge_to_face_topology(&geometry, &unoriented_edges);
 
-            Ok(Value::Geometry(Arc::new(
-                mesh_tools::synchronize_mesh_winding(&geometry, &unoriented_edges, &edge_to_face),
-            )))
+            let value = Arc::new(mesh_tools::synchronize_mesh_winding(
+                &geometry,
+                &unoriented_edges,
+                &edge_to_face,
+            ));
+            Ok(Value::Geometry(value))
         } else {
             Ok(Value::Geometry(geometry))
         }

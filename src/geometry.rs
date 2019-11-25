@@ -306,6 +306,10 @@ impl Geometry {
         &self.normals
     }
 
+    pub fn faces_len(&self) -> usize {
+        self.faces.len()
+    }
+
     /// Extracts oriented edges from all mesh faces
     pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
         self.faces.iter().flat_map(|face| match face {
@@ -540,8 +544,8 @@ impl TriangleFace {
         )
     }
 
-    /// Checks if the other face is the references the same vertices and normals
-    /// in a reverted order
+    /// Checks if the other face references the same vertices and normals in a
+    /// reverted order
     pub fn is_reverted(&self, other: &Self) -> bool {
         self.to_reverted() == *other
     }
@@ -593,6 +597,10 @@ impl OrientedEdge {
 
     pub fn to_reverted(self) -> Self {
         OrientedEdge::new(self.vertices.1, self.vertices.0)
+    }
+
+    pub fn to_unoriented(self) -> UnorientedEdge {
+        UnorientedEdge(self)
     }
 }
 
@@ -1140,7 +1148,7 @@ mod tests {
         ];
 
         // When comparing TriangleFaces or Faces from Geometry, make sure the
-        // manually defined faces start their winding from the lowers vertex
+        // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
         let faces = vec![
@@ -1167,7 +1175,7 @@ mod tests {
         ];
 
         // When comparing TriangleFaces or Faces from Geometry, make sure the
-        // manually defined faces start their winding from the lowers vertex
+        // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
         let faces = vec![
@@ -1261,7 +1269,7 @@ mod tests {
         let (_, vertices) = quad();
 
         // When comparing TriangleFaces or Faces from Geometry, make sure the
-        // manually defined faces start their winding from the lowers vertex
+        // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
         let faces = vec![
@@ -1306,7 +1314,7 @@ mod tests {
         let (_, vertices, normals) = quad_with_normals();
 
         // When comparing TriangleFaces or Faces from Geometry, make sure the
-        // manually defined faces start their winding from the lowers vertex
+        // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
         let faces = vec![

@@ -111,7 +111,7 @@ pub fn laplacian_smoothing(
 pub fn loop_subdivision(
     geometry: &Geometry,
     vertex_to_vertex_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
-    face_to_face_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
+    face_to_face_topology: &HashMap<u32, SmallVec<[u32; 1]>>,
 ) -> Geometry {
     #[derive(Debug, Eq)]
     struct UnorderedPair(u32, u32);
