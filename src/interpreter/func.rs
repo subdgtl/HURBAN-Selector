@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 
-use super::{Ty, Value};
+use super::{FuncError, Ty, Value};
 
 bitflags! {
     /// Information about the function behaviour.
@@ -71,5 +71,5 @@ pub trait Func {
     ///
     /// [`param_info`]: trait.Func.html#tymethod.param_info
     /// [`return_ty`]: trait.Func.html#tymethod.return_ty
-    fn call(&self, args: &[Value]) -> Value;
+    fn call(&self, args: &[Value]) -> Result<Value, FuncError>;
 }
