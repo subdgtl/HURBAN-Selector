@@ -345,7 +345,10 @@ impl RenderPass<'_> {
     /// Record a geometry drawing operation to the command
     /// buffer. Geometries with provided ids must be present in the
     /// renderer.
-    pub fn draw_geometry(&mut self, ids: &[GpuGeometryId], mode: DrawGeometryMode) {
+    pub fn draw_geometry<'a, I>(&mut self, ids: I, mode: DrawGeometryMode)
+    where
+        I: IntoIterator<Item = &'a GpuGeometryId> + Clone,
+    {
         let mut clear_flags = SceneRendererClearFlags::empty();
         if self.color_needs_clearing {
             clear_flags.insert(SceneRendererClearFlags::COLOR);

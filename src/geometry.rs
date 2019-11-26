@@ -1004,8 +1004,11 @@ pub fn uv_sphere(position: [f32; 3], scale: f32, n_parallels: u32, n_meridians: 
     )
 }
 
-pub fn compute_bounding_sphere(geometries: &[Geometry]) -> (Point3<f32>, f32) {
-    let centroid = compute_centroid(geometries);
+pub fn compute_bounding_sphere<'a, I>(geometries: I) -> (Point3<f32>, f32)
+where
+    I: IntoIterator<Item = &'a Geometry> + Clone,
+{
+    let centroid = compute_centroid(geometries.clone());
     let mut max_distance_squared = 0.0;
 
     for geometry in geometries {
@@ -1020,7 +1023,10 @@ pub fn compute_bounding_sphere(geometries: &[Geometry]) -> (Point3<f32>, f32) {
     (centroid, max_distance_squared.sqrt())
 }
 
-pub fn compute_centroid(geometries: &[Geometry]) -> Point3<f32> {
+pub fn compute_centroid<'a, I>(geometries: I) -> Point3<f32>
+where
+    I: IntoIterator<Item = &'a Geometry>,
+{
     let mut vertex_count = 0;
     let mut centroid = Point3::origin();
     for geometry in geometries {

@@ -2,6 +2,14 @@ use bitflags::bitflags;
 
 use super::{FuncError, Ty, Value};
 
+/// Textual information about the function.
+pub struct FuncInfo {
+    /// The function's name.
+    pub name: &'static str,
+    /// The name of the function's return value.
+    pub return_value_name: &'static str,
+}
+
 bitflags! {
     /// Information about the function behaviour.
     ///
@@ -19,10 +27,15 @@ bitflags! {
 }
 
 /// Information about a function parameter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParamInfo {
-    /// The type the parameter is required to have.
-    pub ty: Ty,
+    /// The parameter's name
+    pub name: &'static str,
+
+    /// Refinement of the parameter type. Can set additional
+    /// constraints on the parameter's value, such as a default value
+    /// or the value range.
+    pub refinement: ParamRefinement,
 
     /// Whether the parameter is optional. The parameter value is
     /// allowed to have the type [`Nil`] in addition to its own type,
@@ -32,6 +45,159 @@ pub struct ParamInfo {
     pub optional: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ParamRefinement {
+    #[allow(dead_code)]
+    Boolean(BooleanParamRefinement),
+    #[allow(dead_code)]
+    Int(IntParamRefinement),
+    Uint(UintParamRefinement),
+    Float(FloatParamRefinement),
+    Float3(Float3ParamRefinement),
+    String,
+    Geometry,
+}
+
+impl ParamRefinement {
+    pub fn ty(&self) -> Ty {
+        match self {
+            Self::Boolean(_) => Ty::Boolean,
+            Self::Int(_) => Ty::Int,
+            Self::Uint(_) => Ty::Uint,
+            Self::Float(_) => Ty::Float,
+            Self::Float3(_) => Ty::Float3,
+            Self::String => Ty::String,
+            Self::Geometry => Ty::Geometry,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BooleanParamRefinement {
+    pub default_value: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct IntParamRefinement {
+    pub default_value: Option<i32>,
+    pub min_value: Option<i32>,
+    pub max_value: Option<i32>,
+}
+
+impl IntParamRefinement {
+    pub fn clamp(&self, value: i32) -> i32 {
+        if let Some(min) = self.min_value {
+            if value < min {
+                return min;
+            }
+        }
+        if let Some(max) = self.max_value {
+            if value > max {
+                return max;
+            }
+        }
+
+        value
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UintParamRefinement {
+    pub default_value: Option<u32>,
+    pub min_value: Option<u32>,
+    pub max_value: Option<u32>,
+}
+
+impl UintParamRefinement {
+    pub fn clamp(&self, value: u32) -> u32 {
+        if let Some(min) = self.min_value {
+            if value < min {
+                return min;
+            }
+        }
+        if let Some(max) = self.max_value {
+            if value > max {
+                return max;
+            }
+        }
+
+        value
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct FloatParamRefinement {
+    pub default_value: Option<f32>,
+    pub min_value: Option<f32>,
+    pub max_value: Option<f32>,
+}
+
+impl FloatParamRefinement {
+    pub fn clamp(&self, value: f32) -> f32 {
+        if let Some(min) = self.min_value {
+            if value < min {
+                return min;
+            }
+        }
+        if let Some(max) = self.max_value {
+            if value > max {
+                return max;
+            }
+        }
+
+        value
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Float3ParamRefinement {
+    pub default_value_x: Option<f32>,
+    pub min_value_x: Option<f32>,
+    pub max_value_x: Option<f32>,
+    pub default_value_y: Option<f32>,
+    pub min_value_y: Option<f32>,
+    pub max_value_y: Option<f32>,
+    pub default_value_z: Option<f32>,
+    pub min_value_z: Option<f32>,
+    pub max_value_z: Option<f32>,
+}
+
+impl Float3ParamRefinement {
+    pub fn clamp(&self, value: [f32; 3]) -> [f32; 3] {
+        let x = if let Some(min_x) = self.min_value_x {
+            if value[0] < min_x {
+                min_x
+            } else {
+                value[0]
+            }
+        } else {
+            value[0]
+        };
+
+        let y = if let Some(min_y) = self.min_value_y {
+            if value[1] < min_y {
+                min_y
+            } else {
+                value[1]
+            }
+        } else {
+            value[1]
+        };
+
+        let z = if let Some(min_z) = self.min_value_z {
+            if value[2] < min_z {
+                min_z
+            } else {
+                value[2]
+            }
+        } else {
+            value[2]
+        };
+
+        [x, y, z]
+    }
+}
+
 /// An interface describing a function as seen by the interpreter.
 ///
 /// Functions are pieces of callable code. They can receive parameters
@@ -39,6 +205,15 @@ pub struct ParamInfo {
 ///
 /// [`Nil`]: ../value/enum.Ty.html#variant.Nil
 pub trait Func {
+    /// Textual information about the function, such as its name and
+    /// the name of it's output value.
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "<Unnamed operation>",
+            return_value_name: "<Unnamed value>",
+        }
+    }
+
     /// Information about the function behaviour.
     ///
     /// See [`FuncFlags`] for more.

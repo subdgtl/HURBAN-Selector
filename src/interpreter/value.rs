@@ -232,7 +232,14 @@ impl fmt::Display for Value {
             }
             Value::String(string) => write!(f, "<string {}>", string),
             Value::Geometry(geometry) => {
-                write!(f, "<geometry (vertices: {})>", geometry.vertices().len())
+                let vertex_count = geometry.vertices().len();
+                let face_count = geometry.faces().len();
+
+                write!(
+                    f,
+                    "<geometry (vertices: {}, faces: {})>",
+                    vertex_count, face_count
+                )
             }
         }
     }
