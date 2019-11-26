@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::error;
 use std::fmt;
 use std::ptr;
+use std::sync::Arc;
 
 pub use self::ast::{FuncIdent, VarIdent};
 pub use self::func::{Func, FuncFlags, ParamInfo};
@@ -436,7 +437,7 @@ impl Interpreter {
             // Run remaining operations, write results to vars
             let range = self.pc..=index;
             for (stmt_index, stmt) in self.prog.stmts()[range].iter().enumerate() {
-                eval_stmt(stmt_index, stmt, &self.funcs, &mut self.env)?;
+                eval_stmt(stmt_index, stmt, &mut self.funcs, &mut self.env)?;
                 self.pc += 1;
             }
 
@@ -620,7 +621,7 @@ impl Interpreter {
 fn eval_stmt(
     stmt_index: usize,
     stmt: &ast::Stmt,
-    funcs: &HashMap<FuncIdent, Box<dyn Func>>,
+    funcs: &mut HashMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<(), RuntimeError> {
     match stmt {
@@ -631,7 +632,7 @@ fn eval_stmt(
 fn eval_var_decl_stmt(
     stmt_index: usize,
     var_decl: &ast::VarDeclStmt,
-    funcs: &HashMap<FuncIdent, Box<dyn Func>>,
+    funcs: &mut HashMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<(), RuntimeError> {
     let var_ident = var_decl.ident();
@@ -685,6 +686,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
         ast::LitExpr::Uint(uint) => Value::Uint(*uint),
         ast::LitExpr::Float(float) => Value::Float(*float),
         ast::LitExpr::Float3(float3) => Value::Float3(*float3),
+        ast::LitExpr::String(string) => Value::String(Arc::clone(&string)),
         ast::LitExpr::Nil => Value::Nil,
     };
 
@@ -704,10 +706,10 @@ fn eval_var_expr(
 fn eval_call_expr(
     stmt_index: usize,
     call: &ast::CallExpr,
-    funcs: &HashMap<FuncIdent, Box<dyn Func>>,
+    funcs: &mut HashMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
-    let func = &funcs[&call.ident()];
+    let func = funcs.get_mut(&call.ident()).expect("Failed to find func");
 
     let arg_exprs = call.args();
     if func.param_info().len() != arg_exprs.len() {
@@ -817,8 +819,8 @@ mod tests {
             self.return_ty
         }
 
-        fn call(&self, values: &[Value]) -> Result<Value, FuncError> {
-            ((self.func)(values))
+        fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
+            (self.func)(values)
         }
     }
 
