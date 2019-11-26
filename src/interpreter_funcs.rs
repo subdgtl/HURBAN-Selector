@@ -415,14 +415,24 @@ impl Func for FuncImplSynchronizeMeshFaces {
             && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
         {
             let unoriented_edges: Vec<_> = geometry.unoriented_edges_iter().collect();
-            let edge_to_face =
-                mesh_topology_analysis::edge_to_face_topology(&geometry, &unoriented_edges);
+            let face_to_oriented_edge_topo: Vec<_> =
+                mesh_topology_analysis::face_to_oriented_edge_topology(&geometry, &oriented_edges)
+                    .collect();
+            let unoriented_edge_to_face_topo: Vec<_> =
+                mesh_topology_analysis::unoriented_edge_to_face_topology(
+                    &geometry,
+                    &unoriented_edges,
+                )
+                .collect();
 
             let value = Arc::new(mesh_tools::synchronize_mesh_winding(
                 &geometry,
+                &oriented_edges,
                 &unoriented_edges,
-                &edge_to_face,
+                &face_to_oriented_edge_topo,
+                &unoriented_edge_to_face_topo,
             ));
+
             Ok(Value::Geometry(value))
         } else {
             Ok(Value::Geometry(geometry))

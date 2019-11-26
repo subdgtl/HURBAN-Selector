@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::iter::FromIterator;
 
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
@@ -9,20 +8,53 @@ use crate::convert::{cast_u32, cast_usize};
 use crate::geometry::{Face, Geometry, OrientedEdge, TriangleFace, UnorientedEdge};
 use crate::mesh_topology_analysis;
 
+/// Orients all the faces the same way - matches their winding (vertex order).
+///
+/// This function crawls the mesh geometry and flips all the faces, which are
+/// not facing the same way as the previously checked neighboring faces,
+/// starting with the first face in the list for each mesh island.
+///
+/// The algorithm relies on the fact that in a proper manifold mesh, each
+/// oriented edge has exactly one (for watertight mesh geometry) or none (for
+/// mesh patch naked edges) counter-edge oriented the opposite direction. It
+/// crawls the geometry and if a face neighboring the current one doesn't have
+/// the proper winding, it's being reverted and only then triggers checking its
+/// own neighbors.
+///
+/// This method doesn't flip the normals associated with the face vertices, as
+/// there is no unambiguous way to do so automatically.
+///
 /// https://gist.github.com/vTurbine/16fbb99225ad4c0ac80b24855dd61a7c
+///
+/// # Warning
+/// As a result, the entire mesh can end up facing inwards (be entirely
+/// reverted). At the moment we have no tools to detect such a case
+/// automatically, so we need to rely on the user to check it and potentially
+/// revert winding of the entire mesh.
+///
+/// # Warning
+/// The results might be unpredictable for non-manifold meshes and moebius-like
+/// topologies.
+///
+// FIXME: Flip also vertex normals if the visual/practical tests prove it's
+// needed
 #[allow(dead_code)]
-pub fn synchronize_mesh_winding_bfs(
+pub fn synchronize_mesh_winding(
     geometry: &Geometry,
     oriented_edges: &[OrientedEdge],
     unoriented_edges: &[UnorientedEdge],
     face_to_oriented_edge_topo: &[SmallVec<[u32; 3]>],
     unoriented_edge_to_face_topo: &[SmallVec<[u32; 2]>],
 ) -> Geometry {
-    // face index, oriented edge
-    let mut queue: VecDeque<(u32, OrientedEdge)> = VecDeque::new();
+    // Processing queue: indices of faces sharing edges with the current face,
+    // zipped with the oriented edge they should contain if they have a proper
+    // winding.
+    let mut face_indices_with_desired_oriented_edge_queue: VecDeque<(u32, OrientedEdge)> =
+        VecDeque::new();
     let mut visited = vec![false; geometry.faces_len()];
     let mut proper_faces: Vec<TriangleFace> = Vec::with_capacity(geometry.faces_len());
 
+    // lookup table
     let oriented_to_unoriented_edge_index: Vec<_> = oriented_edges
         .iter()
         .map(|o_e| {
@@ -42,204 +74,110 @@ pub fn synchronize_mesh_winding_bfs(
         })
         .collect();
 
+    // For each island in the mesh geometry
     while proper_faces.len() < original_triangle_faces.len() {
-        let current_face_index =
-            cast_u32(visited.iter().position(|v| !v).expect("All faces visited"));
+        // find first unvisited face
+        let current_face_index = cast_u32(
+            visited
+                .iter()
+                .position(|v| !v)
+                .expect("All faces already visited"),
+        );
 
-        queue.push_front((
+        // add it to the processing queue.
+        face_indices_with_desired_oriented_edge_queue.push_front((
+            // the face
             current_face_index,
+            // one of the edges it should contain
             oriented_edges
                 [cast_usize(face_to_oriented_edge_topo[cast_usize(current_face_index)][0])],
         ));
+        // Mark the face already inserted into the queue.
         visited[cast_usize(current_face_index)] = true;
 
-        while let Some((face_index, desired_oriented_edge)) = queue.pop_front() {
+        // While there is anything in the queue (crawl the entire mesh island)
+        while let Some((face_index, desired_oriented_edge)) =
+            face_indices_with_desired_oriented_edge_queue.pop_front()
+        {
+            // get the actual face
             let face = original_triangle_faces[cast_usize(face_index)];
-            let is_face_reverted = if face.contains_oriented_edge(desired_oriented_edge) {
+            // and check if it contains the desired oriented edge. If it does,
+            // the winding is ok.
+            let is_properly_winded = face.contains_oriented_edge(desired_oriented_edge);
+
+            // Put the original or reverted face into the stack of processed
+            // faces.
+            if is_properly_winded {
                 proper_faces.push(face);
-                false
             } else {
                 proper_faces.push(face.to_reverted());
-                true
-            };
+            }
 
-            let face_oriented_edge_indices = &face_to_oriented_edge_topo[cast_usize(face_index)];
+            // List of oriented edges contained in the original face (regardless
+            // if it should be reverted or not).
+            let oriented_edge_indices_in_face = &face_to_oriented_edge_topo[cast_usize(face_index)];
 
-            let face_unoriented_edge_indices_zip_with_oriented_edge =
-                face_oriented_edge_indices.iter().map(|o_e_i| {
+            // Match unoriented edge index with the desired oriented edge like this:
+            let unoriented_edge_indices_in_face_zip_with_desired_oriented_edge =
+                // for each oriented edge in the face
+                oriented_edge_indices_in_face.iter().map(|o_e_i| {
+                    // get the respective unoriented edge index
                     let unoriented_edge_index =
                         cast_u32(oriented_to_unoriented_edge_index[cast_usize(*o_e_i)]);
-                    // TODO: try to understand why this is this way and not the
-                    // other way around
-                    let neighbors_desired_oriented_edge = if is_face_reverted {
+                    // and the actual desired oriented edge to look for in
+                    // neighboring faces.
+                    let neighbors_desired_oriented_edge = if is_properly_winded {
+                        // If the face was already properly winded, the
+                        // neighboring face should contain oriented edge
+                        // reverted to the current original face's edge,
                         oriented_edges[cast_usize(*o_e_i)].to_reverted()
                     } else {
+                        // if the current face had to be flipped, the
+                        // neighboring face should contain oriented edge equal
+                        // to the current original face's edge before it was
+                        // flipped because it is already reverted to the proper
+                        // face's oriented edge.
                         oriented_edges[cast_usize(*o_e_i)]
                     };
                     (unoriented_edge_index, neighbors_desired_oriented_edge)
                 });
 
-            let mut faces_containing_current_faces_edges_zip_with_oriented_edge = Vec::new();
-
+            // For each unoriented (because in each face it's supposed to be
+            // oriented differently) edge shared between the current face and
+            // it's neighbors
             for (unoriented_edge_index, oriented_edge) in
-                face_unoriented_edge_indices_zip_with_oriented_edge
+                unoriented_edge_indices_in_face_zip_with_desired_oriented_edge
             {
-                let faces_containing_unoriented_edge =
+                // get the indices of faces containing the edge. For a proper
+                // watertight mesh, this should contain exactly two face
+                // indices, including the index of the current face. For a face
+                // at the naked edge a mesh patch, this only contains one value:
+                // the index of the current face. For non-manifold edges this
+                // contains more than 2 values and the result of the entire
+                // method is unpredictable.
+                //
+                // FIXME: Throw a warning if the mesh is non-manifold. The
+                // result might be wrong.
+                let face_indices_containing_unoriented_edge =
                     &unoriented_edge_to_face_topo[cast_usize(unoriented_edge_index)];
-                for face_index in faces_containing_unoriented_edge {
-                    faces_containing_current_faces_edges_zip_with_oriented_edge
-                        .push((face_index, oriented_edge));
-                }
-            }
 
-            for (neighbor_face_index, oriented_edge) in
-                faces_containing_current_faces_edges_zip_with_oriented_edge
-            {
-                if !visited[cast_usize(*neighbor_face_index)] {
-                    visited[cast_usize(*neighbor_face_index)] = true;
-                    queue.push_back((*neighbor_face_index, oriented_edge.to_reverted()))
-                }
-            }
-        }
-    }
-
-    Geometry::from_triangle_faces_with_vertices_and_normals(
-        proper_faces,
-        geometry.vertices().iter().copied(),
-        geometry.normals().iter().copied(),
-    )
-}
-
-/// Makes sure all the faces are oriented the same way - have the same winding
-/// (vertex order).
-///
-/// This function crawls the mesh geometry and flips all the faces, which are
-/// not facing the same way as the previous faces in the process, starting with
-/// the first face in the list. As a result, the entire mesh can end up facing
-/// inwards (be entirely reverted). At the moment we have no tools to detect
-/// such a case automatically, so we need to rely on the user to check it and
-/// potentially revert winding of the entire mesh.
-///
-/// The algorithm relies on the fact that in a proper manifold mesh, each
-/// oriented edge has exactly one (for watertight mesh geometry) or none (for
-/// mesh patch naked edges) counter-edge oriented the opposite direction. It
-/// crawls the geometry and if a face neighboring the current one doesn't have
-/// the proper winding, it's being reverted and only then triggers checking its
-/// own neighbors.
-///
-/// This method doesn't flip the normals associated with the face vertices, as
-/// there is no unambiguous way to do so automatically.
-
-// FIXME: Flip also vertex normals if the visual/practical tests prove it's
-// needed
-pub fn synchronize_mesh_winding(
-    geometry: &Geometry,
-    unoriented_edges: &[UnorientedEdge],
-    edge_to_face_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
-) -> Geometry {
-    // All faces in the original mesh geometry
-    let original_triangle_faces: Vec<_> = geometry
-        .faces()
-        .iter()
-        .map(|face| match face {
-            Face::Triangle(f) => *f,
-        })
-        .collect();
-
-    // item index = face index; TRUE = the face was already checked, FALSE = the
-    // face hasn't yet been checked
-    let mut face_processed_pattern = vec![false; original_triangle_faces.len()];
-
-    // Faces to be checked for winding, determined by the orientation of the
-    // OrientedEdge of the neighbor, which triggered the check. Current face has
-    // to contain the edge to have the proper winding, otherwise the face has to
-    // be reverted.
-    let mut edge_face_stack: Vec<(OrientedEdge, u32)> = Vec::new();
-
-    // Faces already checked and reverted if needed => all the faces in this
-    // list have the same vertex winding.
-    let mut synchronized_triangle_faces: Vec<TriangleFace> =
-        Vec::with_capacity(original_triangle_faces.len());
-
-    // Edge-to-index map for faster lookup
-    let unoriented_edge_index_map: HashMap<UnorientedEdge, u32> =
-        HashMap::from_iter(unoriented_edges.iter().enumerate().map(
-            |(unoriented_edge_index, unoriented_edge)| {
-                (*unoriented_edge, cast_u32(unoriented_edge_index))
-            },
-        ));
-
-    // Synchronize faces in all mesh geometry triangles
-    while synchronized_triangle_faces.len() < original_triangle_faces.len() {
-        // Start with the first untreated face in the list of the original mesh
-        // geometry faces. The winding of this face also determines the winding
-        // of the rest of the mesh geometry.
-        let mut current_face_index = cast_u32(
-            face_processed_pattern
-                .iter()
-                .position(|&v| !v)
-                .expect("Face index not found"),
-        );
-
-        face_processed_pattern[cast_usize(current_face_index)] = true;
-        let mut current_test_edge: OrientedEdge =
-            original_triangle_faces[cast_usize(current_face_index)].to_oriented_edges()[0];
-
-        // Put the first edge-face couple to the stack
-        edge_face_stack.push((current_test_edge, current_face_index));
-
-        // Check and revert (if needed) faces in the stack as long as there is any
-        while let Some(next_edge_face) = edge_face_stack.pop() {
-            // Get ready for the next iteration.
-            current_test_edge = next_edge_face.0;
-            current_face_index = next_edge_face.1;
-
-            let current_face = original_triangle_faces[cast_usize(current_face_index)];
-            // Use if contains reverted edge, if not, revert and use. It should be
-            // safe to presume the face contains the edge one way or another because
-            // it's given by the topology generator.
-            let proper_current_face = if current_face.contains_oriented_edge(current_test_edge) {
-                current_face
-            } else {
-                current_face.to_reverted()
-            };
-            synchronized_triangle_faces.push(proper_current_face);
-
-            // Find the indices of edges of the current face in the list of edges,
-            // from which the topology was created
-            let face_unoriented_edges = proper_current_face.to_unoriented_edges();
-            let face_unoriented_edge_indices =
-                face_unoriented_edges.iter().map(|unoriented_edge| {
-                    unoriented_edge_index_map
-                        .get(unoriented_edge)
-                        .expect("The current edge is not found in the edge collection")
-                });
-
-            // For each face edge index
-            for (i, face_unoriented_edge_index) in face_unoriented_edge_indices.enumerate() {
-                // get the actual oriented edge
-                let face_oriented_edge = face_unoriented_edges[i].0;
-                // and try to find it in the edge-to-face topology.
-                let edge_in_faces = edge_to_face_topology
-                    .get(&face_unoriented_edge_index)
-                    .expect("Edge not found in the topology");
-                // If it exists, iterate the faces containing the edge
-                for face_index in edge_in_faces {
-                    // and if it was not already added to the stack or even checked
-                    if !face_processed_pattern[cast_usize(*face_index)] {
-                        // add it to the stack with the expected edge orientation
-                        edge_face_stack.push((face_oriented_edge.to_reverted(), *face_index));
-                        // and mark it treated.
-                        face_processed_pattern[cast_usize(*face_index)] = true;
+                // Put the unvisited pairs of face index and the oriented edge
+                // it should contain into the queue. Flatten the already
+                // existing nested lists.
+                for neighbor_face_index in face_indices_containing_unoriented_edge {
+                    if !visited[cast_usize(*neighbor_face_index)] {
+                        visited[cast_usize(*neighbor_face_index)] = true;
+                        face_indices_with_desired_oriented_edge_queue
+                            .push_back((*neighbor_face_index, oriented_edge));
                     }
                 }
             }
         }
     }
 
-    // Rebuild the mesh geometry with the new faces and original faces and normals.
+    // Generate mesh geometry with synchronized winding
     Geometry::from_triangle_faces_with_vertices_and_normals(
-        synchronized_triangle_faces,
+        proper_faces,
         geometry.vertices().iter().copied(),
         geometry.normals().iter().copied(),
     )
@@ -865,21 +803,6 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_tools_synchronize_mesh_winding() {
-        let test_geometry = tessellated_triangle_with_island_geometry_with_flipped_face();
-        let test_geometry_correct = tessellated_triangle_with_island_geometry();
-
-        let unoriented_edges: Vec<_> = test_geometry.unoriented_edges_iter().collect();
-        let edge_to_face =
-            mesh_topology_analysis::edge_to_face_topology(&test_geometry, &unoriented_edges);
-
-        let calculated_geometry =
-            synchronize_mesh_winding(&test_geometry, &unoriented_edges, &edge_to_face);
-
-        assert_eq!(test_geometry_correct, calculated_geometry);
-    }
-
-    #[test]
     fn test_mesh_tools_synchronize_mesh_winding_bfs() {
         let test_geometry = tessellated_triangle_with_island_geometry_with_flipped_face();
         let test_geometry_correct = tessellated_triangle_with_island_geometry();
@@ -896,7 +819,7 @@ mod tests {
             )
             .collect();
 
-        let calculated_geometry = synchronize_mesh_winding_bfs(
+        let calculated_geometry = synchronize_mesh_winding(
             &test_geometry,
             &oriented_edges,
             &unoriented_edges,
@@ -945,7 +868,7 @@ mod tests {
             )
             .collect();
 
-        let calculated_geometry = synchronize_mesh_winding_bfs(
+        let calculated_geometry = synchronize_mesh_winding(
             &test_geometry,
             &oriented_edges,
             &unoriented_edges,
