@@ -904,9 +904,59 @@ mod tests {
             &unoriented_edge_to_face_topo,
         );
 
-        println!("Correct {}", test_geometry_correct);
-        println!("Calculated {}", calculated_geometry);
+        assert!(mesh_analysis::are_similar(
+            &test_geometry_correct,
+            &calculated_geometry
+        ));
+    }
 
+    #[test]
+    fn test_mesh_tools_synchronize_mesh_winding_bfs_for_sphere() {
+        let test_geometry_correct = geometry::uv_sphere([0.0, 0.0, 0.0], 1.0, 10, 10);
+        let faces_one_flipped = test_geometry_correct
+            .faces()
+            .iter()
+            .enumerate()
+            .map(|(i, f)| match f {
+                Face::Triangle(t) => {
+                    if i == 5 {
+                        t.to_reverted()
+                    } else {
+                        *t
+                    }
+                }
+            });
+
+        let test_geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
+            faces_one_flipped,
+            test_geometry_correct.vertices().iter().copied(),
+            test_geometry_correct.normals().iter().copied(),
+        );
+
+        let unoriented_edges: Vec<_> = test_geometry.unoriented_edges_iter().collect();
+        let oriented_edges: Vec<_> = test_geometry.oriented_edges_iter().collect();
+        let face_to_oriented_edge_topo: Vec<_> =
+            mesh_topology_analysis::face_to_oriented_edge_topology(&test_geometry, &oriented_edges)
+                .collect();
+        let unoriented_edge_to_face_topo: Vec<_> =
+            mesh_topology_analysis::unoriented_edge_to_face_topology(
+                &test_geometry,
+                &unoriented_edges,
+            )
+            .collect();
+
+        let calculated_geometry = synchronize_mesh_winding_bfs(
+            &test_geometry,
+            &oriented_edges,
+            &unoriented_edges,
+            &face_to_oriented_edge_topo,
+            &unoriented_edge_to_face_topo,
+        );
+
+        assert!(!mesh_analysis::are_similar(
+            &test_geometry_correct,
+            &test_geometry
+        ));
         assert!(mesh_analysis::are_similar(
             &test_geometry_correct,
             &calculated_geometry
