@@ -5,11 +5,15 @@ use smallvec::SmallVec;
 use crate::convert::cast_u32;
 use crate::geometry::{Face, Geometry, OrientedEdge, UnorientedEdge};
 
-/// Calculates topological relations (neighborhood) of mesh face -> faces.
-/// Returns a Map (key: face index, value: list of its neighboring faces indices)
+/// Calculates topological relations (neighborhood) of mesh face -> faces. The
+/// faces are related when they share an unoriented edge. Sharing just a vertex
+/// doesn't mean the faces are neighbors.
+///
+///  Returns a Map (key: face index, value: list of its neighboring faces
+/// indices)
 #[allow(dead_code)]
-pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 1]>> {
-    let mut f2f: HashMap<u32, SmallVec<[u32; 1]>> = HashMap::new();
+pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
+    let mut f2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
 
     for (from_face_index, from_face) in geometry.faces().iter().enumerate() {
         let from_face_index_u32 = cast_u32(from_face_index);
@@ -104,10 +108,10 @@ pub fn face_to_oriented_edge_topology<'a>(
     })
 }
 
-/// Calculates topological relations (containment) of mesh oriented edge ->
+/// Calculates topological relations (containment) of mesh unoriented edge ->
 /// faces containing it
 ///
-/// Returns an iterator (index: oriented edge index, value: list of faces
+/// Returns an iterator (index: unoriented edge index, value: list of faces
 /// containing it
 #[allow(dead_code)]
 pub fn unoriented_edge_to_face_topology<'a>(
@@ -261,7 +265,7 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let mut face_to_face_topology_correct: HashMap<u32, SmallVec<[u32; 1]>> = HashMap::new();
+        let mut face_to_face_topology_correct: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
         face_to_face_topology_correct.insert(0, smallvec![1]);
         face_to_face_topology_correct.insert(1, smallvec![0, 2, 3]);
         face_to_face_topology_correct.insert(2, smallvec![1]);

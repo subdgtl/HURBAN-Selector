@@ -306,10 +306,6 @@ impl Geometry {
         &self.normals
     }
 
-    pub fn faces_len(&self) -> usize {
-        self.faces.len()
-    }
-
     /// Extracts oriented edges from all mesh faces
     pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
         self.faces.iter().flat_map(|face| match face {
