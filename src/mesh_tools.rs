@@ -97,6 +97,8 @@ pub fn synchronize_mesh_winding(
             for &neighbor_face_index in &face_to_face[&cast_u32(face_index)] {
                 // check if it was already discovered and added to the queue.
                 if !discovered[cast_usize(neighbor_face_index)] {
+                    let mut found = false;
+
                     // If it wasn't, unwrap the triangle face
                     match geometry.faces()[cast_usize(neighbor_face_index)] {
                         Face::Triangle(neighbor_triangle_face) => {
@@ -114,11 +116,20 @@ pub fn synchronize_mesh_winding(
                                         .push_back((cast_usize(neighbor_face_index), *edge));
                                     // Stop looking for other edges to be
                                     // found in the current neighboring face.
+                                    found = true;
                                     break;
                                 }
                             }
                         }
                     }
+
+                    assert!(
+                        found,
+                        "Face to face topology and face disagree on 2 faces being neighbors",
+                    );
+
+                    // And finally mark the faces as discovered
+                    discovered[cast_usize((neighbor_face_index))] = true;
                 }
             }
         }
