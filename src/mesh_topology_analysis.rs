@@ -57,7 +57,6 @@ pub fn face_to_face_topology(geometry: &Geometry) -> FaceToFaceTopology {
     f2f
 }
 
-
 /// A topology containing neighborhood relations between vertices. Two
 /// vertices are neighbors if and only if they they share an
 /// unoriented or oriented edge.
