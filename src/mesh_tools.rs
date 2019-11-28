@@ -73,9 +73,7 @@ pub fn synchronize_mesh_winding(
         // While there is anything in the queue (crawl the entire mesh island)
         while let Some((face_index, desired_oriented_edge)) = queue_to_process.pop_front() {
             // get the actual face
-            let original_triangle_face = match geometry.faces()[cast_usize(face_index)] {
-                Face::Triangle(t_f) => t_f,
-            };
+            let Face::Triangle(original_triangle_face) = geometry.faces()[cast_usize(face_index)];
             // and check if it contains the desired oriented edge. If it does,
             // the winding is ok, otherwise revert the face.
             let proper_triangle_face =
