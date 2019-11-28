@@ -831,8 +831,6 @@ mod tests {
 
         let geometry_after_welding = weld(&geometry, 0.1);
 
-        // Can't use Eq here, because the algorithm can produce faces
-        // in a different order than in the original
         assert!(mesh_analysis::are_similar(
             &geometry_after_welding_correct,
             &geometry_after_welding
