@@ -744,23 +744,34 @@ mod tests {
 
     #[test]
     fn test_mesh_tools_revert_mesh_faces() {
-        let test_geometry = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let plane = geometry::plane([0.0, 0.0, 0.0], 1.0);
+        let plane_with_reverted_faces = revert_mesh_faces(&plane);
 
-        let calculated_geometry = revert_mesh_faces(&test_geometry);
+        let expected_reverted_faces = vec![
+            Face::Triangle(TriangleFace::new_separate(2, 1, 0, 0, 0, 0)),
+            Face::Triangle(TriangleFace::new_separate(0, 3, 2, 0, 0, 0)),
+        ];
 
         assert_eq!(
-            test_geometry.faces().len(),
-            calculated_geometry.faces().len()
+            plane_with_reverted_faces.faces(),
+            expected_reverted_faces.as_slice()
         );
+    }
 
-        assert!(calculated_geometry.faces().iter().all(|face| match face {
-            Face::Triangle(f) => test_geometry
-                .faces()
-                .iter()
-                .any(|other_face| match other_face {
-                    Face::Triangle(o_f) => o_f.is_reverted(f),
-                }),
-        }));
+    #[test]
+    fn test_mesh_tools_revert_mesh_faces_once_does_not_equal_original() {
+        let cube = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube_with_reverted_faces = revert_mesh_faces(&cube);
+
+        assert_ne!(cube, cube_with_reverted_faces);
+    }
+
+    #[test]
+    fn test_mesh_tools_revert_mesh_faces_twice_does_equal_original() {
+        let cube = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube_with_twice_reverted_faces = revert_mesh_faces(&revert_mesh_faces(&cube));
+
+        assert_eq!(cube, cube_with_twice_reverted_faces);
     }
 
     #[test]
