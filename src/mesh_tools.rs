@@ -35,13 +35,14 @@ use crate::mesh_topology_analysis;
 /// The results might be unpredictable for non-manifold meshes and moebius-like
 /// topologies.
 ///
-// FIXME: Flip also vertex normals if the visual/practical tests prove it's
-// needed
 #[allow(dead_code)]
 pub fn synchronize_mesh_winding(
     geometry: &Geometry,
     face_to_face: &HashMap<u32, SmallVec<[u32; 8]>>,
 ) -> Geometry {
+    // FIXME: Flip also vertex normals if the visual/practical tests prove it's
+    // needed
+
     // Processing queue: indices of faces sharing edges with the current face,
     // zipped with the oriented edge they should contain if they have a proper
     // winding.
@@ -129,7 +130,7 @@ pub fn synchronize_mesh_winding(
                     );
 
                     // And finally mark the faces as discovered
-                    discovered[cast_usize((neighbor_face_index))] = true;
+                    discovered[cast_usize(neighbor_face_index)] = true;
                 }
             }
         }
