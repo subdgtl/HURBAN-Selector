@@ -782,6 +782,8 @@ mod tests {
         let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
         let geometry_with_synced_winding = synchronize_mesh_winding(&geometry, &f2f);
 
+        // Can't use Eq here, because the algorithm can produce faces
+        // in a different order than in the original
         assert!(mesh_analysis::are_similar(
             &geometry_with_synced_winding,
             &geometry_with_synced_winding_expected,
