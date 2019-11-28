@@ -3,16 +3,29 @@ use std::collections::HashMap;
 use smallvec::SmallVec;
 
 use crate::convert::cast_u32;
-use crate::geometry::{Face, Geometry, OrientedEdge, UnorientedEdge};
+use crate::geometry::{Face, Geometry};
 
-/// Calculates topological relations (neighborhood) of mesh face -> faces. The
-/// faces are related when they share an unoriented edge. Sharing just a vertex
-/// doesn't mean the faces are neighbors.
-///
-///  Returns a Map (key: face index, value: list of its neighboring faces
-/// indices)
-#[allow(dead_code)]
-pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
+// FIXME: @Optimization Explore whether the topologies wouldn't be
+// better served by being backed by a `Vec` instead of
+// `HashMap`. Ideally, we'd also create a wrapper struct that casts
+// the indices to/from u32 as necessary.
+
+// FIXME: @Optimization Analyze where this threshold is overly
+// benevolent and define different thresholds for different
+// topologies.
+
+// FIXME: @Correctness Analyze whether in some topologies, the
+// neighbors threshold is not actually a hard limit. In these cases,
+// Use an `ArrayVec` instead of a `SmallVec` to express this.
+
+const TOPOLOGY_NEIGHBORS_THRESHOLD: usize = 8;
+
+/// A topology containing neighborhood relations between faces. Two
+/// faces are neighbors iff they they share an unoriented edge.
+pub type FaceToFaceTopology = HashMap<u32, SmallVec<[u32; TOPOLOGY_NEIGHBORS_THRESHOLD]>>;
+
+/// Computes vertex to vertex topology for geometry.
+pub fn face_to_face_topology(geometry: &Geometry) -> FaceToFaceTopology {
     let mut f2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
 
     for (from_face_index, from_face) in geometry.faces().iter().enumerate() {
@@ -48,93 +61,13 @@ pub fn face_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32;
     f2f
 }
 
-/// Calculates topological relations (neighborhood) of mesh edge -> faces.
-/// Returns a Map (key: edge index, value: list of its neighboring faces indices)
+/// A topology containing neighborhood relations from vertices to
+/// faces. A vertex is related to a face iff the face contains that
+/// vertex.
 #[allow(dead_code)]
-pub fn edge_to_face_topology(
-    geometry: &Geometry,
-    edges: &[UnorientedEdge],
-) -> HashMap<u32, SmallVec<[u32; 8]>> {
-    let mut e2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+pub type VertexToFaceTopology = HashMap<u32, SmallVec<[u32; TOPOLOGY_NEIGHBORS_THRESHOLD]>>;
 
-    for (from_edge_index, from_edge) in edges.iter().enumerate() {
-        let from_edge_index_u32 = cast_u32(from_edge_index);
-        let mut neighbors = SmallVec::new();
-
-        for (to_face_index, to_face) in geometry.faces().iter().enumerate() {
-            let to_face_index_u32 = cast_u32(to_face_index);
-
-            match to_face {
-                Face::Triangle(triangle_face) => {
-                    if triangle_face.contains_unoriented_edge(*from_edge)
-                        && !neighbors.contains(&to_face_index_u32)
-                    {
-                        neighbors.push(to_face_index_u32);
-                    }
-                }
-            }
-        }
-
-        e2f.insert(from_edge_index_u32, neighbors);
-    }
-
-    e2f
-}
-
-/// Calculates topological relations (containment) of mesh face -> its oriented
-/// edges.
-///
-/// Returns an iterator (index: face index, value: list of indices of oriented
-/// edges it contains
-#[allow(dead_code)]
-pub fn face_to_oriented_edge_topology<'a>(
-    geometry: &'a Geometry,
-    oriented_edges: &'a [OrientedEdge],
-) -> impl Iterator<Item = SmallVec<[u32; 3]>> + 'a {
-    geometry.faces().iter().map(move |f| match f {
-        Face::Triangle(t_f) => SmallVec::from_vec(
-            t_f.to_oriented_edges()
-                .iter()
-                .map(|o_e| {
-                    cast_u32(
-                        oriented_edges
-                            .iter()
-                            .position(|e| e == o_e)
-                            .expect("The edge not found in the list"),
-                    )
-                })
-                .collect(),
-        ),
-    })
-}
-
-/// Calculates topological relations (containment) of mesh unoriented edge ->
-/// faces containing it
-///
-/// Returns an iterator (index: unoriented edge index, value: list of faces
-/// containing it
-#[allow(dead_code)]
-pub fn unoriented_edge_to_face_topology<'a>(
-    geometry: &'a Geometry,
-    edges: &'a [UnorientedEdge],
-) -> impl Iterator<Item = SmallVec<[u32; 2]>> + 'a {
-    edges.iter().map(move |e| {
-        SmallVec::from_vec(
-            geometry
-                .faces()
-                .iter()
-                .enumerate()
-                .filter(|(_, f)| match f {
-                    Face::Triangle(t_f) => t_f.contains_unoriented_edge(*e),
-                })
-                .map(|(i, _)| cast_u32(i))
-                .collect(),
-        )
-    })
-}
-
-/// Calculates topological relations (neighborhood) of mesh vertex -> faces.
-/// Returns a Map (key: vertex index, value: list of its neighboring faces indices)
+/// Computes vertex to face topology for geometry.
 #[allow(dead_code)]
 pub fn vertex_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
     let mut v2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
@@ -160,31 +93,13 @@ pub fn vertex_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u3
     v2f
 }
 
-/// Calculates topological relations (neighborhood) of mesh vertex -> edge.
-/// Returns a Map (key: vertex index, value: list of its neighboring edge indices)
-#[allow(dead_code)]
-pub fn vertex_to_edge_topology(edges: &[UnorientedEdge]) -> HashMap<u32, SmallVec<[u32; 8]>> {
-    let mut v2e: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+/// A topology containing neighborhood relations between vertices. Two
+/// vertices are neighbors iff they they share an unoriented or
+/// oriented edge.
+pub type VertexToVertexTopology = HashMap<u32, SmallVec<[u32; TOPOLOGY_NEIGHBORS_THRESHOLD]>>;
 
-    for (to_edge_index, to_edge) in edges.iter().enumerate() {
-        let to_edge_index_u32 = cast_u32(to_edge_index);
-
-        for from_vertex in &[to_edge.0.vertices.0, to_edge.0.vertices.1] {
-            let neighbors = v2e.entry(*from_vertex).or_insert_with(SmallVec::new);
-
-            if !neighbors.contains(&to_edge_index_u32) {
-                neighbors.push(to_edge_index_u32);
-            }
-        }
-    }
-
-    v2e
-}
-
-/// Calculates topological relations (neighborhood) of mesh vertex -> vertex.
-/// Returns a Map (key: vertex index, value: list of its neighboring vertices indices)
-#[allow(dead_code)]
-pub fn vertex_to_vertex_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
+/// Computes vertex to vertex topology for geometry.
+pub fn vertex_to_vertex_topology(geometry: &Geometry) -> VertexToVertexTopology {
     let mut v2v: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
 
     for face in geometry.faces() {
@@ -213,8 +128,6 @@ pub fn vertex_to_vertex_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use nalgebra::geometry::Point3;
     use smallvec::smallvec;
 
@@ -280,33 +193,6 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_edge_to_face_topology_from_tessellated_triangle() {
-        let (faces, vertices) = tessellated_triangle();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
-            NormalStrategy::Sharp,
-        );
-        let edge_set: HashSet<_> = geometry.unoriented_edges_iter().collect();
-        let edges: Vec<_> = edge_set.iter().cloned().collect();
-
-        let edge_to_face_topology_calculated = edge_to_face_topology(&geometry, &edges);
-
-        let in_one_face_count = edge_to_face_topology_calculated
-            .iter()
-            .filter(|(_, to)| to.len() == 1)
-            .count();
-        let in_two_faces_count = edge_to_face_topology_calculated
-            .iter()
-            .filter(|(_, to)| to.len() == 2)
-            .count();
-
-        assert_eq!(edges.len(), 9);
-        assert_eq!(in_one_face_count, 6);
-        assert_eq!(in_two_faces_count, 3);
-    }
-
-    #[test]
     fn test_geometry_vertex_to_face_topology_from_tessellated_triangle() {
         let (faces, vertices) = tessellated_triangle();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
@@ -328,33 +214,6 @@ mod tests {
 
         assert_eq!(in_one_face_count, 3);
         assert_eq!(in_three_faces_count, 3);
-    }
-
-    #[test]
-    fn test_geometry_vertex_to_edge_topology_from_tessellated_triangle() {
-        let (faces, vertices) = tessellated_triangle();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
-            NormalStrategy::Sharp,
-        );
-
-        let edge_set: HashSet<_> = geometry.unoriented_edges_iter().collect();
-        let edges: Vec<_> = edge_set.iter().cloned().collect();
-
-        let vertex_to_edge_topology_calculated = vertex_to_edge_topology(&edges);
-
-        let in_two_edges_count = vertex_to_edge_topology_calculated
-            .iter()
-            .filter(|(_, to)| to.len() == 2)
-            .count();
-        let in_four_edges_count = vertex_to_edge_topology_calculated
-            .iter()
-            .filter(|(_, to)| to.len() == 4)
-            .count();
-
-        assert_eq!(in_two_edges_count, 3);
-        assert_eq!(in_four_edges_count, 3);
     }
 
     #[test]
