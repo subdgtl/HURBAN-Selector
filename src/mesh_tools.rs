@@ -776,53 +776,51 @@ mod tests {
 
     #[test]
     fn test_mesh_tools_synchronize_mesh_winding() {
-        let test_geometry = tessellated_triangle_with_island_geometry_with_flipped_face();
-        let test_geometry_correct = tessellated_triangle_with_island_geometry();
+        let geometry = tessellated_triangle_with_island_geometry_with_flipped_face();
+        let geometry_with_synced_winding_expected = tessellated_triangle_with_island_geometry();
 
-        let face_to_face = mesh_topology_analysis::face_to_face_topology(&test_geometry);
-
-        let calculated_geometry = synchronize_mesh_winding(&test_geometry, &face_to_face);
+        let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
+        let geometry_with_synced_winding = synchronize_mesh_winding(&geometry, &f2f);
 
         assert!(mesh_analysis::are_similar(
-            &test_geometry_correct,
-            &calculated_geometry
+            &geometry_with_synced_winding,
+            &geometry_with_synced_winding_expected,
         ));
     }
 
     #[test]
     fn test_mesh_tools_synchronize_mesh_winding_for_sphere() {
-        let test_geometry_correct = geometry::uv_sphere([0.0, 0.0, 0.0], 1.0, 10, 10);
-        let faces_one_flipped = test_geometry_correct
-            .faces()
-            .iter()
-            .enumerate()
-            .map(|(i, f)| match f {
-                Face::Triangle(t) => {
-                    if i == 5 {
-                        t.to_reverted()
-                    } else {
-                        *t
-                    }
+        let sphere = geometry::uv_sphere([0.0, 0.0, 0.0], 1.0, 10, 10);
+        let sphere_faces_one_flipped = sphere.faces().iter().enumerate().map(|(i, f)| match f {
+            Face::Triangle(t) => {
+                if i == 5 {
+                    t.to_reverted()
+                } else {
+                    *t
                 }
-            });
+            }
+        });
 
-        let test_geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces_one_flipped,
-            test_geometry_correct.vertices().iter().copied(),
-            test_geometry_correct.normals().iter().copied(),
+        let sphere_with_faces_one_flipped = Geometry::from_triangle_faces_with_vertices_and_normals(
+            sphere_faces_one_flipped,
+            sphere.vertices().iter().copied(),
+            sphere.normals().iter().copied(),
         );
 
-        let face_to_face = mesh_topology_analysis::face_to_face_topology(&test_geometry);
+        let f2f = mesh_topology_analysis::face_to_face_topology(&sphere_with_faces_one_flipped);
 
-        let calculated_geometry = synchronize_mesh_winding(&test_geometry, &face_to_face);
+        let sphere_with_synced_winding =
+            synchronize_mesh_winding(&sphere_with_faces_one_flipped, &f2f);
 
+        // Can't use Eq here, because the algorithm can produce faces
+        // in a different order than in the original
         assert!(!mesh_analysis::are_similar(
-            &test_geometry_correct,
-            &test_geometry
+            &sphere,
+            &sphere_with_faces_one_flipped,
         ));
         assert!(mesh_analysis::are_similar(
-            &test_geometry_correct,
-            &calculated_geometry
+            &sphere,
+            &sphere_with_synced_winding,
         ));
     }
 
@@ -833,6 +831,8 @@ mod tests {
 
         let geometry_after_welding = weld(&geometry, 0.1);
 
+        // Can't use Eq here, because the algorithm can produce faces
+        // in a different order than in the original
         assert!(mesh_analysis::are_similar(
             &geometry_after_welding_correct,
             &geometry_after_welding
