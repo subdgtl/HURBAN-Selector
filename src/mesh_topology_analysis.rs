@@ -13,16 +13,12 @@ use crate::geometry::{Face, Geometry};
 // FIXME: @Optimization Analyze where this threshold is overly
 // benevolent and define different thresholds for different
 // topologies.
-
-// FIXME: @Correctness Analyze whether in some topologies, the
-// neighbors threshold is not actually a hard limit. In these cases,
-// Use an `ArrayVec` instead of a `SmallVec` to express this.
-
-const TOPOLOGY_NEIGHBORS_THRESHOLD: usize = 8;
+const NEIGHBORS_ALLOCATION_THRESHOLD: usize = 8;
 
 /// A topology containing neighborhood relations between faces. Two
-/// faces are neighbors iff they they share an unoriented edge.
-pub type FaceToFaceTopology = HashMap<u32, SmallVec<[u32; TOPOLOGY_NEIGHBORS_THRESHOLD]>>;
+/// faces are neighbors if and only if they they share an unoriented
+/// edge.
+pub type FaceToFaceTopology = HashMap<u32, SmallVec<[u32; NEIGHBORS_ALLOCATION_THRESHOLD]>>;
 
 /// Computes vertex to vertex topology for geometry.
 pub fn face_to_face_topology(geometry: &Geometry) -> FaceToFaceTopology {
@@ -61,42 +57,11 @@ pub fn face_to_face_topology(geometry: &Geometry) -> FaceToFaceTopology {
     f2f
 }
 
-/// A topology containing neighborhood relations from vertices to
-/// faces. A vertex is related to a face iff the face contains that
-/// vertex.
-#[allow(dead_code)]
-pub type VertexToFaceTopology = HashMap<u32, SmallVec<[u32; TOPOLOGY_NEIGHBORS_THRESHOLD]>>;
-
-/// Computes vertex to face topology for geometry.
-#[allow(dead_code)]
-pub fn vertex_to_face_topology(geometry: &Geometry) -> HashMap<u32, SmallVec<[u32; 8]>> {
-    let mut v2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
-
-    for (to_face_index, to_face) in geometry.faces().iter().enumerate() {
-        let to_face_index_u32 = cast_u32(to_face_index);
-
-        match to_face {
-            Face::Triangle(triangle_face) => {
-                let vertices = &triangle_face.vertices;
-
-                for from_vertex in &[vertices.0, vertices.1, vertices.2] {
-                    let neighbors = v2f.entry(*from_vertex).or_insert_with(SmallVec::new);
-
-                    if !neighbors.contains(&to_face_index_u32) {
-                        neighbors.push(to_face_index_u32);
-                    }
-                }
-            }
-        }
-    }
-
-    v2f
-}
 
 /// A topology containing neighborhood relations between vertices. Two
-/// vertices are neighbors iff they they share an unoriented or
-/// oriented edge.
-pub type VertexToVertexTopology = HashMap<u32, SmallVec<[u32; TOPOLOGY_NEIGHBORS_THRESHOLD]>>;
+/// vertices are neighbors if and only if they they share an
+/// unoriented or oriented edge.
+pub type VertexToVertexTopology = HashMap<u32, SmallVec<[u32; NEIGHBORS_ALLOCATION_THRESHOLD]>>;
 
 /// Computes vertex to vertex topology for geometry.
 pub fn vertex_to_vertex_topology(geometry: &Geometry) -> VertexToVertexTopology {
