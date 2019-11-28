@@ -10,7 +10,6 @@ pub struct InputState {
     pub camera_zoom_steps: i32,
     pub camera_reset_viewport: bool,
     pub close_requested: bool,
-    pub import_requested: bool,
     pub window_resized: Option<winit::dpi::LogicalSize>,
 }
 
@@ -127,13 +126,6 @@ impl InputManager {
                                 &MODIFIERS_NONE,
                             ) => {
                                 self.input_state.camera_reset_viewport = true;
-                            }
-                            (
-                                Some(winit::event::VirtualKeyCode::O),
-                                winit::event::ElementState::Pressed,
-                                &MODIFIERS_NONE,
-                            ) => {
-                                self.input_state.import_requested = true;
                             }
                             (
                                 Some(winit::event::VirtualKeyCode::R),

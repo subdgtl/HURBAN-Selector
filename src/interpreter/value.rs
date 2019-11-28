@@ -15,6 +15,7 @@ pub enum Ty {
     Uint,
     Float,
     Float3,
+    String,
     Geometry,
 }
 
@@ -27,6 +28,7 @@ impl fmt::Display for Ty {
             Ty::Uint => f.write_str("Uint"),
             Ty::Float => f.write_str("Float"),
             Ty::Float3 => f.write_str("Float3"),
+            Ty::String => f.write_str("String"),
             Ty::Geometry => f.write_str("Geometry"),
         }
     }
@@ -41,6 +43,7 @@ pub enum Value {
     Uint(u32),
     Float(f32),
     Float3([f32; 3]),
+    String(Arc<String>),
     Geometry(Arc<Geometry>),
 }
 
@@ -54,6 +57,7 @@ impl Value {
             Value::Uint(_) => Ty::Uint,
             Value::Float(_) => Ty::Float,
             Value::Float3(_) => Ty::Float3,
+            Value::String(_) => Ty::String,
             Value::Geometry(_) => Ty::Geometry,
         }
     }
@@ -181,6 +185,17 @@ impl Value {
         }
     }
 
+    /// Get the value if string, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when value is not a string.
+    pub fn unwrap_string(&self) -> &str {
+        match self {
+            Value::String(string) => string,
+            _ => panic!("Value not string"),
+        }
+    }
+
     /// Get the value if geometry, otherwise panic.
     ///
     /// # Panics
@@ -215,6 +230,7 @@ impl fmt::Display for Value {
             Value::Float3(float3) => {
                 write!(f, "<float3 [{}, {}, {}]>", float3[0], float3[1], float3[2])
             }
+            Value::String(string) => write!(f, "<string {}>", string),
             Value::Geometry(geometry) => {
                 write!(f, "<geometry (vertices: {})>", geometry.vertices().len())
             }

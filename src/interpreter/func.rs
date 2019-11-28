@@ -44,9 +44,7 @@ pub trait Func {
     /// See [`FuncFlags`] for more.
     ///
     /// [`FuncFlags`]: struct.FuncFlags.html
-    fn flags(&self) -> FuncFlags {
-        FuncFlags::empty()
-    }
+    fn flags(&self) -> FuncFlags;
 
     /// Information about the function's parameters.
     ///
@@ -71,5 +69,5 @@ pub trait Func {
     ///
     /// [`param_info`]: trait.Func.html#tymethod.param_info
     /// [`return_ty`]: trait.Func.html#tymethod.return_ty
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError>;
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError>;
 }

@@ -9,6 +9,7 @@ use nalgebra::base::Vector3;
 use crate::convert::cast_u32;
 use crate::edge_analysis;
 use crate::geometry;
+use crate::importer::{EndlessCache, Importer, ImporterError, ObjCache};
 use crate::interpreter::{Func, FuncError, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
 use crate::mesh_analysis;
 use crate::mesh_smoothing;
@@ -69,7 +70,7 @@ impl Func for FuncImplCreateUvSphere {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let scale = args[0].unwrap_float();
         let n_parallels = args[1].unwrap_uint();
         let n_meridians = args[2].unwrap_uint();
@@ -117,7 +118,7 @@ impl Func for FuncImplShrinkWrap {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let value = shrink_wrap::shrink_wrap(ShrinkWrapParams {
             geometry: args[0].unwrap_geometry(),
             sphere_density: cast_u32(args[1].unwrap_uint()),
@@ -158,7 +159,7 @@ impl Func for FuncImplTransform {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
 
         let translate = args[1].get_float3().map(Vector3::from);
@@ -189,6 +190,7 @@ impl Func for FuncImplLaplacianSmoothing {
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
+
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
@@ -206,7 +208,7 @@ impl Func for FuncImplLaplacianSmoothing {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
         let iterations = args[1].unwrap_uint();
         let vertex_to_vertex_topology = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
@@ -225,6 +227,10 @@ impl Func for FuncImplLaplacianSmoothing {
 
 pub struct FuncImplSeparateIsolatedMeshes;
 impl Func for FuncImplSeparateIsolatedMeshes {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::empty()
+    }
+
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
             ty: Ty::Geometry,
@@ -236,7 +242,7 @@ impl Func for FuncImplSeparateIsolatedMeshes {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
 
         let values = mesh_tools::separate_isolated_meshes(geometry);
@@ -273,7 +279,7 @@ impl Func for FuncImplJoinMeshes {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let first_geometry = args[0].unwrap_geometry();
         let second_geometry = args[1].unwrap_geometry();
 
@@ -285,6 +291,10 @@ impl Func for FuncImplJoinMeshes {
 
 pub struct FuncImplWeld;
 impl Func for FuncImplWeld {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::empty()
+    }
+
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
@@ -302,37 +312,12 @@ impl Func for FuncImplWeld {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
         let tolerance = args[1].unwrap_float();
 
         let value = mesh_tools::weld(geometry, tolerance);
 
-        Ok(Value::Geometry(Arc::new(value)))
-    }
-}
-
-pub struct FuncImplRevertMeshFaces;
-impl Func for FuncImplRevertMeshFaces {
-    fn flags(&self) -> FuncFlags {
-        FuncFlags::PURE
-    }
-
-    fn param_info(&self) -> &[ParamInfo] {
-        &[ParamInfo {
-            ty: Ty::Geometry,
-            optional: false,
-        }]
-    }
-
-    fn return_ty(&self) -> Ty {
-        Ty::Geometry
-    }
-
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_geometry();
-
-        let value = mesh_tools::revert_mesh_faces(geometry);
         Ok(Value::Geometry(Arc::new(value)))
     }
 }
@@ -360,7 +345,7 @@ impl Func for FuncImplLoopSubdivision {
         Ty::Geometry
     }
 
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         // FIXME: add the max value to the param info so that that the
         // gui doesn't mislead
         const MAX_ITERATIONS: u32 = 3;
@@ -388,46 +373,6 @@ impl Func for FuncImplLoopSubdivision {
     }
 }
 
-pub struct FuncImplSynchronizeMeshFaces;
-impl Func for FuncImplSynchronizeMeshFaces {
-    fn flags(&self) -> FuncFlags {
-        FuncFlags::PURE
-    }
-
-    fn param_info(&self) -> &[ParamInfo] {
-        &[ParamInfo {
-            ty: Ty::Geometry,
-            optional: false,
-        }]
-    }
-
-    fn return_ty(&self) -> Ty {
-        Ty::Geometry
-    }
-
-    fn call(&self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_refcounted_geometry();
-
-        let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
-
-        if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
-            && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
-        {
-            let face_to_face = mesh_topology_analysis::face_to_face_topology(&geometry);
-
-            let value = Arc::new(mesh_tools::synchronize_mesh_winding(
-                &geometry,
-                &face_to_face,
-            ));
-
-            Ok(Value::Geometry(value))
-        } else {
-            Ok(Value::Geometry(geometry))
-        }
-    }
-}
-
 pub struct FuncImplCreatePlane;
 impl Func for FuncImplCreatePlane {
     fn flags(&self) -> FuncFlags {
@@ -451,13 +396,136 @@ impl Func for FuncImplCreatePlane {
         Ty::Geometry
     }
 
-    fn call(&self, values: &[Value]) -> Result<Value, FuncError> {
+    fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
         let position = values[0].get_float3().unwrap_or([0.0; 3]);
         let scale = values[1].get_float().unwrap_or(1.0);
 
         let value = geometry::plane(position, scale);
 
         Ok(Value::Geometry(Arc::new(value)))
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum FuncImportObjMeshError {
+    Empty,
+    Importer(ImporterError),
+}
+
+impl fmt::Display for FuncImportObjMeshError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "No mesh geometry contained in OBJ"),
+            Self::Importer(importer_error) => f.write_str(&importer_error.to_string()),
+        }
+    }
+}
+
+impl error::Error for FuncImportObjMeshError {}
+
+pub struct FuncImplImportObjMesh<C: ObjCache> {
+    importer: Importer<C>,
+}
+
+impl<C: ObjCache> Func for FuncImplImportObjMesh<C> {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::empty()
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            ty: Ty::String,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
+        let path = values[0].unwrap_string();
+
+        let result = self.importer.import_obj(path);
+        match result {
+            Ok(models) => {
+                // FIXME: @Correctness Join all meshes into one once
+                // we have join implemented for more than just 2
+                // meshes
+                let first_model = models.into_iter().next();
+                if let Some(first_model) = first_model {
+                    Ok(Value::Geometry(Arc::new(first_model.geometry)))
+                } else {
+                    Err(FuncError::new(FuncImportObjMeshError::Empty))
+                }
+            }
+            Err(err) => Err(FuncError::new(FuncImportObjMeshError::Importer(err))),
+        }
+    }
+}
+
+pub struct FuncImplRevertMeshFaces;
+impl Func for FuncImplRevertMeshFaces {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            ty: Ty::Geometry,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+        let geometry = args[0].unwrap_geometry();
+
+        let value = mesh_tools::revert_mesh_faces(geometry);
+        Ok(Value::Geometry(Arc::new(value)))
+    }
+}
+
+pub struct FuncImplSynchronizeMeshFaces;
+impl Func for FuncImplSynchronizeMeshFaces {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            ty: Ty::Geometry,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+        let geometry = args[0].unwrap_refcounted_geometry();
+
+        let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+
+        if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
+            && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
+        {
+            let face_to_face = mesh_topology_analysis::face_to_face_topology(&geometry);
+
+            let value = Arc::new(mesh_tools::synchronize_mesh_winding(
+                &geometry,
+                &face_to_face,
+            ));
+
+            Ok(Value::Geometry(value))
+        } else {
+            Ok(Value::Geometry(geometry))
+        }
     }
 }
 
@@ -473,12 +541,16 @@ pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(5);
 pub const FUNC_ID_WELD: FuncIdent = FuncIdent(6);
 pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(7);
 pub const FUNC_ID_CREATE_PLANE: FuncIdent = FuncIdent(8);
-pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(9);
-pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(10);
+pub const FUNC_ID_IMPORT_OBJ_MESH: FuncIdent = FuncIdent(9);
+pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(10);
+pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(11);
 
-/// The global set of function definitions available to the
-/// interpreter and it's clients.
-pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
+/// Returns the function table for the interpreter.
+///
+/// Note that since funcs can have internal state such as a cache or
+/// random state, two instances of the function table are not always
+/// equivalent.
+pub fn create_function_table() -> HashMap<FuncIdent, Box<dyn Func>> {
     let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
 
     funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncImplCreateUvSphere));
@@ -496,6 +568,12 @@ pub fn global_definitions() -> HashMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_WELD, Box::new(FuncImplWeld));
     funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncImplLoopSubdivision));
     funcs.insert(FUNC_ID_CREATE_PLANE, Box::new(FuncImplCreatePlane));
+    funcs.insert(
+        FUNC_ID_IMPORT_OBJ_MESH,
+        Box::new(FuncImplImportObjMesh {
+            importer: Importer::new(EndlessCache::default()),
+        }),
+    );
     funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncImplRevertMeshFaces));
     funcs.insert(
         FUNC_ID_SYNCHRONIZE_MESH_FACES,

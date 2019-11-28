@@ -1,4 +1,5 @@
 use std::fmt;
+use std::sync::Arc;
 
 /// A unique function identifier.
 ///
@@ -123,6 +124,7 @@ pub enum Expr {
     // arg would be the direct result of another func call. We use
     // `VarExpr` instead to refer to a previous result.
     Lit(LitExpr),
+    #[allow(dead_code)]
     Var(VarExpr),
     #[allow(dead_code)]
     Index(IndexExpr),
@@ -147,9 +149,13 @@ pub enum LitExpr {
     Boolean(bool),
     #[allow(dead_code)]
     Int(i32),
+    #[allow(dead_code)]
     Uint(u32),
+    #[allow(dead_code)]
     Float(f32),
+    #[allow(dead_code)]
     Float3([f32; 3]),
+    String(Arc<String>),
 }
 
 impl fmt::Display for LitExpr {
@@ -163,6 +169,7 @@ impl fmt::Display for LitExpr {
             LitExpr::Float3(float3) => {
                 write!(f, "<float3 [{}, {}, {}]>", float3[0], float3[1], float3[2])
             }
+            LitExpr::String(string) => write!(f, "<string {}>", string),
         }
     }
 }
@@ -175,6 +182,7 @@ pub struct VarExpr {
 }
 
 impl VarExpr {
+    #[allow(dead_code)]
     pub fn new(ident: VarIdent) -> Self {
         Self { ident }
     }
