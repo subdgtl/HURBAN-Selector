@@ -158,30 +158,6 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_vertex_to_face_topology_from_tessellated_triangle() {
-        let (faces, vertices) = tessellated_triangle();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
-            NormalStrategy::Sharp,
-        );
-
-        let vertex_to_face_topology_calculated = vertex_to_face_topology(&geometry);
-
-        let in_one_face_count = vertex_to_face_topology_calculated
-            .iter()
-            .filter(|(_, to)| to.len() == 1)
-            .count();
-        let in_three_faces_count = vertex_to_face_topology_calculated
-            .iter()
-            .filter(|(_, to)| to.len() == 3)
-            .count();
-
-        assert_eq!(in_one_face_count, 3);
-        assert_eq!(in_three_faces_count, 3);
-    }
-
-    #[test]
     fn test_geometry_vertex_to_vertex_topology_from_tessellated_triangle() {
         let (faces, vertices) = tessellated_triangle();
         let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
