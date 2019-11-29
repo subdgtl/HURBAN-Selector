@@ -7,9 +7,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          0,
           4,
-          3,
-          0
+          3
         ],
         "normals": [
           0,
@@ -35,9 +35,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          2,
           1,
-          3
+          3,
+          2
         ],
         "normals": [
           2,
@@ -49,9 +49,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          7,
           5,
-          9
+          9,
+          7
         ],
         "normals": [
           3,
@@ -91,9 +91,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          0,
           15,
-          4,
-          0
+          4
         ],
         "normals": [
           6,
@@ -119,9 +119,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          10,
           1,
-          11
+          11,
+          10
         ],
         "normals": [
           8,
@@ -147,9 +147,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          1,
           13,
-          12,
-          1
+          12
         ],
         "normals": [
           10,
@@ -161,9 +161,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          14,
           2,
-          15
+          15,
+          14
         ],
         "normals": [
           11,
@@ -189,9 +189,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          8,
           0,
-          2
+          2,
+          8
         ],
         "normals": [
           13,
@@ -203,9 +203,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          6,
           8,
-          14,
-          6
+          14
         ],
         "normals": [
           14,
@@ -217,9 +217,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          10,
           16,
-          13,
-          10
+          13
         ],
         "normals": [
           15,
@@ -231,9 +231,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          1,
           12,
-          16,
-          1
+          16
         ],
         "normals": [
           16,
@@ -245,9 +245,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          7,
           17,
-          8,
-          7
+          8
         ],
         "normals": [
           17,
@@ -259,9 +259,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          8,
           18,
-          9,
-          8
+          9
         ],
         "normals": [
           18,
@@ -273,9 +273,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          6,
           14,
-          17,
-          6
+          17
         ],
         "normals": [
           19,
@@ -287,9 +287,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          17,
           11,
-          16
+          16,
+          17
         ],
         "normals": [
           20,
@@ -301,9 +301,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          16,
           18,
-          17,
-          16
+          17
         ],
         "normals": [
           21,
@@ -315,9 +315,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          14,
           10,
-          17
+          17,
+          14
         ],
         "normals": [
           22,
@@ -329,9 +329,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          0,
           3,
-          9,
-          0
+          9
         ],
         "normals": [
           23,
@@ -385,9 +385,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          6,
           1,
-          9
+          9,
+          6
         ],
         "normals": [
           27,
@@ -399,9 +399,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          1,
           6,
-          18,
-          1
+          18
         ],
         "normals": [
           28,
@@ -413,9 +413,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          15,
           0,
-          8
+          8,
+          15
         ],
         "normals": [
           29,
@@ -427,9 +427,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          15,
           8,
-          9
+          9,
+          15
         ],
         "normals": [
           30,
@@ -469,9 +469,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          13,
           1,
-          10
+          10,
+          13
         ],
         "normals": [
           33,
@@ -511,9 +511,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          8,
           2,
-          14
+          14,
+          8
         ],
         "normals": [
           36,
@@ -525,9 +525,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          5,
           8,
-          6,
-          5
+          6
         ],
         "normals": [
           37,
@@ -539,9 +539,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          16,
           10,
-          14
+          14,
+          16
         ],
         "normals": [
           38,
@@ -553,9 +553,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          1,
           16,
-          14,
-          1
+          14
         ],
         "normals": [
           39,
@@ -567,9 +567,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          8,
           5,
-          7
+          7,
+          8
         ],
         "normals": [
           40,
@@ -581,9 +581,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
-          18,
           8,
-          17
+          17,
+          18
         ],
         "normals": [
           41,
@@ -595,9 +595,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          6,
           17,
-          7,
-          6
+          7
         ],
         "normals": [
           42,
@@ -623,9 +623,9 @@ expression: "&relaxed_geometry"
     {
       "Triangle": {
         "vertices": [
+          12,
           18,
-          16,
-          12
+          16
         ],
         "normals": [
           44,
@@ -748,7 +748,7 @@ expression: "&relaxed_geometry"
   ],
   "normals": [
     [
-      -0.0,
+      0.0,
       0.0,
       0.42524105
     ],
@@ -763,7 +763,7 @@ expression: "&relaxed_geometry"
       1.0747575
     ],
     [
-      0.0,
+      -0.0,
       0.0,
       0.4252399
     ],
@@ -788,7 +788,7 @@ expression: "&relaxed_geometry"
       -0.53737986
     ],
     [
-      -0.0,
+      0.0,
       0.0,
       0.42524064
     ],
@@ -805,7 +805,7 @@ expression: "&relaxed_geometry"
     [
       1.6506,
       -0.040595055,
-      -0.4030337
+      -0.40303373
     ],
     [
       -1.6506,
@@ -820,21 +820,21 @@ expression: "&relaxed_geometry"
     [
       0.8604562,
       1.165595,
-      -0.53737926
+      -0.5373792
     ],
     [
-      0.7365384,
+      0.73653835,
       0.0,
       -0.21261996
     ],
     [
       -1.8615384,
-      -0.0,
+      0.0,
       -0.53737897
     ],
     [
       -1.5802882,
-      -0.0,
+      0.0,
       -0.22809559
     ],
     [
@@ -850,7 +850,7 @@ expression: "&relaxed_geometry"
     [
       -0.7901439,
       -1.2061901,
-      -0.2686903
+      -0.26869032
     ],
     [
       0.7901439,
@@ -863,9 +863,9 @@ expression: "&relaxed_geometry"
       -0.86404794
     ],
     [
+      -0.0,
       0.0,
-      0.0,
-      1.0747588
+      1.0747586
     ],
     [
       0.0,
@@ -883,24 +883,24 @@ expression: "&relaxed_geometry"
       1.0747578
     ],
     [
-      0.0,
+      -0.0,
       0.0,
       1.0747586
     ],
     [
       0.0,
-      -0.0,
+      0.0,
       1.0747595
     ],
     [
       -0.7901437,
       1.2061901,
-      -0.26869023
+      -0.2686902
     ],
     [
       0.7901437,
       -1.2061901,
-      -0.6436887
+      -0.64368874
     ],
     [
       0.0,
@@ -930,7 +930,7 @@ expression: "&relaxed_geometry"
     [
       -0.8604562,
       -1.165595,
-      -1.1250007
+      -1.1250008
     ],
     [
       0.36826873,
@@ -945,7 +945,7 @@ expression: "&relaxed_geometry"
     [
       -1.5099759,
       -0.040595055,
-      -0.5499396
+      -0.54993963
     ],
     [
       -0.7365383,
@@ -960,7 +960,7 @@ expression: "&relaxed_geometry"
     [
       0.36826953,
       -0.6378608,
-      -0.4252402
+      -0.42524022
     ],
     [
       -0.3682689,
@@ -970,7 +970,7 @@ expression: "&relaxed_geometry"
     [
       0.9307689,
       1.6121385,
-      -0.53738
+      -0.53737986
     ],
     [
       -0.36826944,
