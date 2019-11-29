@@ -21,7 +21,7 @@ pub enum PollInterpreterResponseNotification {
 /// An editing session.
 ///
 /// Contains the current definition of the pipeline program and can
-/// execute it via the interpreter running in a separete thread.
+/// execute it via the interpreter running in a separate thread.
 ///
 /// All program mutations are non-blocking (the session does not wait
 /// for the interpreter to acknowledge them), and polling the session
@@ -223,9 +223,8 @@ impl Session {
 
                             match result {
                                 Ok(value_set) => {
-                                    // Now we track whether the usage of
-                                    // any value changed. Adding an
-                                    // operation to the pipeline can:
+                                    // Now we track whether the usage of any value changed. Adding
+                                    // an operation to the pipeline can:
                                     // - create a new unused_value
                                     // - create a new used_value
                                     // - change an existing unused_value to used_value
@@ -235,23 +234,18 @@ impl Session {
                                     // - remove an existing used_value
                                     // - change an existing used_value to unused_value
                                     //
-                                    // We diff the old and new sets and
-                                    // perform the following operations:
-                                    // - Detect which values should be
-                                    //   removed and `Remove` them
-                                    // - Detect which values should be
-                                    //   retained, but they changed, we both
-                                    //   `Remove` and `Add` them to notify
+                                    // We diff the old and new sets and perform the following
+                                    // operations:
+                                    // - Detect which values should be removed and `Remove` them
+                                    // - Detect which values should be retained, but they
+                                    //   changed, we both `Remove` and `Add` them to notify
                                     //   the outside of the change
-                                    // - Detect which values should be
-                                    //   added and `Add` them
+                                    // - Detect which values should be added and `Add` them
 
-                                    // FIXME: Currently, we only call the
-                                    // add/remove handlers with when a
-                                    // value enters or leaves the
-                                    // unused_values set. This can be
-                                    // easily copy-paste extended to
-                                    // handle used_values the same way.
+                                    // FIXME: Currently, we only call the add/remove
+                                    // handlers with when a value enters or leaves the
+                                    // unused_values set. This can be easily copy-paste
+                                    // extended to handle used_values the same way.
 
                                     let mut to_remove =
                                         Vec::with_capacity(self.unused_values.len());
@@ -264,12 +258,10 @@ impl Session {
                                             .iter()
                                             .find(|(var_ident, _)| var_ident == current_var_ident)
                                         {
-                                            // The value is present under
-                                            // the same identifier in both
-                                            // new and old value set, but
-                                            // it could have changed! If
-                                            // it did, we both remove the
-                                            // old value and add the new.
+                                            // The value is present under the same
+                                            // identifier in both new and old value set,
+                                            // but it could have changed! If it did, we
+                                            // both remove the old value and add the new.
                                             let geometry = value.unwrap_refcounted_geometry();
 
                                             if geometry != *current_geometry {
@@ -278,9 +270,8 @@ impl Session {
                                                     .push((*var_ident, Arc::clone(&geometry)));
                                             }
                                         } else {
-                                            // The value is no longer
-                                            // present in the new value
-                                            // set, let's remove it!
+                                            // The value is no longer present in the new
+                                            // value set, let's remove it!
                                             to_remove.push(*current_var_ident);
                                         }
                                     }
@@ -310,11 +301,9 @@ impl Session {
 
                                     for (var_ident, value) in value_set.unused_values {
                                         let geometry = value.unwrap_refcounted_geometry();
-                                        // Only add and emit events for
-                                        // values that we didn't have
-                                        // before. We handled
-                                        // re-insertions earlier by
-                                        // comparing the values.
+                                        // Only add and emit events for values that we
+                                        // didn't have before. We handled re-insertions
+                                        // earlier by comparing the values.
                                         if let Entry::Vacant(vacant) =
                                             self.unused_values.entry(var_ident)
                                         {
