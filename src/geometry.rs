@@ -430,7 +430,7 @@ impl fmt::Display for Face {
 
 /// A triangular face. Contains indices to other geometry data, such
 /// as vertices and normals.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 pub struct TriangleFace {
     pub vertices: (u32, u32, u32),
     pub normals: (u32, u32, u32),
@@ -442,9 +442,21 @@ impl TriangleFace {
             i1 != i2 && i1 != i3 && i2 != i3,
             "One or more face edges consists of the same vertex"
         );
-        TriangleFace {
-            vertices: (i1, i2, i3),
-            normals: (i1, i2, i3),
+        if i1 < i2 && i1 < i3 {
+            TriangleFace {
+                vertices: (i1, i2, i3),
+                normals: (i1, i2, i3),
+            }
+        } else if i2 < i1 && i2 < i3 {
+            TriangleFace {
+                vertices: (i2, i3, i1),
+                normals: (i2, i3, i1),
+            }
+        } else {
+            TriangleFace {
+                vertices: (i3, i1, i2),
+                normals: (i3, i1, i2),
+            }
         }
     }
 
@@ -460,9 +472,22 @@ impl TriangleFace {
             vi1 != vi2 && vi1 != vi3 && vi2 != vi3,
             "One or more face edges consists of the same vertex"
         );
-        TriangleFace {
-            vertices: (vi1, vi2, vi3),
-            normals: (ni1, ni2, ni3),
+
+        if vi1 < vi2 && vi1 < vi3 {
+            TriangleFace {
+                vertices: (vi1, vi2, vi3),
+                normals: (ni1, ni2, ni3),
+            }
+        } else if vi2 < vi1 && vi2 < vi3 {
+            TriangleFace {
+                vertices: (vi2, vi3, vi1),
+                normals: (ni2, ni3, ni1),
+            }
+        } else {
+            TriangleFace {
+                vertices: (vi3, vi1, vi2),
+                normals: (ni3, ni1, ni2),
+            }
         }
     }
 
@@ -492,9 +517,33 @@ impl TriangleFace {
     }
 
     /// Does the face contain the specific unoriented edge
-    pub fn contains_unoriented_edge(self, unoriented_edge: UnorientedEdge) -> bool {
-        let [o_e_0, o_e_1, o_e_2] = self.to_unoriented_edges();
-        o_e_0 == unoriented_edge || o_e_1 == unoriented_edge || o_e_2 == unoriented_edge
+    pub fn contains_unoriented_edge(&self, unoriented_edge: UnorientedEdge) -> bool {
+        let [u_e_0, u_e_1, u_e_2] = self.to_unoriented_edges();
+        u_e_0 == unoriented_edge || u_e_1 == unoriented_edge || u_e_2 == unoriented_edge
+    }
+
+    /// Does the face contain the specific oriented edge
+    pub fn contains_oriented_edge(&self, oriented_edge: OrientedEdge) -> bool {
+        let [o_e_0, o_e_1, o_e_2] = self.to_oriented_edges();
+        o_e_0 == oriented_edge || o_e_1 == oriented_edge || o_e_2 == oriented_edge
+    }
+
+    /// Returns a the same face with reverted vertex and normal winding
+    pub fn to_reverted(&self) -> TriangleFace {
+        TriangleFace::new_separate(
+            self.vertices.2,
+            self.vertices.1,
+            self.vertices.0,
+            self.normals.2,
+            self.normals.1,
+            self.normals.0,
+        )
+    }
+
+    /// Checks if the other face references the same vertices and normals in a
+    /// reverted order
+    pub fn is_reverted(&self, other: &Self) -> bool {
+        self.to_reverted() == *other
     }
 }
 
@@ -540,6 +589,14 @@ impl OrientedEdge {
 
     pub fn contains_vertex(self, vertex_index: u32) -> bool {
         self.vertices.0 == vertex_index || self.vertices.1 == vertex_index
+    }
+
+    pub fn to_reverted(self) -> Self {
+        OrientedEdge::new(self.vertices.1, self.vertices.0)
+    }
+
+    pub fn to_unoriented(self) -> UnorientedEdge {
+        UnorientedEdge(self)
     }
 }
 
@@ -1086,10 +1143,13 @@ mod tests {
             v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
         ];
 
+        // When comparing TriangleFaces or Faces from Geometry, make sure the
+        // manually defined faces start their winding from the lowest vertex
+        // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
         let faces = vec![
             (0, 1, 2),
-            (2, 3, 0),
+            (0, 2, 3),
         ];
 
         (faces, vertices)
@@ -1110,10 +1170,13 @@ mod tests {
             n(0.0, 0.0, 1.0),
         ];
 
+        // When comparing TriangleFaces or Faces from Geometry, make sure the
+        // manually defined faces start their winding from the lowest vertex
+        // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
         let faces = vec![
             TriangleFace::new(0, 1, 2),
-            TriangleFace::new(2, 3, 0),
+            TriangleFace::new(0, 2, 3),
         ];
 
         (faces, vertices, normals)
@@ -1200,6 +1263,10 @@ mod tests {
     #[should_panic(expected = "Faces reference out of bounds position data")]
     fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals_bounds_check() {
         let (_, vertices) = quad();
+
+        // When comparing TriangleFaces or Faces from Geometry, make sure the
+        // manually defined faces start their winding from the lowest vertex
+        // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
         let faces = vec![
             (0, 1, 2),
@@ -1241,6 +1308,10 @@ mod tests {
     #[should_panic(expected = "Faces reference out of bounds position data")]
     fn test_geometry_from_triangle_faces_with_vertices_and_normals_bounds_check() {
         let (_, vertices, normals) = quad_with_normals();
+
+        // When comparing TriangleFaces or Faces from Geometry, make sure the
+        // manually defined faces start their winding from the lowest vertex
+        // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
         let faces = vec![
             TriangleFace::new(0, 1, 2),
@@ -1670,5 +1741,152 @@ mod tests {
         );
 
         assert!(geometry.has_no_orphan_vertices());
+    }
+
+    #[test]
+    fn test_triangle_face_new_lowest_first() {
+        let face = TriangleFace::new(0, 1, 2);
+        assert_eq!(face.vertices, (0, 1, 2));
+        assert_eq!(face.normals, (0, 1, 2));
+    }
+
+    #[test]
+    fn test_triangle_face_new_lowest_second() {
+        let face = TriangleFace::new(2, 0, 1);
+        assert_eq!(face.vertices, (0, 1, 2));
+        assert_eq!(face.normals, (0, 1, 2));
+    }
+
+    #[test]
+    fn test_triangle_face_new_lowest_third() {
+        let face = TriangleFace::new(1, 2, 0);
+        assert_eq!(face.vertices, (0, 1, 2));
+        assert_eq!(face.normals, (0, 1, 2));
+    }
+
+    #[test]
+    fn test_triangle_face_new_separate_lowest_first() {
+        let face = TriangleFace::new_separate(0, 1, 2, 3, 4, 5);
+        assert_eq!(face.vertices, (0, 1, 2));
+        assert_eq!(face.normals, (3, 4, 5));
+    }
+
+    #[test]
+    fn test_triangle_face_new_separate_lowest_second() {
+        let face = TriangleFace::new_separate(2, 0, 1, 5, 3, 4);
+        assert_eq!(face.vertices, (0, 1, 2));
+        assert_eq!(face.normals, (3, 4, 5));
+    }
+
+    #[test]
+    fn test_triangle_face_new_separate_lowest_third() {
+        let face = TriangleFace::new_separate(1, 2, 0, 4, 5, 3);
+        assert_eq!(face.vertices, (0, 1, 2));
+        assert_eq!(face.normals, (3, 4, 5));
+    }
+
+    #[test]
+    fn test_triangle_face_to_reverted_comparison_to_reverted() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face_reverted_correct = TriangleFace::new_separate(3, 2, 1, 6, 5, 4);
+
+        let face_reverted_calculated = face.to_reverted();
+        assert_eq!(face_reverted_correct, face_reverted_calculated);
+    }
+
+    #[test]
+    fn test_triangle_face_to_reverted_comparison_to_same() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+
+        let face_reverted_calculated = face.to_reverted();
+        assert_ne!(face, face_reverted_calculated);
+    }
+
+    #[test]
+    fn test_triangle_face_to_reverted_comparison_to_reverted_and_shifted() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
+
+        let face_reverted_calculated = face.to_reverted();
+        assert_eq!(face_reverted_correct_shifted, face_reverted_calculated);
+    }
+
+    #[test]
+    fn test_triangle_face_is_reverted_comparison_to_reverted_and_shifted() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
+
+        assert!(face_reverted_correct_shifted.is_reverted(&face));
+    }
+
+    #[test]
+    fn test_triangle_face_is_reverted_comparison_to_self() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+
+        assert!(!face.is_reverted(&face));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_oriented_edge_returns_true_because_contains_all() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let oriented_edge_1 = OrientedEdge::new(1, 2);
+        let oriented_edge_2 = OrientedEdge::new(2, 3);
+        let oriented_edge_3 = OrientedEdge::new(3, 1);
+
+        assert!(face.contains_oriented_edge(oriented_edge_1));
+        assert!(face.contains_oriented_edge(oriented_edge_2));
+        assert!(face.contains_oriented_edge(oriented_edge_3));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_oriented_edge_returns_false_because_contains_all_reverted() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let oriented_edge_1 = OrientedEdge::new(2, 1);
+        let oriented_edge_2 = OrientedEdge::new(3, 2);
+        let oriented_edge_3 = OrientedEdge::new(1, 3);
+
+        assert!(!face.contains_oriented_edge(oriented_edge_1));
+        assert!(!face.contains_oriented_edge(oriented_edge_2));
+        assert!(!face.contains_oriented_edge(oriented_edge_3));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_oriented_edge_returns_false_because_different() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let oriented_edge = OrientedEdge::new(4, 5);
+
+        assert!(!face.contains_oriented_edge(oriented_edge));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_unoriented_edge_returns_true_because_contains_all() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let unoriented_edge_1 = UnorientedEdge(OrientedEdge::new(1, 2));
+        let unoriented_edge_2 = UnorientedEdge(OrientedEdge::new(2, 3));
+        let unoriented_edge_3 = UnorientedEdge(OrientedEdge::new(3, 1));
+
+        assert!(face.contains_unoriented_edge(unoriented_edge_1));
+        assert!(face.contains_unoriented_edge(unoriented_edge_2));
+        assert!(face.contains_unoriented_edge(unoriented_edge_3));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_unoriented_edge_returns_true_because_contains_all_reverted() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let unoriented_edge_1 = UnorientedEdge(OrientedEdge::new(2, 1));
+        let unoriented_edge_2 = UnorientedEdge(OrientedEdge::new(3, 2));
+        let unoriented_edge_3 = UnorientedEdge(OrientedEdge::new(1, 3));
+
+        assert!(face.contains_unoriented_edge(unoriented_edge_1));
+        assert!(face.contains_unoriented_edge(unoriented_edge_2));
+        assert!(face.contains_unoriented_edge(unoriented_edge_3));
+    }
+
+    #[test]
+    fn test_triangle_face_contains_unoriented_edge_returns_false_because_different() {
+        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let unoriented_edge = UnorientedEdge(OrientedEdge::new(4, 5));
+
+        assert!(!face.contains_unoriented_edge(unoriented_edge));
     }
 }

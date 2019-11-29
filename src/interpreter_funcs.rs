@@ -7,9 +7,11 @@ use std::sync::Arc;
 use nalgebra::base::Vector3;
 
 use crate::convert::cast_u32;
+use crate::edge_analysis;
 use crate::geometry;
 use crate::importer::{EndlessCache, Importer, ImporterError, ObjCache};
 use crate::interpreter::{Func, FuncError, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
+use crate::mesh_analysis;
 use crate::mesh_smoothing;
 use crate::mesh_tools;
 use crate::mesh_topology_analysis;
@@ -462,6 +464,71 @@ impl<C: ObjCache> Func for FuncImplImportObjMesh<C> {
     }
 }
 
+pub struct FuncImplRevertMeshFaces;
+impl Func for FuncImplRevertMeshFaces {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            ty: Ty::Geometry,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+        let geometry = args[0].unwrap_geometry();
+
+        let value = mesh_tools::revert_mesh_faces(geometry);
+        Ok(Value::Geometry(Arc::new(value)))
+    }
+}
+
+pub struct FuncImplSynchronizeMeshFaces;
+impl Func for FuncImplSynchronizeMeshFaces {
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            ty: Ty::Geometry,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+        let geometry = args[0].unwrap_refcounted_geometry();
+
+        let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+
+        if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
+            && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
+        {
+            let face_to_face = mesh_topology_analysis::face_to_face_topology(&geometry);
+
+            let value = Arc::new(mesh_tools::synchronize_mesh_winding(
+                &geometry,
+                &face_to_face,
+            ));
+
+            Ok(Value::Geometry(value))
+        } else {
+            Ok(Value::Geometry(geometry))
+        }
+    }
+}
+
 // IMPORTANT: Do not change these IDs, ever! When adding a new
 // function, always create a new, unique function identifier for it.
 
@@ -475,6 +542,8 @@ pub const FUNC_ID_WELD: FuncIdent = FuncIdent(6);
 pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(7);
 pub const FUNC_ID_CREATE_PLANE: FuncIdent = FuncIdent(8);
 pub const FUNC_ID_IMPORT_OBJ_MESH: FuncIdent = FuncIdent(9);
+pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(10);
+pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(11);
 
 /// Returns the function table for the interpreter.
 ///
@@ -504,6 +573,11 @@ pub fn create_function_table() -> HashMap<FuncIdent, Box<dyn Func>> {
         Box::new(FuncImplImportObjMesh {
             importer: Importer::new(EndlessCache::default()),
         }),
+    );
+    funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncImplRevertMeshFaces));
+    funcs.insert(
+        FUNC_ID_SYNCHRONIZE_MESH_FACES,
+        Box::new(FuncImplSynchronizeMeshFaces),
     );
 
     funcs
