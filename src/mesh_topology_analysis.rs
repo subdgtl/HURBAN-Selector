@@ -13,14 +13,17 @@ use crate::geometry::{Face, Geometry};
 // FIXME: @Optimization Analyze where this threshold is overly
 // benevolent and define different thresholds for different
 // topologies.
-const NEIGHBORS_ALLOCATION_THRESHOLD: usize = 8;
+
+/// The number of relations/neighbors a `SmallVec` is allowed to
+/// contain before it spills into heap. Implementation detail.
+const MAX_INLINE_NEIGHBOR_COUNT: usize = 8;
 
 /// A topology containing neighborhood relations between faces. Two
 /// faces are neighbors if and only if they they share an unoriented
 /// edge.
-pub type FaceToFaceTopology = HashMap<u32, SmallVec<[u32; NEIGHBORS_ALLOCATION_THRESHOLD]>>;
+pub type FaceToFaceTopology = HashMap<u32, SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>>;
 
-/// Computes vertex to vertex topology for geometry.
+/// Computes face to face topology for geometry.
 pub fn face_to_face_topology(geometry: &Geometry) -> FaceToFaceTopology {
     let mut f2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
 
@@ -58,9 +61,9 @@ pub fn face_to_face_topology(geometry: &Geometry) -> FaceToFaceTopology {
 }
 
 /// A topology containing neighborhood relations between vertices. Two
-/// vertices are neighbors if and only if they they share an
-/// unoriented or oriented edge.
-pub type VertexToVertexTopology = HashMap<u32, SmallVec<[u32; NEIGHBORS_ALLOCATION_THRESHOLD]>>;
+/// vertices are neighbors if and only if they they are end points of
+/// an edge.
+pub type VertexToVertexTopology = HashMap<u32, SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>>;
 
 /// Computes vertex to vertex topology for geometry.
 pub fn vertex_to_vertex_topology(geometry: &Geometry) -> VertexToVertexTopology {
