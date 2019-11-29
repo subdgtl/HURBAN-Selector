@@ -41,28 +41,21 @@ pub struct Session {
     /// (exclusive), e.g. 0th stmt can not see any vars, 1st stmt can
     /// see vars produced by the 0th stmt, etc.
     var_visibility: Vec<VarIdent>,
-    var_count: u64,
 
     function_table: BTreeMap<FuncIdent, Box<dyn Func>>,
 }
 
 impl Session {
     pub fn new() -> Self {
-        let prog = Prog::new(Vec::new());
-        let var_visibility = Vec::new();
-
-        assert_eq!(prog.stmts().len(), var_visibility.len());
-
         Self {
             interpreter_server: InterpreterServer::new(),
             interpreter_requests_in_flight: HashSet::new(),
 
-            prog,
+            prog: Prog::new(Vec::new()),
 
             unused_values: HashMap::new(),
 
-            var_visibility,
-            var_count: 0,
+            var_visibility: Vec::new(),
 
             // FIXME: @Correctness this is a hack, there should be
             // just one instance of the table. Fortunately we don't
@@ -87,8 +80,6 @@ impl Session {
         self.prog.push_stmt(stmt.clone());
         self.submit(InterpreterRequest::PushProgStmt(stmt));
 
-        self.var_count += 1;
-
         self.recompute_var_visibility();
     }
 
@@ -103,8 +94,6 @@ impl Session {
 
         self.prog.pop_stmt();
         self.submit(InterpreterRequest::PopProgStmt);
-
-        self.var_count -= 1;
 
         self.recompute_var_visibility();
     }
@@ -138,7 +127,7 @@ impl Session {
     /// Returns the next free variable identifier for the current
     /// program definition.
     pub fn next_free_var_ident(&self) -> VarIdent {
-        VarIdent(self.var_count)
+        VarIdent(self.prog.stmts().len() as u64)
     }
 
     /// Returns human readable variable name for a variable identifier
