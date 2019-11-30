@@ -1,12 +1,151 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
+use arrayvec::ArrayVec;
 use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 use smallvec::{smallvec, SmallVec};
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::geometry::{Face, Geometry, TriangleFace};
-use crate::mesh_topology_analysis::face_to_face_topology;
+use crate::geometry::{Face, Geometry, OrientedEdge, TriangleFace, UnorientedEdge};
+use crate::mesh_topology_analysis;
+
+/// Orients all the faces the same way - matches their winding (vertex order).
+///
+/// This function crawls the mesh geometry and flips all the faces, which are
+/// not facing the same way as the previously checked neighboring faces,
+/// starting with the first face in the list for each mesh island.
+///
+/// The algorithm relies on the fact that in a proper manifold mesh, each
+/// oriented edge has exactly one (for watertight mesh geometry) or none (for
+/// mesh patch naked edges) counter-edge oriented the opposite direction. It
+/// crawls the geometry and if a face neighboring the current one doesn't have
+/// the proper winding, it's being reverted and only then triggers checking its
+/// own neighbors.
+///
+/// This method doesn't flip the normals associated with the face vertices, as
+/// there is no unambiguous way to do so automatically.
+///
+/// # Warning
+/// As a result, the entire mesh can end up facing inwards (be entirely
+/// reverted). At the moment we have no tools to detect such a case
+/// automatically, so we need to rely on the user to check it and potentially
+/// revert winding of the entire mesh.
+///
+/// # Warning
+/// The results might be unpredictable for non-manifold meshes and moebius-like
+/// topologies.
+///
+#[allow(dead_code)]
+pub fn synchronize_mesh_winding(
+    geometry: &Geometry,
+    face_to_face: &HashMap<u32, SmallVec<[u32; 8]>>,
+) -> Geometry {
+    // FIXME: Flip also vertex normals if the visual/practical tests prove it's
+    // needed
+
+    // Processing queue: indices of faces sharing edges with the current face,
+    // zipped with the oriented edge they should contain if they have a proper
+    // winding.
+    let mut queue_to_process: VecDeque<(usize, OrientedEdge)> = VecDeque::new();
+    let mut discovered = vec![false; geometry.faces().len()];
+    let mut proper_triangle_faces: Vec<TriangleFace> = Vec::with_capacity(geometry.faces().len());
+
+    // For each island in the mesh geometry
+    while proper_triangle_faces.len() < geometry.faces().len() {
+        // find first undiscovered face
+        let first_face_index = discovered
+            .iter()
+            .position(|v| !v)
+            .expect("All faces already discovered");
+
+        // add it to the processing queue.
+        queue_to_process.push_front((
+            // the face
+            first_face_index,
+            // one of the edges it should contain
+            match geometry.faces()[first_face_index] {
+                Face::Triangle(t_f) => t_f.to_oriented_edges()[0],
+            },
+        ));
+        // Mark the face already inserted into the queue.
+        discovered[cast_usize(first_face_index)] = true;
+
+        // While there is anything in the queue (crawl the entire mesh island)
+        while let Some((face_index, desired_oriented_edge)) = queue_to_process.pop_front() {
+            // get the actual face
+            let Face::Triangle(original_triangle_face) = geometry.faces()[cast_usize(face_index)];
+            // and check if it contains the desired oriented edge. If it does,
+            // the winding is ok, otherwise revert the face.
+            let proper_triangle_face =
+                if original_triangle_face.contains_oriented_edge(desired_oriented_edge) {
+                    original_triangle_face
+                } else {
+                    original_triangle_face.to_reverted()
+                };
+            // Put the properly winded face into the stack of processed faces.
+            proper_triangle_faces.push(proper_triangle_face);
+
+            // Calculate properly oriented edges of face's neighbors
+            let proper_neighbor_oriented_edges: ArrayVec<[OrientedEdge; 3]> =
+                ArrayVec::from(proper_triangle_face.to_oriented_edges())
+                    .into_iter()
+                    .map(|o_e| o_e.to_reverted())
+                    .collect();
+
+            // For each face's neighbor index
+            for &neighbor_face_index in &face_to_face[&cast_u32(face_index)] {
+                // check if it was already discovered and added to the queue.
+                if !discovered[cast_usize(neighbor_face_index)] {
+                    // If it wasn't, unwrap the triangle face
+                    match geometry.faces()[cast_usize(neighbor_face_index)] {
+                        Face::Triangle(neighbor_triangle_face) => {
+                            // and for each properly oriented edge which should
+                            // be in the neighboring faces
+                            for edge in &proper_neighbor_oriented_edges {
+                                // check which edge belongs to which face.
+                                if neighbor_triangle_face
+                                    .contains_unoriented_edge(UnorientedEdge(*edge))
+                                {
+                                    // If it's this one, add it to the
+                                    // processing queue together with the
+                                    // properly oriented edge it should contain.
+                                    queue_to_process
+                                        .push_back((cast_usize(neighbor_face_index), *edge));
+                                    // Stop looking for other edges to be
+                                    // found in the current neighboring face.
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // And finally mark the faces as discovered
+                    discovered[cast_usize(neighbor_face_index)] = true;
+                }
+            }
+        }
+    }
+
+    // Generate mesh geometry with synchronized winding
+    Geometry::from_triangle_faces_with_vertices_and_normals(
+        proper_triangle_faces,
+        geometry.vertices().iter().copied(),
+        geometry.normals().iter().copied(),
+    )
+}
+
+/// Reverts vertex and normal winding of all faces in the mesh geometry and
+/// returns a reverted mesh geometry
+pub fn revert_mesh_faces(geometry: &Geometry) -> Geometry {
+    let reverted_faces = geometry.faces().iter().map(|face| match face {
+        Face::Triangle(t_f) => t_f.to_reverted(),
+    });
+    Geometry::from_triangle_faces_with_vertices_and_normals(
+        reverted_faces,
+        geometry.vertices().iter().copied(),
+        geometry.normals().iter().copied(),
+    )
+}
 
 /// Weld similar (their distance is within the given tolerance) vertices into
 /// one and reuse such vertices in connected faces.
@@ -146,7 +285,7 @@ pub fn weld(geometry: &Geometry, tolerance: f32) -> Geometry {
 /// Crawls the geometry to find continuous patches of geometry.
 /// Returns a vector of new separated geometries.
 pub fn separate_isolated_meshes(geometry: &Geometry) -> Vec<Geometry> {
-    let face_to_face = face_to_face_topology(geometry);
+    let face_to_face = mesh_topology_analysis::face_to_face_topology(geometry);
     let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
     let mut patches: Vec<Geometry> = Vec::new();
     let mut index_stack: Vec<u32> = Vec::new();
@@ -343,6 +482,32 @@ mod tests {
             TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
             TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
             TriangleFace::new_separate(1, 4, 2, 0, 0, 0),
+            TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
+            TriangleFace::new_separate(6, 7, 8, 1, 1, 1),
+        ];
+
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+    }
+
+    fn tessellated_triangle_with_island_geometry_with_flipped_face() -> Geometry {
+        let vertices = vec![
+            Point3::new(-2.0, -2.0, 0.0),
+            Point3::new(0.0, -2.0, 0.0),
+            Point3::new(2.0, -2.0, 0.0),
+            Point3::new(-1.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+            Point3::new(-1.0, 0.0, 1.0),
+            Point3::new(1.0, 0.0, 1.0),
+            Point3::new(0.0, 2.0, 1.0),
+        ];
+
+        let vertex_normals = vec![n(0.0, 0.0, 1.0), n(0.0, 0.0, 1.0)];
+
+        let faces = vec![
+            TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
+            TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
+            TriangleFace::new_separate(2, 4, 1, 0, 0, 0), // flipped
             TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
             TriangleFace::new_separate(6, 7, 8, 1, 1, 1),
         ];
@@ -565,6 +730,90 @@ mod tests {
                 &geometry_island_correct
             ));
         }
+    }
+
+    #[test]
+    fn test_mesh_tools_revert_mesh_faces() {
+        let plane = geometry::plane([0.0, 0.0, 0.0], 1.0);
+        let plane_with_reverted_faces = revert_mesh_faces(&plane);
+
+        let expected_reverted_faces = vec![
+            Face::Triangle(TriangleFace::new_separate(2, 1, 0, 0, 0, 0)),
+            Face::Triangle(TriangleFace::new_separate(0, 3, 2, 0, 0, 0)),
+        ];
+
+        assert_eq!(
+            plane_with_reverted_faces.faces(),
+            expected_reverted_faces.as_slice()
+        );
+    }
+
+    #[test]
+    fn test_mesh_tools_revert_mesh_faces_once_does_not_equal_original() {
+        let cube = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube_with_reverted_faces = revert_mesh_faces(&cube);
+
+        assert_ne!(cube, cube_with_reverted_faces);
+    }
+
+    #[test]
+    fn test_mesh_tools_revert_mesh_faces_twice_does_equal_original() {
+        let cube = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube_with_twice_reverted_faces = revert_mesh_faces(&revert_mesh_faces(&cube));
+
+        assert_eq!(cube, cube_with_twice_reverted_faces);
+    }
+
+    #[test]
+    fn test_mesh_tools_synchronize_mesh_winding() {
+        let geometry = tessellated_triangle_with_island_geometry_with_flipped_face();
+        let geometry_with_synced_winding_expected = tessellated_triangle_with_island_geometry();
+
+        let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
+        let geometry_with_synced_winding = synchronize_mesh_winding(&geometry, &f2f);
+
+        // Can't use Eq here, because the algorithm can produce faces
+        // in a different order than in the original
+        assert!(mesh_analysis::are_similar(
+            &geometry_with_synced_winding,
+            &geometry_with_synced_winding_expected,
+        ));
+    }
+
+    #[test]
+    fn test_mesh_tools_synchronize_mesh_winding_for_sphere() {
+        let sphere = geometry::uv_sphere([0.0, 0.0, 0.0], 1.0, 10, 10);
+        let sphere_faces_one_flipped = sphere.faces().iter().enumerate().map(|(i, f)| match f {
+            Face::Triangle(t) => {
+                if i == 5 {
+                    t.to_reverted()
+                } else {
+                    *t
+                }
+            }
+        });
+
+        let sphere_with_faces_one_flipped = Geometry::from_triangle_faces_with_vertices_and_normals(
+            sphere_faces_one_flipped,
+            sphere.vertices().iter().copied(),
+            sphere.normals().iter().copied(),
+        );
+
+        let f2f = mesh_topology_analysis::face_to_face_topology(&sphere_with_faces_one_flipped);
+
+        let sphere_with_synced_winding =
+            synchronize_mesh_winding(&sphere_with_faces_one_flipped, &f2f);
+
+        // Can't use Eq here, because the algorithm can produce faces
+        // in a different order than in the original
+        assert!(!mesh_analysis::are_similar(
+            &sphere,
+            &sphere_with_faces_one_flipped,
+        ));
+        assert!(mesh_analysis::are_similar(
+            &sphere,
+            &sphere_with_synced_winding,
+        ));
     }
 
     #[test]

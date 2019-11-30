@@ -49,7 +49,6 @@ pub fn manifold_edges<'a>(
 }
 
 /// Finds non-manifold (erroneous) edges in a mesh edge collection
-#[allow(dead_code)]
 pub fn non_manifold_edges<'a>(
     edge_sharing: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
@@ -65,6 +64,11 @@ pub fn non_manifold_edges<'a>(
                 .copied()
                 .chain(similar_edges.descending_edges.iter().copied())
         })
+}
+
+/// Checks if mesh contains only manifold or border edges
+pub fn is_mesh_manifold(edge_sharing: &EdgeSharingMap) -> bool {
+    non_manifold_edges(edge_sharing).next().is_none()
 }
 
 /// Finds border vertex indices in a mesh edge collection
@@ -149,31 +153,19 @@ pub fn triangulated_mesh_genus(vertex_count: usize, edge_count: usize, face_coun
     1 - (cast_i32(vertex_count) - cast_i32(edge_count) + cast_i32(face_count)) / 2
 }
 
-/// Checks if two geometries are similar
+/// Checks if two geometries are similar.
 ///
-/// Two mesh geometries are similar when the position of each vertex in one mesh
-/// geometry matches a position of some vertex in the other mesh geometry, when
-/// the direction of each normal in one mesh geometry matches a direction of
-/// some normal in the other mesh geometry and each face in one mesh geometry
-/// refers vertices with the same position and normals with the same direction,
-/// both in the same circular order, as exactly one face in the other mesh
-/// geometry.
-///
-/// The indices (order in which they are stored) of vertices, normals and faces
-/// can differ but as long as the previous conditions are met, and the count of
-/// vertices, normals and faces are identical, the mesh geometries are similar.
-///
-/// The mesh geometries are not necessarily identical in memory but they look
-/// the same and are treated the same by all functions of this software and all
-/// their transformations result in similar mesh geometries.
+/// Two mesh geometries are similar when they are visually similar
+/// (see the definition of `are_visually_similar`), and they have the
+/// same number of vertices and normals.
 #[allow(dead_code)]
-pub fn are_similar(geometry_1: &Geometry, geometry_2: &Geometry) -> bool {
-    geometry_1.vertices().len() == geometry_2.vertices().len()
-        && geometry_1.normals().len() == geometry_2.normals().len()
-        && are_visually_similar(geometry_1, geometry_2)
+pub fn are_similar(geometry1: &Geometry, geometry2: &Geometry) -> bool {
+    geometry1.vertices().len() == geometry2.vertices().len()
+        && geometry1.normals().len() == geometry2.normals().len()
+        && are_visually_similar(geometry1, geometry2)
 }
 
-/// Checks if two geometries are visually similar
+/// Checks if two geometries are visually similar.
 ///
 /// Two mesh geometries are visually similar when the position of each vertex in
 /// one mesh geometry matches a position of some vertex in the other mesh
@@ -196,7 +188,7 @@ pub fn are_similar(geometry_1: &Geometry, geometry_2: &Geometry) -> bool {
 /// functions of this software and all their transformations result in different
 /// mesh geometries.
 #[allow(dead_code)]
-pub fn are_visually_similar(geometry_1: &Geometry, geometry_2: &Geometry) -> bool {
+pub fn are_visually_similar(geometry1: &Geometry, geometry2: &Geometry) -> bool {
     struct UnpackedFace {
         vertices: (Point3<f32>, Point3<f32>, Point3<f32>),
         normals: (Vector3<f32>, Vector3<f32>, Vector3<f32>),
@@ -225,38 +217,43 @@ pub fn are_visually_similar(geometry_1: &Geometry, geometry_2: &Geometry) -> boo
         }
     }
 
-    let mut unpacked_faces_1 = geometry_1.faces().iter().map(|face| match face {
+    let unpacked_faces1 = geometry1.faces().iter().map(|face| match face {
         Face::Triangle(f) => UnpackedFace {
             vertices: (
-                geometry_1.vertices()[cast_usize(f.vertices.0)],
-                geometry_1.vertices()[cast_usize(f.vertices.1)],
-                geometry_1.vertices()[cast_usize(f.vertices.2)],
+                geometry1.vertices()[cast_usize(f.vertices.0)],
+                geometry1.vertices()[cast_usize(f.vertices.1)],
+                geometry1.vertices()[cast_usize(f.vertices.2)],
             ),
             normals: (
-                geometry_1.normals()[cast_usize(f.normals.0)],
-                geometry_1.normals()[cast_usize(f.normals.1)],
-                geometry_1.normals()[cast_usize(f.normals.2)],
+                geometry1.normals()[cast_usize(f.normals.0)],
+                geometry1.normals()[cast_usize(f.normals.1)],
+                geometry1.normals()[cast_usize(f.normals.2)],
             ),
         },
     });
 
-    let unpacked_faces_2 = geometry_2.faces().iter().map(|face| match face {
+    let unpacked_faces2 = geometry2.faces().iter().map(|face| match face {
         Face::Triangle(f) => UnpackedFace {
             vertices: (
-                geometry_2.vertices()[cast_usize(f.vertices.0)],
-                geometry_2.vertices()[cast_usize(f.vertices.1)],
-                geometry_2.vertices()[cast_usize(f.vertices.2)],
+                geometry2.vertices()[cast_usize(f.vertices.0)],
+                geometry2.vertices()[cast_usize(f.vertices.1)],
+                geometry2.vertices()[cast_usize(f.vertices.2)],
             ),
             normals: (
-                geometry_2.normals()[cast_usize(f.normals.0)],
-                geometry_2.normals()[cast_usize(f.normals.1)],
-                geometry_2.normals()[cast_usize(f.normals.2)],
+                geometry2.normals()[cast_usize(f.normals.0)],
+                geometry2.normals()[cast_usize(f.normals.1)],
+                geometry2.normals()[cast_usize(f.normals.2)],
             ),
         },
     });
 
-    geometry_1.faces().len() == geometry_2.faces().len()
-        && unpacked_faces_1.all(|f| unpacked_faces_2.clone().any(|g| f == g))
+    geometry1.faces().len() == geometry2.faces().len()
+        && unpacked_faces1
+            .clone()
+            .all(|f| unpacked_faces2.clone().any(|g| f == g))
+        && unpacked_faces2
+            .clone()
+            .all(|f| unpacked_faces1.clone().any(|g| f == g))
 }
 
 #[cfg(test)]
@@ -774,6 +771,36 @@ mod tests {
         }
 
         assert_eq!(oriented_edges_non_manifold_check.len(), 3);
+    }
+
+    #[test]
+    fn test_mesh_analysis_is_mesh_manifold_returns_false_because_non_manifold() {
+        let (faces, vertices) = non_manifold_shape();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+
+        assert!(!is_mesh_manifold(&edge_sharing_map));
+    }
+
+    #[test]
+    fn test_mesh_analysis_is_mesh_manifold_returns_true_because_manifold() {
+        let (faces, vertices) = torus();
+        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+
+        assert!(is_mesh_manifold(&edge_sharing_map));
     }
 
     #[test]

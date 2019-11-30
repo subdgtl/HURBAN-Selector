@@ -7,12 +7,14 @@ use std::sync::Arc;
 
 use nalgebra::base::Vector3;
 
+use crate::edge_analysis;
 use crate::geometry;
 use crate::importer::{EndlessCache, Importer, ImporterError, ObjCache};
 use crate::interpreter::{
     Float3ParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncIdent, FuncInfo,
     ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
+use crate::mesh_analysis;
 use crate::mesh_smoothing;
 use crate::mesh_tools;
 use crate::mesh_topology_analysis;
@@ -644,6 +646,87 @@ impl<C: ObjCache> Func for FuncImplImportObjMesh<C> {
     }
 }
 
+pub struct FuncImplRevertMeshFaces;
+impl Func for FuncImplRevertMeshFaces {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Revert Faces",
+            return_value_name: "Reverted Mesh",
+        }
+    }
+
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            name: "Mesh",
+            refinement: ParamRefinement::Geometry,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+        let geometry = args[0].unwrap_geometry();
+
+        let value = mesh_tools::revert_mesh_faces(geometry);
+        Ok(Value::Geometry(Arc::new(value)))
+    }
+}
+
+pub struct FuncImplSynchronizeMeshFaces;
+impl Func for FuncImplSynchronizeMeshFaces {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Synchronize Faces",
+            return_value_name: "Synchronized Mesh",
+        }
+    }
+
+    fn flags(&self) -> FuncFlags {
+        FuncFlags::PURE
+    }
+
+    fn param_info(&self) -> &[ParamInfo] {
+        &[ParamInfo {
+            name: "Mesh",
+            refinement: ParamRefinement::Geometry,
+            optional: false,
+        }]
+    }
+
+    fn return_ty(&self) -> Ty {
+        Ty::Geometry
+    }
+
+    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+        let geometry = args[0].unwrap_refcounted_geometry();
+
+        let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+
+        if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
+            && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
+        {
+            let face_to_face = mesh_topology_analysis::face_to_face_topology(&geometry);
+
+            let value = Arc::new(mesh_tools::synchronize_mesh_winding(
+                &geometry,
+                &face_to_face,
+            ));
+
+            Ok(Value::Geometry(value))
+        } else {
+            Ok(Value::Geometry(geometry))
+        }
+    }
+}
+
 // IMPORTANT: Do not change these IDs, ever! When adding a new
 // function, always create a new, unique function identifier for it.
 // Also note: the number in the identifier currently also defines the
@@ -668,6 +751,8 @@ pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(9000);
 pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(9001);
 pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(9002);
 pub const FUNC_ID_WELD: FuncIdent = FuncIdent(9003);
+pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(9004);
+pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(9005);
 
 /// Returns the global set of function definitions available to the
 /// editor.
@@ -708,6 +793,11 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     );
     funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncImplJoinMeshes));
     funcs.insert(FUNC_ID_WELD, Box::new(FuncImplWeld));
+    funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncImplRevertMeshFaces));
+    funcs.insert(
+        FUNC_ID_SYNCHRONIZE_MESH_FACES,
+        Box::new(FuncImplSynchronizeMeshFaces),
+    );
 
     funcs
 }
