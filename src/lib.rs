@@ -19,7 +19,6 @@ use crate::ui::Ui;
 pub mod geometry;
 pub mod importer;
 pub mod logger;
-pub mod operations;
 pub mod renderer;
 
 mod camera;
