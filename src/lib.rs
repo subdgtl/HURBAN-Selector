@@ -1,3 +1,4 @@
+pub use crate::logger::LogLevel;
 pub use crate::renderer::{GpuBackend, Msaa, PresentMode};
 
 use std::collections::HashMap;
@@ -18,7 +19,6 @@ use crate::ui::Ui;
 
 pub mod geometry;
 pub mod importer;
-pub mod logger;
 pub mod renderer;
 
 mod camera;
@@ -28,6 +28,7 @@ mod input;
 mod interpreter;
 mod interpreter_funcs;
 mod interpreter_server;
+mod logger;
 mod math;
 mod mesh_analysis;
 mod mesh_smoothing;
@@ -47,6 +48,10 @@ pub struct Options {
     pub present_mode: PresentMode,
     /// Whether to select an explicit gpu backend for the renderer to use.
     pub gpu_backend: Option<GpuBackend>,
+    /// Logging level for the editor.
+    pub app_log_level: Option<logger::LogLevel>,
+    /// Logging level for external libraries.
+    pub lib_log_level: Option<logger::LogLevel>,
 }
 
 /// Initialize the window and run in infinite loop.
@@ -54,6 +59,8 @@ pub struct Options {
 /// Will continue running until a close request is received from the
 /// created window.
 pub fn init_and_run(options: Options) -> ! {
+    logger::init(options.app_log_level, options.lib_log_level);
+
     let event_loop = winit::event_loop::EventLoop::new();
     // let monitor_id = event_loop.primary_monitor();
     let window = winit::window::WindowBuilder::new()

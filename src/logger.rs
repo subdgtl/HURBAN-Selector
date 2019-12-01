@@ -1,20 +1,45 @@
-const LIBS_DEFAULT_LOG_LEVEL: log::LevelFilter = log::LevelFilter::Warn;
+const DEFAULT_APP_LOG_LEVEL: LogLevel = LogLevel::Debug;
+const DEFAULT_LIB_LOG_LEVEL: LogLevel = LogLevel::Warning;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Error,
+    Warning,
+    Info,
+    Debug,
+}
+
+impl Into<log::LevelFilter> for LogLevel {
+    fn into(self) -> log::LevelFilter {
+        match self {
+            Self::Error => log::LevelFilter::Error,
+            Self::Warning => log::LevelFilter::Warn,
+            Self::Info => log::LevelFilter::Info,
+            Self::Debug => log::LevelFilter::Debug,
+        }
+    }
+}
 
 /// Initializes logger for current environment.
 ///
-/// In case of any error, basic logger, that does nothing, is returned. Errors
-/// can possibly happen in case of file permission errors in release build.
-pub fn init() {
+/// In case of any error, basic logger that does nothing, is returned. Errors
+/// can possibly happen in case of filesystem permission errors in dist build.
+pub fn init(app_log_level: Option<LogLevel>, lib_log_level: Option<LogLevel>) {
     let base_logger = fern::Dispatch::new();
-    let env_specific_logger = init_env_specific(base_logger);
+    let app_level_filter: log::LevelFilter = app_log_level.unwrap_or(DEFAULT_APP_LOG_LEVEL).into();
+    let lib_level_filter: log::LevelFilter = lib_log_level.unwrap_or(DEFAULT_LIB_LOG_LEVEL).into();
+
+    let env_specific_logger = init_env_specific(base_logger, app_level_filter, lib_level_filter);
 
     env_specific_logger.apply().expect("Failed to build logger");
 }
 
-#[cfg(debug_assertions)]
-pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
-    use std::env;
-
+#[cfg(not(feature = "dist"))]
+pub fn init_env_specific(
+    base_logger: fern::Dispatch,
+    app_level_filter: log::LevelFilter,
+    lib_level_filter: log::LevelFilter,
+) -> fern::Dispatch {
     use fern::colors::{Color, ColoredLevelConfig};
 
     let colors = ColoredLevelConfig::new()
@@ -32,26 +57,19 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
             message
         ))
     });
-    let libs_log_level = env::var("HS_LIBS_LOG_LEVEL")
-        .map(|libs_log_level| match libs_log_level.as_str() {
-            "error" => log::LevelFilter::Error,
-            "warning" => log::LevelFilter::Warn,
-            "info" => log::LevelFilter::Info,
-            "debug" => log::LevelFilter::Debug,
-            "trace" => log::LevelFilter::Trace,
-            "off" => log::LevelFilter::Off,
-            _ => panic!("Unknown library log level requested"),
-        })
-        .unwrap_or(LIBS_DEFAULT_LOG_LEVEL);
 
     base_logger
-        .level(libs_log_level)
-        .level_for("hurban_selector", log::LevelFilter::Debug)
+        .level(lib_level_filter)
+        .level_for("hurban_selector", app_level_filter)
         .chain(std::io::stdout())
 }
 
-#[cfg(not(debug_assertions))]
-pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
+#[cfg(feature = "dist")]
+pub fn init_env_specific(
+    base_logger: fern::Dispatch,
+    app_level_filter: log::LevelFilter,
+    lib_level_filter: log::LevelFilter,
+) -> fern::Dispatch {
     use std::fs;
     use std::path::Path;
 
@@ -103,7 +121,7 @@ pub fn init_env_specific(base_logger: fern::Dispatch) -> fern::Dispatch {
                 message
             ))
         })
-        .level(LIBS_DEFAULT_LOG_LEVEL)
-        .level_for("hurban_selector", log::LevelFilter::Info)
+        .level(lib_level_filter)
+        .level_for("hurban_selector", app_level_filter)
         .chain(file)
 }
