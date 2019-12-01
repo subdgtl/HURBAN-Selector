@@ -23,7 +23,7 @@ impl Into<log::LevelFilter> for LogLevel {
 /// Initializes logger for current environment.
 ///
 /// In case of any error, basic logger that does nothing, is returned. Errors
-/// can possibly happen in case of file fs permission errors in dist build.
+/// can possibly happen in case of filesystem permission errors in dist build.
 pub fn init(app_log_level: Option<LogLevel>, lib_log_level: Option<LogLevel>) {
     let base_logger = fern::Dispatch::new();
     let app_level_filter: log::LevelFilter = app_log_level.unwrap_or(DEFAULT_APP_LOG_LEVEL).into();
