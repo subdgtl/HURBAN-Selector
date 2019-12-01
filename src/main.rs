@@ -5,8 +5,6 @@ use std::env;
 use hurban_selector as hs;
 
 fn main() {
-    hs::logger::init();
-
     let msaa = env::var("HS_MSAA")
         .ok()
         .map(|msaa| match msaa.as_str() {
@@ -39,9 +37,31 @@ fn main() {
             _ => panic!("Unknown gpu backend requested"),
         });
 
+    let app_log_level = env::var("HS_APP_LOG_LEVEL")
+        .ok()
+        .map(|app_log_level| match app_log_level.as_str() {
+            "error" => hs::LogLevel::Error,
+            "warning" => hs::LogLevel::Warning,
+            "info" => hs::LogLevel::Info,
+            "debug" => hs::LogLevel::Debug,
+            _ => panic!("Unknown library log level requested"),
+        });
+
+    let lib_log_level = env::var("HS_LIB_LOG_LEVEL")
+        .ok()
+        .map(|lib_log_level| match lib_log_level.as_str() {
+            "error" => hs::LogLevel::Error,
+            "warning" => hs::LogLevel::Warning,
+            "info" => hs::LogLevel::Info,
+            "debug" => hs::LogLevel::Debug,
+            _ => panic!("Unknown library log level requested"),
+        });
+
     hs::init_and_run(hs::Options {
         msaa,
         present_mode,
         gpu_backend,
+        app_log_level,
+        lib_log_level,
     });
 }
