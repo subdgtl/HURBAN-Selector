@@ -57,18 +57,30 @@ impl Session {
 
             var_visibility: Vec::new(),
 
-            // FIXME: @Correctness this is a hack, there should be
-            // just one instance of the table. Fortunately we don't
-            // ever use it mutable from here. Find a way to split out
-            // the mutable part of the table (the funcs' state) and
-            // make sure that one is only instantiated once, while the
-            // descriptors can be instantiated multiple times and
-            // shared.
+            // FIXME: @Correctness this is a hack that is currently
+            // harmless, but should eventually be cleaned up. Some
+            // funcs have internal state (at the time of writing this
+            // is only the import obj func with its importer
+            // cache). If we create multiple instances of the function
+            // table as we do here (the interpreter has its own
+            // instance), this state will not be shared, which could
+            // lead to unexpected behavior, if the state is mutated
+            // from multiple places. Fortunately, we currenly don't
+            // mutate the state here in the session (nor do we need
+            // to), that's why the hack is harmless. The most clean
+            // solution would be to split the stateful part of funcs
+            // away from the stateless func descriptors, so that the
+            // state only exists in the interpreter and this table
+            // would just contain the function descriptors, which we
+            // wouldn't have to care there are multiple copies of.
             function_table: interpreter_funcs::create_function_table(),
         }
     }
 
     /// Pushes a new statement onto the program.
+    ///
+    /// # Panics
+    /// Panics if the interpreter is busy.
     pub fn push_prog_stmt(&mut self, stmt: Stmt) {
         // This is because the current session could want to report
         // errors and we would like to show them somewhere
@@ -84,6 +96,9 @@ impl Session {
     }
 
     /// Pops a statement from the program.
+    ///
+    /// # Panics
+    /// Panics if the interpreter is busy.
     pub fn pop_prog_stmt(&mut self) {
         // This is because the current session could want to report
         // errors and we would like to show them somewhere
@@ -99,6 +114,9 @@ impl Session {
     }
 
     /// Edits a program statement at the index.
+    ///
+    /// # Panics
+    /// Panics if the interpreter is busy.
     pub fn set_prog_stmt_at(&mut self, index: usize, stmt: Stmt) {
         // This is because the current session could want to report
         // errors and we would like to show them somewhere
