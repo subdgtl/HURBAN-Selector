@@ -10,10 +10,6 @@ authors = [
 ]
 license = "GPL-3.0-only"
 
-[[bench]]
-name = "shrink_wrap"
-harness = false
-
 [features]
 default = []
 dist = ["log/release_max_level_info"]
@@ -42,7 +38,6 @@ serde = "1.0.102"
 winapi = { version = "0.3.8", features = ["combaseapi", "knownfolders", "shlobj", "winerror"] }
 
 [dev-dependencies]
-criterion = "0.3.0"
 mockall = "0.5.1"
 insta = "0.12.0"
 
