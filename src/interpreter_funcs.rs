@@ -1,16 +1,19 @@
 use std::cmp;
-use std::collections::HashMap;
+
+use std::collections::BTreeMap;
 use std::error;
 use std::fmt;
 use std::sync::Arc;
 
 use nalgebra::base::Vector3;
 
-use crate::convert::cast_u32;
 use crate::edge_analysis;
 use crate::geometry;
 use crate::importer::{EndlessCache, Importer, ImporterError, ObjCache};
-use crate::interpreter::{Func, FuncError, FuncFlags, FuncIdent, ParamInfo, Ty, Value};
+use crate::interpreter::{
+    Float3ParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncIdent, FuncInfo,
+    ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
+};
 use crate::mesh_analysis;
 use crate::mesh_smoothing;
 use crate::mesh_tools;
@@ -44,7 +47,20 @@ impl fmt::Display for FuncCreateUvSphereError {
 impl error::Error for FuncCreateUvSphereError {}
 
 pub struct FuncImplCreateUvSphere;
+
+impl FuncImplCreateUvSphere {
+    const MIN_PARALLELS: u32 = 2;
+    const MIN_MERIDIANS: u32 = 3;
+}
+
 impl Func for FuncImplCreateUvSphere {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Create UV Sphere",
+            return_value_name: "Sphere",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
@@ -52,15 +68,45 @@ impl Func for FuncImplCreateUvSphere {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                ty: Ty::Float,
+                name: "Position",
+                refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    default_value_x: Some(0.0),
+                    min_value_x: None,
+                    max_value_x: None,
+                    default_value_y: Some(0.0),
+                    min_value_y: None,
+                    max_value_y: None,
+                    default_value_z: Some(0.0),
+                    min_value_z: None,
+                    max_value_z: None,
+                }),
                 optional: false,
             },
             ParamInfo {
-                ty: Ty::Uint,
+                name: "Scale",
+                refinement: ParamRefinement::Float(FloatParamRefinement {
+                    default_value: Some(1.0),
+                    min_value: Some(0.0),
+                    max_value: None,
+                }),
                 optional: false,
             },
             ParamInfo {
-                ty: Ty::Uint,
+                name: "Parallels",
+                refinement: ParamRefinement::Uint(UintParamRefinement {
+                    default_value: Some(Self::MIN_PARALLELS),
+                    min_value: Some(Self::MIN_PARALLELS),
+                    max_value: None,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Meridians",
+                refinement: ParamRefinement::Uint(UintParamRefinement {
+                    default_value: Some(Self::MIN_MERIDIANS),
+                    min_value: Some(Self::MIN_MERIDIANS),
+                    max_value: None,
+                }),
                 optional: false,
             },
         ]
@@ -71,32 +117,37 @@ impl Func for FuncImplCreateUvSphere {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let scale = args[0].unwrap_float();
-        let n_parallels = args[1].unwrap_uint();
-        let n_meridians = args[2].unwrap_uint();
+        let position = args[0].unwrap_float3();
+        let scale = args[1].unwrap_float();
+        let n_parallels = args[2].unwrap_uint();
+        let n_meridians = args[3].unwrap_uint();
 
-        const MIN_PARALLELS: u32 = 2;
-        const MIN_MERIDIANS: u32 = 3;
-
-        if n_parallels < MIN_PARALLELS {
+        if n_parallels < Self::MIN_PARALLELS {
             return Err(FuncError::new(FuncCreateUvSphereError::TooFewParallels {
                 parallels_provided: n_parallels,
             }));
         }
-        if n_meridians < MIN_MERIDIANS {
+
+        if n_meridians < Self::MIN_MERIDIANS {
             return Err(FuncError::new(FuncCreateUvSphereError::TooFewMeridians {
                 meridians_provided: n_meridians,
             }));
         }
 
-        let value = geometry::uv_sphere([0.0, 0.0, 0.0], scale, n_parallels, n_meridians);
-
+        let value = geometry::uv_sphere(position, scale, n_parallels, n_meridians);
         Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
 pub struct FuncImplShrinkWrap;
 impl Func for FuncImplShrinkWrap {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Shrinkwrap",
+            return_value_name: "Shrinkwrapped Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
@@ -104,11 +155,17 @@ impl Func for FuncImplShrinkWrap {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                ty: Ty::Geometry,
+                name: "Mesh",
+                refinement: ParamRefinement::Geometry,
                 optional: false,
             },
             ParamInfo {
-                ty: Ty::Uint,
+                name: "Density",
+                refinement: ParamRefinement::Uint(UintParamRefinement {
+                    default_value: Some(10),
+                    min_value: Some(FuncImplCreateUvSphere::MIN_MERIDIANS),
+                    max_value: None,
+                }),
                 optional: false,
             },
         ]
@@ -119,17 +176,26 @@ impl Func for FuncImplShrinkWrap {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let value = shrink_wrap::shrink_wrap(ShrinkWrapParams {
-            geometry: args[0].unwrap_geometry(),
-            sphere_density: cast_u32(args[1].unwrap_uint()),
-        });
+        let geometry = args[0].unwrap_geometry();
+        let sphere_density = args[1].unwrap_uint();
 
+        let value = shrink_wrap::shrink_wrap(ShrinkWrapParams {
+            geometry,
+            sphere_density,
+        });
         Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
 pub struct FuncImplTransform;
 impl Func for FuncImplTransform {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Transform",
+            return_value_name: "Transformed Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
@@ -137,19 +203,53 @@ impl Func for FuncImplTransform {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                ty: Ty::Geometry,
+                name: "Mesh",
+                refinement: ParamRefinement::Geometry,
                 optional: false,
             },
             ParamInfo {
-                ty: Ty::Float3,
+                name: "Translate",
+                refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    default_value_x: Some(0.0),
+                    min_value_x: None,
+                    max_value_x: None,
+                    default_value_y: Some(0.0),
+                    min_value_y: None,
+                    max_value_y: None,
+                    default_value_z: Some(0.0),
+                    min_value_z: None,
+                    max_value_z: None,
+                }),
                 optional: true,
             },
             ParamInfo {
-                ty: Ty::Float3,
+                name: "Rotate (deg)",
+                refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    default_value_x: Some(0.0),
+                    min_value_x: None,
+                    max_value_x: None,
+                    default_value_y: Some(0.0),
+                    min_value_y: None,
+                    max_value_y: None,
+                    default_value_z: Some(0.0),
+                    min_value_z: None,
+                    max_value_z: None,
+                }),
                 optional: true,
             },
             ParamInfo {
-                ty: Ty::Float3,
+                name: "Scale",
+                refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    default_value_x: Some(1.0),
+                    min_value_x: None,
+                    max_value_x: None,
+                    default_value_y: Some(1.0),
+                    min_value_y: None,
+                    max_value_y: None,
+                    default_value_z: Some(1.0),
+                    min_value_z: None,
+                    max_value_z: None,
+                }),
                 optional: true,
             },
         ]
@@ -173,20 +273,26 @@ impl Func for FuncImplTransform {
         let scale = args[3].get_float3().map(Vector3::from);
 
         let value = transform::transform(
-            &geometry,
+            geometry,
             transform::TransformOptions {
                 translate,
                 rotate,
                 scale,
             },
         );
-
         Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
 pub struct FuncImplLaplacianSmoothing;
 impl Func for FuncImplLaplacianSmoothing {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Laplacian Smoothing",
+            return_value_name: "Smoothed Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
@@ -194,11 +300,17 @@ impl Func for FuncImplLaplacianSmoothing {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                ty: Ty::Geometry,
+                name: "Mesh",
+                refinement: ParamRefinement::Geometry,
                 optional: false,
             },
             ParamInfo {
-                ty: Ty::Uint,
+                name: "Iterations",
+                refinement: ParamRefinement::Uint(UintParamRefinement {
+                    default_value: Some(1),
+                    min_value: Some(0),
+                    max_value: Some(255),
+                }),
                 optional: false,
             },
         ]
@@ -211,29 +323,37 @@ impl Func for FuncImplLaplacianSmoothing {
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
         let iterations = args[1].unwrap_uint();
-        let vertex_to_vertex_topology = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
 
-        let (g, _, _) = mesh_smoothing::laplacian_smoothing(
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
+
+        let (value, _, _) = mesh_smoothing::laplacian_smoothing(
             geometry,
-            &vertex_to_vertex_topology,
+            &v2v,
             cmp::min(255, iterations),
             &[],
             false,
         );
-
-        Ok(Value::Geometry(Arc::new(g)))
+        Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
 pub struct FuncImplSeparateIsolatedMeshes;
 impl Func for FuncImplSeparateIsolatedMeshes {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Separate Volumes",
+            return_value_name: "Separated Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::empty()
     }
 
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
-            ty: Ty::Geometry,
+            name: "Mesh",
+            refinement: ParamRefinement::Geometry,
             optional: false,
         }]
     }
@@ -245,31 +365,40 @@ impl Func for FuncImplSeparateIsolatedMeshes {
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let geometry = args[0].unwrap_geometry();
 
-        let values = mesh_tools::separate_isolated_meshes(geometry);
+        let values = mesh_tools::separate_isolated_meshes(&geometry);
 
         // FIXME: This returns a slice of Geometries. Return all of them
         let first_value = values
             .into_iter()
             .next()
             .expect("Need at least one geometry");
-
         Ok(Value::Geometry(Arc::new(first_value)))
     }
 }
 
 pub struct FuncImplJoinMeshes;
 impl Func for FuncImplJoinMeshes {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Join Meshes",
+            return_value_name: "Joined Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
+
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                ty: Ty::Geometry,
+                name: "Mesh 1",
+                refinement: ParamRefinement::Geometry,
                 optional: false,
             },
             ParamInfo {
-                ty: Ty::Geometry,
+                name: "Mesh 2",
+                refinement: ParamRefinement::Geometry,
                 optional: false,
             },
         ]
@@ -284,13 +413,19 @@ impl Func for FuncImplJoinMeshes {
         let second_geometry = args[1].unwrap_geometry();
 
         let value = mesh_tools::join_meshes(first_geometry, second_geometry);
-
         Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
 pub struct FuncImplWeld;
 impl Func for FuncImplWeld {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Weld",
+            return_value_name: "Welded Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::empty()
     }
@@ -298,11 +433,17 @@ impl Func for FuncImplWeld {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                ty: Ty::Geometry,
+                name: "Mesh",
+                refinement: ParamRefinement::Geometry,
                 optional: false,
             },
             ParamInfo {
-                ty: Ty::Float,
+                name: "Tolerance",
+                refinement: ParamRefinement::Float(FloatParamRefinement {
+                    default_value: Some(1.0),
+                    min_value: Some(0.0),
+                    max_value: None,
+                }),
                 optional: false,
             },
         ]
@@ -317,13 +458,19 @@ impl Func for FuncImplWeld {
         let tolerance = args[1].unwrap_float();
 
         let value = mesh_tools::weld(geometry, tolerance);
-
         Ok(Value::Geometry(Arc::new(value)))
     }
 }
 
 pub struct FuncImplLoopSubdivision;
 impl Func for FuncImplLoopSubdivision {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Loop Subdivision",
+            return_value_name: "Subdivided Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
@@ -331,11 +478,17 @@ impl Func for FuncImplLoopSubdivision {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                ty: Ty::Geometry,
+                name: "Mesh",
+                refinement: ParamRefinement::Geometry,
                 optional: false,
             },
             ParamInfo {
-                ty: Ty::Uint,
+                name: "Iterations",
+                refinement: ParamRefinement::Uint(UintParamRefinement {
+                    default_value: Some(1),
+                    min_value: Some(0),
+                    max_value: Some(5),
+                }),
                 optional: false,
             },
         ]
@@ -357,16 +510,14 @@ impl Func for FuncImplLoopSubdivision {
             return Ok(Value::Geometry(geometry));
         }
 
-        let mut v2v_topology = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
-        let mut f2f_topology = mesh_topology_analysis::face_to_face_topology(&geometry);
-        let mut current_geometry =
-            mesh_smoothing::loop_subdivision(&geometry, &v2v_topology, &f2f_topology);
+        let mut v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
+        let mut f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
+        let mut current_geometry = mesh_smoothing::loop_subdivision(&geometry, &v2v, &f2f);
 
         for _ in 1..iterations {
-            v2v_topology = mesh_topology_analysis::vertex_to_vertex_topology(&current_geometry);
-            f2f_topology = mesh_topology_analysis::face_to_face_topology(&current_geometry);
-            current_geometry =
-                mesh_smoothing::loop_subdivision(&current_geometry, &v2v_topology, &f2f_topology);
+            v2v = mesh_topology_analysis::vertex_to_vertex_topology(&current_geometry);
+            f2f = mesh_topology_analysis::face_to_face_topology(&current_geometry);
+            current_geometry = mesh_smoothing::loop_subdivision(&current_geometry, &v2v, &f2f);
         }
 
         Ok(Value::Geometry(Arc::new(current_geometry)))
@@ -375,6 +526,13 @@ impl Func for FuncImplLoopSubdivision {
 
 pub struct FuncImplCreatePlane;
 impl Func for FuncImplCreatePlane {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Create Plane",
+            return_value_name: "Plane",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
@@ -382,11 +540,27 @@ impl Func for FuncImplCreatePlane {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                ty: Ty::Float3,
+                name: "Position",
+                refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    default_value_x: Some(0.0),
+                    min_value_x: None,
+                    max_value_x: None,
+                    default_value_y: Some(0.0),
+                    min_value_y: None,
+                    max_value_y: None,
+                    default_value_z: Some(0.0),
+                    min_value_z: None,
+                    max_value_z: None,
+                }),
                 optional: true,
             },
             ParamInfo {
-                ty: Ty::Float,
+                name: "Scale",
+                refinement: ParamRefinement::Float(FloatParamRefinement {
+                    default_value: Some(1.0),
+                    min_value: Some(0.0),
+                    max_value: None,
+                }),
                 optional: true,
             },
         ]
@@ -401,7 +575,6 @@ impl Func for FuncImplCreatePlane {
         let scale = values[1].get_float().unwrap_or(1.0);
 
         let value = geometry::plane(position, scale);
-
         Ok(Value::Geometry(Arc::new(value)))
     }
 }
@@ -428,13 +601,21 @@ pub struct FuncImplImportObjMesh<C: ObjCache> {
 }
 
 impl<C: ObjCache> Func for FuncImplImportObjMesh<C> {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Import OBJ",
+            return_value_name: "Imported Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::empty()
     }
 
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
-            ty: Ty::String,
+            name: "Path",
+            refinement: ParamRefinement::String,
             optional: false,
         }]
     }
@@ -452,6 +633,7 @@ impl<C: ObjCache> Func for FuncImplImportObjMesh<C> {
                 // FIXME: @Correctness Join all meshes into one once
                 // we have join implemented for more than just 2
                 // meshes
+
                 let first_model = models.into_iter().next();
                 if let Some(first_model) = first_model {
                     Ok(Value::Geometry(Arc::new(first_model.geometry)))
@@ -466,13 +648,21 @@ impl<C: ObjCache> Func for FuncImplImportObjMesh<C> {
 
 pub struct FuncImplRevertMeshFaces;
 impl Func for FuncImplRevertMeshFaces {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Revert Faces",
+            return_value_name: "Reverted Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
 
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
-            ty: Ty::Geometry,
+            name: "Mesh",
+            refinement: ParamRefinement::Geometry,
             optional: false,
         }]
     }
@@ -491,13 +681,21 @@ impl Func for FuncImplRevertMeshFaces {
 
 pub struct FuncImplSynchronizeMeshFaces;
 impl Func for FuncImplSynchronizeMeshFaces {
+    fn info(&self) -> &FuncInfo {
+        &FuncInfo {
+            name: "Synchronize Faces",
+            return_value_name: "Synchronized Mesh",
+        }
+    }
+
     fn flags(&self) -> FuncFlags {
         FuncFlags::PURE
     }
 
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
-            ty: Ty::Geometry,
+            name: "Mesh",
+            refinement: ParamRefinement::Geometry,
             optional: false,
         }]
     }
@@ -531,49 +729,70 @@ impl Func for FuncImplSynchronizeMeshFaces {
 
 // IMPORTANT: Do not change these IDs, ever! When adding a new
 // function, always create a new, unique function identifier for it.
+// Also note: the number in the identifier currently also defines the
+// order of the operation in the UI.
 
-pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(0);
-pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(1);
-pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(2);
-pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3);
-pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(4);
-pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(5);
-pub const FUNC_ID_WELD: FuncIdent = FuncIdent(6);
-pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(7);
-pub const FUNC_ID_CREATE_PLANE: FuncIdent = FuncIdent(8);
-pub const FUNC_ID_IMPORT_OBJ_MESH: FuncIdent = FuncIdent(9);
-pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(10);
-pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(11);
+// Special funcs
+pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0000);
 
-/// Returns the function table for the interpreter.
+// Create funcs
+pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(1000);
+pub const FUNC_ID_CREATE_PLANE: FuncIdent = FuncIdent(1001);
+
+// Import/Export funcs
+pub const FUNC_ID_IMPORT_OBJ_MESH: FuncIdent = FuncIdent(2000);
+
+// Smoothing funcs
+pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3000);
+pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(3001);
+
+// Tool funcs
+pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(9000);
+pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(9001);
+pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(9002);
+pub const FUNC_ID_WELD: FuncIdent = FuncIdent(9003);
+pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(9004);
+pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(9005);
+
+/// Returns the global set of function definitions available to the
+/// editor.
 ///
 /// Note that since funcs can have internal state such as a cache or
 /// random state, two instances of the function table are not always
 /// equivalent.
-pub fn create_function_table() -> HashMap<FuncIdent, Box<dyn Func>> {
-    let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
+    let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
 
-    funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncImplCreateUvSphere));
-    funcs.insert(FUNC_ID_SHRINK_WRAP, Box::new(FuncImplShrinkWrap));
+    // Special funcs
     funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncImplTransform));
-    funcs.insert(
-        FUNC_ID_LAPLACIAN_SMOOTHING,
-        Box::new(FuncImplLaplacianSmoothing),
-    );
-    funcs.insert(
-        FUNC_ID_SEPARATE_ISOLATED_MESHES,
-        Box::new(FuncImplSeparateIsolatedMeshes),
-    );
-    funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncImplJoinMeshes));
-    funcs.insert(FUNC_ID_WELD, Box::new(FuncImplWeld));
-    funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncImplLoopSubdivision));
+
+    // Create funcs
+    funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncImplCreateUvSphere));
     funcs.insert(FUNC_ID_CREATE_PLANE, Box::new(FuncImplCreatePlane));
+
+    // Import/Export funcs
     funcs.insert(
         FUNC_ID_IMPORT_OBJ_MESH,
         Box::new(FuncImplImportObjMesh {
             importer: Importer::new(EndlessCache::default()),
         }),
     );
+
+    // Smoothing funcs
+    funcs.insert(
+        FUNC_ID_LAPLACIAN_SMOOTHING,
+        Box::new(FuncImplLaplacianSmoothing),
+    );
+    funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncImplLoopSubdivision));
+
+    // Tool funcs
+    funcs.insert(FUNC_ID_SHRINK_WRAP, Box::new(FuncImplShrinkWrap));
+    funcs.insert(
+        FUNC_ID_SEPARATE_ISOLATED_MESHES,
+        Box::new(FuncImplSeparateIsolatedMeshes),
+    );
+    funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncImplJoinMeshes));
+    funcs.insert(FUNC_ID_WELD, Box::new(FuncImplWeld));
     funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncImplRevertMeshFaces));
     funcs.insert(
         FUNC_ID_SYNCHRONIZE_MESH_FACES,

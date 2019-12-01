@@ -1,4 +1,4 @@
-use std::slice;
+use std::iter;
 use std::u32;
 
 use crate::geometry::{self, Geometry};
@@ -9,7 +9,7 @@ pub struct ShrinkWrapParams<'a> {
 }
 
 pub fn shrink_wrap(params: ShrinkWrapParams) -> Geometry {
-    let (center, radius) = geometry::compute_bounding_sphere(slice::from_ref(&params.geometry));
+    let (center, radius) = geometry::compute_bounding_sphere(iter::once(params.geometry));
     let mut sphere_geometry = geometry::uv_sphere(
         center.coords.into(),
         radius,
