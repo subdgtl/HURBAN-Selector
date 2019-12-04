@@ -44,6 +44,9 @@ pub fn are_triangle_vertices_colinear(
 
 /// Checks if a point lies in a triangle.
 ///
+/// #Panics
+/// Panics if triangle is colinear
+///
 /// https://math.stackexchange.com/questions/4322/check-whether-a-point-is-within-a-3d-triangle
 // TODO: Orient the triangle and point to XY plane and then test
 fn is_point_in_triangle(
@@ -327,7 +330,6 @@ pub fn pull_point_to_mesh(
     }
 
     // Exit and return the point itself.
-    // TODO: test
     if is_on_mesh {
         return PulledPointWithDistance {
             point: *point,
@@ -354,7 +356,6 @@ pub fn pull_point_to_mesh(
     }
 
     // Exit and return the point itself.
-    // TODO: test
     if is_on_mesh {
         return PulledPointWithDistance {
             point: *point,
@@ -482,6 +483,123 @@ mod tests {
         );
 
         let test_point = Point3::new(0.0, 0.0, 1.0);
+
+        assert!(!is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    fn test_vertex_tools_is_point_in_triangle_returns_true_for_point_inside_xy() {
+        let triangle_points = (
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(1.0, 0.0, 0.0),
+            &Point3::new(0.0, 0.0, 0.0),
+        );
+
+        let test_point = Point3::new(0.25, 0.25, 0.0);
+
+        assert!(is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_outside_xy() {
+        let triangle_points = (
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(1.0, 0.0, 0.0),
+            &Point3::new(0.0, 0.0, 0.0),
+        );
+
+        let test_point = Point3::new(1.0, 1.0, 0.0);
+
+        assert!(!is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_above_xy() {
+        let triangle_points = (
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(1.0, 0.0, 0.0),
+            &Point3::new(0.0, 0.0, 0.0),
+        );
+
+        let test_point = Point3::new(0.25, 0.25, 1.0);
+
+        assert!(!is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    fn test_vertex_tools_is_point_in_triangle_returns_true_for_point_inside_xz() {
+        let triangle_points = (
+            &Point3::new(0.0, 0.0, 1.0),
+            &Point3::new(1.0, 0.0, 0.0),
+            &Point3::new(0.0, 0.0, 0.0),
+        );
+
+        let test_point = Point3::new(0.25, 0.0, 0.25);
+
+        assert!(is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_outside_xz() {
+        let triangle_points = (
+            &Point3::new(0.0, 0.0, 1.0),
+            &Point3::new(1.0, 0.0, 0.0),
+            &Point3::new(0.0, 0.0, 0.0),
+        );
+
+        let test_point = Point3::new(1.0, 0.0, 1.0);
+
+        assert!(!is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_above_xz() {
+        let triangle_points = (
+            &Point3::new(0.0, 0.0, 1.0),
+            &Point3::new(1.0, 0.0, 0.0),
+            &Point3::new(0.0, 0.0, 0.0),
+        );
+
+        let test_point = Point3::new(0.25, 1.0, 0.25);
+
+        assert!(!is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    fn test_vertex_tools_is_point_in_triangle_returns_true_for_point_inside_yz() {
+        let triangle_points = (
+            &Point3::new(0.0, 0.0, 1.0),
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(0.0, 0.0, 0.0),
+        );
+
+        let test_point = Point3::new(0.0, 0.25, 0.25);
+
+        assert!(is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_outside_yz() {
+        let triangle_points = (
+            &Point3::new(0.0, 0.0, 1.0),
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(0.0, 0.0, 0.0),
+        );
+
+        let test_point = Point3::new(0.0, 1.0, 1.0);
+
+        assert!(!is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_above_yz() {
+        let triangle_points = (
+            &Point3::new(0.0, 0.0, 1.0),
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(0.0, 0.0, 0.0),
+        );
+
+        let test_point = Point3::new(1.0, 0.25, 0.25);
 
         assert!(!is_point_in_triangle(&test_point, triangle_points));
     }
@@ -720,10 +838,10 @@ mod tests {
         let pulled_point_on_mesh_calculated =
             pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
 
-        assert_eq!(point_on_mesh_correct, pulled_point_on_mesh_calculated.point);
+        assert_eq!(pulled_point_on_mesh_calculated.point, point_on_mesh_correct);
         assert_eq!(
+            pulled_point_on_mesh_calculated.distance,
             nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.point),
-            pulled_point_on_mesh_calculated.distance
         );
     }
 
@@ -738,10 +856,42 @@ mod tests {
         let pulled_point_on_mesh_calculated =
             pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
 
-        assert_eq!(point_on_mesh_correct, pulled_point_on_mesh_calculated.point);
+        assert_eq!(pulled_point_on_mesh_calculated.point, point_on_mesh_correct);
         assert_eq!(
+            pulled_point_on_mesh_calculated.distance,
             nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.point),
-            pulled_point_on_mesh_calculated.distance
+        );
+    }
+
+    #[test]
+    fn test_vertex_tools_pull_point_to_mesh_cube_point_on_face() {
+        let cube_geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
+        let test_point = Point3::new(0.0, 0.0, 1.0);
+        let unoriented_edges: Vec<_> = cube_geometry.unoriented_edges_iter().collect();
+
+        let pulled_point_on_mesh_calculated =
+            pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
+
+        assert_eq!(pulled_point_on_mesh_calculated.point, test_point);
+        assert_eq!(
+            pulled_point_on_mesh_calculated.distance,
+            nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.point),
+        );
+    }
+
+    #[test]
+    fn test_vertex_tools_pull_point_to_mesh_cube_point_on_edge() {
+        let cube_geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
+        let test_point = Point3::new(1.0, 1.0, 0.0);
+        let unoriented_edges: Vec<_> = cube_geometry.unoriented_edges_iter().collect();
+
+        let pulled_point_on_mesh_calculated =
+            pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
+
+        assert_eq!(pulled_point_on_mesh_calculated.point, test_point);
+        assert_eq!(
+            pulled_point_on_mesh_calculated.distance,
+            nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.point),
         );
     }
 
