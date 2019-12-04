@@ -32,6 +32,16 @@ pub fn compute_barycentric_coords(
     }
 }
 
+/// Checks if all three points of a triangle lay on the same line.
+pub fn are_triangle_vertices_colinear(
+    triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
+) -> bool {
+    let v0_normalized = triangle_vertices.0.coords.normalize();
+    let v1_normalized = triangle_vertices.1.coords.normalize();
+    let v2_normalized = triangle_vertices.2.coords.normalize();
+    v0_normalized == v1_normalized && v0_normalized == v2_normalized
+}
+
 /// Checks if a point lies in a triangle.
 ///
 /// https://math.stackexchange.com/questions/4322/check-whether-a-point-is-within-a-3d-triangle
@@ -105,7 +115,6 @@ fn ray_intersects_triangle(
     ray_vector: &Vector3<f32>,
     triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
 ) -> Option<PulledPointWithDistance> {
-    // TODO: test
     assert!(ray_vector != &Vector3::zeros(), "Ray vector zero");
 
     let ray_vector_normalized = ray_vector.normalize();
@@ -175,7 +184,6 @@ fn ray_intersects_plane(
     ray_vector: &Vector3<f32>,
     plane: &Plane,
 ) -> Option<PulledPointWithDistance> {
-    // TODO: test
     assert!(ray_vector != &Vector3::zeros(), "Ray vector zero");
 
     let plane_normal = plane.normal();
@@ -297,28 +305,65 @@ pub fn pull_point_to_mesh(
             geometry::compute_triangle_normal(face_vertices.0, face_vertices.1, face_vertices.2),
         )
     });
-    let points_pulled_to_faces =
-        all_mesh_faces_with_normals.filter_map(|(face_vertices, face_normal)| {
-            // TODO: test if the point is on the triangle first
-            ray_intersects_triangle(point, &(-1.0 * face_normal), face_vertices)
-        });
+    let mut is_on_mesh = false;
 
-    let points_pulled_to_edges = unoriented_edges.iter().map(|u_e| {
+    let mut pulled_points: Vec<PulledPointWithDistance> = Vec::new();
+    // Pull to faces
+    for (face_vertices, face_normal) in all_mesh_faces_with_normals {
+        // If the point already lays in the face, it means it's already puled to the mesh.
+        if is_point_in_triangle(point, face_vertices) {
+            is_on_mesh = true;
+            break;
+        }
+        // If triangle vertices are colinear, it's enough to pull to
+        // triangle edges later on.
+        if !are_triangle_vertices_colinear(face_vertices) {
+            if let Some(intersection_point) =
+                ray_intersects_triangle(point, &(-1.0 * face_normal), face_vertices)
+            {
+                pulled_points.push(intersection_point);
+            }
+        }
+    }
+
+    // Exit and return the point itself.
+    // TODO: test
+    if is_on_mesh {
+        return PulledPointWithDistance {
+            point: *point,
+            distance: 0.0,
+        };
+    }
+
+    // Pull to edges
+    for u_e in unoriented_edges {
         let closest_point = pull_point_to_line(
             point,
             &vertices[cast_usize(u_e.0.vertices.0)],
             &vertices[cast_usize(u_e.0.vertices.1)],
         );
-        PulledPointWithDistance {
+        // If the point already lays in the edge, it means it's already puled to the mesh.
+        if closest_point.clamped == *point {
+            is_on_mesh = true;
+            break;
+        }
+        pulled_points.push(PulledPointWithDistance {
             point: closest_point.clamped,
             distance: nalgebra::distance(point, &closest_point.clamped),
-        }
-    });
+        });
+    }
 
-    let mut all_pulled_points = points_pulled_to_faces.chain(points_pulled_to_edges);
+    // Exit and return the point itself.
+    // TODO: test
+    if is_on_mesh {
+        return PulledPointWithDistance {
+            point: *point,
+            distance: 0.0,
+        };
+    }
 
-    let mut closest_pulled_point = all_pulled_points.next().expect("No pulled point found");
-    for current_pulled_point in all_pulled_points {
+    let mut closest_pulled_point = pulled_points.pop().expect("No pulled point found");
+    for current_pulled_point in pulled_points {
         if current_pulled_point.distance < closest_pulled_point.distance {
             closest_pulled_point = current_pulled_point;
         }
@@ -439,6 +484,21 @@ mod tests {
         let test_point = Point3::new(0.0, 0.0, 1.0);
 
         assert!(!is_point_in_triangle(&test_point, triangle_points));
+    }
+
+    #[test]
+    #[should_panic = "Ray vector zero"]
+    fn test_vertex_tools_ray_intersects_triangle_panics_for_zero_vector_ray() {
+        let triangle_points = (
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(1.0, 0.0, 0.0),
+            &Point3::new(0.0, 0.0, 1.0),
+        );
+
+        let ray_origin = Point3::origin();
+        let ray_vector = Vector3::zeros();
+
+        ray_intersects_triangle(&ray_origin, &ray_vector, triangle_points);
     }
 
     #[test]
