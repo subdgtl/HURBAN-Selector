@@ -9,7 +9,7 @@ use crate::geometry::{self, Face, Geometry, Plane, UnorientedEdge};
 
 /// Compute barycentric coordinates of point P in triangle A, B, C. Returns None
 /// for degenerate triangles.
-pub fn to_barycentric(
+pub fn compute_barycentric_coords(
     a: Point2<f32>,
     b: Point2<f32>,
     c: Point2<f32>,
@@ -35,6 +35,7 @@ pub fn to_barycentric(
 /// Checks if a point lies in a triangle.
 ///
 /// https://math.stackexchange.com/questions/4322/check-whether-a-point-is-within-a-3d-triangle
+// TODO: Orient the triangle and point to XY plane and then test
 fn is_point_in_triangle(
     point: &Point3<f32>,
     triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
@@ -60,12 +61,13 @@ fn is_point_in_triangle(
         triangle_vertices.2,
     );
 
-    if is_point_on_plane(point, &plane.origin, &plane.normal()) {
+    if is_point_on_plane(point, &plane) {
         let a = Point2::origin();
         let b = Point2::from((triangle_vertices.1 - triangle_vertices.0).xy());
         let c = Point2::from((triangle_vertices.2 - triangle_vertices.0).xy());
         let p = Point2::from((point - triangle_vertices.0).xy());
-        let barycentric_point = to_barycentric(a, b, c, p).expect("The triangle is degenerate");
+        let barycentric_point =
+            compute_barycentric_coords(a, b, c, p).expect("The triangle is degenerate");
 
         barycentric_point.x >= 0.0
             && barycentric_point.x <= 1.0
@@ -82,10 +84,19 @@ fn is_point_in_triangle(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PulledPointWithDistance {
+    point: Point3<f32>,
+    distance: f32,
+}
+
 /// The Möller–Trumbore ray-triangle intersection algorithm is a fast method for
 /// calculating the intersection of a ray and a triangle in three dimensions
 /// without the need of precomputation of the plane equation of the plane
 /// containing the triangle.
+///
+/// #Panics
+/// Panics if ray vector is zero.
 ///
 /// https://en.wikipedia.org/wiki/Möller–Trumbore_intersection_algorithm
 /// http://webserver2.tecgraf.puc-rio.br/~mgattass/cg/trbRR/Fast%20MinimumStorage%20RayTriangle%20Intersection.pdf
@@ -94,12 +105,9 @@ fn ray_intersects_triangle(
     ray_vector: &Vector3<f32>,
     triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
 ) -> Option<PulledPointWithDistance> {
-    if is_point_in_triangle(ray_origin, triangle_vertices) {
-        return Some(PulledPointWithDistance {
-            point: *ray_origin,
-            distance: 0.0,
-        });
-    }
+    // TODO: test
+    assert!(ray_vector != &Vector3::zeros(), "Ray vector zero");
+
     let ray_vector_normalized = ray_vector.normalize();
     let edge_1_vector = triangle_vertices.1 - triangle_vertices.0;
     let edge_2_vector = triangle_vertices.2 - triangle_vertices.0;
@@ -144,22 +152,21 @@ fn ray_intersects_triangle(
 /// Test if an arbitrary point lies on a plane.
 ///
 /// https://stackoverflow.com/questions/17227149/using-dot-product-to-determine-if-point-lies-on-a-plane
-fn is_point_on_plane(
-    point: &Point3<f32>,
-    point_on_plane: &Point3<f32>,
-    plane_normal: &Vector3<f32>,
-) -> bool {
-    let vector_from_plane_point_to_point = point - point_on_plane;
-    point == point_on_plane
+fn is_point_on_plane(point: &Point3<f32>, plane: &Plane) -> bool {
+    let vector_from_plane_point_to_point = point - plane.origin();
+    point == plane.origin()
         || approx::relative_eq!(
             vector_from_plane_point_to_point
                 .normalize()
-                .dot(&plane_normal.normalize()),
+                .dot(&plane.normal()),
             0.0
         )
 }
 
 /// Find an intersection or a ray and a plane.
+///
+/// #Panics
+/// Panics if ray vector is zero.
 ///
 /// https://rosettacode.org/wiki/Find_the_intersection_of_a_line_with_a_plane#Rust
 /// https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-plane-and-ray-disk-intersection
@@ -168,20 +175,17 @@ fn ray_intersects_plane(
     ray_vector: &Vector3<f32>,
     plane: &Plane,
 ) -> Option<PulledPointWithDistance> {
+    // TODO: test
+    assert!(ray_vector != &Vector3::zeros(), "Ray vector zero");
+
     let plane_normal = plane.normal();
-    if is_point_on_plane(ray_origin, &plane.origin, &plane_normal) {
-        return Some(PulledPointWithDistance {
-            point: *ray_origin,
-            distance: 0.0,
-        });
-    }
     let ray_vector_normalized = ray_vector.normalize();
     let denominator = ray_vector_normalized.dot(&plane_normal);
     // The ray is parallel to the plane
     if approx::relative_eq!(denominator, 0.0) {
         None
     } else {
-        let ray_to_plane_origin_vector = ray_origin - plane.origin;
+        let ray_to_plane_origin_vector = ray_origin - *plane.origin();
         let t_parameter = ray_to_plane_origin_vector.dot(&plane_normal) / denominator;
         Some(PulledPointWithDistance {
             point: ray_origin - ray_vector_normalized.scale(t_parameter),
@@ -269,12 +273,6 @@ pub fn pull_point_to_line(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PulledPointWithDistance {
-    point: Point3<f32>,
-    distance: f32,
-}
-
 /// Pulls arbitrary point to the closest point of a mesh geometry.
 ///
 /// Cast a ray from the point perpendicular to each mesh face and if there is an
@@ -301,6 +299,7 @@ pub fn pull_point_to_mesh(
     });
     let points_pulled_to_faces =
         all_mesh_faces_with_normals.filter_map(|(face_vertices, face_normal)| {
+            // TODO: test if the point is on the triangle first
             ray_intersects_triangle(point, &(-1.0 * face_normal), face_vertices)
         });
 
@@ -334,8 +333,15 @@ pub fn pull_point_to_mesh(
 /// intersection.
 #[allow(dead_code)]
 pub fn pull_point_to_plane(point: &Point3<f32>, plane: &Plane) -> PulledPointWithDistance {
-    ray_intersects_plane(point, &plane.normal(), plane)
-        .expect("The normal is parallel to its plane")
+    if is_point_on_plane(point, &plane) {
+        return PulledPointWithDistance {
+            point: *point,
+            distance: 0.0,
+        };
+    } else {
+        ray_intersects_plane(point, &plane.normal(), plane)
+            .expect("The normal is parallel to its plane")
+    }
 }
 
 #[cfg(test)]
@@ -345,7 +351,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_vertex_tools_to_barycentric_for_point_inside() {
+    fn test_vertex_tools_compute_barycentric_coords_for_point_inside() {
         let triangle_points = (
             Point2::new(0.0, 1.0),
             Point2::new(-0.866025, -0.5),
@@ -353,7 +359,7 @@ mod tests {
         );
 
         let test_point = Point2::new(0.0, 0.0);
-        let barycentric_calculated = to_barycentric(
+        let barycentric_calculated = compute_barycentric_coords(
             triangle_points.0,
             triangle_points.1,
             triangle_points.2,
@@ -371,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_to_barycentric_for_point_outside() {
+    fn test_vertex_tools_compute_barycentric_coords_for_point_outside() {
         let triangle_points = (
             Point2::new(0.0, 1.0),
             Point2::new(-0.866025, -0.5),
@@ -379,7 +385,7 @@ mod tests {
         );
 
         let test_point = Point2::new(0.0, 2.0);
-        let barycentric_calculated = to_barycentric(
+        let barycentric_calculated = compute_barycentric_coords(
             triangle_points.0,
             triangle_points.1,
             triangle_points.2,
@@ -433,26 +439,6 @@ mod tests {
         let test_point = Point3::new(0.0, 0.0, 1.0);
 
         assert!(!is_point_in_triangle(&test_point, triangle_points));
-    }
-
-    #[test]
-    fn test_vertex_tools_ray_intersects_triangle_for_horizontal_triangle_and_point_inside_returns_identical(
-    ) {
-        let face_points = (
-            &Point3::new(0.0, 1.0, 0.0),
-            &Point3::new(-0.866025, -0.5, 0.0),
-            &Point3::new(0.866025, -0.5, 0.0),
-        );
-
-        let ray_origin = Point3::new(0.0, 0.0, 0.0);
-        let ray_vector = Vector3::new(0.0, 0.0, 0.0);
-
-        let point_on_triangle_calculated =
-            ray_intersects_triangle(&ray_origin, &ray_vector, face_points)
-                .expect("Point is not on the triangle.");
-
-        assert_eq!(point_on_triangle_calculated.point, ray_origin);
-        assert_eq!(point_on_triangle_calculated.distance, 0.0);
     }
 
     #[test]
@@ -541,26 +527,6 @@ mod tests {
             point_on_triangle_correct
         );
         assert_eq!(point_on_triangle_calculated.distance, distance_correct);
-    }
-
-    #[test]
-    fn test_vertex_tools_ray_intersects_triangle_for_horizontal_triangle_returns_self_for_point_inside(
-    ) {
-        let face_points = (
-            &Point3::new(0.0, 1.0, 0.0),
-            &Point3::new(-0.866025, -0.5, 0.0),
-            &Point3::new(0.866025, -0.5, 0.0),
-        );
-
-        let ray_origin = Point3::new(0.0, 0.0, 0.0);
-        let ray_vector = Vector3::new(0.0, 0.0, -1.0);
-
-        let point_on_triangle_calculated =
-            ray_intersects_triangle(&ray_origin, &ray_vector, face_points)
-                .expect("Point is not on the triangle.");
-
-        assert_eq!(point_on_triangle_calculated.point, ray_origin);
-        assert_eq!(point_on_triangle_calculated.distance, 0.0);
     }
 
     #[test]
@@ -723,22 +689,20 @@ mod tests {
     fn test_vertex_tools_is_point_on_plane_returns_true_for_point_on_plane() {
         let plane_origin = Point3::new(1.0, 0.0, 0.0);
         let plane_normal = Vector3::new(1.0, 0.0, 0.0);
+        let plane = Plane::from_origin_and_normal(&plane_origin, &plane_normal);
         let test_point = Point3::new(1.0, 1.0, 1.0);
 
-        assert!(is_point_on_plane(&test_point, &plane_origin, &plane_normal));
+        assert!(is_point_on_plane(&test_point, &plane));
     }
 
     #[test]
     fn test_vertex_tools_is_point_on_plane_returns_false_for_point_elsewhere() {
         let plane_origin = Point3::new(1.0, 0.0, 0.0);
         let plane_normal = Vector3::new(1.0, 0.0, 0.0);
+        let plane = Plane::from_origin_and_normal(&plane_origin, &plane_normal);
         let test_point = Point3::new(2.0, 1.0, 1.0);
 
-        assert!(!is_point_on_plane(
-            &test_point,
-            &plane_origin,
-            &plane_normal
-        ));
+        assert!(!is_point_on_plane(&test_point, &plane));
     }
 
     #[test]
@@ -749,14 +713,17 @@ mod tests {
 
         let plane = Plane::from_origin_and_normal(&Point3::origin(), &normal);
 
-        let point_on_plane_correct = Point3::new(-3.401022, 1.2537622, -3.679488);
+        let point_on_plane_correct = Point3::new(-3.4010215, 1.2537622, -3.6794877);
         let distance_correct = nalgebra::distance(&ray_origin, &point_on_plane_correct);
 
         let point_on_plane_calculated = ray_intersects_plane(&ray_origin, &ray_vector, &plane)
             .expect("The ray doesn't intersect the plane");
 
         assert_eq!(point_on_plane_calculated.point, point_on_plane_correct);
-        assert_eq!(point_on_plane_calculated.distance, distance_correct);
+        assert!(approx::relative_eq!(
+            point_on_plane_calculated.distance,
+            distance_correct
+        ));
     }
 
     #[test]
@@ -767,7 +734,7 @@ mod tests {
 
         let plane = Plane::from_origin_and_normal(&Point3::origin(), &normal);
 
-        let point_on_plane_correct = Point3::new(-0.2509706, -1.667917, 1.3855793);
+        let point_on_plane_correct = Point3::new(-0.25097048, -1.667917, 1.3855792);
         let distance_correct = nalgebra::distance(&ray_origin, &point_on_plane_correct);
 
         let point_on_plane_calculated = ray_intersects_plane(&ray_origin, &ray_vector, &plane)
@@ -812,21 +779,28 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_plane_returns_self_for_point_on_plane_and_parallel_ray() {
+    #[should_panic = "Ray vector zero"]
+    fn test_vertex_tools_ray_intersects_plane_panics_for_zero_vector_ray() {
         let normal = Vector3::new(0.0, 0.0, 1.0);
-        let ray_vector = Vector3::new(1.0, 1.0, 0.0);
+        let ray_vector = Vector3::zeros();
         let ray_origin = Point3::new(1.0, 1.0, 0.0);
 
         let plane = Plane::from_origin_and_normal(&Point3::origin(), &normal);
 
-        let point_on_plane_calculated = ray_intersects_plane(&ray_origin, &ray_vector, &plane)
-            .expect("The ray doesn't intersect the plane");
+        ray_intersects_plane(&ray_origin, &ray_vector, &plane);
+    }
 
-        assert_eq!(point_on_plane_calculated.point, ray_origin);
-        assert!(approx::relative_eq!(
-            point_on_plane_calculated.distance,
-            0.0,
-        ));
+    #[test]
+    fn test_vertex_tools_ray_intersects_plane_returns_none_for_parallel_ray() {
+        let normal = Vector3::new(0.0, 0.0, 1.0);
+        let ray_vector = Vector3::new(1.0, 1.0, 0.0);
+        let ray_origin = Point3::new(1.0, 1.0, 1.0);
+
+        let plane = Plane::from_origin_and_normal(&Point3::origin(), &normal);
+
+        let point_on_plane_calculated = ray_intersects_plane(&ray_origin, &ray_vector, &plane);
+
+        assert_eq!(point_on_plane_calculated, None);
     }
 
     #[test]

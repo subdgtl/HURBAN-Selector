@@ -792,15 +792,18 @@ fn remove_orphan_vertices_and_normals(
 /// distortions or scaling.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Plane {
-    pub origin: Point3<f32>,
-    /// The X vector is leading and its direction is kept in the plane unchanged.
-    pub x_vector: Vector3<f32>,
-    /// The Y vector is only a hint and is being recalculated to be perpendicular to
-    /// the leading X vector.
-    pub y_vector: Vector3<f32>,
+    origin: Point3<f32>,
+    x_vector: Vector3<f32>,
+    y_vector: Vector3<f32>,
 }
 
 impl Plane {
+    /// A plane defined by its origin, X and Y direction vector.
+    ///
+    /// The X vector is leading and its direction is kept in the plane unchanged.
+    ///
+    /// The Y vector is only a hint and is being recalculated to be perpendicular to
+    /// the leading X vector.
     /// # Panics
     /// Panics if the X and Y vectors are parallel (identical or reverted).
     pub fn new(
@@ -808,26 +811,22 @@ impl Plane {
         x_vector: &Vector3<f32>,
         y_vector_hint: &Vector3<f32>,
     ) -> Plane {
-        let x_vector_normalized = x_vector.normalize();
-        let y_vector_hint_normalized = y_vector_hint.normalize();
+        // Calculate plane normal, then use it to calculate certainly
+        // perpendicular Y vector.
+        let plane_normal = x_vector.cross(&y_vector_hint);
 
         assert!(
-            x_vector_normalized != y_vector_hint_normalized,
-            "The X and Y vectors defining a plane must be different"
-        );
-        assert!(
-            x_vector_normalized != -1.0 * y_vector_hint_normalized,
-            "The X and Y vectors defining a plane can't form a 180 degree angle"
+            plane_normal != Vector3::zeros(),
+            "The X and Y vectors defining a plane can't be parallel or reverted"
         );
 
-        // Make sure the Y vector is perpendicular to the leading X vector
-        let plane_normal = x_vector_normalized.cross(&y_vector_hint_normalized);
-        let y_vector_normalized = plane_normal.cross(&x_vector_normalized).normalize();
+        // Make sure the Y vector is perpendicular to the leading X vector.
+        let y_vector = plane_normal.cross(&x_vector);
 
         Plane {
             origin: *origin,
-            x_vector: x_vector_normalized,
-            y_vector: y_vector_normalized,
+            x_vector: x_vector.normalize(),
+            y_vector: y_vector.normalize(),
         }
     }
 
@@ -836,7 +835,11 @@ impl Plane {
     /// # Panics
     /// Panics if the normal vector is a zero vector.
     pub fn from_origin_and_normal(origin: &Point3<f32>, normal: &Vector3<f32>) -> Plane {
-        assert_ne!(*normal, Vector3::zeros());
+        assert_ne!(
+            *normal,
+            Vector3::zeros(),
+            "Can't create a plane defined by a zero normal vector"
+        );
         let lead_vector =
             if approx::relative_eq!(Vector3::new(1.0, 0.0, 0.0).dot(&normal).abs(), 1.0) {
                 Vector3::new(0.0, 1.0, 0.0)
@@ -859,7 +862,19 @@ impl Plane {
     }
 
     pub fn normal(&self) -> Vector3<f32> {
-        self.x_vector.cross(&self.y_vector).normalize()
+        self.x_vector.cross(&self.y_vector)
+    }
+
+    pub fn x_vector(&self) -> &Vector3<f32> {
+        &self.x_vector
+    }
+
+    pub fn y_vector(&self) -> &Vector3<f32> {
+        &self.y_vector
+    }
+
+    pub fn origin(&self) -> &Point3<f32> {
+        &self.origin
     }
 }
 
@@ -1745,25 +1760,12 @@ mod tests {
 
     #[test]
     fn test_geometry_compute_triangle_normal_returns_z_vector_for_horizontal_triangle() {
-        let faces = vec![(0, 1, 2)];
-        let vertices = vec![
-            Point3::new(0.0, 1.0, 0.0),
-            Point3::new(-0.866025, -0.5, 0.0),
-            Point3::new(0.866025, -0.5, 0.0),
-        ];
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces,
-            vertices,
-            NormalStrategy::Sharp,
-        );
-
         let normal_correct = Vector3::new(0.0, 0.0, 1.0);
 
-        let Face::Triangle(t_f) = geometry.faces()[0];
         let normal_calculated = compute_triangle_normal(
-            &geometry.vertices()[cast_usize(t_f.vertices.0)],
-            &geometry.vertices()[cast_usize(t_f.vertices.1)],
-            &geometry.vertices()[cast_usize(t_f.vertices.2)],
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(-0.866025, -0.5, 0.0),
+            &Point3::new(0.866025, -0.5, 0.0),
         );
 
         assert_eq!(normal_correct, normal_calculated);
@@ -1771,25 +1773,12 @@ mod tests {
 
     #[test]
     fn test_geometry_compute_triangle_normal_returns_x_vector_for_vertical_triangle() {
-        let faces = vec![(0, 1, 2)];
-        let vertices = vec![
-            Point3::new(0.0, 1.0, 0.0),
-            Point3::new(0.0, -0.5, 0.866025),
-            Point3::new(0.0, -0.5, -0.866025),
-        ];
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces,
-            vertices,
-            NormalStrategy::Sharp,
-        );
-
         let normal_correct = Vector3::new(1.0, 0.0, 0.0);
 
-        let Face::Triangle(t_f) = geometry.faces()[0];
         let normal_calculated = compute_triangle_normal(
-            &geometry.vertices()[cast_usize(t_f.vertices.0)],
-            &geometry.vertices()[cast_usize(t_f.vertices.1)],
-            &geometry.vertices()[cast_usize(t_f.vertices.2)],
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(0.0, -0.5, 0.866025),
+            &Point3::new(0.0, -0.5, -0.866025),
         );
 
         assert_eq!(normal_correct, normal_calculated);
@@ -1797,25 +1786,12 @@ mod tests {
 
     #[test]
     fn test_geometry_compute_triangle_normal_returns_vector_for_arbitrary_triangle() {
-        let faces = vec![(0, 1, 2)];
-        let vertices = vec![
-            Point3::new(0.268023, 0.8302, 0.392469),
-            Point3::new(-0.870844, -0.462665, 0.215034),
-            Point3::new(0.334798, -0.197734, -0.999972),
-        ];
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
-            faces,
-            vertices,
-            NormalStrategy::Sharp,
-        );
-
         let normal_correct = Vector3::new(0.62270945, -0.614937, 0.48382375);
 
-        let Face::Triangle(t_f) = geometry.faces()[0];
         let normal_calculated = compute_triangle_normal(
-            &geometry.vertices()[cast_usize(t_f.vertices.0)],
-            &geometry.vertices()[cast_usize(t_f.vertices.1)],
-            &geometry.vertices()[cast_usize(t_f.vertices.2)],
+            &Point3::new(0.268023, 0.8302, 0.392469),
+            &Point3::new(-0.870844, -0.462665, 0.215034),
+            &Point3::new(0.334798, -0.197734, -0.999972),
         );
 
         assert_eq!(normal_correct, normal_calculated);
@@ -1833,7 +1809,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "The X and Y vectors defining a plane must be different"]
+    #[should_panic = "The X and Y vectors defining a plane can't be parallel or reverted"]
     fn test_geometry_plane_new_fail_because_x_and_y_vectors_identical() {
         Plane::new(
             &Point3::new(0.0, 0.0, 0.0),
@@ -1843,7 +1819,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "The X and Y vectors defining a plane can't form a 180 degree angle"]
+    #[should_panic = "The X and Y vectors defining a plane can't be parallel or reverted"]
     fn test_geometry_plane_new_fail_because_x_and_y_vectors_reverted() {
         Plane::new(
             &Point3::new(0.0, 0.0, 0.0),

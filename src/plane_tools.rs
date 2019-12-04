@@ -43,12 +43,14 @@ pub fn plane_fit(points: &[Point3<f32>]) -> Option<Plane> {
         zz += r.z * r.z;
     }
 
-    xx /= n as f32;
-    xy /= n as f32;
-    xz /= n as f32;
-    yy /= n as f32;
-    yz /= n as f32;
-    zz /= n as f32;
+    let n_f32 = n as f32;
+
+    xx /= n_f32;
+    xy /= n_f32;
+    xz /= n_f32;
+    yy /= n_f32;
+    yz /= n_f32;
+    zz /= n_f32;
 
     let mut weighted_dir = Vector3::zeros();
 
@@ -119,9 +121,9 @@ mod tests {
         let plane_calculated = plane_fit(&points).expect("Plane not created");
 
         let origin_correct = Point3::new(4.8477926, 4.965808, 0.9303582);
-        let normal_correct = Vector3::new(-0.026102118, 0.009860026, 0.99961066);
+        let normal_correct = Vector3::new(-0.026102116, 0.009860026, 0.9996106);
 
-        assert_eq!(plane_calculated.origin, origin_correct);
+        assert_eq!(*plane_calculated.origin(), origin_correct);
         assert_eq!(plane_calculated.normal(), normal_correct);
     }
 
@@ -158,9 +160,9 @@ mod tests {
         let plane_calculated = plane_fit(&points).expect("Plane not created");
 
         let origin_correct = Point3::new(4.65731, 5.4324775, 0.913277);
-        let normal_correct = Vector3::new(-0.021554187, 0.032416277, -0.999242);
+        let normal_correct = Vector3::new(-0.021554187, 0.032416273, -0.999242);
 
-        assert_eq!(plane_calculated.origin, origin_correct);
+        assert_eq!(*plane_calculated.origin(), origin_correct);
         assert_eq!(plane_calculated.normal(), normal_correct);
     }
 }
