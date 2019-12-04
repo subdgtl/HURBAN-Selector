@@ -29,7 +29,8 @@ pub enum PollInterpreterResponseNotification {
 /// response, nothing happens.
 pub struct Session {
     interpreter_server: InterpreterServer,
-    interpreter_requests_in_flight: HashSet<RequestId>,
+    interpreter_interpret_request_in_flight: Option<RequestId>,
+    interpreter_edit_prog_requests_in_flight: HashSet<RequestId>,
 
     prog: Prog,
 
@@ -49,7 +50,8 @@ impl Session {
     pub fn new() -> Self {
         Self {
             interpreter_server: InterpreterServer::new(),
-            interpreter_requests_in_flight: HashSet::new(),
+            interpreter_interpret_request_in_flight: None,
+            interpreter_edit_prog_requests_in_flight: HashSet::new(),
 
             prog: Prog::new(Vec::new()),
 
@@ -90,7 +92,17 @@ impl Session {
         );
 
         self.prog.push_stmt(stmt.clone());
-        self.submit(InterpreterRequest::PushProgStmt(stmt));
+
+        let request_id = self
+            .interpreter_server
+            .submit_request(InterpreterRequest::PushProgStmt(stmt));
+        let tracked = self
+            .interpreter_edit_prog_requests_in_flight
+            .insert(request_id);
+        assert!(
+            tracked,
+            "Interpreter server must provide unique request ids"
+        );
 
         self.recompute_var_visibility();
     }
@@ -108,7 +120,17 @@ impl Session {
         );
 
         self.prog.pop_stmt();
-        self.submit(InterpreterRequest::PopProgStmt);
+
+        let request_id = self
+            .interpreter_server
+            .submit_request(InterpreterRequest::PopProgStmt);
+        let tracked = self
+            .interpreter_edit_prog_requests_in_flight
+            .insert(request_id);
+        assert!(
+            tracked,
+            "Interpreter server must provide unique request ids"
+        );
 
         self.recompute_var_visibility();
     }
@@ -127,7 +149,17 @@ impl Session {
 
         self.prog.set_stmt_at(index, stmt.clone());
 
-        self.submit(InterpreterRequest::SetProgStmtAt(index, stmt));
+        let request_id = self
+            .interpreter_server
+            .submit_request(InterpreterRequest::SetProgStmtAt(index, stmt));
+        let tracked = self
+            .interpreter_edit_prog_requests_in_flight
+            .insert(request_id);
+        assert!(
+            tracked,
+            "Interpreter server must provide unique request ids"
+        );
+
         self.recompute_var_visibility();
     }
 
@@ -181,7 +213,7 @@ impl Session {
     /// modifications and running the interpreter (again) are
     /// disallowed in this state.
     pub fn interpreter_busy(&self) -> bool {
-        !self.interpreter_requests_in_flight.is_empty()
+        self.interpreter_interpret_request_in_flight.is_some()
     }
 
     /// Starts the interpreter on the current program.
@@ -193,7 +225,11 @@ impl Session {
             "Can't submit a request while the interpreter is already interpreting",
         );
 
-        self.submit(InterpreterRequest::Interpret);
+        let request_id = self
+            .interpreter_server
+            .submit_request(InterpreterRequest::Interpret);
+        self.interpreter_interpret_request_in_flight
+            .replace(request_id);
     }
 
     /// Poll the interpreter for responses and call the callback for
@@ -218,14 +254,22 @@ impl Session {
         loop {
             match self.interpreter_server.poll_response() {
                 Ok((request_id, response)) => {
-                    let tracked = self.interpreter_requests_in_flight.remove(&request_id);
-                    assert!(tracked, "Each request must have been tracked");
-
                     match response {
                         InterpreterResponse::Completed => {
+                            let tracked = self
+                                .interpreter_edit_prog_requests_in_flight
+                                .remove(&request_id);
+                            assert!(tracked, "Each edit prog request must have been tracked");
+
                             log::info!("Interpreter completed request {}", request_id);
                         }
                         InterpreterResponse::CompletedWithResult(result) => {
+                            let tracked = self
+                                .interpreter_interpret_request_in_flight
+                                .take()
+                                .is_some();
+                            assert!(tracked, "The interpret request must have been tracked");
+
                             log::info!("Interpreter completed request {} with result", request_id);
 
                             match result {
@@ -357,15 +401,6 @@ impl Session {
             self.var_visibility.len(),
             self.prog.stmts().len(),
             "Each stmt is a var decl and must produce a variable",
-        );
-    }
-
-    fn submit(&mut self, request: InterpreterRequest) {
-        let request_id = self.interpreter_server.submit_request(request);
-        let tracked = self.interpreter_requests_in_flight.insert(request_id);
-        assert!(
-            tracked,
-            "Interpreter server must provide unique request ids"
         );
     }
 }
