@@ -34,7 +34,7 @@ mod weld;
 // Also note: the number in the identifier currently also defines the
 // order of the operation in the UI.
 
-// Special funcs
+// Manipulation funcs
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0000);
 
 // Create funcs
@@ -65,7 +65,7 @@ pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(9005);
 pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
 
-    // Special funcs
+    // Manipulation funcs
     funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncTransform));
 
     // Create funcs
