@@ -37,8 +37,8 @@ mod weld;
 // order of the operation in the UI.
 
 // Manipulation funcs
-pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0000);
-pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(0001);
+pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0);
+pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(1);
 
 // Create funcs
 pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(1000);
