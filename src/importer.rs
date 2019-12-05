@@ -3,12 +3,9 @@ use std::error;
 use std::fmt;
 use std::fs;
 use std::io::{self, Read};
-use std::thread;
 use std::time::SystemTime;
 
 use crc32fast;
-use crossbeam_channel::unbounded;
-use log;
 #[cfg(test)]
 use mockall::{automock, lazy_static, predicate};
 use nalgebra::base::Vector3;
@@ -129,7 +126,7 @@ impl ObjCache for EndlessCache {
 
 /// `Importer` takes care of importing of obj files and caching of their
 /// internal representations.
-pub struct Importer<C> {
+pub struct Importer<C: ObjCache> {
     cache: C,
 }
 
@@ -182,102 +179,6 @@ impl<C: ObjCache> Importer<C> {
         };
 
         Ok(models)
-    }
-}
-
-enum ImporterWorkerRequest {
-    NewImport(String),
-    Terminate,
-}
-
-/// Single threaded worker encapsulating obj importer.
-///
-/// Only one message (import or termination request) is processed at a time, so
-/// if there's a long running import, this thread can still block termination
-/// of the application.
-pub struct ImporterWorker {
-    thread: Option<thread::JoinHandle<()>>,
-    response_receiver: crossbeam_channel::Receiver<ImporterResult>,
-    request_sender: crossbeam_channel::Sender<ImporterWorkerRequest>,
-}
-
-impl ImporterWorker {
-    /// Prepares communication channels and spawns a thread listening for
-    /// `ImporterWorkerRequest`.
-    pub fn new() -> Self {
-        let (request_sender, request_receiver) = unbounded();
-        let (response_sender, response_receiver) = unbounded();
-
-        let thread = thread::spawn(move || {
-            log::info!("Spawned importer worker.");
-
-            let cache = EndlessCache::default();
-            let mut importer = Importer::new(cache);
-
-            while let ImporterWorkerRequest::NewImport(path) = request_receiver
-                .recv()
-                .expect("Failed to receive message in importer worker")
-            {
-                log::info!("Received obj to parse: {}", &path);
-
-                let imported_file = importer.import_obj(&path);
-
-                log::info!("Successfully parsed obj: {}", &path);
-
-                response_sender
-                    .send(imported_file)
-                    .expect("Failed to send importer result message to main thread");
-            }
-        });
-
-        ImporterWorker {
-            thread: Some(thread),
-            request_sender,
-            response_receiver,
-        }
-    }
-
-    /// Requests import of object with given `filename`. This request is put to
-    /// a queue.
-    pub fn import_obj(&self, filename: &str) {
-        self.request_sender
-            .send(ImporterWorkerRequest::NewImport(filename.to_string()))
-            .expect("Failed to send new import message to importer worker");
-    }
-
-    /// Reads response queue and returns last parsed obj in case there's any.
-    pub fn parsed_obj(&self) -> Option<ImporterResult> {
-        if self.response_receiver.is_empty() {
-            None
-        } else {
-            let obj_importer_result = self
-                .response_receiver
-                .recv()
-                .expect("Failed to receive message from importer worker");
-
-            Some(obj_importer_result)
-        }
-    }
-}
-
-impl Default for ImporterWorker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Drop for ImporterWorker {
-    fn drop(&mut self) {
-        self.request_sender
-            .send(ImporterWorkerRequest::Terminate)
-            .expect("Failed to send terminate message to importer worker");
-
-        if let Some(thread) = self.thread.take() {
-            log::info!("Shutting down the importer worker.");
-            thread
-                .join()
-                .expect("Should have joined importer worker thread");
-        }
     }
 }
 

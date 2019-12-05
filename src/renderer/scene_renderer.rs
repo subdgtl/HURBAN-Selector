@@ -379,7 +379,7 @@ impl SceneRenderer {
             queue,
             &shading_buffer_edges,
             ShadingUniforms {
-                edge_color_and_face_alpha: [0.2, 0.9, 0.3, 1.0],
+                edge_color_and_face_alpha: [0.239, 0.306, 0.400, 1.0],
                 shading_mode: ShadingMode::EDGES,
             },
         );
@@ -388,7 +388,7 @@ impl SceneRenderer {
             queue,
             &shading_buffer_shaded_edges,
             ShadingUniforms {
-                edge_color_and_face_alpha: [0.2, 0.9, 0.3, 1.0],
+                edge_color_and_face_alpha: [0.239, 0.306, 0.400, 1.0],
                 shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
             },
         );
@@ -554,7 +554,7 @@ impl SceneRenderer {
                 .map_err(|_| AddGeometryError::TooManyIndices(indices.len()))?;
 
             log::debug!(
-                "Adding geometry {} with {} vertices and {} indices",
+                "Adding geometry with ID {}, {} vertices and {} indices",
                 id.0,
                 vertex_data_count,
                 index_count,
@@ -574,7 +574,7 @@ impl SceneRenderer {
             }
         } else {
             log::debug!(
-                "Adding geometry {} with {} vertices",
+                "Adding geometry with ID {} and {} vertices",
                 id.0,
                 vertex_data_count
             );
@@ -596,7 +596,7 @@ impl SceneRenderer {
 
     /// Remove a previously uploaded geometry from the GPU.
     pub fn remove_geometry(&mut self, id: GpuGeometryId) {
-        log::debug!("Removing geometry with {}", id.0);
+        log::debug!("Removing geometry with ID {}", id.0);
         // Dropping the geometry descriptor here unstreams the buffers from device memory
         self.geometry_resources.remove(&id.0);
     }
@@ -605,7 +605,7 @@ impl SceneRenderer {
     /// geometries as one of the commands executed with the `encoder`
     /// to the `color_attachment`.
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_geometry(
+    pub fn draw_geometry<'a, I>(
         &self,
         mode: DrawGeometryMode,
         clear_flags: ClearFlags,
@@ -613,8 +613,10 @@ impl SceneRenderer {
         color_attachment: &wgpu::TextureView,
         msaa_attachment: Option<&wgpu::TextureView>,
         depth_attachment: &wgpu::TextureView,
-        ids: &[GpuGeometryId],
-    ) {
+        ids: I,
+    ) where
+        I: IntoIterator<Item = &'a GpuGeometryId> + Clone,
+    {
         let color_load_op = if clear_flags.contains(ClearFlags::COLOR) {
             wgpu::LoadOp::Clear
         } else {
@@ -728,7 +730,7 @@ impl SceneRenderer {
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
                 rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
 
-                self.record_geometry_drawing(&mut rpass, ids);
+                self.record_geometry_drawing(&mut rpass, ids.clone());
 
                 rpass.set_pipeline(&self.render_pipeline_transparent);
                 rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
@@ -738,7 +740,10 @@ impl SceneRenderer {
         }
     }
 
-    fn record_geometry_drawing(&self, rpass: &mut wgpu::RenderPass, ids: &[GpuGeometryId]) {
+    fn record_geometry_drawing<'a, I>(&self, rpass: &mut wgpu::RenderPass, ids: I)
+    where
+        I: IntoIterator<Item = &'a GpuGeometryId>,
+    {
         for id in ids {
             if let Some(geometry) = &self.geometry_resources.get(&id.0) {
                 let (vertex_buffer, vertex_count) = &geometry.vertices;

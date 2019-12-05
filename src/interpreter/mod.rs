@@ -1,11 +1,16 @@
 use std::collections::hash_map::{Entry, HashMap};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::error;
 use std::fmt;
 use std::ptr;
+use std::sync::Arc;
+use std::time::Instant;
 
 pub use self::ast::{FuncIdent, VarIdent};
-pub use self::func::{Func, FuncFlags, ParamInfo};
+pub use self::func::{
+    BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncFlags, FuncInfo,
+    IntParamRefinement, ParamInfo, ParamRefinement, UintParamRefinement,
+};
 pub use self::value::{Ty, Value};
 
 pub mod ast;
@@ -249,7 +254,7 @@ struct VarInfo {
 /// be done.
 pub struct Interpreter {
     prog: ast::Prog,
-    funcs: HashMap<FuncIdent, Box<dyn Func>>,
+    funcs: BTreeMap<FuncIdent, Box<dyn Func>>,
     env: HashMap<VarIdent, VarInfo>,
 
     /// The program counter. Always points to the **next** stmt to execute.
@@ -265,7 +270,7 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
-    pub fn new(funcs: HashMap<FuncIdent, Box<dyn Func>>) -> Self {
+    pub fn new(funcs: BTreeMap<FuncIdent, Box<dyn Func>>) -> Self {
         Self {
             prog: ast::Prog::default(),
             funcs,
@@ -329,14 +334,9 @@ impl Interpreter {
             self.pc = index;
         }
 
-        let stmt_mut = self
-            .prog
-            .stmts_mut()
-            .get_mut(index)
-            .expect("Expected the program to have index-th element");
+        self.prog.set_stmt_at(index, stmt);
 
         self.epoch += 1;
-        *stmt_mut = stmt;
     }
 
     /// Runs name resolution on the currently set program.
@@ -430,21 +430,26 @@ impl Interpreter {
         self.resolve()?;
         self.typecheck()?;
 
+        log::debug!("PC before invalidation: {}", self.pc);
         self.invalidate();
 
+        log::debug!("PC before evaluation: {}", self.pc);
         if self.pc <= index {
             // Run remaining operations, write results to vars
+            let range_start = self.pc;
             let range = self.pc..=index;
-            for (stmt_index, stmt) in self.prog.stmts()[range].iter().enumerate() {
-                eval_stmt(stmt_index, stmt, &self.funcs, &mut self.env)?;
+
+            for (stmt_index_offset, stmt) in self.prog.stmts()[range].iter().enumerate() {
+                let stmt_index = range_start + stmt_index_offset;
+                eval_stmt(stmt_index, stmt, &mut self.funcs, &mut self.env)?;
                 self.pc += 1;
             }
 
             assert_eq!(self.pc, index + 1);
         }
+        log::debug!("PC after evaluation: {}", self.pc);
 
         let unused_vars = self.compute_unused_vars_up_until(index);
-
         let last_value = match &self.prog.stmts()[index] {
             ast::Stmt::VarDecl(var_decl) => {
                 let var_ident = var_decl.ident();
@@ -620,18 +625,29 @@ impl Interpreter {
 fn eval_stmt(
     stmt_index: usize,
     stmt: &ast::Stmt,
-    funcs: &HashMap<FuncIdent, Box<dyn Func>>,
+    funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<(), RuntimeError> {
-    match stmt {
+    let time_start = Instant::now();
+    log::debug!("Evaluating stmt {}: {}", stmt_index, stmt);
+
+    let result = match stmt {
         ast::Stmt::VarDecl(var_decl) => eval_var_decl_stmt(stmt_index, var_decl, funcs, env),
-    }
+    };
+
+    log::debug!(
+        "Evaluation of stmt {} took {}ms",
+        stmt_index,
+        time_start.elapsed().as_secs_f32() * 1000.0,
+    );
+
+    result
 }
 
 fn eval_var_decl_stmt(
     stmt_index: usize,
     var_decl: &ast::VarDeclStmt,
-    funcs: &HashMap<FuncIdent, Box<dyn Func>>,
+    funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<(), RuntimeError> {
     let var_ident = var_decl.ident();
@@ -685,6 +701,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
         ast::LitExpr::Uint(uint) => Value::Uint(*uint),
         ast::LitExpr::Float(float) => Value::Float(*float),
         ast::LitExpr::Float3(float3) => Value::Float3(*float3),
+        ast::LitExpr::String(string) => Value::String(Arc::clone(&string)),
         ast::LitExpr::Nil => Value::Nil,
     };
 
@@ -704,10 +721,13 @@ fn eval_var_expr(
 fn eval_call_expr(
     stmt_index: usize,
     call: &ast::CallExpr,
-    funcs: &HashMap<FuncIdent, Box<dyn Func>>,
+    funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
 ) -> Result<Value, RuntimeError> {
-    let func = &funcs[&call.ident()];
+    // FIXME: @Diagnostics use the func name and the param names in
+    // the reported errors
+
+    let func = funcs.get_mut(&call.ident()).expect("Failed to find func");
 
     let arg_exprs = call.args();
     if func.param_info().len() != arg_exprs.len() {
@@ -726,7 +746,7 @@ fn eval_call_expr(
     }
 
     for (info, value) in func.param_info().iter().zip(args.iter()) {
-        let param_ty = info.ty;
+        let param_ty = info.refinement.ty();
         let value_ty = value.ty();
 
         if param_ty != value_ty {
@@ -776,6 +796,23 @@ mod tests {
 
     use super::*;
 
+    fn param_info(ty: Ty, optional: bool) -> ParamInfo {
+        ParamInfo {
+            name: "<anonymous>",
+            refinement: match ty {
+                Ty::Nil => panic!("Yeah, sure I can do that!"),
+                Ty::Boolean => ParamRefinement::Boolean(BooleanParamRefinement::default()),
+                Ty::Int => ParamRefinement::Int(IntParamRefinement::default()),
+                Ty::Uint => ParamRefinement::Uint(UintParamRefinement::default()),
+                Ty::Float => ParamRefinement::Float(FloatParamRefinement::default()),
+                Ty::Float3 => ParamRefinement::Float3(Float3ParamRefinement::default()),
+                Ty::String => ParamRefinement::String,
+                Ty::Geometry => ParamRefinement::Geometry,
+            },
+            optional,
+        }
+    }
+
     struct TestFunc<F>
     where
         F: Fn(&[Value]) -> Result<Value, FuncError>,
@@ -816,8 +853,8 @@ mod tests {
             self.return_ty
         }
 
-        fn call(&self, values: &[Value]) -> Result<Value, FuncError> {
-            ((self.func)(values))
+        fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
+            (self.func)(values)
         }
     }
 
@@ -861,7 +898,7 @@ mod tests {
             ast::CallExpr::new(func_id, vec![]),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -878,10 +915,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -891,7 +925,7 @@ mod tests {
             ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))]),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -918,7 +952,7 @@ mod tests {
             ast::CallExpr::new(func_id, vec![]),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -935,10 +969,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::empty(),
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -948,7 +979,7 @@ mod tests {
             ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))]),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -974,10 +1005,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -996,7 +1024,7 @@ mod tests {
             )),
         ]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id1, Box::new(func1));
         funcs.insert(func_id2, Box::new(func2));
 
@@ -1023,10 +1051,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::empty(),
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -1045,7 +1070,7 @@ mod tests {
             )),
         ]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id1, Box::new(func1));
         funcs.insert(func_id2, Box::new(func2));
 
@@ -1063,7 +1088,7 @@ mod tests {
     fn test_interpreter_interpret_empty_prog() {
         let prog = ast::Prog::new(vec![]);
 
-        let mut interpreter = Interpreter::new(HashMap::new());
+        let mut interpreter = Interpreter::new(BTreeMap::new());
         interpreter.set_prog(prog);
 
         let _ = interpreter.interpret();
@@ -1074,7 +1099,7 @@ mod tests {
     fn test_interpreter_interpret_up_until_empty_prog() {
         let prog = ast::Prog::new(vec![]);
 
-        let mut interpreter = Interpreter::new(HashMap::new());
+        let mut interpreter = Interpreter::new(BTreeMap::new());
         interpreter.set_prog(prog);
 
         let _ = interpreter.interpret_up_until(1);
@@ -1098,7 +1123,7 @@ mod tests {
             ast::CallExpr::new(func_id, vec![]),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1130,7 +1155,7 @@ mod tests {
             )),
         ]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1155,10 +1180,7 @@ mod tests {
                     Ok(Value::Boolean(values[0].unwrap_boolean()))
                 },
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -1168,7 +1190,7 @@ mod tests {
             ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))]),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1195,10 +1217,7 @@ mod tests {
                     Ok(Value::Boolean(values[0].unwrap_boolean()))
                 },
                 FuncFlags::empty(),
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -1208,7 +1227,7 @@ mod tests {
             ast::CallExpr::new(func_id, vec![ast::Expr::Lit(ast::LitExpr::Boolean(true))]),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1242,14 +1261,8 @@ mod tests {
                 },
                 FuncFlags::PURE,
                 vec![
-                    ParamInfo {
-                        ty: Ty::Boolean,
-                        optional: false,
-                    },
-                    ParamInfo {
-                        ty: Ty::Boolean,
-                        optional: false,
-                    },
+                    param_info(Ty::Boolean, false),
+                    param_info(Ty::Boolean, false),
                 ],
                 Ty::Boolean,
             ),
@@ -1266,7 +1279,7 @@ mod tests {
             ),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1317,14 +1330,8 @@ mod tests {
                 },
                 FuncFlags::PURE,
                 vec![
-                    ParamInfo {
-                        ty: Ty::Boolean,
-                        optional: false,
-                    },
-                    ParamInfo {
-                        ty: Ty::Boolean,
-                        optional: false,
-                    },
+                    param_info(Ty::Boolean, false),
+                    param_info(Ty::Boolean, false),
                 ],
                 Ty::Boolean,
             ),
@@ -1345,14 +1352,8 @@ mod tests {
                 },
                 FuncFlags::PURE,
                 vec![
-                    ParamInfo {
-                        ty: Ty::Boolean,
-                        optional: false,
-                    },
-                    ParamInfo {
-                        ty: Ty::Boolean,
-                        optional: false,
-                    },
+                    param_info(Ty::Boolean, false),
+                    param_info(Ty::Boolean, false),
                 ],
                 Ty::Boolean,
             ),
@@ -1369,7 +1370,7 @@ mod tests {
             ),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id1, Box::new(func1));
         funcs.insert(func_id2, Box::new(func2));
 
@@ -1429,10 +1430,7 @@ mod tests {
                     Ok(Value::Boolean(values[0].unwrap_boolean()))
                 },
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -1451,7 +1449,7 @@ mod tests {
             )),
         ]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id1, Box::new(func1));
         funcs.insert(func_id2, Box::new(func2));
 
@@ -1484,7 +1482,7 @@ mod tests {
             )),
         ]);
 
-        let mut interpreter = Interpreter::new(HashMap::new());
+        let mut interpreter = Interpreter::new(BTreeMap::new());
         interpreter.set_prog(prog);
         assert_eq!(interpreter.pc, 0);
 
@@ -1532,7 +1530,7 @@ mod tests {
             )),
         ]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1555,10 +1553,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -1571,7 +1566,7 @@ mod tests {
             ),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1594,10 +1589,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -1612,7 +1604,7 @@ mod tests {
             ),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1635,10 +1627,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Boolean(values[0].unwrap_boolean())),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Boolean,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Boolean, false)],
                 Ty::Boolean,
             ),
         );
@@ -1659,7 +1648,7 @@ mod tests {
             )),
         ]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1683,7 +1672,7 @@ mod tests {
             ast::CallExpr::new(FuncIdent(0), vec![]),
         ))]);
 
-        let mut interpreter = Interpreter::new(HashMap::new());
+        let mut interpreter = Interpreter::new(BTreeMap::new());
         interpreter.set_prog(prog);
 
         let err = interpreter.interpret().unwrap_err();
@@ -1707,10 +1696,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Float(values[0].unwrap_float() + 1.0)),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Float,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Float, false)],
                 Ty::Float,
             ),
         );
@@ -1727,7 +1713,7 @@ mod tests {
             call.clone(),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1752,10 +1738,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Float(values[0].unwrap_float() + 1.0)),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Float,
-                    optional: false,
-                }],
+                vec![param_info(Ty::Float, false)],
                 Ty::Float,
             ),
         );
@@ -1766,7 +1749,7 @@ mod tests {
             call.clone(),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1792,10 +1775,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Float(values[0].get_float().unwrap_or(1.0))),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Float,
-                    optional: true,
-                }],
+                vec![param_info(Ty::Float, true)],
                 Ty::Float,
             ),
         );
@@ -1806,7 +1786,7 @@ mod tests {
             call,
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1823,10 +1803,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Float(values[0].get_float().unwrap_or(1.0))),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Float,
-                    optional: true,
-                }],
+                vec![param_info(Ty::Float, true)],
                 Ty::Float,
             ),
         );
@@ -1837,7 +1814,7 @@ mod tests {
             call.clone(),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1869,7 +1846,7 @@ mod tests {
             call.clone(),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1918,7 +1895,7 @@ mod tests {
             call.clone(),
         ))]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);
@@ -1954,10 +1931,7 @@ mod tests {
             TestFunc::new(
                 |values| Ok(Value::Float(values[0].unwrap_float() * 2.0)),
                 FuncFlags::PURE,
-                vec![ParamInfo {
-                    ty: Ty::Float,
-                    optional: true,
-                }],
+                vec![param_info(Ty::Float, true)],
                 Ty::Float,
             ),
         );
@@ -1990,7 +1964,7 @@ mod tests {
             )),
         ]);
 
-        let mut funcs: HashMap<FuncIdent, Box<dyn Func>> = HashMap::new();
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
         funcs.insert(func_id, Box::new(func));
 
         let mut interpreter = Interpreter::new(funcs);

@@ -1,10 +1,11 @@
 use std::fmt;
+use std::sync::Arc;
 
 /// A unique function identifier.
 ///
 /// Has to stay stable for the lifetime of the interpreter and program
 /// using it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FuncIdent(pub(crate) u64);
 
 impl fmt::Display for FuncIdent {
@@ -45,12 +46,12 @@ impl Prog {
         self.stmts.pop();
     }
 
-    pub fn stmts(&self) -> &[Stmt] {
-        &self.stmts
+    pub fn set_stmt_at(&mut self, index: usize, stmt: Stmt) {
+        self.stmts[index] = stmt;
     }
 
-    pub fn stmts_mut(&mut self) -> &mut [Stmt] {
-        &mut self.stmts
+    pub fn stmts(&self) -> &[Stmt] {
+        &self.stmts
     }
 }
 
@@ -98,6 +99,13 @@ impl VarDeclStmt {
         Self { ident, init_expr }
     }
 
+    pub fn clone_with_init_expr(&self, init_expr: CallExpr) -> Self {
+        Self {
+            ident: self.ident,
+            init_expr,
+        }
+    }
+
     pub fn ident(&self) -> VarIdent {
         self.ident
     }
@@ -123,9 +131,19 @@ pub enum Expr {
     // arg would be the direct result of another func call. We use
     // `VarExpr` instead to refer to a previous result.
     Lit(LitExpr),
+    #[allow(dead_code)]
     Var(VarExpr),
     #[allow(dead_code)]
     Index(IndexExpr),
+}
+
+impl Expr {
+    pub fn unwrap_literal(&self) -> &LitExpr {
+        match self {
+            Expr::Lit(lit) => lit,
+            _ => panic!("Expression not literal"),
+        }
+    }
 }
 
 impl fmt::Display for Expr {
@@ -147,9 +165,81 @@ pub enum LitExpr {
     Boolean(bool),
     #[allow(dead_code)]
     Int(i32),
+    #[allow(dead_code)]
     Uint(u32),
+    #[allow(dead_code)]
     Float(f32),
+    #[allow(dead_code)]
     Float3([f32; 3]),
+    String(Arc<String>),
+}
+
+impl LitExpr {
+    /// Get the literal value if boolean, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when value is not a boolean.
+    pub fn unwrap_boolean(&self) -> bool {
+        match self {
+            LitExpr::Boolean(boolean) => *boolean,
+            _ => panic!("Literal expression not boolean"),
+        }
+    }
+
+    /// Get the literal value if int, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when literal value is not an int.
+    pub fn unwrap_int(&self) -> i32 {
+        match self {
+            LitExpr::Int(int) => *int,
+            _ => panic!("Literal expression not int"),
+        }
+    }
+
+    /// Get the literal value if uint, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when literal value is not an uint.
+    pub fn unwrap_uint(&self) -> u32 {
+        match self {
+            LitExpr::Uint(uint) => *uint,
+            _ => panic!("Literal expression not uint"),
+        }
+    }
+
+    /// Get the literal value if float, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when literal value is not a float.
+    pub fn unwrap_float(&self) -> f32 {
+        match self {
+            LitExpr::Float(float) => *float,
+            _ => panic!("Literal expression not float"),
+        }
+    }
+
+    /// Get the literal value if float3, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when literal value is not a float3.
+    pub fn unwrap_float3(&self) -> [f32; 3] {
+        match self {
+            LitExpr::Float3(float3) => *float3,
+            _ => panic!("Literal expression not float3"),
+        }
+    }
+
+    /// Get the literal value if string, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when literal value is not a string.
+    pub fn unwrap_string(&self) -> &str {
+        match self {
+            LitExpr::String(string) => string,
+            _ => panic!("Literal expression not string"),
+        }
+    }
 }
 
 impl fmt::Display for LitExpr {
@@ -163,6 +253,7 @@ impl fmt::Display for LitExpr {
             LitExpr::Float3(float3) => {
                 write!(f, "<float3 [{}, {}, {}]>", float3[0], float3[1], float3[2])
             }
+            LitExpr::String(string) => write!(f, "<string {}>", string),
         }
     }
 }
@@ -175,6 +266,7 @@ pub struct VarExpr {
 }
 
 impl VarExpr {
+    #[allow(dead_code)]
     pub fn new(ident: VarIdent) -> Self {
         Self { ident }
     }
@@ -217,6 +309,15 @@ pub struct CallExpr {
 impl CallExpr {
     pub fn new(ident: FuncIdent, args: Vec<Expr>) -> Self {
         Self { ident, args }
+    }
+
+    pub fn clone_with_arg_at(&self, index: usize, arg: Expr) -> Self {
+        let mut new_args = self.args.clone();
+        new_args[index] = arg;
+        Self {
+            ident: self.ident,
+            args: new_args,
+        }
     }
 
     pub fn ident(&self) -> FuncIdent {

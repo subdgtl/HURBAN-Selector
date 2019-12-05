@@ -36,3 +36,21 @@ where
 {
     n.try_into().expect("Expected N to fit in usize")
 }
+
+/// Convert u32 to i32 clamping to max value of i32 if necessary.
+pub fn clamp_cast_u32_to_i32(n: u32) -> i32 {
+    if n > i32::max_value() as u32 {
+        i32::max_value()
+    } else {
+        n as i32
+    }
+}
+
+/// Convert i32 to u32 clamping to 0 if necessary.
+pub fn clamp_cast_i32_to_u32(n: i32) -> u32 {
+    if n < 0 {
+        0
+    } else {
+        n as u32
+    }
+}

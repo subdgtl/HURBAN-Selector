@@ -1,3 +1,4 @@
+use std::fmt;
 use std::thread;
 
 use crossbeam_channel as channel;
@@ -8,6 +9,12 @@ use crate::interpreter_funcs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RequestId(u64);
+
+impl fmt::Display for RequestId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "REQ({})", self.0)
+    }
+}
 
 /// A possible error when polling for an interpreter response.
 #[derive(Debug)]
@@ -21,14 +28,12 @@ pub enum PollResponseError {
 /// the interpreter.
 #[derive(Debug)]
 pub enum InterpreterRequest {
+    #[allow(dead_code)]
     SetProg(Prog),
     #[allow(dead_code)]
     ClearProg,
-    #[allow(dead_code)]
     PushProgStmt(Stmt),
-    #[allow(dead_code)]
     PopProgStmt,
-    #[allow(dead_code)]
     SetProgStmtAt(usize, Stmt),
     Interpret,
     #[allow(dead_code)]
@@ -79,7 +84,7 @@ impl InterpreterServer {
         let thread = thread::spawn(move || {
             log::info!("Interpreter server starting up");
 
-            let mut interpreter = Interpreter::new(interpreter_funcs::global_definitions());
+            let mut interpreter = Interpreter::new(interpreter_funcs::create_function_table());
 
             loop {
                 let request: Request = request_receiver

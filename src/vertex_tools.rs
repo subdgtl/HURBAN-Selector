@@ -54,7 +54,15 @@ fn is_point_in_triangle(
 ) -> bool {
     // If the triangle is degenerated into a point, check if the point is equal
     // to the test point.
-    if triangle_vertices.0 == triangle_vertices.1 && triangle_vertices.0 == triangle_vertices.2 {
+    if triangle_vertices
+        .0
+        .coords
+        .relative_eq(&triangle_vertices.1.coords, 0.001, 0.001)
+        && triangle_vertices
+            .0
+            .coords
+            .relative_eq(&triangle_vertices.2.coords, 0.001, 0.001)
+    {
         return point == triangle_vertices.0;
     }
 
@@ -109,8 +117,8 @@ fn is_point_in_triangle(
     }
 
     // In case the triangle is horizontal, omit the Z coordinates.
-    if triangle_vertices.0.z == triangle_vertices.1.z
-        && triangle_vertices.0.z == triangle_vertices.2.z
+    if approx::relative_eq!(triangle_vertices.0.z, triangle_vertices.1.z)
+        && approx::relative_eq!(triangle_vertices.0.z, triangle_vertices.2.z)
     {
         let barycentric_point = compute_barycentric_coords(
             triangle_vertices.0.xy(),
@@ -419,10 +427,10 @@ pub fn pull_point_to_mesh(
 #[allow(dead_code)]
 pub fn pull_point_to_plane(point: &Point3<f32>, plane: &Plane) -> PulledPointWithDistance {
     if is_point_on_plane(point, &plane) {
-        return PulledPointWithDistance {
+        PulledPointWithDistance {
             point: *point,
             distance: 0.0,
-        };
+        }
     } else {
         ray_intersects_plane(point, &plane.normal(), plane)
             .expect("The normal is parallel to its plane")
