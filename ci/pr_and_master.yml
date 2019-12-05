@@ -12,7 +12,7 @@ jobs:
     steps:
       - template: test-all-debug.yml
     variables:
-      TOOLCHAIN: 1.38.0
+      TOOLCHAIN: 1.39.0
 
   - job: macOS
     pool:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - template: test-all-debug.yml
     variables:
-      TOOLCHAIN: 1.38.0
+      TOOLCHAIN: 1.39.0
 
   - job: Windows
     pool:
@@ -34,4 +34,4 @@ jobs:
           architecture: "x64"
       - template: test-all-debug.yml
     variables:
-      TOOLCHAIN: 1.38.0
+      TOOLCHAIN: 1.39.0
