@@ -133,8 +133,6 @@ pub enum Expr {
     Lit(LitExpr),
     #[allow(dead_code)]
     Var(VarExpr),
-    #[allow(dead_code)]
-    Index(IndexExpr),
 }
 
 impl Expr {
@@ -151,7 +149,6 @@ impl fmt::Display for Expr {
         match self {
             Expr::Lit(lit) => write!(f, "{}", lit),
             Expr::Var(var) => write!(f, "{}", var),
-            Expr::Index(index) => write!(f, "{}", index),
         }
     }
 }
@@ -279,23 +276,6 @@ impl VarExpr {
 impl fmt::Display for VarExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(var {})", self.ident)
-    }
-}
-
-/// An expression that evaluates to a value by extracting the value
-/// from an array by using the index value.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct IndexExpr {
-    // Note that we most likely don't need the full dynamic
-    // flexibility of `(get_name())[get_index()]`, so objects are only
-    // `VarExpr` and indexes just an `usize` instead of `Box<Expr>`.
-    object: VarExpr,
-    index: usize,
-}
-
-impl fmt::Display for IndexExpr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(index {} {})", self.object, self.index)
     }
 }
 

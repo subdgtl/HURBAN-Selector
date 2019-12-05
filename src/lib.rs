@@ -8,9 +8,10 @@ use std::time::{Duration, Instant};
 use nalgebra::geometry::Point3;
 
 use crate::camera::{Camera, CameraOptions};
+use crate::convert::cast_usize;
 use crate::geometry::Geometry;
 use crate::input::InputManager;
-use crate::interpreter::VarIdent;
+use crate::interpreter::{Value, VarIdent};
 use crate::renderer::{
     DrawGeometryMode, GpuGeometry, GpuGeometryId, Options as RendererOptions, Renderer,
 };
@@ -53,6 +54,18 @@ pub struct Options {
     /// Logging level for external libraries.
     pub lib_log_level: Option<logger::LogLevel>,
 }
+
+/// A unique identifier assigned to a value or subvalue for purposes
+/// of displaying in the viewport.
+///
+/// Since we support value arrays, there can be multiple geometries
+/// contained in a single value that all need to treated separately
+/// for pusposes of scene geometry analysis and rendering.
+///
+/// For simple values, the path is always `(var_ident, 0)`. For array
+/// element values, the path is `(var_ident, array_index)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ValuePath(VarIdent, usize);
 
 /// Initialize the window and run in infinite loop.
 ///
@@ -112,8 +125,8 @@ pub fn init_and_run(options: Options) -> ! {
         },
     );
 
-    let mut scene_geometries: HashMap<VarIdent, Arc<Geometry>> = HashMap::new();
-    let mut scene_gpu_geometry_ids: HashMap<VarIdent, GpuGeometryId> = HashMap::new();
+    let mut scene_geometries: HashMap<ValuePath, Arc<Geometry>> = HashMap::new();
+    let mut scene_gpu_geometry_ids: HashMap<ValuePath, GpuGeometryId> = HashMap::new();
 
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
 
@@ -197,23 +210,58 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 session.poll_interpreter_response(|callback_value| match callback_value {
-                    PollInterpreterResponseNotification::Add(var_ident, geometry) => {
-                        let gpu_geometry = GpuGeometry::from_geometry(&geometry);
-                        let gpu_geometry_id = renderer
-                            .add_scene_geometry(&gpu_geometry)
-                            .expect("Failed to upload scene geometry");
+                    PollInterpreterResponseNotification::Add(var_ident, value) => match value {
+                        Value::Geometry(geometry) => {
+                            let gpu_geometry = GpuGeometry::from_geometry(&geometry);
+                            let gpu_geometry_id = renderer
+                                .add_scene_geometry(&gpu_geometry)
+                                .expect("Failed to upload scene geometry");
 
-                        scene_geometries.insert(var_ident, geometry);
-                        scene_gpu_geometry_ids.insert(var_ident, gpu_geometry_id);
-                    }
-                    PollInterpreterResponseNotification::Remove(var_ident) => {
-                        scene_geometries.remove(&var_ident);
-                        let gpu_geometry_id = scene_gpu_geometry_ids
-                            .remove(&var_ident)
-                            .expect("Gpu geometry ID was not tracked");
+                            let path = ValuePath(var_ident, 0);
 
-                        renderer.remove_scene_geometry(gpu_geometry_id);
-                    }
+                            scene_geometries.insert(path, geometry);
+                            scene_gpu_geometry_ids.insert(path, gpu_geometry_id);
+                        }
+                        Value::GeometryArray(geometry_array) => {
+                            for (index, geometry) in geometry_array.iter().enumerate() {
+                                let gpu_geometry = GpuGeometry::from_geometry(&geometry);
+                                let gpu_geometry_id = renderer
+                                    .add_scene_geometry(&gpu_geometry)
+                                    .expect("Failed to upload scene geometry");
+
+                                let path = ValuePath(var_ident, index);
+
+                                scene_geometries.insert(path, geometry);
+                                scene_gpu_geometry_ids.insert(path, gpu_geometry_id);
+                            }
+                        }
+                        _ => (/* Ignore other values, we don't display them in the viewport */),
+                    },
+                    PollInterpreterResponseNotification::Remove(var_ident, value) => match value {
+                        Value::Geometry(_) => {
+                            let path = ValuePath(var_ident, 0);
+
+                            scene_geometries.remove(&path);
+                            let gpu_geometry_id = scene_gpu_geometry_ids
+                                .remove(&path)
+                                .expect("Gpu geometry ID was not tracked");
+
+                            renderer.remove_scene_geometry(gpu_geometry_id);
+                        }
+                        Value::GeometryArray(geometry_array) => {
+                            for index in 0..geometry_array.len() {
+                                let path = ValuePath(var_ident, cast_usize(index));
+
+                                scene_geometries.remove(&path);
+                                let gpu_geometry_id = scene_gpu_geometry_ids
+                                    .remove(&path)
+                                    .expect("Gpu geometry ID was not tracked");
+
+                                renderer.remove_scene_geometry(gpu_geometry_id);
+                            }
+                        }
+                        _ => (/* Ignore other values, we don't display them in the viewport */),
+                    },
                 });
 
                 if let Some(interp) = camera_interpolation {
