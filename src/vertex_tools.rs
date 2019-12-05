@@ -1,8 +1,7 @@
 use std::f32;
 
 use nalgebra;
-use nalgebra::base::Vector3;
-use nalgebra::geometry::{Point2, Point3};
+use nalgebra::{Point2, Point3, Rotation3, Vector3};
 
 use crate::convert::cast_usize;
 use crate::geometry::{self, Face, Geometry, Plane, UnorientedEdge};
@@ -54,17 +53,14 @@ fn is_point_in_triangle(
     triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
 ) -> bool {
     // If the triangle is degenerated into a point, check if the point is equal
-    // to the test point
+    // to the test point.
     if triangle_vertices.0 == triangle_vertices.1 && triangle_vertices.0 == triangle_vertices.2 {
         return point == triangle_vertices.0;
     }
 
     // If the triangle is degenerated into a line, check if the point lies on
-    // the line
-    if triangle_vertices.0 == triangle_vertices.1 {
-        return is_point_on_line_clamped(point, triangle_vertices.0, triangle_vertices.2);
-    }
-    if triangle_vertices.0 == triangle_vertices.2 || triangle_vertices.1 == triangle_vertices.2 {
+    // the line.
+    if are_triangle_vertices_colinear(triangle_vertices) {
         return is_point_on_line_clamped(point, triangle_vertices.0, triangle_vertices.1);
     }
 
@@ -74,15 +70,33 @@ fn is_point_in_triangle(
         triangle_vertices.2,
     );
 
-    if is_point_on_plane(point, &plane) {
-        let a = Point2::origin();
-        let b = Point2::from((triangle_vertices.1 - triangle_vertices.0).xy());
-        let c = Point2::from((triangle_vertices.2 - triangle_vertices.0).xy());
-        let p = Point2::from((point - triangle_vertices.0).xy());
-        let barycentric_point =
-            compute_barycentric_coords(a, b, c, p).expect("The triangle is degenerate");
+    // If the point is not on the triangle plane, it's also not on the triangle.
+    if !is_point_on_plane(point, &plane) {
+        return false;
+    }
 
-        barycentric_point.x >= 0.0
+    // In case the triangle isn't horizontal
+    if let Some(rotation_to_horizontal) =
+        Rotation3::rotation_between(&plane.normal(), &Vector3::new(0.0, 0.0, 1.0))
+    {
+        // rotate the triangle to be horizontal
+        let rotated_vertices = (
+            rotation_to_horizontal * triangle_vertices.0,
+            rotation_to_horizontal * triangle_vertices.1,
+            rotation_to_horizontal * triangle_vertices.2,
+        );
+        // and rotate also the test point.
+        let rotated_point = rotation_to_horizontal * point;
+
+        let barycentric_point = compute_barycentric_coords(
+            rotated_vertices.0.xy(),
+            rotated_vertices.1.xy(),
+            rotated_vertices.2.xy(),
+            rotated_point.xy(),
+        )
+        .expect("The triangle is degenerate");
+
+        return barycentric_point.x >= 0.0
             && barycentric_point.x <= 1.0
             && barycentric_point.y >= 0.0
             && barycentric_point.y <= 1.0
@@ -91,10 +105,35 @@ fn is_point_in_triangle(
             && approx::relative_eq!(
                 barycentric_point.x + barycentric_point.y + barycentric_point.z,
                 1.0
-            )
-    } else {
-        false
+            );
     }
+
+    // In case the triangle is horizontal, omit the Z coordinates.
+    if triangle_vertices.0.z == triangle_vertices.1.z
+        && triangle_vertices.0.z == triangle_vertices.2.z
+    {
+        let barycentric_point = compute_barycentric_coords(
+            triangle_vertices.0.xy(),
+            triangle_vertices.1.xy(),
+            triangle_vertices.2.xy(),
+            point.xy(),
+        )
+        .expect("The triangle is degenerate");
+
+        return barycentric_point.x >= 0.0
+            && barycentric_point.x <= 1.0
+            && barycentric_point.y >= 0.0
+            && barycentric_point.y <= 1.0
+            && barycentric_point.z >= 0.0
+            && barycentric_point.z <= 1.0
+            && approx::relative_eq!(
+                barycentric_point.x + barycentric_point.y + barycentric_point.z,
+                1.0
+            );
+    }
+
+    // In case no test passed
+    false
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -392,8 +431,6 @@ pub fn pull_point_to_plane(point: &Point3<f32>, plane: &Plane) -> PulledPointWit
 
 #[cfg(test)]
 mod tests {
-    use crate::geometry;
-
     use super::*;
 
     #[test]
