@@ -675,6 +675,7 @@ fn draw_var_combo_box(
                     .var_name_for_ident(var_ident)
                     .expect("Failed to find name for ident"),
                 var_ident,
+                ty == Ty::GeometryArray,
             )
         })
         .unwrap_or_else(|| imgui::ImString::new("<Nil>"));
@@ -688,6 +689,7 @@ fn draw_var_combo_box(
                     .var_name_for_ident(var_ident)
                     .expect("Failed to find name for ident"),
                 var_ident,
+                ty == Ty::GeometryArray,
             );
             let selected = if let Some(selected_var_index) = selected_var_index {
                 index == selected_var_index
@@ -726,8 +728,16 @@ fn draw_var_combo_box(
     }
 }
 
-fn format_var_name(name: &str, ident: ast::VarIdent) -> imgui::ImString {
-    imgui::im_str!("{} #{}", name, ident.0 + 1)
+fn format_var_name(
+    name: &str,
+    ident: ast::VarIdent,
+    surround_with_brackets: bool,
+) -> imgui::ImString {
+    if surround_with_brackets {
+        imgui::im_str!("[{}] #{}", name, ident.0 + 1)
+    } else {
+        imgui::im_str!("{} #{}", name, ident.0 + 1)
+    }
 }
 
 fn push_disabled_style(ui: &imgui::Ui) -> (imgui::ColorStackToken, imgui::StyleStackToken) {
