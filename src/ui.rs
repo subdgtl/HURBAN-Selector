@@ -370,8 +370,7 @@ impl<'a> UiFrame<'a> {
                                                 }
                                         }
                                         ParamRefinement::Geometry => {
-                                            let changed_expr = draw_var_combo_box(
-                                                ui,
+                                            let changed_expr = self.draw_var_combo_box(
                                                 session,
                                                 stmt_index,
                                                 arg,
@@ -388,8 +387,7 @@ impl<'a> UiFrame<'a> {
                                             }
                                         }
                                         ParamRefinement::GeometryArray => {
-                                            let changed_expr = draw_var_combo_box(
-                                                ui,
+                                            let changed_expr = self.draw_var_combo_box(
                                                 session,
                                                 stmt_index,
                                                 arg,
@@ -633,98 +631,100 @@ impl<'a> UiFrame<'a> {
             session.pop_prog_stmt();
         }
     }
-}
 
-fn draw_var_combo_box(
-    ui: &imgui::Ui,
-    session: &Session,
-    stmt_index: usize,
-    arg: &ast::Expr,
-    ty: Ty,
-    input_label: &imgui::ImStr,
-) -> Option<ast::Expr> {
-    let mut visible_vars_iter = session.visible_vars_at_stmt(stmt_index, ty);
+    fn draw_var_combo_box(
+        &self,
+        session: &Session,
+        stmt_index: usize,
+        arg: &ast::Expr,
+        ty: Ty,
+        input_label: &imgui::ImStr,
+    ) -> Option<ast::Expr> {
+        let ui = &self.imgui_ui;
 
-    let mut selected_var_index = match arg {
-        ast::Expr::Lit(ast::LitExpr::Nil) => None,
-        ast::Expr::Var(var) => visible_vars_iter
-            .clone()
-            .position(|var_ident| var_ident == var.ident())
-            .map(Some)
-            .unwrap_or(None),
-        _ => panic!("Arg can either be a variable or nil"),
-    };
+        let mut visible_vars_iter = session.visible_vars_at_stmt(stmt_index, ty);
 
-    // FIXME: Show used var idents differently from unused,
-    // e.g. grayed-out
-
-    // FIXME: find a way to make combo boxes read-only
-    let mut combo = imgui::ComboBox::new(input_label);
-
-    let mut combo_changed = false;
-    let preview_value = selected_var_index
-        .map(|index| {
-            visible_vars_iter
+        let mut selected_var_index = match arg {
+            ast::Expr::Lit(ast::LitExpr::Nil) => None,
+            ast::Expr::Var(var) => visible_vars_iter
                 .clone()
-                .nth(index)
-                .expect("Failed to find nth visible var to display preview value")
-        })
-        .map(|var_ident| {
-            format_var_name(
-                session
-                    .var_name_for_ident(var_ident)
-                    .expect("Failed to find name for ident"),
-                var_ident,
-                ty == Ty::GeometryArray,
-            )
-        })
-        .unwrap_or_else(|| imgui::ImString::new("<Nil>"));
+                .position(|var_ident| var_ident == var.ident())
+                .map(Some)
+                .unwrap_or(None),
+            _ => panic!("Arg can either be a variable or nil"),
+        };
 
-    combo = combo.preview_value(&preview_value);
+        // FIXME: Show used var idents differently from unused,
+        // e.g. grayed-out
 
-    if let Some(combo_token) = combo.begin(ui) {
-        for (index, var_ident) in visible_vars_iter.clone().enumerate() {
-            let text = format_var_name(
-                session
-                    .var_name_for_ident(var_ident)
-                    .expect("Failed to find name for ident"),
-                var_ident,
-                ty == Ty::GeometryArray,
-            );
-            let selected = if let Some(selected_var_index) = selected_var_index {
-                index == selected_var_index
-            } else {
-                false
-            };
+        // FIXME: find a way to make combo boxes read-only
+        let mut combo = imgui::ComboBox::new(input_label);
 
-            if imgui::Selectable::new(&text).selected(selected).build(ui) {
-                selected_var_index = Some(index);
+        let mut combo_changed = false;
+        let preview_value = selected_var_index
+            .map(|index| {
+                visible_vars_iter
+                    .clone()
+                    .nth(index)
+                    .expect("Failed to find nth visible var to display preview value")
+            })
+            .map(|var_ident| {
+                format_var_name(
+                    session
+                        .var_name_for_ident(var_ident)
+                        .expect("Failed to find name for ident"),
+                    var_ident,
+                    ty == Ty::GeometryArray,
+                )
+            })
+            .unwrap_or_else(|| imgui::ImString::new("<Nil>"));
+
+        combo = combo.preview_value(&preview_value);
+
+        if let Some(combo_token) = combo.begin(ui) {
+            for (index, var_ident) in visible_vars_iter.clone().enumerate() {
+                let text = format_var_name(
+                    session
+                        .var_name_for_ident(var_ident)
+                        .expect("Failed to find name for ident"),
+                    var_ident,
+                    ty == Ty::GeometryArray,
+                );
+                let selected = if let Some(selected_var_index) = selected_var_index {
+                    index == selected_var_index
+                } else {
+                    false
+                };
+
+                if imgui::Selectable::new(&text).selected(selected).build(ui) {
+                    selected_var_index = Some(index);
+                    combo_changed = true;
+                }
+            }
+
+            if imgui::Selectable::new(imgui::im_str!("<Nil>"))
+                .selected(selected_var_index.is_none())
+                .build(ui)
+            {
+                selected_var_index = None;
                 combo_changed = true;
             }
+
+            combo_token.end(ui);
         }
 
-        if imgui::Selectable::new(imgui::im_str!("<Nil>"))
-            .selected(selected_var_index.is_none())
-            .build(ui)
-        {
-            selected_var_index = None;
-            combo_changed = true;
-        }
-
-        combo_token.end(ui);
-    }
-
-    if combo_changed {
-        if let Some(selected_var_index) = selected_var_index {
-            let var_ident = visible_vars_iter
-                .nth(selected_var_index)
-                .expect("Failed to find nth visible var to create new var expr");
-            Some(ast::Expr::Var(ast::VarExpr::new(var_ident)))
+        if combo_changed {
+            if let Some(selected_var_index) = selected_var_index {
+                let var_ident = visible_vars_iter
+                    .nth(selected_var_index)
+                    .expect("Failed to find nth visible var to create new var expr");
+                Some(ast::Expr::Var(ast::VarExpr::new(var_ident)))
+            } else {
+                Some(ast::Expr::Lit(ast::LitExpr::Nil))
+            }
         } else {
-            Some(ast::Expr::Lit(ast::LitExpr::Nil))
+            None
         }
-    } else {
-        None
     }
 }
 
