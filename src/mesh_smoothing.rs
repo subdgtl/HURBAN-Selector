@@ -778,8 +778,8 @@ mod tests {
     }
 
     #[test]
-    fn test_loop_subdivision_snapshot_uv_sphere() {
-        let geometry = geometry::uv_sphere([0.0; 3], 1.0, 2, 3);
+    fn test_loop_subdivision_snapshot_uv_sphere_geometry() {
+        let geometry = geometry::uv_sphere_geometry([0.0; 3], 1.0, 2, 3);
         let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
         let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
 
@@ -792,8 +792,8 @@ mod tests {
     }
 
     #[test]
-    fn test_loop_subdivision_snapshot_cube_sharp() {
-        let geometry = geometry::cube_sharp([0.0; 3], 1.0);
+    fn test_loop_subdivision_snapshot_cube_sharp_geometry() {
+        let geometry = geometry::cube_sharp_geometry([0.0; 3], 1.0);
         let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&geometry);
         let f2f = mesh_topology_analysis::face_to_face_topology(&geometry);
 

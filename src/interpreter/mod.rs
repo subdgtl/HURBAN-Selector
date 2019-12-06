@@ -396,7 +396,7 @@ impl Interpreter {
     }
 
     /// Interprets the whole currently set program and returns the
-    /// used/unused values after the last statment.
+    /// used/unused values after the last statement.
     ///
     /// # Panics
     /// Panics if the currently set program is empty.
@@ -424,7 +424,7 @@ impl Interpreter {
         let max_index = self.prog.stmts().len() - 1;
         assert!(
             max_index >= index,
-            "Can not execute past the program lenght",
+            "Can not execute past the program length",
         );
 
         self.resolve()?;
@@ -779,7 +779,6 @@ fn eval_call_expr(
                     ty_provided: value_ty,
                 });
             }
-
             Ok(value)
         }
         Err(func_error) => Err(RuntimeError::Func {
@@ -1107,7 +1106,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Can not execute past the program lenght")]
+    #[should_panic(expected = "Can not execute past the program length")]
     fn test_interpreter_interpret_up_until_invalid_index() {
         let (func_id, func) = (
             FuncIdent(0),

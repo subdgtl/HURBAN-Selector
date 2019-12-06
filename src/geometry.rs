@@ -842,7 +842,100 @@ fn remove_orphan_vertices_and_normals(
     (faces_renumbered, vertices_reduced, normals_reduced)
 }
 
-pub fn plane(position: [f32; 3], scale: f32) -> Geometry {
+/// Plane defining euclidean orthogonal unit space origin and orientation.
+///
+/// The plane is endless, has an origin, orientation defined by mutually
+/// perpendicular X and Y direction vectors. Such plane doesn't allow for
+/// distortions or scaling.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Plane {
+    origin: Point3<f32>,
+    x_vector: Vector3<f32>,
+    y_vector: Vector3<f32>,
+}
+
+impl Plane {
+    /// A plane defined by its origin, X and Y direction vector.
+    ///
+    /// The X vector is leading and its direction is kept in the plane unchanged.
+    ///
+    /// The Y vector is only a hint and is being recalculated to be perpendicular to
+    /// the leading X vector.
+    /// # Panics
+    /// Panics if the X and Y vectors are parallel (identical or reverted).
+    pub fn new(
+        origin: &Point3<f32>,
+        x_vector: &Vector3<f32>,
+        y_vector_hint: &Vector3<f32>,
+    ) -> Plane {
+        // Calculate plane normal, then use it to calculate certainly
+        // perpendicular Y vector.
+        let plane_normal = x_vector.cross(&y_vector_hint);
+
+        assert!(
+            plane_normal != Vector3::zeros(),
+            "The X and Y vectors defining a plane can't be parallel or reverted"
+        );
+
+        // Make sure the Y vector is perpendicular to the leading X vector.
+        let y_vector = plane_normal.cross(&x_vector);
+
+        Plane {
+            origin: *origin,
+            x_vector: x_vector.normalize(),
+            y_vector: y_vector.normalize(),
+        }
+    }
+
+    /// The rotation of the X and Y vector around the normal is random.
+    ///
+    /// # Panics
+    /// Panics if the normal vector is a zero vector.
+    pub fn from_origin_and_normal(origin: &Point3<f32>, normal: &Vector3<f32>) -> Plane {
+        assert_ne!(
+            *normal,
+            Vector3::zeros(),
+            "Can't create a plane defined by a zero normal vector"
+        );
+        let lead_vector =
+            if approx::relative_eq!(Vector3::new(1.0, 0.0, 0.0).dot(&normal).abs(), 1.0) {
+                Vector3::new(0.0, 1.0, 0.0)
+            } else {
+                Vector3::new(1.0, 0.0, 0.0)
+            };
+        let y_vector = normal.cross(&lead_vector);
+        let x_vector = normal.cross(&y_vector);
+        Plane::new(origin, &x_vector, &y_vector)
+    }
+
+    pub fn from_three_points(
+        origin: &Point3<f32>,
+        point_on_x: &Point3<f32>,
+        point_on_y: &Point3<f32>,
+    ) -> Plane {
+        let x_vector = point_on_x - origin;
+        let y_vector = point_on_y - origin;
+        Plane::new(origin, &x_vector, &y_vector)
+    }
+
+    pub fn normal(&self) -> Vector3<f32> {
+        self.x_vector.cross(&self.y_vector)
+    }
+
+    pub fn x_vector(&self) -> Vector3<f32> {
+        self.x_vector
+    }
+
+    pub fn y_vector(&self) -> Vector3<f32> {
+        self.y_vector
+    }
+
+    pub fn origin(&self) -> Point3<f32> {
+        self.origin
+    }
+}
+
+pub fn plane_geometry(position: [f32; 3], scale: f32) -> Geometry {
     #[rustfmt::skip]
     let vertex_positions = vec![
         v(-1.0, -1.0,  0.0, position, scale),
@@ -864,7 +957,7 @@ pub fn plane(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn cube_smooth(position: [f32; 3], scale: f32) -> Geometry {
+pub fn cube_smooth_geometry(position: [f32; 3], scale: f32) -> Geometry {
     let vertex_positions = vec![
         // back
         v(-1.0, 1.0, -1.0, position, scale),
@@ -919,7 +1012,7 @@ pub fn cube_smooth(position: [f32; 3], scale: f32) -> Geometry {
     Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn cube_sharp(position: [f32; 3], scale: f32) -> Geometry {
+pub fn cube_sharp_geometry(position: [f32; 3], scale: f32) -> Geometry {
     let vertex_positions = vec![
         // back
         v(-1.0, 1.0, -1.0, position, scale),
@@ -978,7 +1071,12 @@ pub fn cube_sharp(position: [f32; 3], scale: f32) -> Geometry {
 /// # Panics
 /// Panics if number of parallels is less than 2 or number of
 /// meridians is less than 3.
-pub fn uv_sphere(position: [f32; 3], scale: f32, n_parallels: u32, n_meridians: u32) -> Geometry {
+pub fn uv_sphere_geometry(
+    position: [f32; 3],
+    scale: f32,
+    n_parallels: u32,
+    n_meridians: u32,
+) -> Geometry {
     assert!(n_parallels >= 2, "Need at least 2 parallels");
     assert!(n_meridians >= 3, "Need at least 3 meridians");
 
@@ -1128,11 +1226,15 @@ fn n(x: f32, y: f32, z: f32) -> Vector3<f32> {
     Vector3::new(x, y, z)
 }
 
-fn compute_triangle_normal(p1: &Point3<f32>, p2: &Point3<f32>, p3: &Point3<f32>) -> Vector3<f32> {
+pub fn compute_triangle_normal(
+    p1: &Point3<f32>,
+    p2: &Point3<f32>,
+    p3: &Point3<f32>,
+) -> Vector3<f32> {
     let u = p2 - p1;
     let v = p3 - p1;
 
-    Vector3::cross(&u, &v)
+    Vector3::cross(&u, &v).normalize()
 }
 
 #[cfg(test)]
@@ -1324,11 +1426,7 @@ mod tests {
             TriangleFace::new(2, 3, 4),
         ];
 
-        Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces.clone(),
-            vertices.clone(),
-            normals.clone(),
-        );
+        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
     }
 
     #[test]
@@ -1501,11 +1599,8 @@ mod tests {
     fn test_has_no_orphan_vertices_returns_true_if_there_are_some() {
         let (faces, vertices, normals) = quad_with_normals();
 
-        let geometry_without_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces.clone(),
-            vertices.clone(),
-            normals.clone(),
-        );
+        let geometry_without_orphans =
+            Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
 
         assert!(geometry_without_orphans.has_no_orphan_vertices());
     }
@@ -1517,9 +1612,9 @@ mod tests {
         let vertices_extended = [&vertices[..], &extra_vertex[..]].concat();
 
         let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces.clone(),
-            vertices_extended.clone(),
-            normals.clone(),
+            faces,
+            vertices_extended,
+            normals,
         );
 
         assert!(!geometry_with_orphans.has_no_orphan_vertices());
@@ -1529,11 +1624,8 @@ mod tests {
     fn test_has_no_orphan_normals_returns_true_if_there_are_some() {
         let (faces, vertices, normals) = quad_with_normals();
 
-        let geometry_without_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces.clone(),
-            vertices.clone(),
-            normals.clone(),
-        );
+        let geometry_without_orphans =
+            Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
 
         assert!(geometry_without_orphans.has_no_orphan_normals());
     }
@@ -1541,11 +1633,8 @@ mod tests {
     #[test]
     fn test_geometry_unoriented_edges_iter() {
         let (faces, vertices, normals) = quad_with_normals();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces.clone(),
-            vertices.clone(),
-            normals.clone(),
-        );
+        let geometry =
+            Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
         let unoriented_edges_correct = vec![
             UnorientedEdge(OrientedEdge::new(0, 1)),
             UnorientedEdge(OrientedEdge::new(1, 2)),
@@ -1569,11 +1658,8 @@ mod tests {
     #[test]
     fn test_geometry_oriented_edges_iter() {
         let (faces, vertices, normals) = quad_with_normals();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces.clone(),
-            vertices.clone(),
-            normals.clone(),
-        );
+        let geometry =
+            Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
 
         let oriented_edges_correct = vec![
             OrientedEdge::new(0, 1),
@@ -1602,9 +1688,9 @@ mod tests {
         let normals_extended = [&normals[..], &extra_normal[..]].concat();
 
         let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces.clone(),
-            vertices.clone(),
-            normals_extended.clone(),
+            faces,
+            vertices,
+            normals_extended,
         );
 
         assert!(!geometry_with_orphans.has_no_orphan_normals());
@@ -1749,6 +1835,75 @@ mod tests {
         assert!(geometry.has_no_orphan_vertices());
     }
 
+    #[test]
+    fn test_geometry_compute_triangle_normal_returns_z_vector_for_horizontal_triangle() {
+        let normal_correct = Vector3::new(0.0, 0.0, 1.0);
+
+        let normal_calculated = compute_triangle_normal(
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(-0.866025, -0.5, 0.0),
+            &Point3::new(0.866025, -0.5, 0.0),
+        );
+
+        assert_eq!(normal_correct, normal_calculated);
+    }
+
+    #[test]
+    fn test_geometry_compute_triangle_normal_returns_x_vector_for_vertical_triangle() {
+        let normal_correct = Vector3::new(1.0, 0.0, 0.0);
+
+        let normal_calculated = compute_triangle_normal(
+            &Point3::new(0.0, 1.0, 0.0),
+            &Point3::new(0.0, -0.5, 0.866025),
+            &Point3::new(0.0, -0.5, -0.866025),
+        );
+
+        assert_eq!(normal_correct, normal_calculated);
+    }
+
+    #[test]
+    fn test_geometry_compute_triangle_normal_returns_vector_for_arbitrary_triangle() {
+        let normal_correct = Vector3::new(0.62270945, -0.614937, 0.48382375);
+
+        let normal_calculated = compute_triangle_normal(
+            &Point3::new(0.268023, 0.8302, 0.392469),
+            &Point3::new(-0.870844, -0.462665, 0.215034),
+            &Point3::new(0.334798, -0.197734, -0.999972),
+        );
+
+        assert_eq!(normal_correct, normal_calculated);
+    }
+
+    #[test]
+    fn test_geometry_plane_new_calculate_perpendicular_y() {
+        let test_plane = Plane::new(
+            &Point3::new(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 0.0),
+        );
+
+        assert_eq!(test_plane.y_vector, Vector3::new(0.0, 1.0, 0.0));
+    }
+
+    #[test]
+    #[should_panic = "The X and Y vectors defining a plane can't be parallel or reverted"]
+    fn test_geometry_plane_new_fail_because_x_and_y_vectors_identical() {
+        Plane::new(
+            &Point3::new(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 0.0, 0.0),
+            &Vector3::new(2.0, 0.0, 0.0),
+        );
+    }
+
+    #[test]
+    #[should_panic = "The X and Y vectors defining a plane can't be parallel or reverted"]
+    fn test_geometry_plane_new_fail_because_x_and_y_vectors_reverted() {
+        Plane::new(
+            &Point3::new(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 0.0, 0.0),
+            &Vector3::new(-2.0, 0.0, 0.0),
+        );
+    }
     #[test]
     fn test_triangle_face_new_lowest_first() {
         let face = TriangleFace::new(0, 1, 2);

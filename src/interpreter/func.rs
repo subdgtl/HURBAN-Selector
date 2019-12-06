@@ -11,7 +11,7 @@ pub struct FuncInfo {
 }
 
 bitflags! {
-    /// Information about the function behaviour.
+    /// Information about the function behavior.
     ///
     /// Unset bits are always the safe default. Set bits may trigger
     /// interpreter optimizations. Incorrectly set bits may result in

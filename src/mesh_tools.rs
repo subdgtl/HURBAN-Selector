@@ -694,7 +694,7 @@ mod tests {
 
     #[test]
     fn test_separate_isolated_meshes_returns_similar_for_cube() {
-        let geometry = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
 
         let calculated_geometries = separate_isolated_meshes(&geometry);
 
@@ -734,7 +734,7 @@ mod tests {
 
     #[test]
     fn test_mesh_tools_revert_mesh_faces() {
-        let plane = geometry::plane([0.0, 0.0, 0.0], 1.0);
+        let plane = geometry::plane_geometry([0.0, 0.0, 0.0], 1.0);
         let plane_with_reverted_faces = revert_mesh_faces(&plane);
 
         let expected_reverted_faces = vec![
@@ -750,7 +750,7 @@ mod tests {
 
     #[test]
     fn test_mesh_tools_revert_mesh_faces_once_does_not_equal_original() {
-        let cube = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
         let cube_with_reverted_faces = revert_mesh_faces(&cube);
 
         assert_ne!(cube, cube_with_reverted_faces);
@@ -758,7 +758,7 @@ mod tests {
 
     #[test]
     fn test_mesh_tools_revert_mesh_faces_twice_does_equal_original() {
-        let cube = geometry::cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
         let cube_with_twice_reverted_faces = revert_mesh_faces(&revert_mesh_faces(&cube));
 
         assert_eq!(cube, cube_with_twice_reverted_faces);
@@ -782,7 +782,7 @@ mod tests {
 
     #[test]
     fn test_mesh_tools_synchronize_mesh_winding_for_sphere() {
-        let sphere = geometry::uv_sphere([0.0, 0.0, 0.0], 1.0, 10, 10);
+        let sphere = geometry::uv_sphere_geometry([0.0, 0.0, 0.0], 1.0, 10, 10);
         let sphere_faces_one_flipped = sphere.faces().iter().enumerate().map(|(i, f)| match f {
             Face::Triangle(t) => {
                 if i == 5 {
