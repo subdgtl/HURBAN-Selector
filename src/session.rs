@@ -1,10 +1,8 @@
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::{BTreeMap, HashSet};
-use std::sync::Arc;
 
-use crate::geometry::Geometry;
 use crate::interpreter::ast::{FuncIdent, Prog, Stmt, VarIdent};
-use crate::interpreter::Func;
+use crate::interpreter::{Func, Ty, Value};
 use crate::interpreter_funcs;
 use crate::interpreter_server::{
     InterpreterRequest, InterpreterResponse, InterpreterServer, PollResponseError, RequestId,
@@ -14,8 +12,8 @@ use crate::interpreter_server::{
 /// about what values have been added since the last poll, and what
 /// values have been removed are no longer required.
 pub enum PollInterpreterResponseNotification {
-    Add(VarIdent, Arc<Geometry>),
-    Remove(VarIdent),
+    Add(VarIdent, Value),
+    Remove(VarIdent, Value),
 }
 
 /// An editing session.
@@ -34,14 +32,16 @@ pub struct Session {
 
     prog: Prog,
 
-    unused_values: HashMap<VarIdent, Arc<Geometry>>,
+    unused_values: HashMap<VarIdent, Value>,
 
-    /// Auxiliary side-array for prog. Determines the vars visible
-    /// from the statement. The value is read by producing a slice
-    /// from the begining of the array to the current stmt's index
-    /// (exclusive), e.g. 0th stmt can not see any vars, 1st stmt can
-    /// see vars produced by the 0th stmt, etc.
-    var_visibility: Vec<VarIdent>,
+    // Auxiliary side-arrays for prog. Determine geometry and
+    // geometry-array vars visible from a stmt. The value is read by
+    // producing a slice from the begining of the array to the current
+    // stmt's index (exclusive), and filtering only `Some`
+    // values. E.g. 0th stmt can not see any vars, 1st stmt can see
+    // vars produced by the 0th stmt (if it is `Some`), etc.
+    var_visibility_geometry: Vec<Option<VarIdent>>,
+    var_visibility_geometry_array: Vec<Option<VarIdent>>,
 
     function_table: BTreeMap<FuncIdent, Box<dyn Func>>,
 }
@@ -57,7 +57,8 @@ impl Session {
 
             unused_values: HashMap::new(),
 
-            var_visibility: Vec::new(),
+            var_visibility_geometry: Vec::new(),
+            var_visibility_geometry_array: Vec::new(),
 
             // FIXME: @Correctness this is a hack that is currently
             // harmless, but should eventually be cleaned up. Some
@@ -205,8 +206,22 @@ impl Session {
 
     /// Returns all visible variable identifiers from a position
     /// (index) in the program.
-    pub fn var_visibility_at_stmt(&self, index: usize) -> &[VarIdent] {
-        &self.var_visibility[0..index]
+    pub fn visible_vars_at_stmt<'a>(
+        &'a self,
+        index: usize,
+        ty: Ty,
+    ) -> impl Iterator<Item = VarIdent> + Clone + 'a {
+        static EMPTY: Vec<Option<VarIdent>> = Vec::new();
+        let var_visibility = match ty {
+            Ty::Geometry => &self.var_visibility_geometry,
+            Ty::GeometryArray => &self.var_visibility_geometry_array,
+            _ => &EMPTY,
+        };
+
+        var_visibility[0..index]
+            .iter()
+            .filter_map(|var_ident| var_ident.as_ref())
+            .copied()
     }
 
     /// Returns whether the interpreter is currently running. Program
@@ -302,8 +317,7 @@ impl Session {
                                         Vec::with_capacity(self.unused_values.len());
                                     let mut to_reinsert =
                                         Vec::with_capacity(self.unused_values.len());
-                                    for (current_var_ident, current_geometry) in &self.unused_values
-                                    {
+                                    for (current_var_ident, current_value) in &self.unused_values {
                                         if let Some((var_ident, value)) = value_set
                                             .unused_values
                                             .iter()
@@ -313,12 +327,9 @@ impl Session {
                                             // identifier in both new and old value set,
                                             // but it could have changed! If it did, we
                                             // both remove the old value and add the new.
-                                            let geometry = value.unwrap_refcounted_geometry();
-
-                                            if geometry != *current_geometry {
+                                            if value != current_value {
                                                 to_remove.push(*var_ident);
-                                                to_reinsert
-                                                    .push((*var_ident, Arc::clone(&geometry)));
+                                                to_reinsert.push((*var_ident, value.clone()));
                                             }
                                         } else {
                                             // The value is no longer present in the new
@@ -329,38 +340,37 @@ impl Session {
 
                                     // Process values to remove and values to reinsert
                                     for var_ident in to_remove {
-                                        self.unused_values.remove(&var_ident).expect(
+                                        let value = self.unused_values.remove(&var_ident).expect(
                                             "Value must be present if we want to remove it",
                                         );
                                         callback(PollInterpreterResponseNotification::Remove(
-                                            var_ident,
+                                            var_ident, value,
                                         ));
                                     }
-                                    for (var_ident, geometry) in to_reinsert {
+                                    for (var_ident, value) in to_reinsert {
                                         let inserted = self
                                             .unused_values
-                                            .insert(var_ident, Arc::clone(&geometry))
+                                            .insert(var_ident, value.clone())
                                             .is_none();
                                         assert!(
-                                        inserted,
-                                        "Value must have been removed previously for reinsertion",
-                                    );
+                                            inserted,
+                                            "Value must have been removed previously for reinsertion",
+                                        );
                                         callback(PollInterpreterResponseNotification::Add(
-                                            var_ident, geometry,
+                                            var_ident, value,
                                         ))
                                     }
 
                                     for (var_ident, value) in value_set.unused_values {
-                                        let geometry = value.unwrap_refcounted_geometry();
                                         // Only add and emit events for values that we
                                         // didn't have before. We handled re-insertions
                                         // earlier by comparing the values.
                                         if let Entry::Vacant(vacant) =
                                             self.unused_values.entry(var_ident)
                                         {
-                                            vacant.insert(Arc::clone(&geometry));
+                                            vacant.insert(value.clone());
                                             callback(PollInterpreterResponseNotification::Add(
-                                                var_ident, geometry,
+                                                var_ident, value,
                                             ));
                                         }
                                     }
@@ -387,18 +397,38 @@ impl Session {
     }
 
     fn recompute_var_visibility(&mut self) {
-        self.var_visibility.clear();
+        // FIXME: Get variable visibility analysis from interpreter
+
+        self.var_visibility_geometry.clear();
+        self.var_visibility_geometry_array.clear();
+
+        let mut n_geometries = 0;
+        let mut n_geometry_arrays = 0;
 
         for stmt in self.prog.stmts() {
-            match stmt {
-                Stmt::VarDecl(var_decl) => {
-                    self.var_visibility.push(var_decl.ident());
+            let Stmt::VarDecl(var_decl) = stmt;
+            let func_ident = var_decl.init_expr().ident();
+            let func = &self.function_table[&func_ident];
+            match func.return_ty() {
+                Ty::Geometry => {
+                    self.var_visibility_geometry.push(Some(var_decl.ident()));
+                    self.var_visibility_geometry_array.push(None);
+
+                    n_geometries += 1;
                 }
+                Ty::GeometryArray => {
+                    self.var_visibility_geometry.push(None);
+                    self.var_visibility_geometry_array
+                        .push(Some(var_decl.ident()));
+
+                    n_geometry_arrays += 1;
+                }
+                _ => panic!("Unsupported variable type"),
             }
         }
 
         assert_eq!(
-            self.var_visibility.len(),
+            n_geometries + n_geometry_arrays,
             self.prog.stmts().len(),
             "Each stmt is a var decl and must produce a variable",
         );

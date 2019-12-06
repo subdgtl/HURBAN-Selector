@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::convert::{cast_u32, cast_usize};
 use crate::geometry::Geometry;
 
 /// A type of a value.
@@ -17,6 +18,7 @@ pub enum Ty {
     Float3,
     String,
     Geometry,
+    GeometryArray,
 }
 
 impl fmt::Display for Ty {
@@ -30,6 +32,7 @@ impl fmt::Display for Ty {
             Ty::Float3 => f.write_str("Float3"),
             Ty::String => f.write_str("String"),
             Ty::Geometry => f.write_str("Geometry"),
+            Ty::GeometryArray => f.write_str("GeometryArray"),
         }
     }
 }
@@ -45,6 +48,7 @@ pub enum Value {
     Float3([f32; 3]),
     String(Arc<String>),
     Geometry(Arc<Geometry>),
+    GeometryArray(Arc<GeometryArrayValue>),
 }
 
 impl Value {
@@ -59,6 +63,7 @@ impl Value {
             Value::Float3(_) => Ty::Float3,
             Value::String(_) => Ty::String,
             Value::Geometry(_) => Ty::Geometry,
+            Value::GeometryArray(_) => Ty::GeometryArray,
         }
     }
 
@@ -217,6 +222,42 @@ impl Value {
             _ => panic!("Value not geometry"),
         }
     }
+
+    /// Get the value if geometry array, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when value is not a geometry array.
+    pub fn unwrap_geometry_array(&self) -> &GeometryArrayValue {
+        match self {
+            Value::GeometryArray(geometry_array_ptr) => geometry_array_ptr,
+            _ => panic!("Value not geometry array"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeometryArrayValue(Vec<Arc<Geometry>>);
+
+impl GeometryArrayValue {
+    pub fn new(geometries: Vec<Arc<Geometry>>) -> Self {
+        Self(geometries)
+    }
+
+    pub fn get_refcounted(&self, index: u32) -> Option<Arc<Geometry>> {
+        self.0.get(cast_usize(index)).map(Arc::clone)
+    }
+
+    pub fn len(&self) -> u32 {
+        cast_u32(self.0.len())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = Arc<Geometry>> + 'a {
+        self.0.iter().cloned()
+    }
 }
 
 impl fmt::Display for Value {
@@ -240,6 +281,9 @@ impl fmt::Display for Value {
                     "<geometry (vertices: {}, faces: {})>",
                     vertex_count, face_count
                 )
+            }
+            Value::GeometryArray(geometry_array) => {
+                write!(f, "<geometry-array (size: {})>", geometry_array.len())
             }
         }
     }

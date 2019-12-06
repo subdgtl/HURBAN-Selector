@@ -5,6 +5,7 @@ use crate::interpreter::{Func, FuncIdent};
 
 use self::create_plane::FuncCreatePlane;
 use self::create_uv_sphere::FuncCreateUvSphere;
+use self::extract::FuncExtract;
 use self::import_obj_mesh::FuncImportObjMesh;
 use self::join_meshes::FuncJoinMeshes;
 use self::laplacian_smoothing::FuncLaplacianSmoothing;
@@ -18,6 +19,7 @@ use self::weld::FuncWeld;
 
 mod create_plane;
 mod create_uv_sphere;
+mod extract;
 mod import_obj_mesh;
 mod join_meshes;
 mod laplacian_smoothing;
@@ -35,7 +37,8 @@ mod weld;
 // order of the operation in the UI.
 
 // Manipulation funcs
-pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0000);
+pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0);
+pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(1);
 
 // Create funcs
 pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(1000);
@@ -67,6 +70,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
 
     // Manipulation funcs
     funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncTransform));
+    funcs.insert(FUNC_ID_EXTRACT, Box::new(FuncExtract));
 
     // Create funcs
     funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncCreateUvSphere));

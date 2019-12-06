@@ -11,7 +11,7 @@ pub use self::func::{
     BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncFlags, FuncInfo,
     IntParamRefinement, ParamInfo, ParamRefinement, UintParamRefinement,
 };
-pub use self::value::{Ty, Value};
+pub use self::value::{GeometryArrayValue, Ty, Value};
 
 pub mod ast;
 pub mod func;
@@ -690,7 +690,6 @@ fn eval_expr(
     match expr {
         ast::Expr::Lit(lit) => eval_lit_expr(lit),
         ast::Expr::Var(var) => eval_var_expr(var, env),
-        ast::Expr::Index(_) => unimplemented!("We don't support index expressions yet"),
     }
 }
 
@@ -808,6 +807,7 @@ mod tests {
                 Ty::Float3 => ParamRefinement::Float3(Float3ParamRefinement::default()),
                 Ty::String => ParamRefinement::String,
                 Ty::Geometry => ParamRefinement::Geometry,
+                Ty::GeometryArray => ParamRefinement::GeometryArray,
             },
             optional,
         }

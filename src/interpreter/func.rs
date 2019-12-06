@@ -56,6 +56,7 @@ pub enum ParamRefinement {
     Float3(Float3ParamRefinement),
     String,
     Geometry,
+    GeometryArray,
 }
 
 impl ParamRefinement {
@@ -68,6 +69,7 @@ impl ParamRefinement {
             Self::Float3(_) => Ty::Float3,
             Self::String => Ty::String,
             Self::Geometry => Ty::Geometry,
+            Self::GeometryArray => Ty::GeometryArray,
         }
     }
 }
