@@ -663,12 +663,17 @@ fn draw_var_combo_box(
 
     let mut combo_changed = false;
     let preview_value = selected_var_index
-        .map(|index| visible_vars_iter.clone().nth(index).unwrap())
+        .map(|index| {
+            visible_vars_iter
+                .clone()
+                .nth(index)
+                .expect("Failed to find nth visible var to display preview value")
+        })
         .map(|var_ident| {
             format_var_name(
                 session
                     .var_name_for_ident(var_ident)
-                    .expect("Failed to find name to ident"),
+                    .expect("Failed to find name for ident"),
                 var_ident,
             )
         })
@@ -709,7 +714,9 @@ fn draw_var_combo_box(
 
     if combo_changed {
         if let Some(selected_var_index) = selected_var_index {
-            let var_ident = visible_vars_iter.nth(selected_var_index).unwrap();
+            let var_ident = visible_vars_iter
+                .nth(selected_var_index)
+                .expect("Failed to find nth visible var to create new var expr");
             Some(ast::Expr::Var(ast::VarExpr::new(var_ident)))
         } else {
             Some(ast::Expr::Lit(ast::LitExpr::Nil))
