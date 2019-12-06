@@ -32,7 +32,7 @@ pub fn compute_barycentric_coords(
 }
 
 /// Checks if all three points of a triangle lay on the same line.
-pub fn are_triangle_vertices_colinear(
+pub fn are_vertices_colinear(
     triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
 ) -> bool {
     let v0_normalized = triangle_vertices.0.coords.normalize();
@@ -47,7 +47,6 @@ pub fn are_triangle_vertices_colinear(
 /// Panics if triangle is colinear
 ///
 /// https://math.stackexchange.com/questions/4322/check-whether-a-point-is-within-a-3d-triangle
-// TODO: Orient the triangle and point to XY plane and then test
 fn is_point_in_triangle(
     point: &Point3<f32>,
     triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
@@ -68,7 +67,7 @@ fn is_point_in_triangle(
 
     // If the triangle is degenerated into a line, check if the point lies on
     // the line.
-    if are_triangle_vertices_colinear(triangle_vertices) {
+    if are_vertices_colinear(triangle_vertices) {
         return is_point_on_line_clamped(point, triangle_vertices.0, triangle_vertices.1);
     }
 
@@ -213,7 +212,7 @@ fn ray_intersects_triangle(
 /// https://stackoverflow.com/questions/17227149/using-dot-product-to-determine-if-point-lies-on-a-plane
 fn is_point_on_plane(point: &Point3<f32>, plane: &Plane) -> bool {
     let vector_from_plane_point_to_point = point - plane.origin();
-    point == plane.origin()
+    *point == plane.origin()
         || approx::relative_eq!(
             vector_from_plane_point_to_point
                 .normalize()
@@ -367,7 +366,7 @@ pub fn pull_point_to_mesh(
         }
         // If triangle vertices are colinear, it's enough to pull to
         // triangle edges later on.
-        if !are_triangle_vertices_colinear(face_vertices) {
+        if !are_vertices_colinear(face_vertices) {
             if let Some(intersection_point) =
                 ray_intersects_triangle(point, &(-1.0 * face_normal), face_vertices)
             {

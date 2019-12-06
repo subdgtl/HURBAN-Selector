@@ -922,16 +922,16 @@ impl Plane {
         self.x_vector.cross(&self.y_vector)
     }
 
-    pub fn x_vector(&self) -> &Vector3<f32> {
-        &self.x_vector
+    pub fn x_vector(&self) -> Vector3<f32> {
+        self.x_vector
     }
 
-    pub fn y_vector(&self) -> &Vector3<f32> {
-        &self.y_vector
+    pub fn y_vector(&self) -> Vector3<f32> {
+        self.y_vector
     }
 
-    pub fn origin(&self) -> &Point3<f32> {
-        &self.origin
+    pub fn origin(&self) -> Point3<f32> {
+        self.origin
     }
 }
 

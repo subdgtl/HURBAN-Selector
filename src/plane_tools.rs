@@ -123,7 +123,7 @@ mod tests {
         let origin_correct = Point3::new(4.8477926, 4.965808, 0.9303582);
         let normal_correct = Vector3::new(-0.026102116, 0.009860026, 0.9996106);
 
-        assert_eq!(*plane_calculated.origin(), origin_correct);
+        assert_eq!(plane_calculated.origin(), origin_correct);
         assert_eq!(plane_calculated.normal(), normal_correct);
     }
 
@@ -162,7 +162,7 @@ mod tests {
         let origin_correct = Point3::new(4.65731, 5.4324775, 0.913277);
         let normal_correct = Vector3::new(-0.021554187, 0.032416273, -0.999242);
 
-        assert_eq!(*plane_calculated.origin(), origin_correct);
+        assert_eq!(plane_calculated.origin(), origin_correct);
         assert_eq!(plane_calculated.normal(), normal_correct);
     }
 }
