@@ -49,8 +49,12 @@ impl Func for FuncShrinkWrap {
         let sphere_density = args[1].unwrap_uint();
 
         let (center, radius) = geometry::compute_bounding_sphere(iter::once(geometry));
-        let mut value =
-            geometry::uv_sphere(center.coords.into(), radius, sphere_density, sphere_density);
+        let mut value = geometry::uv_sphere_geometry(
+            center.coords.into(),
+            radius,
+            sphere_density,
+            sphere_density,
+        );
 
         for vertex in value.vertices_mut() {
             if let Some(closest) = geometry::find_closest_point(vertex, geometry) {
