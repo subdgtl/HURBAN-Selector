@@ -59,7 +59,7 @@ pub struct Options {
 /// of displaying in the viewport.
 ///
 /// Since we support value arrays, there can be multiple geometries
-/// contained in a single value that all need to treated separately
+/// contained in a single value that all need to be treated separately
 /// for pusposes of scene geometry analysis and rendering.
 ///
 /// For simple values, the path is always `(var_ident, 0)`. For array
