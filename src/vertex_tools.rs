@@ -32,12 +32,10 @@ pub fn compute_barycentric_coords(
 }
 
 /// Checks if all three points of a triangle lay on the same line.
-pub fn are_vertices_colinear(
-    triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
-) -> bool {
-    let v0_normalized = triangle_vertices.0.coords.normalize();
-    let v1_normalized = triangle_vertices.1.coords.normalize();
-    let v2_normalized = triangle_vertices.2.coords.normalize();
+fn are_vertices_colinear(v0: &Point3<f32>, v1: &Point3<f32>, v2: &Point3<f32>) -> bool {
+    let v0_normalized = v0.coords.normalize();
+    let v1_normalized = v1.coords.normalize();
+    let v2_normalized = v2.coords.normalize();
     v0_normalized == v1_normalized && v0_normalized == v2_normalized
 }
 
@@ -49,98 +47,86 @@ pub fn are_vertices_colinear(
 /// https://math.stackexchange.com/questions/4322/check-whether-a-point-is-within-a-3d-triangle
 fn is_point_in_triangle(
     point: &Point3<f32>,
-    triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
+    triangle_vertex0: &Point3<f32>,
+    triangle_vertex1: &Point3<f32>,
+    triangle_vertex2: &Point3<f32>,
 ) -> bool {
     // If the triangle is degenerated into a point, check if the point is equal
     // to the test point.
-    if triangle_vertices
-        .0
+    if triangle_vertex0
         .coords
-        .relative_eq(&triangle_vertices.1.coords, 0.001, 0.001)
-        && triangle_vertices
-            .0
+        .relative_eq(&triangle_vertex1.coords, 0.001, 0.001)
+        && triangle_vertex0
             .coords
-            .relative_eq(&triangle_vertices.2.coords, 0.001, 0.001)
+            .relative_eq(&triangle_vertex2.coords, 0.001, 0.001)
     {
-        return point == triangle_vertices.0;
+        return point == triangle_vertex0;
     }
 
     // If the triangle is degenerated into a line, check if the point lies on
     // the line.
-    if are_vertices_colinear(triangle_vertices) {
-        return is_point_on_line_clamped(point, triangle_vertices.0, triangle_vertices.1);
+    if are_vertices_colinear(triangle_vertex0, triangle_vertex1, triangle_vertex2) {
+        return is_point_on_line_clamped(point, triangle_vertex0, triangle_vertex1);
     }
 
-    let plane = Plane::from_three_points(
-        triangle_vertices.0,
-        triangle_vertices.1,
-        triangle_vertices.2,
-    );
+    let plane = Plane::from_three_points(triangle_vertex0, triangle_vertex1, triangle_vertex2);
 
     // If the point is not on the triangle plane, it's also not on the triangle.
     if !is_point_on_plane(point, &plane) {
         return false;
     }
 
-    // In case the triangle isn't horizontal
-    if let Some(rotation_to_horizontal) =
-        Rotation3::rotation_between(&plane.normal(), &Vector3::new(0.0, 0.0, 1.0))
-    {
-        // rotate the triangle to be horizontal
-        let rotated_vertices = (
-            rotation_to_horizontal * triangle_vertices.0,
-            rotation_to_horizontal * triangle_vertices.1,
-            rotation_to_horizontal * triangle_vertices.2,
-        );
-        // and rotate also the test point.
-        let rotated_point = rotation_to_horizontal * point;
+    let (horizontal_vertex0, horizontal_vertex1, horizontal_vertex2, horizontal_point) =
+        if approx::relative_eq!(triangle_vertex0.z, triangle_vertex1.z)
+            && approx::relative_eq!(triangle_vertex0.z, triangle_vertex2.z)
+        {
+            // In case the triangle already is horizontal, use the original
+            // coordinates.
+            (
+                *triangle_vertex0,
+                *triangle_vertex1,
+                *triangle_vertex2,
+                *point,
+            )
+        } else if let Some(rotation_to_horizontal) =
+            Rotation3::rotation_between(&plane.normal(), &Vector3::new(0.0, 0.0, 1.0))
+        {
+            // In case the triangle isn't horizontal rotate the triangle to
+            // become horizontal and rotate also the test point.
+            (
+                rotation_to_horizontal * triangle_vertex0,
+                rotation_to_horizontal * triangle_vertex1,
+                rotation_to_horizontal * triangle_vertex2,
+                rotation_to_horizontal * point,
+            )
+        } else {
+            // The original triangle is not horizontal and it's not possible to
+            // rotate it to become horizontal. This case should never happen but
+            // if it does, there is currently no way to check if the point is
+            // inside the triangle, therefore assume it's not. Early return
+            // false because the following calculations won't produce valid
+            // results.
+            return false;
+        };
 
-        let barycentric_point = compute_barycentric_coords(
-            rotated_vertices.0.xy(),
-            rotated_vertices.1.xy(),
-            rotated_vertices.2.xy(),
-            rotated_point.xy(),
+    let barycentric_point = compute_barycentric_coords(
+        horizontal_vertex0.xy(),
+        horizontal_vertex1.xy(),
+        horizontal_vertex2.xy(),
+        horizontal_point.xy(),
+    )
+    .expect("The triangle is degenerate");
+
+    barycentric_point.x >= 0.0
+        && barycentric_point.x <= 1.0
+        && barycentric_point.y >= 0.0
+        && barycentric_point.y <= 1.0
+        && barycentric_point.z >= 0.0
+        && barycentric_point.z <= 1.0
+        && approx::relative_eq!(
+            barycentric_point.x + barycentric_point.y + barycentric_point.z,
+            1.0
         )
-        .expect("The triangle is degenerate");
-
-        return barycentric_point.x >= 0.0
-            && barycentric_point.x <= 1.0
-            && barycentric_point.y >= 0.0
-            && barycentric_point.y <= 1.0
-            && barycentric_point.z >= 0.0
-            && barycentric_point.z <= 1.0
-            && approx::relative_eq!(
-                barycentric_point.x + barycentric_point.y + barycentric_point.z,
-                1.0
-            );
-    }
-
-    // In case the triangle is horizontal, omit the Z coordinates.
-    if approx::relative_eq!(triangle_vertices.0.z, triangle_vertices.1.z)
-        && approx::relative_eq!(triangle_vertices.0.z, triangle_vertices.2.z)
-    {
-        let barycentric_point = compute_barycentric_coords(
-            triangle_vertices.0.xy(),
-            triangle_vertices.1.xy(),
-            triangle_vertices.2.xy(),
-            point.xy(),
-        )
-        .expect("The triangle is degenerate");
-
-        return barycentric_point.x >= 0.0
-            && barycentric_point.x <= 1.0
-            && barycentric_point.y >= 0.0
-            && barycentric_point.y <= 1.0
-            && barycentric_point.z >= 0.0
-            && barycentric_point.z <= 1.0
-            && approx::relative_eq!(
-                barycentric_point.x + barycentric_point.y + barycentric_point.z,
-                1.0
-            );
-    }
-
-    // In case no test passed
-    false
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -162,13 +148,15 @@ pub struct PulledPointWithDistance {
 fn ray_intersects_triangle(
     ray_origin: &Point3<f32>,
     ray_vector: &Vector3<f32>,
-    triangle_vertices: (&Point3<f32>, &Point3<f32>, &Point3<f32>),
+    triangle_vertex0: &Point3<f32>,
+    triangle_vertex1: &Point3<f32>,
+    triangle_vertex2: &Point3<f32>,
 ) -> Option<PulledPointWithDistance> {
     assert!(ray_vector != &Vector3::zeros(), "Ray vector zero");
 
     let ray_vector_normalized = ray_vector.normalize();
-    let edge_1_vector = triangle_vertices.1 - triangle_vertices.0;
-    let edge_2_vector = triangle_vertices.2 - triangle_vertices.0;
+    let edge_1_vector = triangle_vertex1 - triangle_vertex0;
+    let edge_2_vector = triangle_vertex2 - triangle_vertex0;
     // If the ray is parallel to the triangle, a vector perpendicular to the ray
     // and one of the triangle edges
     let perpendicular_vector = ray_vector_normalized.cross(&edge_2_vector);
@@ -179,7 +167,7 @@ fn ray_intersects_triangle(
         return None;
     }
     let inverse_determinant = 1.0 / determinant;
-    let tangent_vector = ray_origin - triangle_vertices.0;
+    let tangent_vector = ray_origin - triangle_vertex0;
     let u_parameter = inverse_determinant * tangent_vector.dot(&perpendicular_vector);
     // The ray intersects the triangle plane outside of the triangle -> the ray
     // doesn't intersect the triangle
@@ -242,7 +230,7 @@ fn ray_intersects_plane(
     if approx::relative_eq!(denominator, 0.0) {
         None
     } else {
-        let ray_to_plane_origin_vector = ray_origin - *plane.origin();
+        let ray_to_plane_origin_vector = ray_origin - plane.origin();
         let t_parameter = ray_to_plane_origin_vector.dot(&plane_normal) / denominator;
         Some(PulledPointWithDistance {
             point: ray_origin - ray_vector_normalized.scale(t_parameter),
@@ -360,16 +348,20 @@ pub fn pull_point_to_mesh(
     // Pull to faces
     for (face_vertices, face_normal) in all_mesh_faces_with_normals {
         // If the point already lays in the face, it means it's already puled to the mesh.
-        if is_point_in_triangle(point, face_vertices) {
+        if is_point_in_triangle(point, face_vertices.0, face_vertices.1, face_vertices.2) {
             is_on_mesh = true;
             break;
         }
         // If triangle vertices are colinear, it's enough to pull to
         // triangle edges later on.
-        if !are_vertices_colinear(face_vertices) {
-            if let Some(intersection_point) =
-                ray_intersects_triangle(point, &(-1.0 * face_normal), face_vertices)
-            {
+        if !are_vertices_colinear(face_vertices.0, face_vertices.1, face_vertices.2) {
+            if let Some(intersection_point) = ray_intersects_triangle(
+                point,
+                &(-1.0 * face_normal),
+                face_vertices.0,
+                face_vertices.1,
+                face_vertices.2,
+            ) {
                 pulled_points.push(intersection_point);
             }
         }
@@ -502,7 +494,12 @@ mod tests {
 
         let test_point = Point3::new(0.0, 0.0, 0.0);
 
-        assert!(is_point_in_triangle(&test_point, triangle_points));
+        assert!(is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -515,7 +512,12 @@ mod tests {
 
         let test_point = Point3::new(0.0, 2.0, 0.0);
 
-        assert!(!is_point_in_triangle(&test_point, triangle_points));
+        assert!(!is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -528,7 +530,12 @@ mod tests {
 
         let test_point = Point3::new(0.0, 0.0, 1.0);
 
-        assert!(!is_point_in_triangle(&test_point, triangle_points));
+        assert!(!is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -541,7 +548,12 @@ mod tests {
 
         let test_point = Point3::new(0.25, 0.25, 0.0);
 
-        assert!(is_point_in_triangle(&test_point, triangle_points));
+        assert!(is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -554,7 +566,12 @@ mod tests {
 
         let test_point = Point3::new(1.0, 1.0, 0.0);
 
-        assert!(!is_point_in_triangle(&test_point, triangle_points));
+        assert!(!is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -567,7 +584,12 @@ mod tests {
 
         let test_point = Point3::new(0.25, 0.25, 1.0);
 
-        assert!(!is_point_in_triangle(&test_point, triangle_points));
+        assert!(!is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -580,7 +602,12 @@ mod tests {
 
         let test_point = Point3::new(0.25, 0.0, 0.25);
 
-        assert!(is_point_in_triangle(&test_point, triangle_points));
+        assert!(is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -593,7 +620,12 @@ mod tests {
 
         let test_point = Point3::new(1.0, 0.0, 1.0);
 
-        assert!(!is_point_in_triangle(&test_point, triangle_points));
+        assert!(!is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -606,7 +638,12 @@ mod tests {
 
         let test_point = Point3::new(0.25, 1.0, 0.25);
 
-        assert!(!is_point_in_triangle(&test_point, triangle_points));
+        assert!(!is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -619,7 +656,12 @@ mod tests {
 
         let test_point = Point3::new(0.0, 0.25, 0.25);
 
-        assert!(is_point_in_triangle(&test_point, triangle_points));
+        assert!(is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -632,7 +674,12 @@ mod tests {
 
         let test_point = Point3::new(0.0, 1.0, 1.0);
 
-        assert!(!is_point_in_triangle(&test_point, triangle_points));
+        assert!(!is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -645,7 +692,12 @@ mod tests {
 
         let test_point = Point3::new(1.0, 0.25, 0.25);
 
-        assert!(!is_point_in_triangle(&test_point, triangle_points));
+        assert!(!is_point_in_triangle(
+            &test_point,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2
+        ));
     }
 
     #[test]
@@ -660,12 +712,18 @@ mod tests {
         let ray_origin = Point3::origin();
         let ray_vector = Vector3::zeros();
 
-        ray_intersects_triangle(&ray_origin, &ray_vector, triangle_points);
+        ray_intersects_triangle(
+            &ray_origin,
+            &ray_vector,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2,
+        );
     }
 
     #[test]
     fn test_vertex_tools_ray_intersects_triangle_for_horizontal_triangle_returns_point_inside() {
-        let face_points = (
+        let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(-0.866025, -0.5, 0.0),
             &Point3::new(0.866025, -0.5, 0.0),
@@ -677,9 +735,14 @@ mod tests {
         let point_on_triangle_correct = Point3::new(0.25, 0.25, 0.0);
         let distance_correct = nalgebra::distance(&ray_origin, &point_on_triangle_correct);
 
-        let point_on_triangle_calculated =
-            ray_intersects_triangle(&ray_origin, &ray_vector, face_points)
-                .expect("Point is not on the triangle.");
+        let point_on_triangle_calculated = ray_intersects_triangle(
+            &ray_origin,
+            &ray_vector,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2,
+        )
+        .expect("Point is not on the triangle.");
 
         assert_eq!(
             point_on_triangle_calculated.point,
@@ -691,7 +754,7 @@ mod tests {
     #[test]
     fn test_vertex_tools_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_misses(
     ) {
-        let face_points = (
+        let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(-0.866025, -0.5, 0.0),
             &Point3::new(0.866025, -0.5, 0.0),
@@ -700,8 +763,13 @@ mod tests {
         let ray_origin = Point3::new(1.25, 0.25, 0.25);
         let ray_vector = Vector3::new(0.0, 0.0, -1.0);
 
-        let point_on_triangle_calculated =
-            ray_intersects_triangle(&ray_origin, &ray_vector, face_points);
+        let point_on_triangle_calculated = ray_intersects_triangle(
+            &ray_origin,
+            &ray_vector,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2,
+        );
 
         // There is no intersection of the triangle and ray
         assert_eq!(None, point_on_triangle_calculated);
@@ -710,7 +778,7 @@ mod tests {
     #[test]
     fn test_vertex_tools_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_parallel(
     ) {
-        let face_points = (
+        let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(-0.866025, -0.5, 0.0),
             &Point3::new(0.866025, -0.5, 0.0),
@@ -719,8 +787,13 @@ mod tests {
         let ray_origin = Point3::new(0.25, 0.25, 0.25);
         let ray_vector = Vector3::new(1.0, 0.0, 0.0);
 
-        let point_on_triangle_calculated =
-            ray_intersects_triangle(&ray_origin, &ray_vector, face_points);
+        let point_on_triangle_calculated = ray_intersects_triangle(
+            &ray_origin,
+            &ray_vector,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2,
+        );
 
         // There is no intersection of the triangle and ray
         assert_eq!(None, point_on_triangle_calculated);
@@ -728,7 +801,7 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_ray_intersects_triangle_for_arbitrary_triangle_returns_point_inside() {
-        let face_points = (
+        let triangle_points = (
             &Point3::new(0.268023, 0.8302, 0.392469),
             &Point3::new(-0.870844, -0.462665, 0.215034),
             &Point3::new(0.334798, -0.197734, -0.999972),
@@ -740,9 +813,14 @@ mod tests {
         let point_on_triangle_correct = Point3::new(0.07773773, 0.42011225, 0.11615828);
         let distance_correct = nalgebra::distance(&ray_origin, &point_on_triangle_correct);
 
-        let point_on_triangle_calculated =
-            ray_intersects_triangle(&ray_origin, &ray_vector, face_points)
-                .expect("Point is not on the triangle.");
+        let point_on_triangle_calculated = ray_intersects_triangle(
+            &ray_origin,
+            &ray_vector,
+            triangle_points.0,
+            triangle_points.1,
+            triangle_points.2,
+        )
+        .expect("Point is not on the triangle.");
 
         assert_eq!(
             point_on_triangle_calculated.point,
