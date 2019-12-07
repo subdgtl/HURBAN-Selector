@@ -543,7 +543,7 @@ mod tests {
         (faces, vertices)
     }
 
-    pub fn cube_sharp_mismatching_winding(position: [f32; 3], scale: f32) -> Mesh {
+    pub fn cube_sharp_mismatching_winding() -> Mesh {
         let vertex_positions = vec![
             // back
             Point3::new(-1.0, 1.0, -1.0),
@@ -829,7 +829,7 @@ mod tests {
 
     #[test]
     fn test_is_mesh_orientable_returns_false_for_nonorientable_mesh() {
-        let mesh = cube_sharp_mismatching_winding([0.0, 0.0, 0.0], 1.0);
+        let mesh = cube_sharp_mismatching_winding();
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
