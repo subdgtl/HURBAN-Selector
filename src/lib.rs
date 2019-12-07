@@ -29,7 +29,6 @@ mod interpreter_server;
 mod logger;
 mod math;
 mod mesh;
-mod mesh_analysis;
 mod mesh_tools;
 mod plane;
 mod platform;

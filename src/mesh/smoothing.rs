@@ -352,8 +352,7 @@ mod tests {
 
     use nalgebra;
 
-    use crate::mesh::{primitive, topology, NormalStrategy, OrientedEdge};
-    use crate::mesh_analysis;
+    use crate::mesh::{analysis, primitive, topology, NormalStrategy, OrientedEdge};
 
     use super::*;
 
@@ -674,9 +673,9 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = mesh_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = analysis::edge_sharing(&oriented_edges);
         let fixed_vertex_indices =
-            Vec::from_iter(mesh_analysis::border_vertex_indices(&edge_sharing_map).into_iter());
+            Vec::from_iter(analysis::border_vertex_indices(&edge_sharing_map).into_iter());
 
         let (faces_correct, vertices_correct) = shape_for_smoothing_with_anchors_50_iterations();
         let test_mesh_correct = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
@@ -715,9 +714,9 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = mesh_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = analysis::edge_sharing(&oriented_edges);
         let fixed_vertex_indices =
-            Vec::from_iter(mesh_analysis::border_vertex_indices(&edge_sharing_map).into_iter());
+            Vec::from_iter(analysis::border_vertex_indices(&edge_sharing_map).into_iter());
 
         let (faces_correct, vertices_correct) = shape_for_smoothing_with_anchors_50_iterations();
         let test_mesh_correct = Mesh::from_triangle_faces_with_vertices_and_computed_normals(

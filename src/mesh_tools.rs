@@ -6,8 +6,7 @@ use nalgebra::geometry::Point3;
 use smallvec::{smallvec, SmallVec};
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::mesh::topology;
-use crate::mesh::{Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
+use crate::mesh::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 
 /// Orients all the faces the same way - matches their winding (vertex order).
 ///
@@ -363,8 +362,7 @@ mod tests {
     use nalgebra::base::Vector3;
     use nalgebra::geometry::Point3;
 
-    use crate::mesh::{primitive, Mesh, TriangleFace};
-    use crate::mesh_analysis;
+    use crate::mesh::{analysis, primitive};
 
     use super::*;
 
@@ -674,7 +672,7 @@ mod tests {
 
         assert_eq!(calculated_meshes.len(), 1);
 
-        assert!(mesh_analysis::are_similar(&calculated_meshes[0], &mesh));
+        assert!(analysis::are_similar(&calculated_meshes[0], &mesh));
     }
 
     #[test]
@@ -684,7 +682,7 @@ mod tests {
         let calculated_meshes = disjoint_mesh(&mesh);
 
         assert_eq!(calculated_meshes.len(), 1);
-        assert!(mesh_analysis::are_similar(&mesh, &calculated_meshes[0]));
+        assert!(analysis::are_similar(&mesh, &calculated_meshes[0]));
     }
 
     #[test]
@@ -697,17 +695,17 @@ mod tests {
 
         assert_eq!(calculated_meshes.len(), 2);
 
-        if mesh_analysis::are_similar(&calculated_meshes[0], &mesh_triangle_correct) {
-            assert!(mesh_analysis::are_similar(
+        if analysis::are_similar(&calculated_meshes[0], &mesh_triangle_correct) {
+            assert!(analysis::are_similar(
                 &calculated_meshes[1],
                 &mesh_island_correct
             ));
         } else {
-            assert!(mesh_analysis::are_similar(
+            assert!(analysis::are_similar(
                 &calculated_meshes[1],
                 &mesh_triangle_correct
             ));
-            assert!(mesh_analysis::are_similar(
+            assert!(analysis::are_similar(
                 &calculated_meshes[0],
                 &mesh_island_correct
             ));
@@ -753,7 +751,7 @@ mod tests {
 
         // Can't use Eq here, because the algorithm can produce faces
         // in a different order than in the original
-        assert!(mesh_analysis::are_similar(
+        assert!(analysis::are_similar(
             &mesh_with_synced_winding,
             &mesh_with_synced_winding_expected,
         ));
@@ -785,14 +783,11 @@ mod tests {
 
         // Can't use Eq here, because the algorithm can produce faces
         // in a different order than in the original
-        assert!(!mesh_analysis::are_similar(
+        assert!(!analysis::are_similar(
             &sphere,
             &sphere_with_faces_one_flipped,
         ));
-        assert!(mesh_analysis::are_similar(
-            &sphere,
-            &sphere_with_synced_winding,
-        ));
+        assert!(analysis::are_similar(&sphere, &sphere_with_synced_winding,));
     }
 
     #[test]
@@ -802,7 +797,7 @@ mod tests {
 
         let mesh_after_welding = weld(&mesh, 0.1);
 
-        assert!(mesh_analysis::are_similar(
+        assert!(analysis::are_similar(
             &mesh_after_welding_correct,
             &mesh_after_welding
         ));
@@ -815,7 +810,7 @@ mod tests {
 
         let mesh_after_welding = weld(&mesh, 0.1);
 
-        assert!(mesh_analysis::are_similar(
+        assert!(analysis::are_similar(
             &mesh_after_welding_correct,
             &mesh_after_welding
         ));
