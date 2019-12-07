@@ -353,9 +353,8 @@ mod tests {
     use nalgebra;
 
     use crate::edge_analysis;
-    use crate::mesh::{primitive, NormalStrategy, OrientedEdge};
+    use crate::mesh::{primitive, topology, NormalStrategy, OrientedEdge};
     use crate::mesh_analysis;
-    use crate::mesh_topology_analysis;
 
     use super::*;
 
@@ -542,7 +541,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
-        let vertex_to_vertex_topology = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
+        let vertex_to_vertex_topology = topology::compute_vertex_to_vertex_topology(&mesh);
         let (relaxed_mesh_0, _, _) =
             laplacian_smoothing(&mesh, &vertex_to_vertex_topology, 0, &[], false);
         let (relaxed_mesh_1, _, _) =
@@ -569,7 +568,7 @@ mod tests {
             vertices,
             NormalStrategy::Sharp,
         );
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
         let (relaxed_mesh, _, _) = laplacian_smoothing(&mesh, &v2v, 0, &[], false);
         assert_eq!(mesh, relaxed_mesh);
@@ -583,7 +582,7 @@ mod tests {
             vertices,
             NormalStrategy::Sharp,
         );
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
         let (relaxed_mesh, _, _) = laplacian_smoothing(&mesh, &v2v, 1, &[], false);
         insta::assert_json_snapshot!(
@@ -600,7 +599,7 @@ mod tests {
             vertices,
             NormalStrategy::Sharp,
         );
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
         let (relaxed_mesh, _, _) = laplacian_smoothing(&mesh, &v2v, 2, &[], false);
         insta::assert_json_snapshot!(
@@ -617,7 +616,7 @@ mod tests {
             vertices,
             NormalStrategy::Sharp,
         );
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
         let (relaxed_mesh, _, _) = laplacian_smoothing(&mesh, &v2v, 3, &[], false);
         insta::assert_json_snapshot!(
@@ -644,7 +643,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let (relaxed_mesh, _, _) =
             laplacian_smoothing(&mesh, &v2v, 50, &fixed_vertex_indices, false);
 
@@ -686,7 +685,7 @@ mod tests {
             vertices_correct.clone(),
             NormalStrategy::Sharp,
         );
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let (relaxed_mesh, _, _) =
             laplacian_smoothing(&mesh, &v2v, 50, &fixed_vertex_indices, false);
 
@@ -728,7 +727,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let (relaxed_mesh, _, _) =
             laplacian_smoothing(&mesh, &v2v, 255, &fixed_vertex_indices, true);
 
@@ -752,8 +751,8 @@ mod tests {
     #[test]
     fn test_loop_subdivision_snapshot_uv_sphere() {
         let mesh = primitive::create_uv_sphere([0.0; 3], 1.0, 2, 3);
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
-        let f2f = mesh_topology_analysis::face_to_face_topology(&mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
+        let f2f = topology::compute_face_to_face_topology(&mesh);
 
         let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f);
 
@@ -766,8 +765,8 @@ mod tests {
     #[test]
     fn test_loop_subdivision_snapshot_cube_sharp() {
         let mesh = primitive::create_cube_sharp([0.0; 3], 1.0);
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
-        let f2f = mesh_topology_analysis::face_to_face_topology(&mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
+        let f2f = topology::compute_face_to_face_topology(&mesh);
 
         let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f);
 

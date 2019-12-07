@@ -5,8 +5,8 @@ use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
 };
+use crate::mesh::topology;
 use crate::mesh_smoothing;
-use crate::mesh_topology_analysis;
 
 pub struct FuncLaplacianSmoothing;
 
@@ -49,7 +49,7 @@ impl Func for FuncLaplacianSmoothing {
         let mesh = args[0].unwrap_mesh();
         let iterations = args[1].unwrap_uint();
 
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(mesh);
+        let v2v = topology::compute_vertex_to_vertex_topology(mesh);
 
         let (value, _, _) =
             mesh_smoothing::laplacian_smoothing(mesh, &v2v, cmp::min(255, iterations), &[], false);

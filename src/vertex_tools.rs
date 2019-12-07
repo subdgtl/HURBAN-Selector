@@ -756,8 +756,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_misses(
-    ) {
+    fn test_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_misses() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(-0.866025, -0.5, 0.0),
@@ -780,8 +779,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_parallel(
-    ) {
+    fn test_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_parallel() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(-0.866025, -0.5, 0.0),

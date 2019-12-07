@@ -33,7 +33,6 @@ mod mesh;
 mod mesh_analysis;
 mod mesh_smoothing;
 mod mesh_tools;
-mod mesh_topology_analysis;
 mod plane;
 mod platform;
 mod session;

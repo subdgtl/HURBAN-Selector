@@ -6,8 +6,8 @@ use nalgebra::geometry::Point3;
 use smallvec::{smallvec, SmallVec};
 
 use crate::convert::{cast_u32, cast_usize};
+use crate::mesh::topology;
 use crate::mesh::{Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
-use crate::mesh_topology_analysis;
 
 /// Orients all the faces the same way - matches their winding (vertex order).
 ///
@@ -283,7 +283,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Mesh {
 /// Crawls the mesh geometry to find continuous patches. Returns a
 /// vector mesh patches.
 pub fn disjoint_mesh(mesh: &Mesh) -> Vec<Mesh> {
-    let face_to_face = mesh_topology_analysis::face_to_face_topology(mesh);
+    let face_to_face = topology::compute_face_to_face_topology(mesh);
     let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
     let mut patches: Vec<Mesh> = Vec::new();
     let mut index_stack: Vec<u32> = Vec::new();
@@ -748,7 +748,7 @@ mod tests {
         let mesh = flipped_tessellated_triangle_with_island_mesh();
         let mesh_with_synced_winding_expected = tessellated_triangle_with_island_mesh();
 
-        let f2f = mesh_topology_analysis::face_to_face_topology(&mesh);
+        let f2f = topology::compute_face_to_face_topology(&mesh);
         let mesh_with_synced_winding = synchronize_mesh_winding(&mesh, &f2f);
 
         // Can't use Eq here, because the algorithm can produce faces
@@ -778,7 +778,7 @@ mod tests {
             sphere.normals().iter().copied(),
         );
 
-        let f2f = mesh_topology_analysis::face_to_face_topology(&sphere_with_faces_one_flipped);
+        let f2f = topology::compute_face_to_face_topology(&sphere_with_faces_one_flipped);
 
         let sphere_with_synced_winding =
             synchronize_mesh_winding(&sphere_with_faces_one_flipped, &f2f);

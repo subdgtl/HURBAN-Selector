@@ -5,8 +5,8 @@ use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
 };
+use crate::mesh::topology;
 use crate::mesh_smoothing;
-use crate::mesh_topology_analysis;
 
 pub struct FuncLoopSubdivision;
 
@@ -57,13 +57,13 @@ impl Func for FuncLoopSubdivision {
             return Ok(Value::Mesh(mesh));
         }
 
-        let mut v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
-        let mut f2f = mesh_topology_analysis::face_to_face_topology(&mesh);
+        let mut v2v = topology::compute_vertex_to_vertex_topology(&mesh);
+        let mut f2f = topology::compute_face_to_face_topology(&mesh);
         let mut current_mesh = mesh_smoothing::loop_subdivision(&mesh, &v2v, &f2f);
 
         for _ in 1..iterations {
-            v2v = mesh_topology_analysis::vertex_to_vertex_topology(&current_mesh);
-            f2f = mesh_topology_analysis::face_to_face_topology(&current_mesh);
+            v2v = topology::compute_vertex_to_vertex_topology(&current_mesh);
+            f2f = topology::compute_face_to_face_topology(&current_mesh);
             current_mesh = mesh_smoothing::loop_subdivision(&current_mesh, &v2v, &f2f);
         }
 

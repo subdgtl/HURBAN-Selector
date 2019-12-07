@@ -4,9 +4,9 @@ use crate::edge_analysis;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
 };
+use crate::mesh::topology;
 use crate::mesh_analysis;
 use crate::mesh_tools;
-use crate::mesh_topology_analysis;
 
 pub struct FuncSynchronizeMeshFaces;
 
@@ -43,7 +43,7 @@ impl Func for FuncSynchronizeMeshFaces {
         if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
             && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
         {
-            let face_to_face = mesh_topology_analysis::face_to_face_topology(&mesh);
+            let face_to_face = topology::compute_face_to_face_topology(&mesh);
 
             let value = Arc::new(mesh_tools::synchronize_mesh_winding(&mesh, &face_to_face));
 

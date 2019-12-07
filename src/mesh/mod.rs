@@ -13,6 +13,7 @@ use crate::geometry;
 
 pub mod analysis;
 pub mod primitive;
+pub mod topology;
 
 #[derive(Debug, Clone, Copy)]
 pub enum NormalStrategy {
@@ -633,6 +634,7 @@ impl Hash for UnorientedEdge {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn remove_orphan_vertices(
     faces: Vec<(u32, u32, u32)>,
     vertices: Vec<Point3<f32>>,
