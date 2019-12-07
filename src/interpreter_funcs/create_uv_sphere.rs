@@ -121,7 +121,7 @@ impl Func for FuncCreateUvSphere {
             }));
         }
 
-        let value = geometry::uv_sphere_geometry(position, scale, n_parallels, n_meridians);
+        let value = geometry::create_uv_sphere(position, scale, n_parallels, n_meridians);
         Ok(Value::Geometry(Arc::new(value)))
     }
 }

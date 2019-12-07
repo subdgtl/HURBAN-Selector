@@ -39,10 +39,10 @@ impl Func for FuncJoinMeshes {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let first_geometry = args[0].unwrap_geometry();
-        let second_geometry = args[1].unwrap_geometry();
+        let first_mesh = args[0].unwrap_mesh();
+        let second_mesh = args[1].unwrap_mesh();
 
-        let value = mesh_tools::join_meshes(first_geometry, second_geometry);
+        let value = mesh_tools::join_meshes(first_mesh, second_mesh);
         Ok(Value::Geometry(Arc::new(value)))
     }
 }

@@ -35,24 +35,21 @@ impl Func for FuncSynchronizeMeshFaces {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_refcounted_geometry();
+        let mesh = args[0].unwrap_refcounted_mesh();
 
-        let oriented_edges: Vec<_> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<_> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
             && mesh_analysis::is_mesh_manifold(&edge_sharing_map)
         {
-            let face_to_face = mesh_topology_analysis::face_to_face_topology(&geometry);
+            let face_to_face = mesh_topology_analysis::face_to_face_topology(&mesh);
 
-            let value = Arc::new(mesh_tools::synchronize_mesh_winding(
-                &geometry,
-                &face_to_face,
-            ));
+            let value = Arc::new(mesh_tools::synchronize_mesh_winding(&mesh, &face_to_face));
 
             Ok(Value::Geometry(value))
         } else {
-            Ok(Value::Geometry(geometry))
+            Ok(Value::Geometry(mesh))
         }
     }
 }

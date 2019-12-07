@@ -4,7 +4,7 @@ use nalgebra;
 use nalgebra::{Point2, Point3, Rotation3, Vector3};
 
 use crate::convert::cast_usize;
-use crate::geometry::{self, Face, Geometry, Plane, UnorientedEdge};
+use crate::geometry::{self, Face, Mesh, Plane, UnorientedEdge};
 
 /// Compute barycentric coordinates of point P in triangle A, B, C. Returns None
 /// for degenerate triangles.
@@ -327,11 +327,11 @@ pub fn pull_point_to_line(
 #[allow(dead_code)]
 pub fn pull_point_to_mesh(
     point: &Point3<f32>,
-    geometry: &Geometry,
+    mesh: &Mesh,
     unoriented_edges: &[UnorientedEdge],
 ) -> PulledPointWithDistance {
-    let vertices = geometry.vertices();
-    let all_mesh_faces_with_normals = geometry.faces().iter().map(|Face::Triangle(t_f)| {
+    let vertices = mesh.vertices();
+    let all_mesh_faces_with_normals = mesh.faces().iter().map(|Face::Triangle(t_f)| {
         let face_vertices = (
             &vertices[cast_usize(t_f.vertices.0)],
             &vertices[cast_usize(t_f.vertices.1)],
@@ -915,13 +915,13 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_pull_point_to_mesh_cube_point_inside_left() {
-        let cube_geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
+        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(-0.25, 0.0, 0.0);
-        let unoriented_edges: Vec<_> = cube_geometry.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
         let point_on_mesh_correct = Point3::new(-1.0, 0.0, 0.0);
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
 
         assert_eq!(point_on_mesh_correct, pulled_point_on_mesh_calculated.point);
         assert_eq!(0.75, pulled_point_on_mesh_calculated.distance);
@@ -929,9 +929,9 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_pull_point_to_mesh_cube_point_inside_top_front_right() {
-        let cube_geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
+        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(0.25, 0.25, 0.25);
-        let unoriented_edges: Vec<_> = cube_geometry.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
         // any of the following points on mesh would be correct
         let points_on_mesh_correct = vec![
@@ -940,7 +940,7 @@ mod tests {
             Point3::new(0.25, 0.25, 1.0),
         ];
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
 
         assert!(points_on_mesh_correct
             .iter()
@@ -951,14 +951,14 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_pull_point_to_mesh_cube_point_outside_top_front_right() {
-        let cube_geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
+        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(1.25, 1.25, 1.25);
-        let unoriented_edges: Vec<_> = cube_geometry.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
         // corner
         let point_on_mesh_correct = Point3::new(1.0, 1.0, 1.0);
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
 
         assert_eq!(pulled_point_on_mesh_calculated.point, point_on_mesh_correct);
         assert_eq!(
@@ -969,14 +969,14 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_pull_point_to_mesh_cube_point_outside_front_right() {
-        let cube_geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
+        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(1.25, 1.25, 0.25);
-        let unoriented_edges: Vec<_> = cube_geometry.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
         // on the edge
         let point_on_mesh_correct = Point3::new(1.0, 1.0, 0.25);
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
 
         assert_eq!(pulled_point_on_mesh_calculated.point, point_on_mesh_correct);
         assert_eq!(
@@ -987,12 +987,12 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_pull_point_to_mesh_cube_point_on_face() {
-        let cube_geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
+        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(0.0, 0.0, 1.0);
-        let unoriented_edges: Vec<_> = cube_geometry.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
 
         assert_eq!(pulled_point_on_mesh_calculated.point, test_point);
         assert_eq!(
@@ -1003,12 +1003,12 @@ mod tests {
 
     #[test]
     fn test_vertex_tools_pull_point_to_mesh_cube_point_on_edge() {
-        let cube_geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
+        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(1.0, 1.0, 0.0);
-        let unoriented_edges: Vec<_> = cube_geometry.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube_geometry, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
 
         assert_eq!(pulled_point_on_mesh_calculated.point, test_point);
         assert_eq!(

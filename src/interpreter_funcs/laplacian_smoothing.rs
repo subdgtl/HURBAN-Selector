@@ -46,18 +46,13 @@ impl Func for FuncLaplacianSmoothing {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_geometry();
+        let mesh = args[0].unwrap_mesh();
         let iterations = args[1].unwrap_uint();
 
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
+        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(mesh);
 
-        let (value, _, _) = mesh_smoothing::laplacian_smoothing(
-            geometry,
-            &v2v,
-            cmp::min(255, iterations),
-            &[],
-            false,
-        );
+        let (value, _, _) =
+            mesh_smoothing::laplacian_smoothing(mesh, &v2v, cmp::min(255, iterations), &[], false);
         Ok(Value::Geometry(Arc::new(value)))
     }
 }

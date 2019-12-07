@@ -44,10 +44,10 @@ impl Func for FuncWeld {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_geometry();
+        let mesh = args[0].unwrap_mesh();
         let tolerance = args[1].unwrap_float();
 
-        let value = mesh_tools::weld(geometry, tolerance);
+        let value = mesh_tools::weld(mesh, tolerance);
         Ok(Value::Geometry(Arc::new(value)))
     }
 }

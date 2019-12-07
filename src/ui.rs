@@ -6,7 +6,7 @@ use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use crate::convert::{clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
 use crate::interpreter::ast;
 use crate::interpreter::{ParamRefinement, Ty};
-use crate::renderer::DrawGeometryMode;
+use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
 const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
@@ -158,7 +158,7 @@ impl<'a> UiFrame<'a> {
         self.imgui_ui.render()
     }
 
-    pub fn draw_viewport_settings_window(&self, draw_mode: &mut DrawGeometryMode) -> bool {
+    pub fn draw_viewport_settings_window(&self, draw_mode: &mut DrawMeshMode) -> bool {
         let ui = &self.imgui_ui;
 
         const VIEWPORT_WINDOW_WIDTH: f32 = 150.0;
@@ -182,21 +182,17 @@ impl<'a> UiFrame<'a> {
             .build(ui, || {
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
 
-                ui.radio_button(
-                    imgui::im_str!("Shaded"),
-                    draw_mode,
-                    DrawGeometryMode::Shaded,
-                );
-                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawGeometryMode::Edges);
+                ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
+                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawMeshMode::Edges);
                 ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
                     draw_mode,
-                    DrawGeometryMode::ShadedEdges,
+                    DrawMeshMode::ShadedEdges,
                 );
                 ui.radio_button(
                     imgui::im_str!("X-RAY"),
                     draw_mode,
-                    DrawGeometryMode::ShadedEdgesXray,
+                    DrawMeshMode::ShadedEdgesXray,
                 );
 
                 reset_viewport_clicked = ui.button(imgui::im_str!("Reset Viewport"), [0.0, 0.0]);

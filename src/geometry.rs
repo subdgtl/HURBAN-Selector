@@ -30,16 +30,16 @@ pub type Normals = Vec<Vector3<f32>>;
 /// ensured to have counter-clockwise winding. Quad or polygonal faces
 /// are not supported currently, but might be in the future.
 ///
-/// The geometry data lives in right-handed coordinate space with the
+/// The mesh data lives in right-handed coordinate space with the
 /// XY plane being the ground and Z axis growing upwards.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-pub struct Geometry {
+pub struct Mesh {
     faces: Vec<Face>,
     vertices: Vertices,
     normals: Normals,
 }
 
-impl Geometry {
+impl Mesh {
     /// Creates new triangulated mesh geometry from provided triangle
     /// faces and vertices, and computes normals based on
     /// `normal_strategy`.
@@ -202,7 +202,7 @@ impl Geometry {
         Self::from_faces_with_vertices_and_normals(faces_purged, vertices_purged, normals_purged)
     }
 
-    /// Creates new geometry of any face kind from provided faces,
+    /// Creates new mesh of any face kind from provided faces,
     /// vertices and normals.
     ///
     /// # Panics
@@ -265,9 +265,8 @@ impl Geometry {
         }
     }
 
-    /// Creates new triangulated geometry from provided triangle
-    /// faces, vertices, and normals and removes orphan vertices and
-    /// normals.
+    /// Creates new triangulated mesh from provided triangle faces,
+    /// vertices, and normals and removes orphan vertices and normals.
     ///
     /// # Panics
     /// Panics if faces refer to out-of-bounds vertices or normals.
@@ -306,7 +305,7 @@ impl Geometry {
         &self.normals
     }
 
-    /// Extracts oriented edges from all mesh faces
+    /// Extracts oriented edges from all mesh faces.
     pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
         self.faces.iter().flat_map(|face| match face {
             Face::Triangle(triangle_face) => {
@@ -315,7 +314,7 @@ impl Geometry {
         })
     }
 
-    /// Extracts unoriented edges from all mesh faces
+    /// Extracts unoriented edges from all mesh faces.
     pub fn unoriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = UnorientedEdge> + 'a {
         self.faces.iter().flat_map(|face| match face {
             Face::Triangle(triangle_face) => {
@@ -324,15 +323,16 @@ impl Geometry {
         })
     }
 
-    /// Returns whether the geometry contains exclusively triangle
-    /// faces - is triangulated.
+    /// Returns whether the mesh is triangulated - contains
+    /// exclusively triangle faces.
     pub fn is_triangulated(&self) -> bool {
         self.faces().iter().all(|face| match face {
             Face::Triangle(_) => true,
         })
     }
 
-    /// Does the mesh contain unused (not referenced in faces) vertices
+    /// Returns whether the mesh contains unused (not referenced in
+    /// faces) vertices.
     pub fn has_no_orphan_vertices(&self) -> bool {
         let mut used_vertices = HashSet::new();
 
@@ -349,7 +349,8 @@ impl Geometry {
         used_vertices.len() == self.vertices().len()
     }
 
-    /// Does the mesh contain unused (not referenced in faces) normals
+    /// Returns whether the mesh contains unused (not referenced in
+    /// faces) normals.
     pub fn has_no_orphan_normals(&self) -> bool {
         let mut used_normals = HashSet::new();
 
@@ -367,7 +368,7 @@ impl Geometry {
     }
 }
 
-impl fmt::Display for Geometry {
+impl fmt::Display for Mesh {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let vertices: Vec<_> = self
             .vertices
@@ -387,6 +388,7 @@ impl fmt::Display for Geometry {
             .enumerate()
             .map(|(i, n)| format!("{}: ({}, {}, {})", i, n.x, n.y, n.z))
             .collect();
+
         write!(
             f,
             "G( V({}): {:?}, N({}): {:?}, F({}): {:?} )",
@@ -400,7 +402,8 @@ impl fmt::Display for Geometry {
     }
 }
 
-/// A geometry index. Describes topology of geometry data.
+/// A mesh face. Contains indices to other mesh data, such as vertices
+/// and normals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum Face {
     Triangle(TriangleFace),
@@ -428,7 +431,7 @@ impl fmt::Display for Face {
     }
 }
 
-/// A triangular face. Contains indices to other geometry data, such
+/// A triangular mesh face. Contains indices to other mesh data, such
 /// as vertices and normals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 pub struct TriangleFace {
@@ -491,7 +494,7 @@ impl TriangleFace {
         }
     }
 
-    /// Generates 3 oriented edges from the respective triangular face
+    /// Generates 3 oriented edges from the respective triangular face.
     pub fn to_oriented_edges(&self) -> [OrientedEdge; 3] {
         [
             OrientedEdge::new(self.vertices.0, self.vertices.1),
@@ -500,7 +503,7 @@ impl TriangleFace {
         ]
     }
 
-    /// Generates 3 unoriented edges from the respective triangular face
+    /// Generates 3 unoriented edges from the respective triangular face.
     pub fn to_unoriented_edges(&self) -> [UnorientedEdge; 3] {
         [
             UnorientedEdge(OrientedEdge::new(self.vertices.0, self.vertices.1)),
@@ -509,26 +512,26 @@ impl TriangleFace {
         ]
     }
 
-    /// Does the face contain the specific vertex
+    /// Returns whether the face contains the vertex index.
     pub fn contains_vertex(&self, vertex_index: u32) -> bool {
         self.vertices.0 == vertex_index
             || self.vertices.1 == vertex_index
             || self.vertices.2 == vertex_index
     }
 
-    /// Does the face contain the specific unoriented edge
-    pub fn contains_unoriented_edge(&self, unoriented_edge: UnorientedEdge) -> bool {
-        let [u_e_0, u_e_1, u_e_2] = self.to_unoriented_edges();
-        u_e_0 == unoriented_edge || u_e_1 == unoriented_edge || u_e_2 == unoriented_edge
-    }
-
-    /// Does the face contain the specific oriented edge
+    /// Returns whether the face contains the oriented edge.
     pub fn contains_oriented_edge(&self, oriented_edge: OrientedEdge) -> bool {
-        let [o_e_0, o_e_1, o_e_2] = self.to_oriented_edges();
-        o_e_0 == oriented_edge || o_e_1 == oriented_edge || o_e_2 == oriented_edge
+        let [oe0, oe1, oe2] = self.to_oriented_edges();
+        oe0 == oriented_edge || oe1 == oriented_edge || oe2 == oriented_edge
     }
 
-    /// Returns a the same face with reverted vertex and normal winding
+    /// Returns whether the face contains the unoriented edge.
+    pub fn contains_unoriented_edge(&self, unoriented_edge: UnorientedEdge) -> bool {
+        let [ue0, ue1, ue2] = self.to_unoriented_edges();
+        ue0 == unoriented_edge || ue1 == unoriented_edge || ue2 == unoriented_edge
+    }
+
+    /// Returns the same face with reverted vertex and normal winding.
     pub fn to_reverted(&self) -> TriangleFace {
         TriangleFace::new_separate(
             self.vertices.2,
@@ -541,7 +544,7 @@ impl TriangleFace {
     }
 
     /// Checks if the other face references the same vertices and normals in a
-    /// reverted order
+    /// reverted order.
     pub fn is_reverted(&self, other: &Self) -> bool {
         self.to_reverted() == *other
     }
@@ -568,7 +571,9 @@ impl fmt::Display for TriangleFace {
     }
 }
 
-/// Oriented face edge. Contains indices to other geometry data - vertices
+/// Oriented face edge.
+///
+/// Contains indices to other mesh data - vertices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OrientedEdge {
     pub vertices: (u32, u32),
@@ -600,7 +605,10 @@ impl OrientedEdge {
     }
 }
 
-/// Implements orientation indifferent hash and equal methods
+/// Unoriented face edge.
+///
+/// Contains indices to other mesh data - vertices. Implements
+/// orientation indifferent hash and equal methods
 #[derive(Debug, Clone, Copy, Eq)]
 pub struct UnorientedEdge(pub OrientedEdge);
 
@@ -935,7 +943,7 @@ impl Plane {
     }
 }
 
-pub fn plane_geometry(position: [f32; 3], scale: f32) -> Geometry {
+pub fn create_plane(position: [f32; 3], scale: f32) -> Mesh {
     #[rustfmt::skip]
     let vertex_positions = vec![
         v(-1.0, -1.0,  0.0, position, scale),
@@ -954,10 +962,10 @@ pub fn plane_geometry(position: [f32; 3], scale: f32) -> Geometry {
         TriangleFace::new_separate(2, 3, 0, 0, 0, 0),
     ];
 
-    Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
+    Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn cube_smooth_geometry(position: [f32; 3], scale: f32) -> Geometry {
+pub fn create_cube_smooth(position: [f32; 3], scale: f32) -> Mesh {
     let vertex_positions = vec![
         // back
         v(-1.0, 1.0, -1.0, position, scale),
@@ -1009,10 +1017,10 @@ pub fn cube_smooth_geometry(position: [f32; 3], scale: f32) -> Geometry {
         TriangleFace::new(1, 0, 4),
     ];
 
-    Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
+    Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-pub fn cube_sharp_geometry(position: [f32; 3], scale: f32) -> Geometry {
+pub fn create_cube_sharp(position: [f32; 3], scale: f32) -> Mesh {
     let vertex_positions = vec![
         // back
         v(-1.0, 1.0, -1.0, position, scale),
@@ -1062,7 +1070,7 @@ pub fn cube_sharp_geometry(position: [f32; 3], scale: f32) -> Geometry {
         TriangleFace::new_separate(1, 0, 7, 5, 5, 5),
     ];
 
-    Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
+    Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
 /// Create UV Sphere primitive at `position` with `scale`,
@@ -1071,12 +1079,12 @@ pub fn cube_sharp_geometry(position: [f32; 3], scale: f32) -> Geometry {
 /// # Panics
 /// Panics if number of parallels is less than 2 or number of
 /// meridians is less than 3.
-pub fn uv_sphere_geometry(
+pub fn create_uv_sphere(
     position: [f32; 3],
     scale: f32,
     n_parallels: u32,
     n_meridians: u32,
-) -> Geometry {
+) -> Mesh {
     assert!(n_parallels >= 2, "Need at least 2 parallels");
     assert!(n_meridians >= 3, "Need at least 3 meridians");
 
@@ -1152,22 +1160,22 @@ pub fn uv_sphere_geometry(
     assert_eq!(faces.len(), faces_count);
     assert_eq!(faces.capacity(), faces_count);
 
-    Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+    Mesh::from_triangle_faces_with_vertices_and_computed_normals(
         faces,
         vertex_positions,
         NormalStrategy::Sharp,
     )
 }
 
-pub fn compute_bounding_sphere<'a, I>(geometries: I) -> (Point3<f32>, f32)
+pub fn compute_bounding_sphere<'a, I>(meshes: I) -> (Point3<f32>, f32)
 where
-    I: IntoIterator<Item = &'a Geometry> + Clone,
+    I: IntoIterator<Item = &'a Mesh> + Clone,
 {
-    let centroid = compute_centroid(geometries.clone());
+    let centroid = compute_centroid(meshes.clone());
     let mut max_distance_squared = 0.0;
 
-    for geometry in geometries {
-        for vertex in &geometry.vertices {
+    for mesh in meshes {
+        for vertex in &mesh.vertices {
             let distance_squared = na::distance_squared(&centroid, vertex);
             if distance_squared > max_distance_squared {
                 max_distance_squared = distance_squared;
@@ -1178,15 +1186,15 @@ where
     (centroid, max_distance_squared.sqrt())
 }
 
-pub fn compute_centroid<'a, I>(geometries: I) -> Point3<f32>
+pub fn compute_centroid<'a, I>(meshes: I) -> Point3<f32>
 where
-    I: IntoIterator<Item = &'a Geometry>,
+    I: IntoIterator<Item = &'a Mesh>,
 {
     let mut vertex_count = 0;
     let mut centroid = Point3::origin();
-    for geometry in geometries {
-        vertex_count += geometry.vertices.len();
-        for vertex in &geometry.vertices {
+    for mesh in meshes {
+        vertex_count += mesh.vertices.len();
+        for vertex in &mesh.vertices {
             let v = vertex - Point3::origin();
             centroid += v;
         }
@@ -1195,8 +1203,19 @@ where
     centroid / (vertex_count as f32)
 }
 
-pub fn find_closest_point(position: &Point3<f32>, geometry: &Geometry) -> Option<Point3<f32>> {
-    let vertices = geometry.vertices();
+pub fn compute_triangle_normal(
+    p1: &Point3<f32>,
+    p2: &Point3<f32>,
+    p3: &Point3<f32>,
+) -> Vector3<f32> {
+    let u = p2 - p1;
+    let v = p3 - p1;
+
+    Vector3::cross(&u, &v).normalize()
+}
+
+pub fn find_closest_point(position: &Point3<f32>, mesh: &Mesh) -> Option<Point3<f32>> {
+    let vertices = mesh.vertices();
     if vertices.is_empty() {
         return None;
     }
@@ -1226,17 +1245,6 @@ fn n(x: f32, y: f32, z: f32) -> Vector3<f32> {
     Vector3::new(x, y, z)
 }
 
-pub fn compute_triangle_normal(
-    p1: &Point3<f32>,
-    p2: &Point3<f32>,
-    p3: &Point3<f32>,
-) -> Vector3<f32> {
-    let u = p2 - p1;
-    let v = p3 - p1;
-
-    Vector3::cross(&u, &v).normalize()
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::hash_map::DefaultHasher;
@@ -1251,7 +1259,7 @@ mod tests {
             v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
         ];
 
-        // When comparing TriangleFaces or Faces from Geometry, make sure the
+        // When comparing TriangleFaces or Faces from Mesh, make sure the
         // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
@@ -1278,7 +1286,7 @@ mod tests {
             n(0.0, 0.0, 1.0),
         ];
 
-        // When comparing TriangleFaces or Faces from Geometry, make sure the
+        // When comparing TriangleFaces or Faces from Mesh, make sure the
         // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
@@ -1292,8 +1300,8 @@ mod tests {
 
     #[test]
     #[should_panic = "Empty (faceless) meshes are not supported"]
-    fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals_empty_geometry() {
-        Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+    fn test_mesh_from_triangle_faces_with_vertices_and_computed_normals_empty_mesh() {
+        Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             vec![],
             vec![],
             NormalStrategy::Sharp,
@@ -1302,9 +1310,9 @@ mod tests {
 
     #[test]
     #[should_panic = "Empty (faceless) meshes are not supported"]
-    fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals_remove_orphans_empty_geometry(
-    ) {
-        Geometry::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
+    fn test_mesh_from_triangle_faces_with_vertices_and_computed_normals_remove_orphans_empty_mesh()
+    {
+        Mesh::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
             vec![],
             vec![],
             NormalStrategy::Sharp,
@@ -1313,43 +1321,39 @@ mod tests {
 
     #[test]
     #[should_panic = "Empty (faceless) meshes are not supported"]
-    fn test_geometry_from_triangle_faces_with_vertices_and_normals_empty_geometry() {
-        Geometry::from_triangle_faces_with_vertices_and_normals(vec![], vec![], vec![]);
+    fn test_mesh_from_triangle_faces_with_vertices_and_normals_empty_mesh() {
+        Mesh::from_triangle_faces_with_vertices_and_normals(vec![], vec![], vec![]);
     }
 
     #[test]
     #[should_panic = "Empty (faceless) meshes are not supported"]
-    fn test_geometry_from_triangle_faces_with_vertices_and_normals_remove_orphans_empty_geometry() {
-        Geometry::from_triangle_faces_with_vertices_and_normals_remove_orphans(
-            vec![],
-            vec![],
-            vec![],
-        );
+    fn test_mesh_from_triangle_faces_with_vertices_and_normals_remove_orphans_empty_mesh() {
+        Mesh::from_triangle_faces_with_vertices_and_normals_remove_orphans(vec![], vec![], vec![]);
     }
 
     #[test]
     #[should_panic = "Empty (faceless) meshes are not supported"]
-    fn test_geometry_from_faces_with_vertices_and_normals_empty_geometry() {
-        Geometry::from_faces_with_vertices_and_normals(vec![], vec![], vec![]);
+    fn test_mesh_from_faces_with_vertices_and_normals_empty_mesh() {
+        Mesh::from_faces_with_vertices_and_normals(vec![], vec![], vec![]);
     }
 
     #[test]
     #[should_panic = "Empty (faceless) meshes are not supported"]
-    fn test_geometry_from_faces_with_vertices_and_normals_remove_orphans_empty_geometry() {
-        Geometry::from_faces_with_vertices_and_normals_remove_orphans(vec![], vec![], vec![]);
+    fn test_mesh_from_faces_with_vertices_and_normals_remove_orphans_empty_mesh() {
+        Mesh::from_faces_with_vertices_and_normals_remove_orphans(vec![], vec![], vec![]);
     }
 
     #[test]
-    fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals() {
+    fn test_mesh_from_triangle_faces_with_vertices_and_computed_normals() {
         let (faces, vertices) = quad();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        assert!(geometry.is_triangulated());
+        assert!(mesh.is_triangulated());
 
-        let geometry_faces: Vec<_> = geometry
+        let mesh_faces: Vec<_> = mesh
             .faces()
             .iter()
             .filter_map(|face| match face {
@@ -1357,10 +1361,10 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(vertices.as_slice(), geometry.vertices());
+        assert_eq!(vertices.as_slice(), mesh.vertices());
         assert_eq!(
             faces,
-            geometry_faces
+            mesh_faces
                 .into_iter()
                 .map(|triangle_face| triangle_face.vertices)
                 .collect::<Vec<_>>(),
@@ -1369,10 +1373,10 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Faces reference out of bounds position data")]
-    fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals_bounds_check() {
+    fn test_mesh_from_triangle_faces_with_vertices_and_computed_normals_bounds_check() {
         let (_, vertices) = quad();
 
-        // When comparing TriangleFaces or Faces from Geometry, make sure the
+        // When comparing TriangleFaces or Faces from Mesh, make sure the
         // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
@@ -1381,7 +1385,7 @@ mod tests {
             (2, 3, 4),
         ];
 
-        Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
             vertices,
             NormalStrategy::Sharp,
@@ -1389,16 +1393,16 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_from_triangle_faces_with_vertices_and_normals() {
+    fn test_mesh_from_triangle_faces_with_vertices_and_normals() {
         let (faces, vertices, normals) = quad_with_normals();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_normals(
             faces.clone(),
             vertices.clone(),
             normals.clone(),
         );
-        assert!(geometry.is_triangulated());
+        assert!(mesh.is_triangulated());
 
-        let geometry_faces: Vec<_> = geometry
+        let mesh_faces: Vec<_> = mesh
             .faces()
             .iter()
             .filter_map(|face| match face {
@@ -1407,17 +1411,17 @@ mod tests {
             .copied()
             .collect();
 
-        assert_eq!(vertices.as_slice(), geometry.vertices());
-        assert_eq!(normals.as_slice(), geometry.normals());
-        assert_eq!(faces, geometry_faces);
+        assert_eq!(vertices.as_slice(), mesh.vertices());
+        assert_eq!(normals.as_slice(), mesh.normals());
+        assert_eq!(faces, mesh_faces);
     }
 
     #[test]
     #[should_panic(expected = "Faces reference out of bounds position data")]
-    fn test_geometry_from_triangle_faces_with_vertices_and_normals_bounds_check() {
+    fn test_mesh_from_triangle_faces_with_vertices_and_normals_bounds_check() {
         let (_, vertices, normals) = quad_with_normals();
 
-        // When comparing TriangleFaces or Faces from Geometry, make sure the
+        // When comparing TriangleFaces or Faces from Mesh, make sure the
         // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         #[rustfmt::skip]
@@ -1426,7 +1430,7 @@ mod tests {
             TriangleFace::new(2, 3, 4),
         ];
 
-        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
     }
 
     #[test]
@@ -1599,10 +1603,10 @@ mod tests {
     fn test_has_no_orphan_vertices_returns_true_if_there_are_some() {
         let (faces, vertices, normals) = quad_with_normals();
 
-        let geometry_without_orphans =
-            Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
+        let mesh_without_orphans =
+            Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
 
-        assert!(geometry_without_orphans.has_no_orphan_vertices());
+        assert!(mesh_without_orphans.has_no_orphan_vertices());
     }
 
     #[test]
@@ -1611,30 +1615,26 @@ mod tests {
         let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
         let vertices_extended = [&vertices[..], &extra_vertex[..]].concat();
 
-        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces,
-            vertices_extended,
-            normals,
-        );
+        let mesh_with_orphans =
+            Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices_extended, normals);
 
-        assert!(!geometry_with_orphans.has_no_orphan_vertices());
+        assert!(!mesh_with_orphans.has_no_orphan_vertices());
     }
 
     #[test]
     fn test_has_no_orphan_normals_returns_true_if_there_are_some() {
         let (faces, vertices, normals) = quad_with_normals();
 
-        let geometry_without_orphans =
-            Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
+        let mesh_without_orphans =
+            Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
 
-        assert!(geometry_without_orphans.has_no_orphan_normals());
+        assert!(mesh_without_orphans.has_no_orphan_normals());
     }
 
     #[test]
-    fn test_geometry_unoriented_edges_iter() {
+    fn test_mesh_unoriented_edges_iter() {
         let (faces, vertices, normals) = quad_with_normals();
-        let geometry =
-            Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
         let unoriented_edges_correct = vec![
             UnorientedEdge(OrientedEdge::new(0, 1)),
             UnorientedEdge(OrientedEdge::new(1, 2)),
@@ -1643,8 +1643,7 @@ mod tests {
             UnorientedEdge(OrientedEdge::new(3, 0)),
             UnorientedEdge(OrientedEdge::new(0, 2)),
         ];
-        let unoriented_edges_to_check: Vec<UnorientedEdge> =
-            geometry.unoriented_edges_iter().collect();
+        let unoriented_edges_to_check: Vec<UnorientedEdge> = mesh.unoriented_edges_iter().collect();
 
         assert!(unoriented_edges_correct
             .iter()
@@ -1656,10 +1655,9 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_oriented_edges_iter() {
+    fn test_mesh_oriented_edges_iter() {
         let (faces, vertices, normals) = quad_with_normals();
-        let geometry =
-            Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
 
         let oriented_edges_correct = vec![
             OrientedEdge::new(0, 1),
@@ -1669,7 +1667,7 @@ mod tests {
             OrientedEdge::new(3, 0),
             OrientedEdge::new(0, 2),
         ];
-        let oriented_edges_to_check: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges_to_check: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
 
         assert!(oriented_edges_correct
             .iter()
@@ -1687,13 +1685,10 @@ mod tests {
         let extra_normal = vec![n(0.0, 0.0, 0.0)];
         let normals_extended = [&normals[..], &extra_normal[..]].concat();
 
-        let geometry_with_orphans = Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces,
-            vertices,
-            normals_extended,
-        );
+        let mesh_with_orphans =
+            Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals_extended);
 
-        assert!(!geometry_with_orphans.has_no_orphan_normals());
+        assert!(!mesh_with_orphans.has_no_orphan_normals());
     }
 
     #[test]
@@ -1787,25 +1782,24 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_from_triangle_faces_with_vertices_and_computed_normals_remove_orphans() {
+    fn test_mesh_from_triangle_faces_with_vertices_and_computed_normals_remove_orphans() {
         let (faces, vertices) = quad();
         let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
         let vertices_extended = [&extra_vertex[..], &vertices[..]].concat();
         let faces_renumbered_to_match_extend_vertices: Vec<_> =
             faces.iter().map(|f| (f.0 + 1, f.1 + 1, f.2 + 1)).collect();
 
-        let geometry =
-            Geometry::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
-                faces_renumbered_to_match_extend_vertices,
-                vertices_extended,
-                NormalStrategy::Sharp,
-            );
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
+            faces_renumbered_to_match_extend_vertices,
+            vertices_extended,
+            NormalStrategy::Sharp,
+        );
 
-        assert!(geometry.has_no_orphan_vertices());
+        assert!(mesh.has_no_orphan_vertices());
     }
 
     #[test]
-    fn test_geometry_from_triangle_faces_with_vertices_and_normals_remove_orphans() {
+    fn test_mesh_from_triangle_faces_with_vertices_and_normals_remove_orphans() {
         let (faces, vertices, normals) = quad_with_normals();
         let extra_vertex = vec![v(0.0, 0.0, 0.0, [0.0, 0.0, 0.0], 1.0)];
         let vertices_extended = [&extra_vertex[..], &vertices[..]].concat();
@@ -1826,17 +1820,17 @@ mod tests {
             })
             .collect();
 
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_normals_remove_orphans(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_normals_remove_orphans(
             faces_renumbered_to_match_extend_vertices_and_normals,
             vertices_extended,
             normals_extended,
         );
 
-        assert!(geometry.has_no_orphan_vertices());
+        assert!(mesh.has_no_orphan_vertices());
     }
 
     #[test]
-    fn test_geometry_compute_triangle_normal_returns_z_vector_for_horizontal_triangle() {
+    fn test_compute_triangle_normal_returns_z_vector_for_horizontal_triangle() {
         let normal_correct = Vector3::new(0.0, 0.0, 1.0);
 
         let normal_calculated = compute_triangle_normal(
@@ -1849,7 +1843,7 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_compute_triangle_normal_returns_x_vector_for_vertical_triangle() {
+    fn test_compute_triangle_normal_returns_x_vector_for_vertical_triangle() {
         let normal_correct = Vector3::new(1.0, 0.0, 0.0);
 
         let normal_calculated = compute_triangle_normal(
@@ -1862,7 +1856,7 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_compute_triangle_normal_returns_vector_for_arbitrary_triangle() {
+    fn test_compute_triangle_normal_returns_vector_for_arbitrary_triangle() {
         let normal_correct = Vector3::new(0.62270945, -0.614937, 0.48382375);
 
         let normal_calculated = compute_triangle_normal(
@@ -1875,7 +1869,7 @@ mod tests {
     }
 
     #[test]
-    fn test_geometry_plane_new_calculate_perpendicular_y() {
+    fn test_plane_new_calculate_perpendicular_y() {
         let test_plane = Plane::new(
             &Point3::new(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 0.0, 0.0),
@@ -1887,7 +1881,7 @@ mod tests {
 
     #[test]
     #[should_panic = "The X and Y vectors defining a plane can't be parallel or reverted"]
-    fn test_geometry_plane_new_fail_because_x_and_y_vectors_identical() {
+    fn test_plane_new_fail_because_x_and_y_vectors_identical() {
         Plane::new(
             &Point3::new(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 0.0, 0.0),
@@ -1897,7 +1891,7 @@ mod tests {
 
     #[test]
     #[should_panic = "The X and Y vectors defining a plane can't be parallel or reverted"]
-    fn test_geometry_plane_new_fail_because_x_and_y_vectors_reverted() {
+    fn test_plane_new_fail_because_x_and_y_vectors_reverted() {
         Plane::new(
             &Point3::new(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 0.0, 0.0),

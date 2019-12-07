@@ -67,12 +67,12 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
                 if models.is_empty() {
                     Err(FuncError::new(FuncImportObjMeshError::Empty))
                 } else {
-                    let geometries: Vec<_> = models
+                    let meshes: Vec<_> = models
                         .into_iter()
-                        .map(|model| Arc::new(model.geometry))
+                        .map(|model| Arc::new(model.mesh))
                         .collect();
 
-                    let value = GeometryArrayValue::new(geometries);
+                    let value = GeometryArrayValue::new(meshes);
                     Ok(Value::GeometryArray(Arc::new(value)))
                 }
             }

@@ -50,7 +50,7 @@ pub fn edge_sharing<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
 mod tests {
     use nalgebra::Point3;
 
-    use crate::geometry::{Geometry, NormalStrategy, Vertices};
+    use crate::geometry::{Mesh, NormalStrategy, Vertices};
 
     use super::*;
 
@@ -83,12 +83,12 @@ mod tests {
     #[test]
     fn test_edge_analysis_edge_sharing() {
         let (faces, vertices) = quad();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_sharing(&oriented_edges);
         let unoriented_edges_one_way_correct = vec![
             UnorientedEdge(OrientedEdge::new(0, 1)),

@@ -12,7 +12,7 @@ use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 use tobj;
 
-use crate::geometry::{Geometry, NormalStrategy, TriangleFace};
+use crate::geometry::{Mesh, NormalStrategy, TriangleFace};
 
 #[derive(Debug, PartialEq)]
 pub enum ImporterError {
@@ -54,7 +54,7 @@ impl From<tobj::LoadError> for ImporterError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Model {
     pub name: String,
-    pub geometry: Geometry,
+    pub mesh: Mesh,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -222,14 +222,14 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
             .map(|chunk| (chunk[0], chunk[1], chunk[2]))
             .collect();
 
-        let geometry = if let Some(vertex_normals) = vertex_normals {
-            Geometry::from_triangle_faces_with_vertices_and_normals(
+        let mesh = if let Some(vertex_normals) = vertex_normals {
+            Mesh::from_triangle_faces_with_vertices_and_normals(
                 faces_raw.into_iter().map(TriangleFace::from),
                 vertex_positions,
                 vertex_normals,
             )
         } else {
-            Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+            Mesh::from_triangle_faces_with_vertices_and_computed_normals(
                 faces_raw,
                 vertex_positions,
                 NormalStrategy::Sharp,
@@ -238,7 +238,7 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
 
         models.push(Model {
             name: model.name,
-            geometry,
+            mesh,
         });
     }
 
@@ -297,7 +297,7 @@ mod tests {
             models,
             vec![Model {
                 name: tobj_model.name,
-                geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
+                mesh: Mesh::from_triangle_faces_with_vertices_and_normals(
                     vec![TriangleFace::new(0, 1, 2)],
                     vec![
                         Point3::new(6.0, 5.0, 4.0),
@@ -334,7 +334,7 @@ mod tests {
             vec![
                 Model {
                     name: tobj_model_1.name,
-                    geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
+                    mesh: Mesh::from_triangle_faces_with_vertices_and_normals(
                         vec![TriangleFace::new(0, 1, 2)],
                         vec![
                             Point3::new(6.0, 5.0, 4.0),
@@ -350,7 +350,7 @@ mod tests {
                 },
                 Model {
                     name: tobj_model_2.name,
-                    geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
+                    mesh: Mesh::from_triangle_faces_with_vertices_and_normals(
                         vec![TriangleFace::new(0, 1, 2)],
                         vec![
                             Point3::new(16.0, 15.0, 14.0),
@@ -610,7 +610,7 @@ mod tests {
         lazy_static! {
             static ref MODELS: Vec<Model> = vec![Model {
                 name: "test".to_string(),
-                geometry: Geometry::from_triangle_faces_with_vertices_and_normals(
+                mesh: Mesh::from_triangle_faces_with_vertices_and_normals(
                     vec![TriangleFace::new(0, 1, 2)],
                     vec![
                         Point3::new(6.0, 5.0, 4.0),

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use nalgebra::base::{Matrix4, Vector3};
 use nalgebra::geometry::{Rotation, Translation};
 
-use crate::geometry::Geometry;
+use crate::geometry::Mesh;
 use crate::interpreter::{
     Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty,
     Value,
@@ -83,7 +83,7 @@ impl Func for FuncTransform {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_geometry();
+        let mesh = args[0].unwrap_mesh();
 
         let translate = args[1]
             .get_float3()
@@ -109,11 +109,11 @@ impl Func for FuncTransform {
         let scaling = Matrix4::new_nonuniform_scaling(&scale);
 
         let t = Matrix4::from(translation) * Matrix4::from(rotation) * scaling;
-        let vertices_iter = geometry.vertices().iter().map(|v| t.transform_point(v));
-        let normals_iter = geometry.normals().iter().map(|n| t.transform_vector(n));
+        let vertices_iter = mesh.vertices().iter().map(|v| t.transform_point(v));
+        let normals_iter = mesh.normals().iter().map(|n| t.transform_vector(n));
 
-        let value = Geometry::from_faces_with_vertices_and_normals(
-            geometry.faces().iter().copied(),
+        let value = Mesh::from_faces_with_vertices_and_normals(
+            mesh.faces().iter().copied(),
             vertices_iter,
             normals_iter,
         );

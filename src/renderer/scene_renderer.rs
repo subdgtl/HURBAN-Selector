@@ -10,7 +10,7 @@ use nalgebra::base::{Matrix4, Vector3};
 use nalgebra::geometry::Point3;
 
 use crate::convert::cast_usize;
-use crate::geometry::{Face, Geometry};
+use crate::geometry::{Face, Mesh};
 
 use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
 
@@ -19,33 +19,33 @@ static SHADER_VIEWPORT_FRAG: &[u8] = include_shader!("viewport.frag.spv");
 
 static MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../resources/matcap.png");
 
-/// The geometry containing index and vertex data in same-length
+/// The mesh containing index and vertex data in same-length
 /// format as will be uploaded on the GPU.
 #[derive(Debug, Clone, PartialEq)]
-pub struct GpuGeometry {
-    indices: Option<Vec<GpuGeometryIndex>>,
-    vertex_data: Vec<GpuGeometryVertex>,
+pub struct GpuMesh {
+    indices: Option<Vec<GpuMeshIndex>>,
+    vertex_data: Vec<GpuMeshVertex>,
 }
 
-impl GpuGeometry {
-    /// Construct geometry with same-length per-vertex data from
-    /// variable-length data `Geometry`.
+impl GpuMesh {
+    /// Creates mesh with same-length per-vertex data from
+    /// variable-length data `Mesh`.
     ///
     /// Duplicates vertices if same vertex is encountered multiple
     /// times paired with different per-vertex data, e.g. normals.
-    pub fn from_geometry(geometry: &Geometry) -> Self {
-        let vertices = geometry.vertices();
-        let normals = geometry.normals();
+    pub fn from_mesh(mesh: &Mesh) -> Self {
+        let vertices = mesh.vertices();
+        let normals = mesh.normals();
 
-        let faces_len = geometry.faces().len();
+        let faces_len = mesh.faces().len();
         let indices_len_estimate = faces_len * 3;
 
         let mut indices = Vec::with_capacity(indices_len_estimate);
 
         // This capacity is a lower bound estimate. Given that
-        // `Geometry` contains no orphan vertices, there should be
+        // `Mesh` contains no orphan vertices, there should be
         // at least `vertices.len()` vertices present in the
-        // resulting `GpuGeometry`.
+        // resulting `GpuMesh`.
         let mut vertex_data = Vec::with_capacity(vertices.len());
 
         // This capacity is an upper bound estimate and will
@@ -56,7 +56,7 @@ impl GpuGeometry {
         // Iterate over all faces, creating or re-using vertices
         // as we go. Vertex data identity is defined by equality
         // of the index that constructed the vertex.
-        for face in geometry.faces() {
+        for face in mesh.faces() {
             match face {
                 Face::Triangle(triangle_face) => {
                     let v = triangle_face.vertices;
@@ -104,16 +104,16 @@ impl GpuGeometry {
 
         vertex_data.shrink_to_fit();
 
-        GpuGeometry {
+        GpuMesh {
             indices: Some(indices),
             vertex_data,
         }
     }
 
-    /// Create geometry from vectors of positions and normals of same
-    /// length. Does not run any validations except for length
-    /// checking.
-    #[allow(dead_code)]
+    /// Creates mesh from vectors of positions and normals of same
+    /// length.
+    ///
+    /// Does not run any validations except for length checking.
     pub fn from_positions_and_normals(
         vertex_positions: Vec<Point3<f32>>,
         vertex_normals: Vec<Vector3<f32>>,
@@ -145,12 +145,12 @@ impl GpuGeometry {
         }
     }
 
-    /// Create indexed geometry from vectors of positions and normals
+    /// Create indexed mesh from vectors of positions and normals
     /// of same length. Does not run any validations except for length
     /// checking.
     #[allow(dead_code)]
     pub fn from_positions_and_normals_indexed(
-        indices: Vec<GpuGeometryIndex>,
+        indices: Vec<GpuMeshIndex>,
         vertex_positions: Vec<Point3<f32>>,
         vertex_normals: Vec<Vector3<f32>>,
     ) -> Self {
@@ -182,8 +182,8 @@ impl GpuGeometry {
         }
     }
 
-    fn vertex(position: Point3<f32>, normal: Vector3<f32>, barycentric: u32) -> GpuGeometryVertex {
-        GpuGeometryVertex {
+    fn vertex(position: Point3<f32>, normal: Vector3<f32>, barycentric: u32) -> GpuMeshVertex {
+        GpuMeshVertex {
             position: [position[0], position[1], position[2], 1.0],
             normal: [normal[0], normal[1], normal[2], 0.0],
             barycentric,
@@ -191,28 +191,28 @@ impl GpuGeometry {
     }
 }
 
-/// Opaque handle to geometry stored in scene renderer.
+/// Opaque handle to mesh stored in scene renderer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GpuGeometryId(u64);
+pub struct GpuMeshId(u64);
 
 #[derive(Debug)]
-pub enum AddGeometryError {
+pub enum AddMeshError {
     TooManyVertices(usize),
     TooManyIndices(usize),
 }
 
-impl fmt::Display for AddGeometryError {
+impl fmt::Display for AddMeshError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            AddGeometryError::TooManyVertices(given) => write!(
+            AddMeshError::TooManyVertices(given) => write!(
                 f,
-                "Geometry contains too many vertices {}. (max allowed is {})",
+                "Mesh contains too many vertices {}. (max allowed is {})",
                 given,
                 u32::max_value(),
             ),
-            AddGeometryError::TooManyIndices(given) => write!(
+            AddMeshError::TooManyIndices(given) => write!(
                 f,
-                "Geometry contains too many indices: {}. (max allowed is {})",
+                "Mesh contains too many indices: {}. (max allowed is {})",
                 given,
                 u32::max_value(),
             ),
@@ -220,7 +220,7 @@ impl fmt::Display for AddGeometryError {
     }
 }
 
-impl error::Error for AddGeometryError {}
+impl error::Error for AddMeshError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Options {
@@ -237,7 +237,7 @@ bitflags! {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DrawGeometryMode {
+pub enum DrawMeshMode {
     Shaded,
     Edges,
     ShadedEdges,
@@ -246,12 +246,12 @@ pub enum DrawGeometryMode {
 
 /// 3D renderer of the editor scene.
 ///
-/// Can be used to upload `Geometry` on the GPU and draw it in the
+/// Can be used to upload meshes on the GPU and draw it in the
 /// viewport. Currently supports just shaded (matcap) and wireframe
 /// rendering, and their combinations.
 pub struct SceneRenderer {
-    geometry_resources: HashMap<u64, GeometryResource>,
-    geometry_resources_next_id: u64,
+    mesh_resources: HashMap<u64, MeshResource>,
+    mesh_resources_next_id: u64,
     matrix_buffer: wgpu::Buffer,
     matrix_bind_group: wgpu::BindGroup,
     shading_bind_group_shaded: wgpu::BindGroup,
@@ -505,8 +505,8 @@ impl SceneRenderer {
         );
 
         Self {
-            geometry_resources: HashMap::new(),
-            geometry_resources_next_id: 0,
+            mesh_resources: HashMap::new(),
+            mesh_resources_next_id: 0,
             matrix_buffer,
             matrix_bind_group,
             shading_bind_group_shaded,
@@ -533,28 +533,28 @@ impl SceneRenderer {
         upload_matrix_buffer(device, queue, &self.matrix_buffer, matrix_uniforms);
     }
 
-    /// Upload geometry on the GPU.
+    /// Upload mesh on the GPU.
     ///
     /// Whether indexed or not, the data must be in the
     /// `TRIANGLE_LIST` format. The returned id can be used to draw
-    /// the geometry, or remove it.
-    pub fn add_geometry(
+    /// the mesh, or remove it.
+    pub fn add_mesh(
         &mut self,
         device: &wgpu::Device,
-        geometry: &GpuGeometry,
-    ) -> Result<GpuGeometryId, AddGeometryError> {
-        let id = GpuGeometryId(self.geometry_resources_next_id);
+        mesh: &GpuMesh,
+    ) -> Result<GpuMeshId, AddMeshError> {
+        let id = GpuMeshId(self.mesh_resources_next_id);
 
-        let vertex_data = &geometry.vertex_data[..];
+        let vertex_data = &mesh.vertex_data[..];
         let vertex_data_count = u32::try_from(vertex_data.len())
-            .map_err(|_| AddGeometryError::TooManyVertices(vertex_data.len()))?;
+            .map_err(|_| AddMeshError::TooManyVertices(vertex_data.len()))?;
 
-        let geometry_descriptor = if let Some(indices) = &geometry.indices {
+        let mesh_descriptor = if let Some(indices) = &mesh.indices {
             let index_count = u32::try_from(indices.len())
-                .map_err(|_| AddGeometryError::TooManyIndices(indices.len()))?;
+                .map_err(|_| AddMeshError::TooManyIndices(indices.len()))?;
 
             log::debug!(
-                "Adding geometry with ID {}, {} vertices and {} indices",
+                "Adding mesh with ID {}, {} vertices and {} indices",
                 id.0,
                 vertex_data_count,
                 index_count,
@@ -568,13 +568,13 @@ impl SceneRenderer {
                 .create_buffer_mapped(indices.len(), wgpu::BufferUsage::INDEX)
                 .fill_from_slice(indices);
 
-            GeometryResource {
+            MeshResource {
                 vertices: (vertex_buffer, vertex_data_count),
                 indices: Some((index_buffer, index_count)),
             }
         } else {
             log::debug!(
-                "Adding geometry with ID {} and {} vertices",
+                "Adding mesh with ID {} and {} vertices",
                 id.0,
                 vertex_data_count
             );
@@ -583,31 +583,31 @@ impl SceneRenderer {
                 .create_buffer_mapped(vertex_data.len(), wgpu::BufferUsage::VERTEX)
                 .fill_from_slice(vertex_data);
 
-            GeometryResource {
+            MeshResource {
                 vertices: (vertex_buffer, vertex_data_count),
                 indices: None,
             }
         };
 
-        self.geometry_resources.insert(id.0, geometry_descriptor);
-        self.geometry_resources_next_id += 1;
+        self.mesh_resources.insert(id.0, mesh_descriptor);
+        self.mesh_resources_next_id += 1;
         Ok(id)
     }
 
-    /// Remove a previously uploaded geometry from the GPU.
-    pub fn remove_geometry(&mut self, id: GpuGeometryId) {
-        log::debug!("Removing geometry with ID {}", id.0);
-        // Dropping the geometry descriptor here unstreams the buffers from device memory
-        self.geometry_resources.remove(&id.0);
+    /// Remove a previously uploaded mesh from the GPU.
+    pub fn remove_mesh(&mut self, id: GpuMeshId) {
+        log::debug!("Removing mesh with ID {}", id.0);
+        // Dropping the mesh descriptor here unstreams the buffers from device memory
+        self.mesh_resources.remove(&id.0);
     }
 
     /// Optionally clear color and depth and draw previously uploaded
-    /// geometries as one of the commands executed with the `encoder`
+    /// meshes as one of the commands executed with the `encoder`
     /// to the `color_attachment`.
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_geometry<'a, I>(
+    pub fn draw_mesh<'a, I>(
         &self,
-        mode: DrawGeometryMode,
+        mode: DrawMeshMode,
         clear_flags: ClearFlags,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
@@ -615,7 +615,7 @@ impl SceneRenderer {
         depth_attachment: &wgpu::TextureView,
         ids: I,
     ) where
-        I: IntoIterator<Item = &'a GpuGeometryId> + Clone,
+        I: IntoIterator<Item = &'a GpuMeshId> + Clone,
     {
         let color_load_op = if clear_flags.contains(ClearFlags::COLOR) {
             wgpu::LoadOp::Clear
@@ -700,80 +700,80 @@ impl SceneRenderer {
         //     https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
 
         match mode {
-            DrawGeometryMode::Shaded => {
+            DrawMeshMode::Shaded => {
                 rpass.set_pipeline(&self.render_pipeline_opaque);
                 rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
                 rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
 
-                self.record_geometry_drawing(&mut rpass, ids);
+                self.record(&mut rpass, ids);
             }
-            DrawGeometryMode::Edges => {
+            DrawMeshMode::Edges => {
                 rpass.set_pipeline(&self.render_pipeline_transparent);
                 rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
                 rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
 
-                self.record_geometry_drawing(&mut rpass, ids);
+                self.record(&mut rpass, ids);
             }
-            DrawGeometryMode::ShadedEdges => {
+            DrawMeshMode::ShadedEdges => {
                 rpass.set_pipeline(&self.render_pipeline_opaque);
                 rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded_edges, &[]);
                 rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
 
-                self.record_geometry_drawing(&mut rpass, ids);
+                self.record(&mut rpass, ids);
             }
-            DrawGeometryMode::ShadedEdgesXray => {
+            DrawMeshMode::ShadedEdgesXray => {
                 rpass.set_pipeline(&self.render_pipeline_opaque);
                 rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
                 rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
 
-                self.record_geometry_drawing(&mut rpass, ids.clone());
+                self.record(&mut rpass, ids.clone());
 
                 rpass.set_pipeline(&self.render_pipeline_transparent);
                 rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
 
-                self.record_geometry_drawing(&mut rpass, ids);
+                self.record(&mut rpass, ids);
             }
         }
     }
 
-    fn record_geometry_drawing<'a, I>(&self, rpass: &mut wgpu::RenderPass, ids: I)
+    fn record<'a, I>(&self, rpass: &mut wgpu::RenderPass, ids: I)
     where
-        I: IntoIterator<Item = &'a GpuGeometryId>,
+        I: IntoIterator<Item = &'a GpuMeshId>,
     {
         for id in ids {
-            if let Some(geometry) = &self.geometry_resources.get(&id.0) {
-                let (vertex_buffer, vertex_count) = &geometry.vertices;
+            if let Some(mesh) = &self.mesh_resources.get(&id.0) {
+                let (vertex_buffer, vertex_count) = &mesh.vertices;
                 rpass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
-                if let Some((index_buffer, index_count)) = &geometry.indices {
+                if let Some((index_buffer, index_count)) = &mesh.indices {
                     rpass.set_index_buffer(&index_buffer, 0);
                     rpass.draw_indexed(0..*index_count, 0, 0..1);
                 } else {
                     rpass.draw(0..*vertex_count, 0..1);
                 }
             } else {
-                log::warn!("Geometry with id {} does not exist in this renderer.", id.0);
+                log::warn!("Mesh with id {} does not exist in this renderer.", id.0);
             }
         }
     }
 }
 
-struct GeometryResource {
+struct MeshResource {
     vertices: (wgpu::Buffer, u32),
     indices: Option<(wgpu::Buffer, u32)>,
 }
 
-/// The geometry vertex data as uploaded on the GPU.
+/// The mesh vertex data as uploaded on the GPU.
 ///
 /// Positions and normals are internally `[f32; 4]` with the last
 /// component filled in as 1.0 or 0.0 for points and vectors
 /// respectively.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct GpuGeometryVertex {
+struct GpuMeshVertex {
     /// The position of the vertex in world-space. Last component is 1.
     pub position: [f32; 4],
 
@@ -786,9 +786,9 @@ struct GpuGeometryVertex {
     pub barycentric: u32,
 }
 
-// FIXME: @Optimization Determine u16/u32 dynamically per geometry to
+// FIXME: @Optimization Determine u16/u32 dynamically per mesh to
 // save memory
-type GpuGeometryIndex = u32;
+type GpuMeshIndex = u32;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -881,7 +881,7 @@ fn apply_wgpu_correction_matrix(projection_matrix: &Matrix4<f32>) -> Matrix4<f32
 /// bit-packed into a single u32 to save space (possibly, depending on
 /// attribute data layout and alignment). They are unpacked on the
 /// vertex shader. Usage is to zip this iterator with other data
-/// iterators to produce vertex attributes for renderer geometry.
+/// iterators to produce vertex attributes for renderer mesh.
 fn barycentric_sequence_iter() -> impl Iterator<Item = u32> {
     iter::successors(Some(0x01), |predecessor| match predecessor {
         0x01 => Some(0x02),
@@ -924,7 +924,7 @@ fn create_pipeline(
         //
         // Default rasterization state means CullMode::None. We don't
         // cull faces yet, because we work with potentially non-CCW
-        // geometries. We might implement special rendering for CW
+        // meshes. We might implement special rendering for CW
         // faces one day.
         rasterization_state: None,
         primitive_topology: wgpu::PrimitiveTopology::TriangleList,
@@ -965,7 +965,7 @@ fn create_pipeline(
         }),
         index_format: wgpu::IndexFormat::Uint32,
         vertex_buffers: &[wgpu::VertexBufferDescriptor {
-            stride: wgpu_size_of::<GpuGeometryVertex>(),
+            stride: wgpu_size_of::<GpuMeshVertex>(),
             step_mode: wgpu::InputStepMode::Vertex,
             attributes: &[
                 wgpu::VertexAttributeDescriptor {
@@ -1015,14 +1015,14 @@ mod tests {
         (vertex_positions, vertex_normals)
     }
 
-    fn triangle_indexed() -> (Vec<GpuGeometryIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
+    fn triangle_indexed() -> (Vec<GpuMeshIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
         let (vertex_positions, vertex_normals) = triangle();
         let indices = vec![0, 1, 2];
 
         (indices, vertex_positions, vertex_normals)
     }
 
-    fn triangle_geometry_same_len() -> Geometry {
+    fn triangle_mesh_same_len() -> Mesh {
         #[rustfmt::skip]
         let positions = vec![
             Point3::new(-0.3, -0.5,  0.0),
@@ -1042,10 +1042,10 @@ mod tests {
             TriangleFace::new(0, 1, 2)
         ];
 
-        Geometry::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
     }
 
-    fn triangle_geometry_var_len() -> Geometry {
+    fn triangle_mesh_var_len() -> Mesh {
         #[rustfmt::skip]
         let positions = vec![
             Point3::new(-0.3, -0.5,  0.0),
@@ -1063,76 +1063,76 @@ mod tests {
             TriangleFace::new_separate(0, 1, 2, 0, 0, 0)
         ];
 
-        Geometry::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
     }
 
     #[test]
-    fn test_renderer_geometry_from_positions_and_normals() {
+    fn test_gpu_mesh_from_positions_and_normals() {
         let (positions, normals) = triangle();
-        let geometry = GpuGeometry::from_positions_and_normals(positions, normals);
+        let mesh = GpuMesh::from_positions_and_normals(positions, normals);
 
         assert_eq!(
-            geometry.vertex_data,
+            mesh.vertex_data,
             vec![
-                GpuGeometryVertex {
+                GpuMeshVertex {
                     position: [-0.3, -0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
                     barycentric: 0x01,
                 },
-                GpuGeometryVertex {
+                GpuMeshVertex {
                     position: [0.3, -0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
                     barycentric: 0x02,
                 },
-                GpuGeometryVertex {
+                GpuMeshVertex {
                     position: [0.0, 0.5, 0.0, 1.0],
                     normal: [0.0, 0.0, 1.0, 0.0],
                     barycentric: 0x04,
                 },
             ]
         );
-        assert_eq!(geometry.indices, None);
+        assert_eq!(mesh.indices, None);
     }
 
     #[test]
-    fn test_renderer_geometry_from_positions_and_normals_indexed() {
+    fn test_gpu_mesh_from_positions_and_normals_indexed() {
         let (indices, positions, normals) = triangle_indexed();
-        let geometry = GpuGeometry::from_positions_and_normals_indexed(indices, positions, normals);
+        let mesh = GpuMesh::from_positions_and_normals_indexed(indices, positions, normals);
 
         let expected_vertex_data = vec![
-            GpuGeometryVertex {
+            GpuMeshVertex {
                 position: [-0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x01,
             },
-            GpuGeometryVertex {
+            GpuMeshVertex {
                 position: [0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x02,
             },
-            GpuGeometryVertex {
+            GpuMeshVertex {
                 position: [0.0, 0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x04,
             },
         ];
 
-        assert_eq!(geometry.vertex_data, expected_vertex_data);
-        assert_eq!(geometry.indices, Some(vec![0, 1, 2]));
+        assert_eq!(mesh.vertex_data, expected_vertex_data);
+        assert_eq!(mesh.indices, Some(vec![0, 1, 2]));
     }
 
     #[test]
     #[should_panic(expected = "Per-vertex data must be same length")]
-    fn test_renderer_geometry_from_positions_and_normals_panics_on_different_length_data() {
+    fn test_gpu_mesh_from_positions_and_normals_panics_on_different_length_data() {
         let (_, normals) = triangle();
-        GpuGeometry::from_positions_and_normals(vec![Point3::new(1.0, 1.0, 1.0)], normals);
+        GpuMesh::from_positions_and_normals(vec![Point3::new(1.0, 1.0, 1.0)], normals);
     }
 
     #[test]
     #[should_panic(expected = "Per-vertex data must be same length")]
-    fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_different_length_data() {
+    fn test_gpu_mesh_from_positions_and_normals_indexed_panics_on_different_length_data() {
         let (indices, positions, _) = triangle_indexed();
-        GpuGeometry::from_positions_and_normals_indexed(
+        GpuMesh::from_positions_and_normals_indexed(
             indices,
             positions,
             vec![Vector3::new(1.0, 1.0, 1.0)],
@@ -1141,88 +1141,88 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Vertex positions must not be empty")]
-    fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_positions() {
+    fn test_gpu_mesh_from_positions_and_normals_panics_on_empty_positions() {
         let (_, normals) = triangle();
-        GpuGeometry::from_positions_and_normals(vec![], normals);
+        GpuMesh::from_positions_and_normals(vec![], normals);
     }
 
     #[test]
     #[should_panic(expected = "Vertex normals must not be empty")]
-    fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_positions() {
+    fn test_gpu_mesh_from_positions_and_normals_indexed_panics_on_empty_positions() {
         let (positions, _) = triangle();
-        GpuGeometry::from_positions_and_normals(positions, vec![]);
+        GpuMesh::from_positions_and_normals(positions, vec![]);
     }
 
     #[test]
     #[should_panic(expected = "Vertex positions must not be empty")]
-    fn test_renderer_geometry_from_positions_and_normals_panics_on_empty_normals() {
+    fn test_gpu_mesh_from_positions_and_normals_panics_on_empty_normals() {
         let (indices, _, normals) = triangle_indexed();
-        GpuGeometry::from_positions_and_normals_indexed(indices, vec![], normals);
+        GpuMesh::from_positions_and_normals_indexed(indices, vec![], normals);
     }
 
     #[test]
     #[should_panic(expected = "Vertex normals must not be empty")]
-    fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_normals() {
+    fn test_gpu_mesh_from_positions_and_normals_indexed_panics_on_empty_normals() {
         let (indices, positions, _) = triangle_indexed();
-        GpuGeometry::from_positions_and_normals_indexed(indices, positions, vec![]);
+        GpuMesh::from_positions_and_normals_indexed(indices, positions, vec![]);
     }
 
     #[test]
     #[should_panic(expected = "Indices must not be empty")]
-    fn test_renderer_geometry_from_positions_and_normals_indexed_panics_on_empty_indices() {
+    fn test_gpu_mesh_from_positions_and_normals_indexed_panics_on_empty_indices() {
         let (_, vertices, normals) = triangle_indexed();
-        GpuGeometry::from_positions_and_normals_indexed(vec![], vertices, normals);
+        GpuMesh::from_positions_and_normals_indexed(vec![], vertices, normals);
     }
 
     #[test]
-    fn test_renderer_geometry_from_geometry_preserves_already_same_len_geometry() {
-        let geometry = GpuGeometry::from_geometry(&triangle_geometry_same_len());
+    fn test_gpu_mesh_from_mesh_preserves_already_same_len_mesh() {
+        let mesh = GpuMesh::from_mesh(&triangle_mesh_same_len());
 
         let expected_vertex_data = vec![
-            GpuGeometryVertex {
+            GpuMeshVertex {
                 position: [-0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x01,
             },
-            GpuGeometryVertex {
+            GpuMeshVertex {
                 position: [0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x02,
             },
-            GpuGeometryVertex {
+            GpuMeshVertex {
                 position: [0.0, 0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x04,
             },
         ];
 
-        assert_eq!(geometry.vertex_data, expected_vertex_data);
-        assert_eq!(geometry.indices, Some(vec![0, 1, 2]));
+        assert_eq!(mesh.vertex_data, expected_vertex_data);
+        assert_eq!(mesh.indices, Some(vec![0, 1, 2]));
     }
 
     #[test]
-    fn test_renderer_geometry_from_geometry_duplicates_normals_in_var_len_geometry() {
-        let geometry = GpuGeometry::from_geometry(&triangle_geometry_var_len());
+    fn test_gpu_mesh_from_mesh_duplicates_normals_in_var_len_mesh() {
+        let mesh = GpuMesh::from_mesh(&triangle_mesh_var_len());
 
         let expected_vertex_data = vec![
-            GpuGeometryVertex {
+            GpuMeshVertex {
                 position: [-0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x01,
             },
-            GpuGeometryVertex {
+            GpuMeshVertex {
                 position: [0.3, -0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x02,
             },
-            GpuGeometryVertex {
+            GpuMeshVertex {
                 position: [0.0, 0.5, 0.0, 1.0],
                 normal: [0.0, 0.0, 1.0, 0.0],
                 barycentric: 0x04,
             },
         ];
 
-        assert_eq!(geometry.vertex_data, expected_vertex_data);
-        assert_eq!(geometry.indices, Some(vec![0, 1, 2]));
+        assert_eq!(mesh.vertex_data, expected_vertex_data);
+        assert_eq!(mesh.indices, Some(vec![0, 1, 2]));
     }
 }

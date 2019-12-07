@@ -59,17 +59,17 @@ impl Func for FuncExtract {
     }
 
     fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
-        let geometry_array = values[0].unwrap_geometry_array();
+        let mesh_array = values[0].unwrap_mesh_array();
         let index = values[1].unwrap_uint();
 
-        if geometry_array.is_empty() {
+        if mesh_array.is_empty() {
             return Err(FuncError::new(FuncExtractError::Empty));
         }
 
         // FIXME: @Correctness The wrapping index is just a temporary
         // crutch until we can report errors to the user.
-        let wrapping_index = index % geometry_array.len();
-        let value = geometry_array
+        let wrapping_index = index % mesh_array.len();
+        let value = mesh_array
             .get_refcounted(wrapping_index)
             .expect("Array must not be empty");
 

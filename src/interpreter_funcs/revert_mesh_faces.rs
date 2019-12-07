@@ -32,9 +32,9 @@ impl Func for FuncRevertMeshFaces {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_geometry();
+        let mesh = args[0].unwrap_mesh();
 
-        let value = mesh_tools::revert_mesh_faces(geometry);
+        let value = mesh_tools::revert_mesh_faces(mesh);
         Ok(Value::Geometry(Arc::new(value)))
     }
 }

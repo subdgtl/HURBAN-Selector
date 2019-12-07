@@ -5,7 +5,7 @@ use nalgebra::geometry::Point3;
 
 use crate::convert::{cast_i32, cast_usize};
 use crate::edge_analysis::EdgeSharingMap;
-use crate::geometry::{Face, Geometry, OrientedEdge, UnorientedEdge};
+use crate::geometry::{Face, Mesh, OrientedEdge, UnorientedEdge};
 
 /// Finds edges with a certain valency in a mesh edge collection
 ///
@@ -153,19 +153,19 @@ pub fn triangulated_mesh_genus(vertex_count: usize, edge_count: usize, face_coun
     1 - (cast_i32(vertex_count) - cast_i32(edge_count) + cast_i32(face_count)) / 2
 }
 
-/// Checks if two geometries are similar.
+/// Checks if two meshes are similar.
 ///
 /// Two mesh geometries are similar when they are visually similar
 /// (see the definition of `are_visually_similar`), and they have the
 /// same number of vertices and normals.
 #[allow(dead_code)]
-pub fn are_similar(geometry1: &Geometry, geometry2: &Geometry) -> bool {
-    geometry1.vertices().len() == geometry2.vertices().len()
-        && geometry1.normals().len() == geometry2.normals().len()
-        && are_visually_similar(geometry1, geometry2)
+pub fn are_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
+    mesh1.vertices().len() == mesh2.vertices().len()
+        && mesh1.normals().len() == mesh2.normals().len()
+        && are_visually_similar(mesh1, mesh2)
 }
 
-/// Checks if two geometries are visually similar.
+/// Checks if two meshes are visually similar.
 ///
 /// Two mesh geometries are visually similar when the position of each vertex in
 /// one mesh geometry matches a position of some vertex in the other mesh
@@ -188,7 +188,7 @@ pub fn are_similar(geometry1: &Geometry, geometry2: &Geometry) -> bool {
 /// functions of this software and all their transformations result in different
 /// mesh geometries.
 #[allow(dead_code)]
-pub fn are_visually_similar(geometry1: &Geometry, geometry2: &Geometry) -> bool {
+pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
     struct UnpackedFace {
         vertices: (Point3<f32>, Point3<f32>, Point3<f32>),
         normals: (Vector3<f32>, Vector3<f32>, Vector3<f32>),
@@ -217,37 +217,37 @@ pub fn are_visually_similar(geometry1: &Geometry, geometry2: &Geometry) -> bool 
         }
     }
 
-    let unpacked_faces1 = geometry1.faces().iter().map(|face| match face {
+    let unpacked_faces1 = mesh1.faces().iter().map(|face| match face {
         Face::Triangle(f) => UnpackedFace {
             vertices: (
-                geometry1.vertices()[cast_usize(f.vertices.0)],
-                geometry1.vertices()[cast_usize(f.vertices.1)],
-                geometry1.vertices()[cast_usize(f.vertices.2)],
+                mesh1.vertices()[cast_usize(f.vertices.0)],
+                mesh1.vertices()[cast_usize(f.vertices.1)],
+                mesh1.vertices()[cast_usize(f.vertices.2)],
             ),
             normals: (
-                geometry1.normals()[cast_usize(f.normals.0)],
-                geometry1.normals()[cast_usize(f.normals.1)],
-                geometry1.normals()[cast_usize(f.normals.2)],
+                mesh1.normals()[cast_usize(f.normals.0)],
+                mesh1.normals()[cast_usize(f.normals.1)],
+                mesh1.normals()[cast_usize(f.normals.2)],
             ),
         },
     });
 
-    let unpacked_faces2 = geometry2.faces().iter().map(|face| match face {
+    let unpacked_faces2 = mesh2.faces().iter().map(|face| match face {
         Face::Triangle(f) => UnpackedFace {
             vertices: (
-                geometry2.vertices()[cast_usize(f.vertices.0)],
-                geometry2.vertices()[cast_usize(f.vertices.1)],
-                geometry2.vertices()[cast_usize(f.vertices.2)],
+                mesh2.vertices()[cast_usize(f.vertices.0)],
+                mesh2.vertices()[cast_usize(f.vertices.1)],
+                mesh2.vertices()[cast_usize(f.vertices.2)],
             ),
             normals: (
-                geometry2.normals()[cast_usize(f.normals.0)],
-                geometry2.normals()[cast_usize(f.normals.1)],
-                geometry2.normals()[cast_usize(f.normals.2)],
+                mesh2.normals()[cast_usize(f.normals.0)],
+                mesh2.normals()[cast_usize(f.normals.1)],
+                mesh2.normals()[cast_usize(f.normals.2)],
             ),
         },
     });
 
-    geometry1.faces().len() == geometry2.faces().len()
+    mesh1.faces().len() == mesh2.faces().len()
         && unpacked_faces1
             .clone()
             .all(|f| unpacked_faces2.clone().any(|g| f == g))
@@ -262,7 +262,7 @@ mod tests {
     use nalgebra::geometry::Point3;
 
     use crate::edge_analysis;
-    use crate::geometry::{self, Geometry, NormalStrategy, TriangleFace, UnorientedEdge, Vertices};
+    use crate::geometry::{self, NormalStrategy, TriangleFace, UnorientedEdge, Vertices};
 
     use super::*;
 
@@ -291,7 +291,7 @@ mod tests {
         (faces, vertices)
     }
 
-    pub fn quad_with_normals() -> Geometry {
+    pub fn quad_with_normals() -> Mesh {
         let vertices = vec![
             v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
             v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
@@ -308,10 +308,10 @@ mod tests {
 
         let faces = vec![TriangleFace::new(0, 1, 2), TriangleFace::new(2, 3, 0)];
 
-        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    pub fn quad_with_extra_vertices_and_normals() -> Geometry {
+    pub fn quad_with_extra_vertices_and_normals() -> Mesh {
         let vertices = vec![
             v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
             v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
@@ -333,10 +333,10 @@ mod tests {
             TriangleFace::new_separate(3, 4, 0, 3, 4, 0),
         ];
 
-        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    pub fn quad_renumbered_with_normals() -> Geometry {
+    pub fn quad_renumbered_with_normals() -> Mesh {
         let vertices = vec![
             v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
             v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
@@ -353,10 +353,10 @@ mod tests {
 
         let faces = vec![TriangleFace::new(1, 0, 2), TriangleFace::new(3, 1, 2)];
 
-        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    pub fn quad_renumbered_more_with_normals() -> Geometry {
+    pub fn quad_renumbered_more_with_normals() -> Mesh {
         let vertices = vec![
             v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),  //1
             v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),  //3
@@ -373,7 +373,7 @@ mod tests {
 
         let faces = vec![TriangleFace::new(2, 0, 3), TriangleFace::new(2, 3, 1)];
 
-        Geometry::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
     fn torus() -> (Vec<(u32, u32, u32)>, Vertices) {
@@ -558,7 +558,7 @@ mod tests {
         (faces, vertices)
     }
 
-    pub fn cube_sharp_mismatching_winding(position: [f32; 3], scale: f32) -> Geometry {
+    pub fn cube_sharp_mismatching_winding(position: [f32; 3], scale: f32) -> Mesh {
         let vertex_positions = vec![
             // back
             v(-1.0, 1.0, -1.0, position, scale),
@@ -626,11 +626,7 @@ mod tests {
             TriangleFace::new(5, 1, 0),
         ];
 
-        Geometry::from_triangle_faces_with_vertices_and_normals(
-            faces,
-            vertex_positions,
-            vertex_normals,
-        )
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
     }
 
     fn tessellated_triangle() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
@@ -667,14 +663,14 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_analysis_find_edge_with_valency() {
+    fn test_find_edge_with_valency() {
         let (faces, vertices) = quad();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         let oriented_edges_with_valency_1_correct = vec![
@@ -704,14 +700,14 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_analysis_border_edges() {
+    fn test_border_edges() {
         let (faces, vertices) = quad();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         let oriented_edges_border_correct = vec![
@@ -729,14 +725,14 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_analysis_manifold_edges() {
+    fn test_manifold_edges() {
         let (faces, vertices) = quad();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         let oriented_edges_manifold_correct =
@@ -750,14 +746,14 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_analysis_non_manifold_edges() {
+    fn test_non_manifold_edges() {
         let (faces, vertices) = non_manifold_shape();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         let oriented_edges_non_manifold_correct =
@@ -774,44 +770,44 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_analysis_is_mesh_manifold_returns_false_because_non_manifold() {
+    fn test_is_mesh_manifold_returns_false_because_non_manifold() {
         let (faces, vertices) = non_manifold_shape();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
 
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         assert!(!is_mesh_manifold(&edge_sharing_map));
     }
 
     #[test]
-    fn test_mesh_analysis_is_mesh_manifold_returns_true_because_manifold() {
+    fn test_is_mesh_manifold_returns_true_because_manifold() {
         let (faces, vertices) = torus();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
 
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         assert!(is_mesh_manifold(&edge_sharing_map));
     }
 
     #[test]
-    fn test_mesh_analysis_border_vertex_indices() {
+    fn test_border_vertex_indices() {
         let (faces, vertices) = quad();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         let border_vertex_indices_correct = vec![0, 1, 2, 3];
@@ -824,147 +820,131 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_analysis_is_mesh_orientable_returns_true_watertight_mesh() {
-        let geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+    fn test_is_mesh_orientable_returns_true_watertight_mesh() {
+        let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         assert!(is_mesh_orientable(&edge_sharing_map));
     }
 
     #[test]
-    fn test_mesh_analysis_is_mesh_orientable_returns_true_open_mesh() {
+    fn test_is_mesh_orientable_returns_true_open_mesh() {
         let (faces, vertices) = quad();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         assert!(is_mesh_orientable(&edge_sharing_map));
     }
 
     #[test]
-    fn test_mesh_analysis_is_mesh_orientable_returns_false_for_nonorientable_mesh() {
-        let geometry = cube_sharp_mismatching_winding([0.0, 0.0, 0.0], 1.0);
+    fn test_is_mesh_orientable_returns_false_for_nonorientable_mesh() {
+        let mesh = cube_sharp_mismatching_winding([0.0, 0.0, 0.0], 1.0);
 
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         assert!(!is_mesh_orientable(&edge_sharing_map));
     }
 
     #[test]
-    fn test_mesh_analysis_is_mesh_watertight_returns_true_for_watertight_mesh() {
-        let geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+    fn test_is_mesh_watertight_returns_true_for_watertight_mesh() {
+        let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         assert!(is_mesh_watertight(&edge_sharing_map));
     }
 
     #[test]
-    fn test_mesh_analysis_is_mesh_watertight_returns_false_for_open_mesh() {
+    fn test_is_mesh_watertight_returns_false_for_open_mesh() {
         let (faces, vertices) = quad();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
 
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         assert!(!is_mesh_watertight(&edge_sharing_map));
     }
 
     #[test]
-    fn test_geometry_triangulated_mesh_genus_box_should_be_0() {
-        let geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
-        assert!(geometry.is_triangulated());
+    fn test_triangulated_mesh_genus_box_should_be_0() {
+        let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        assert!(mesh.is_triangulated());
 
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+        let edges: HashSet<UnorientedEdge> = mesh.unoriented_edges_iter().collect();
 
-        let genus = triangulated_mesh_genus(
-            geometry.vertices().len(),
-            edges.len(),
-            geometry.faces().len(),
-        );
+        let genus = triangulated_mesh_genus(mesh.vertices().len(), edges.len(), mesh.faces().len());
         assert_eq!(genus, 0);
     }
 
     #[test]
-    fn test_geometry_triangulated_mesh_genus_torus_should_be_1() {
+    fn test_triangulated_mesh_genus_torus_should_be_1() {
         let (faces, vertices) = torus();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        assert!(geometry.is_triangulated());
+        assert!(mesh.is_triangulated());
 
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+        let edges: HashSet<UnorientedEdge> = mesh.unoriented_edges_iter().collect();
 
-        let genus = triangulated_mesh_genus(
-            geometry.vertices().len(),
-            edges.len(),
-            geometry.faces().len(),
-        );
+        let genus = triangulated_mesh_genus(mesh.vertices().len(), edges.len(), mesh.faces().len());
         assert_eq!(genus, 1);
     }
 
     #[test]
-    fn test_geometry_triangulated_mesh_genus_double_torus_should_be_2() {
+    fn test_triangulated_mesh_genus_double_torus_should_be_2() {
         let (faces, vertices) = double_torus();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        assert!(geometry.is_triangulated());
+        assert!(mesh.is_triangulated());
 
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+        let edges: HashSet<UnorientedEdge> = mesh.unoriented_edges_iter().collect();
 
-        let genus = triangulated_mesh_genus(
-            geometry.vertices().len(),
-            edges.len(),
-            geometry.faces().len(),
-        );
+        let genus = triangulated_mesh_genus(mesh.vertices().len(), edges.len(), mesh.faces().len());
         assert_eq!(genus, 2);
     }
 
     #[test]
-    fn test_geometry_triangulated_mesh_genus_triple_torus_should_be_3() {
+    fn test_triangulated_mesh_genus_triple_torus_should_be_3() {
         let (faces, vertices) = triple_torus();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        assert!(geometry.is_triangulated());
+        assert!(mesh.is_triangulated());
 
-        let edges: HashSet<UnorientedEdge> = geometry.unoriented_edges_iter().collect();
+        let edges: HashSet<UnorientedEdge> = mesh.unoriented_edges_iter().collect();
 
-        let genus = triangulated_mesh_genus(
-            geometry.vertices().len(),
-            edges.len(),
-            geometry.faces().len(),
-        );
+        let genus = triangulated_mesh_genus(mesh.vertices().len(), edges.len(), mesh.faces().len());
         assert_eq!(genus, 3);
     }
 
     #[test]
     fn test_border_edge_loops_returns_one_for_tessellated_triangle() {
         let (faces, vertices) = tessellated_triangle();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
 
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         let correct_loop: Vec<UnorientedEdge> = vec![
@@ -987,9 +967,9 @@ mod tests {
 
     #[test]
     fn test_border_edge_loops_returns_one_for_cube() {
-        let geometry = geometry::cube_sharp_geometry([0.0, 0.0, 0.0], 1.0);
+        let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
 
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         let calculated_loops = border_edge_loops(&edge_sharing_map);
@@ -1000,13 +980,13 @@ mod tests {
     #[test]
     fn test_border_edge_loops_returns_two_for_tessellated_triangle_with_island() {
         let (faces, vertices) = tessellated_triangle_with_island();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
 
-        let oriented_edges: Vec<OrientedEdge> = geometry.oriented_edges_iter().collect();
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
         let correct_loops: Vec<Vec<UnorientedEdge>> = vec![
@@ -1051,59 +1031,59 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_analysis_are_similar_returns_true_for_same() {
+    fn test_are_similar_returns_true_for_same() {
         let (faces, vertices) = quad();
-        let geometry = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
             NormalStrategy::Sharp,
         );
 
-        assert!(are_similar(&geometry, &geometry));
+        assert!(are_similar(&mesh, &mesh));
     }
 
     #[test]
-    fn test_mesh_analysis_are_similar_returns_true_for_renumbered() {
-        let geometry = quad_with_normals();
-        let geometry_r = quad_renumbered_with_normals();
+    fn test_are_similar_returns_true_for_renumbered() {
+        let mesh = quad_with_normals();
+        let mesh_renumbered = quad_renumbered_with_normals();
 
-        assert!(are_similar(&geometry, &geometry_r));
+        assert!(are_similar(&mesh, &mesh_renumbered));
     }
 
     #[test]
-    fn test_mesh_analysis_are_visually_similar_returns_true_for_not_watertight() {
-        let geometry = quad_with_normals();
-        let geometry_not_watertight = quad_with_extra_vertices_and_normals();
+    fn test_are_visually_similar_returns_true_for_not_watertight() {
+        let mesh = quad_with_normals();
+        let mesh_not_watertight = quad_with_extra_vertices_and_normals();
 
-        assert!(are_visually_similar(&geometry, &geometry_not_watertight));
+        assert!(are_visually_similar(&mesh, &mesh_not_watertight));
     }
 
     #[test]
-    fn test_mesh_analysis_are_similar_returns_false_for_not_watertight() {
-        let geometry = quad_with_normals();
-        let geometry_not_watertight = quad_with_extra_vertices_and_normals();
+    fn test_are_similar_returns_false_for_not_watertight() {
+        let mesh = quad_with_normals();
+        let mesh_not_watertight = quad_with_extra_vertices_and_normals();
 
-        assert!(!are_similar(&geometry, &geometry_not_watertight));
+        assert!(!are_similar(&mesh, &mesh_not_watertight));
     }
 
     #[test]
-    fn test_mesh_analysis_are_visually_similar_returns_true_for_renumbered_more() {
-        let geometry = quad_with_normals();
-        let geometry_r = quad_renumbered_more_with_normals();
+    fn test_are_visually_similar_returns_true_for_renumbered_more() {
+        let mesh = quad_with_normals();
+        let mesh_renumbered = quad_renumbered_more_with_normals();
 
-        assert!(are_visually_similar(&geometry, &geometry_r));
+        assert!(are_visually_similar(&mesh, &mesh_renumbered));
     }
 
     #[test]
-    fn test_mesh_analysis_are_similar_returns_false_for_different() {
-        let geometry = quad_with_normals();
+    fn test_are_similar_returns_false_for_different() {
+        let mesh = quad_with_normals();
         let (faces_d, vertices_d) = tessellated_triangle();
-        let geometry_d = Geometry::from_triangle_faces_with_vertices_and_computed_normals(
+        let mesh_d = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces_d.clone(),
             vertices_d.clone(),
             NormalStrategy::Sharp,
         );
 
-        assert!(!are_similar(&geometry, &geometry_d));
+        assert!(!are_similar(&mesh, &mesh_d));
     }
 }

@@ -32,7 +32,7 @@ impl Func for FuncSeparateIsolatedMeshes {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_geometry();
+        let geometry = args[0].unwrap_mesh();
 
         let geometries = mesh_tools::separate_isolated_meshes(&geometry);
         let value = GeometryArrayValue::new(geometries.into_iter().map(Arc::new).collect());
