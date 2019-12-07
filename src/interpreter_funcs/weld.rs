@@ -4,7 +4,7 @@ use crate::interpreter::{
     FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty,
     Value,
 };
-use crate::mesh_tools;
+use crate::mesh::tools;
 
 pub struct FuncWeld;
 
@@ -47,7 +47,7 @@ impl Func for FuncWeld {
         let mesh = args[0].unwrap_mesh();
         let tolerance = args[1].unwrap_float();
 
-        let value = mesh_tools::weld(mesh, tolerance);
+        let value = tools::weld(mesh, tolerance);
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

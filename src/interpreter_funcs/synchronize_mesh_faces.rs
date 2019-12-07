@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
 };
+use crate::mesh::tools;
 use crate::mesh::{analysis, topology};
-use crate::mesh_tools;
 
 pub struct FuncSynchronizeMeshFaces;
 
@@ -43,7 +43,7 @@ impl Func for FuncSynchronizeMeshFaces {
         {
             let face_to_face = topology::compute_face_to_face_topology(&mesh);
 
-            let value = Arc::new(mesh_tools::synchronize_mesh_winding(&mesh, &face_to_face));
+            let value = Arc::new(tools::synchronize_mesh_winding(&mesh, &face_to_face));
 
             Ok(Value::Mesh(value))
         } else {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh_tools;
+use crate::mesh::tools;
 
 pub struct FuncJoinMeshes;
 
@@ -42,7 +42,7 @@ impl Func for FuncJoinMeshes {
         let first_mesh = args[0].unwrap_mesh();
         let second_mesh = args[1].unwrap_mesh();
 
-        let value = mesh_tools::join_meshes(first_mesh, second_mesh);
+        let value = tools::join_meshes(first_mesh, second_mesh);
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

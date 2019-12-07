@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, MeshArrayValue, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh_tools;
+use crate::mesh::tools;
 
 pub struct FuncDisjointMesh;
 
@@ -34,7 +34,7 @@ impl Func for FuncDisjointMesh {
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
-        let meshes = mesh_tools::disjoint_mesh(&mesh);
+        let meshes = tools::disjoint_mesh(&mesh);
         let value = MeshArrayValue::new(meshes.into_iter().map(Arc::new).collect());
 
         Ok(Value::MeshArray(Arc::new(value)))

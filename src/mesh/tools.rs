@@ -6,7 +6,8 @@ use nalgebra::geometry::Point3;
 use smallvec::{smallvec, SmallVec};
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::mesh::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
+
+use super::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 
 /// Orients all the faces the same way - matches their winding (vertex order).
 ///

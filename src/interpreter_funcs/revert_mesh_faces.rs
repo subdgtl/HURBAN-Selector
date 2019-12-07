@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh_tools;
+use crate::mesh::tools;
 
 pub struct FuncRevertMeshFaces;
 
@@ -34,7 +34,7 @@ impl Func for FuncRevertMeshFaces {
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
-        let value = mesh_tools::revert_mesh_faces(mesh);
+        let value = tools::revert_mesh_faces(mesh);
         Ok(Value::Mesh(Arc::new(value)))
     }
 }
