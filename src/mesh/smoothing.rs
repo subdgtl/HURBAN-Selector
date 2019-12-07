@@ -352,7 +352,6 @@ mod tests {
 
     use nalgebra;
 
-    use crate::edge_analysis;
     use crate::mesh::{primitive, topology, NormalStrategy, OrientedEdge};
     use crate::mesh_analysis;
 
@@ -675,7 +674,7 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = mesh_analysis::edge_sharing(&oriented_edges);
         let fixed_vertex_indices =
             Vec::from_iter(mesh_analysis::border_vertex_indices(&edge_sharing_map).into_iter());
 
@@ -716,7 +715,7 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = mesh_analysis::edge_sharing(&oriented_edges);
         let fixed_vertex_indices =
             Vec::from_iter(mesh_analysis::border_vertex_indices(&edge_sharing_map).into_iter());
 

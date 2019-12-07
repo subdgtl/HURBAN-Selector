@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::edge_analysis;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
 };
@@ -38,7 +37,7 @@ impl Func for FuncSynchronizeMeshFaces {
         let mesh = args[0].unwrap_refcounted_mesh();
 
         let oriented_edges: Vec<_> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = mesh_analysis::edge_sharing(&oriented_edges);
 
         if !mesh_analysis::is_mesh_orientable(&edge_sharing_map)
             && mesh_analysis::is_mesh_manifold(&edge_sharing_map)

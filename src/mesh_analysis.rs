@@ -1,10 +1,53 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use nalgebra::{Point3, Vector3};
 
 use crate::convert::{cast_i32, cast_usize};
-use crate::edge_analysis::EdgeSharingMap;
 use crate::mesh::{Face, Mesh, OrientedEdge, UnorientedEdge};
+
+/// Used in EdgeSharingMap
+/// ascending_edges contains edges oriented from lower index to higher
+/// descending_edges contains edges oriented from higher index to lower
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedEdges {
+    pub ascending_edges: Vec<OrientedEdge>,
+    pub descending_edges: Vec<OrientedEdge>,
+}
+
+pub type EdgeSharingMap = HashMap<UnorientedEdge, SharedEdges>;
+
+/// Calculate edge sharing and pack shared edges into SharedEdges
+/// Edge valency = number of faces sharing an edge
+/// 1 -> border edge = acceptable but mesh is not watertight
+/// 2 -> manifold edge = correct
+/// 3 or more -> non-manifold edge = corrupted mesh
+// FIXME: Implement also for UnorientedEdges
+#[allow(dead_code)]
+pub fn edge_sharing<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
+    oriented_edges: I,
+) -> EdgeSharingMap {
+    let mut edge_sharing_map: EdgeSharingMap = HashMap::new();
+    for edge in oriented_edges {
+        let unoriented_edge = UnorientedEdge(*edge);
+        let ascending_edges: Vec<OrientedEdge> = Vec::new();
+        let descending_edges: Vec<OrientedEdge> = Vec::new();
+
+        let shared_edges = edge_sharing_map
+            .entry(unoriented_edge)
+            .or_insert(SharedEdges {
+                ascending_edges,
+                descending_edges,
+            });
+
+        if edge.vertices.0 < edge.vertices.1 {
+            shared_edges.ascending_edges.push(*edge);
+        } else {
+            shared_edges.descending_edges.push(*edge);
+        }
+    }
+
+    edge_sharing_map
+}
 
 /// Finds edges with a certain valency in a mesh edge collection
 ///
@@ -258,17 +301,17 @@ pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
 mod tests {
     use nalgebra::{Point3, Vector3};
 
-    use crate::edge_analysis;
     use crate::mesh::{primitive, NormalStrategy, TriangleFace, UnorientedEdge};
 
     use super::*;
 
-    pub fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+        #[rustfmt::skip]
         let vertices = vec![
-            Point3::new(-1.0, -1.0, 0.0),
-            Point3::new(1.0, -1.0, 0.0),
-            Point3::new(1.0, 1.0, 0.0),
-            Point3::new(-1.0, 1.0, 0.0),
+            Point3::new(-1.0, -1.0,  0.0),
+            Point3::new( 1.0, -1.0,  0.0),
+            Point3::new( 1.0,  1.0,  0.0),
+            Point3::new(-1.0,  1.0,  0.0),
         ];
 
         let faces = vec![(0, 1, 2), (2, 3, 0)];
@@ -277,18 +320,20 @@ mod tests {
     }
 
     pub fn quad_with_normals() -> Mesh {
+        #[rustfmt::skip]
         let vertices = vec![
-            Point3::new(-1.0, -1.0, 0.0),
-            Point3::new(1.0, -1.0, 0.0),
-            Point3::new(1.0, 1.0, 0.0),
-            Point3::new(-1.0, 1.0, 0.0),
+            Point3::new(-1.0, -1.0,  0.0),
+            Point3::new( 1.0, -1.0,  0.0),
+            Point3::new( 1.0,  1.0,  0.0),
+            Point3::new(-1.0,  1.0,  0.0),
         ];
 
+        #[rustfmt::skip]
         let vertex_normals = vec![
-            Vector3::new(-1.0, -1.0, 1.0),
-            Vector3::new(1.0, -1.0, 1.0),
-            Vector3::new(1.0, 1.0, 1.0),
-            Vector3::new(-1.0, 1.0, 1.0),
+            Vector3::new(-1.0, -1.0,  1.0),
+            Vector3::new( 1.0, -1.0,  1.0),
+            Vector3::new( 1.0,  1.0,  1.0),
+            Vector3::new(-1.0,  1.0,  1.0),
         ];
 
         let faces = vec![TriangleFace::new(0, 1, 2), TriangleFace::new(2, 3, 0)];
@@ -648,6 +693,47 @@ mod tests {
     }
 
     #[test]
+    fn test_edge_sharing() {
+        let (faces, vertices) = quad();
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.clone(),
+            vertices.clone(),
+            NormalStrategy::Sharp,
+        );
+
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_sharing(&oriented_edges);
+
+        let unoriented_edges_one_way_correct = vec![
+            UnorientedEdge(OrientedEdge::new(0, 1)),
+            UnorientedEdge(OrientedEdge::new(1, 2)),
+            UnorientedEdge(OrientedEdge::new(2, 3)),
+            UnorientedEdge(OrientedEdge::new(3, 0)),
+        ];
+        let unoriented_edges_two_ways_correct = vec![
+            UnorientedEdge(OrientedEdge::new(2, 0)),
+            UnorientedEdge(OrientedEdge::new(0, 2)),
+        ];
+
+        for ue in unoriented_edges_one_way_correct {
+            assert!(edge_sharing_map.contains_key(&ue));
+            if ue.0.vertices.0 < ue.0.vertices.1 {
+                assert_eq!(edge_sharing_map.get(&ue).unwrap().ascending_edges.len(), 1);
+                assert_eq!(edge_sharing_map.get(&ue).unwrap().descending_edges.len(), 0);
+            } else {
+                assert_eq!(edge_sharing_map.get(&ue).unwrap().ascending_edges.len(), 0);
+                assert_eq!(edge_sharing_map.get(&ue).unwrap().descending_edges.len(), 1);
+            }
+        }
+
+        for ue in unoriented_edges_two_ways_correct {
+            assert!(edge_sharing_map.contains_key(&ue));
+            assert_eq!(edge_sharing_map.get(&ue).unwrap().ascending_edges.len(), 1);
+            assert_eq!(edge_sharing_map.get(&ue).unwrap().descending_edges.len(), 1);
+        }
+    }
+
+    #[test]
     fn test_find_edge_with_valency() {
         let (faces, vertices) = quad();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
@@ -656,7 +742,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         let oriented_edges_with_valency_1_correct = vec![
             OrientedEdge::new(0, 1),
@@ -693,7 +779,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         let oriented_edges_border_correct = vec![
             OrientedEdge::new(0, 1),
@@ -718,7 +804,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         let oriented_edges_manifold_correct =
             vec![OrientedEdge::new(2, 0), OrientedEdge::new(0, 2)];
@@ -739,7 +825,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         let oriented_edges_non_manifold_correct =
             vec![OrientedEdge::new(2, 0), OrientedEdge::new(0, 2)];
@@ -764,7 +850,7 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         assert!(!is_mesh_manifold(&edge_sharing_map));
     }
@@ -779,7 +865,7 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         assert!(is_mesh_manifold(&edge_sharing_map));
     }
@@ -793,7 +879,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         let border_vertex_indices_correct = vec![0, 1, 2, 3];
 
@@ -808,7 +894,7 @@ mod tests {
     fn test_is_mesh_orientable_returns_true_watertight_mesh() {
         let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         assert!(is_mesh_orientable(&edge_sharing_map));
     }
@@ -822,7 +908,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         assert!(is_mesh_orientable(&edge_sharing_map));
     }
@@ -832,7 +918,7 @@ mod tests {
         let mesh = cube_sharp_mismatching_winding();
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         assert!(!is_mesh_orientable(&edge_sharing_map));
     }
@@ -841,7 +927,7 @@ mod tests {
     fn test_is_mesh_watertight_returns_true_for_watertight_mesh() {
         let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         assert!(is_mesh_watertight(&edge_sharing_map));
     }
@@ -856,7 +942,7 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         assert!(!is_mesh_watertight(&edge_sharing_map));
     }
@@ -930,7 +1016,7 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         let correct_loop: Vec<UnorientedEdge> = vec![
             UnorientedEdge(OrientedEdge::new(0, 1)),
@@ -955,7 +1041,7 @@ mod tests {
         let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         let calculated_loops = border_edge_loops(&edge_sharing_map);
 
@@ -972,7 +1058,7 @@ mod tests {
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
+        let edge_sharing_map = edge_sharing(&oriented_edges);
 
         let correct_loops: Vec<Vec<UnorientedEdge>> = vec![
             vec![
