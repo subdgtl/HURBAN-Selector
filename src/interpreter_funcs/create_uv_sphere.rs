@@ -100,7 +100,7 @@ impl Func for FuncCreateUvSphere {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
@@ -122,6 +122,6 @@ impl Func for FuncCreateUvSphere {
         }
 
         let value = geometry::create_uv_sphere(position, scale, n_parallels, n_meridians);
-        Ok(Value::Geometry(Arc::new(value)))
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

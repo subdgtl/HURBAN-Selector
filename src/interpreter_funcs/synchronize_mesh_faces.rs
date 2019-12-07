@@ -25,13 +25,13 @@ impl Func for FuncSynchronizeMeshFaces {
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
             name: "Mesh",
-            refinement: ParamRefinement::Geometry,
+            refinement: ParamRefinement::Mesh,
             optional: false,
         }]
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
@@ -47,9 +47,9 @@ impl Func for FuncSynchronizeMeshFaces {
 
             let value = Arc::new(mesh_tools::synchronize_mesh_winding(&mesh, &face_to_face));
 
-            Ok(Value::Geometry(value))
+            Ok(Value::Mesh(value))
         } else {
-            Ok(Value::Geometry(mesh))
+            Ok(Value::Mesh(mesh))
         }
     }
 }

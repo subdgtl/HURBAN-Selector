@@ -39,7 +39,7 @@ impl Func for FuncExtract {
         &[
             ParamInfo {
                 name: "Group",
-                refinement: ParamRefinement::GeometryArray,
+                refinement: ParamRefinement::MeshArray,
                 optional: false,
             },
             ParamInfo {
@@ -55,7 +55,7 @@ impl Func for FuncExtract {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
@@ -73,6 +73,6 @@ impl Func for FuncExtract {
             .get_refcounted(wrapping_index)
             .expect("Array must not be empty");
 
-        Ok(Value::Geometry(value))
+        Ok(Value::Mesh(value))
     }
 }

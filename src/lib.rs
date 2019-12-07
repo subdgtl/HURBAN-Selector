@@ -211,7 +211,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                 session.poll_interpreter_response(|callback_value| match callback_value {
                     PollInterpreterResponseNotification::Add(var_ident, value) => match value {
-                        Value::Geometry(mesh) => {
+                        Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
                                 .add_scene_mesh(&gpu_mesh)
@@ -222,7 +222,7 @@ pub fn init_and_run(options: Options) -> ! {
                             scene_meshes.insert(path, mesh);
                             scene_gpu_mesh_ids.insert(path, gpu_mesh_id);
                         }
-                        Value::GeometryArray(mesh_array) => {
+                        Value::MeshArray(mesh_array) => {
                             for (index, mesh) in mesh_array.iter().enumerate() {
                                 let gpu_mesh = GpuMesh::from_mesh(&mesh);
                                 let gpu_mesh_id = renderer
@@ -238,7 +238,7 @@ pub fn init_and_run(options: Options) -> ! {
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
                     PollInterpreterResponseNotification::Remove(var_ident, value) => match value {
-                        Value::Geometry(_) => {
+                        Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
                             scene_meshes.remove(&path);
@@ -248,7 +248,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                             renderer.remove_scene_mesh(gpu_mesh_id);
                         }
-                        Value::GeometryArray(mesh_array) => {
+                        Value::MeshArray(mesh_array) => {
                             for index in 0..mesh_array.len() {
                                 let path = ValuePath(var_ident, cast_usize(index));
 

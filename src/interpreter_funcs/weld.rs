@@ -24,7 +24,7 @@ impl Func for FuncWeld {
         &[
             ParamInfo {
                 name: "Mesh",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
@@ -40,7 +40,7 @@ impl Func for FuncWeld {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
@@ -48,6 +48,6 @@ impl Func for FuncWeld {
         let tolerance = args[1].unwrap_float();
 
         let value = mesh_tools::weld(mesh, tolerance);
-        Ok(Value::Geometry(Arc::new(value)))
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

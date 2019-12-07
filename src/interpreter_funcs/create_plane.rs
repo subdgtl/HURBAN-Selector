@@ -50,7 +50,7 @@ impl Func for FuncCreatePlane {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
@@ -58,6 +58,6 @@ impl Func for FuncCreatePlane {
         let scale = values[1].get_float().unwrap_or(1.0);
 
         let value = geometry::create_plane(position, scale);
-        Ok(Value::Geometry(Arc::new(value)))
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

@@ -26,7 +26,7 @@ impl Func for FuncLaplacianSmoothing {
         &[
             ParamInfo {
                 name: "Mesh",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
@@ -42,7 +42,7 @@ impl Func for FuncLaplacianSmoothing {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
@@ -53,6 +53,6 @@ impl Func for FuncLaplacianSmoothing {
 
         let (value, _, _) =
             mesh_smoothing::laplacian_smoothing(mesh, &v2v, cmp::min(255, iterations), &[], false);
-        Ok(Value::Geometry(Arc::new(value)))
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

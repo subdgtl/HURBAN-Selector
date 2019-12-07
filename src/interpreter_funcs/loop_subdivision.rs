@@ -10,6 +10,10 @@ use crate::mesh_topology_analysis;
 
 pub struct FuncLoopSubdivision;
 
+impl FuncLoopSubdivision {
+    const MAX_ITERATIONS: u32 = 3;
+}
+
 impl Func for FuncLoopSubdivision {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
@@ -26,7 +30,7 @@ impl Func for FuncLoopSubdivision {
         &[
             ParamInfo {
                 name: "Mesh",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
@@ -34,7 +38,7 @@ impl Func for FuncLoopSubdivision {
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(1),
                     min_value: Some(0),
-                    max_value: Some(5),
+                    max_value: Some(Self::MAX_ITERATIONS),
                 }),
                 optional: false,
             },
@@ -42,19 +46,15 @@ impl Func for FuncLoopSubdivision {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        // FIXME: add the max value to the param info so that that the
-        // gui doesn't mislead
-        const MAX_ITERATIONS: u32 = 3;
-
         let mesh = args[0].unwrap_refcounted_mesh();
-        let iterations = cmp::min(args[1].unwrap_uint(), MAX_ITERATIONS);
+        let iterations = cmp::min(args[1].unwrap_uint(), Self::MAX_ITERATIONS);
 
         if iterations == 0 {
-            return Ok(Value::Geometry(mesh));
+            return Ok(Value::Mesh(mesh));
         }
 
         let mut v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
@@ -67,6 +67,6 @@ impl Func for FuncLoopSubdivision {
             current_mesh = mesh_smoothing::loop_subdivision(&current_mesh, &v2v, &f2f);
         }
 
-        Ok(Value::Geometry(Arc::new(current_mesh)))
+        Ok(Value::Mesh(Arc::new(current_mesh)))
     }
 }

@@ -23,19 +23,19 @@ impl Func for FuncJoinMeshes {
         &[
             ParamInfo {
                 name: "Mesh 1",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Mesh 2",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
         ]
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
@@ -43,6 +43,6 @@ impl Func for FuncJoinMeshes {
         let second_mesh = args[1].unwrap_mesh();
 
         let value = mesh_tools::join_meshes(first_mesh, second_mesh);
-        Ok(Value::Geometry(Arc::new(value)))
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

@@ -22,19 +22,19 @@ impl Func for FuncRevertMeshFaces {
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
             name: "Mesh",
-            refinement: ParamRefinement::Geometry,
+            refinement: ParamRefinement::Mesh,
             optional: false,
         }]
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
         let value = mesh_tools::revert_mesh_faces(mesh);
-        Ok(Value::Geometry(Arc::new(value)))
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

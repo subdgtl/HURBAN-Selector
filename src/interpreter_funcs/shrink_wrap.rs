@@ -25,7 +25,7 @@ impl Func for FuncShrinkWrap {
         &[
             ParamInfo {
                 name: "Mesh",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
@@ -41,7 +41,7 @@ impl Func for FuncShrinkWrap {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
@@ -62,6 +62,6 @@ impl Func for FuncShrinkWrap {
             }
         }
 
-        Ok(Value::Geometry(Arc::new(value)))
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

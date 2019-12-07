@@ -365,12 +365,12 @@ impl<'a> UiFrame<'a> {
                                                     ));
                                                 }
                                         }
-                                        ParamRefinement::Geometry => {
+                                        ParamRefinement::Mesh => {
                                             let changed_expr = self.draw_var_combo_box(
                                                 session,
                                                 stmt_index,
                                                 arg,
-                                                Ty::Geometry,
+                                                Ty::Mesh,
                                                 &input_label,
                                             );
 
@@ -382,12 +382,12 @@ impl<'a> UiFrame<'a> {
                                                 ));
                                             }
                                         }
-                                        ParamRefinement::GeometryArray => {
+                                        ParamRefinement::MeshArray => {
                                             let changed_expr = self.draw_var_combo_box(
                                                 session,
                                                 stmt_index,
                                                 arg,
-                                                Ty::GeometryArray,
+                                                Ty::MeshArray,
                                                 &input_label,
                                             );
 
@@ -575,10 +575,10 @@ impl<'a> UiFrame<'a> {
                     ParamRefinement::String => {
                         ast::Expr::Lit(ast::LitExpr::String(Arc::new(String::new())))
                     }
-                    ParamRefinement::Geometry => {
+                    ParamRefinement::Mesh => {
                         let one_past_last_stmt = session.stmts().len();
                         let mut visible_vars_iter =
-                            session.visible_vars_at_stmt(one_past_last_stmt, Ty::Geometry);
+                            session.visible_vars_at_stmt(one_past_last_stmt, Ty::Mesh);
 
                         if visible_vars_iter.clone().count() == 0 {
                             ast::Expr::Lit(ast::LitExpr::Nil)
@@ -590,10 +590,10 @@ impl<'a> UiFrame<'a> {
                             ast::Expr::Var(ast::VarExpr::new(first))
                         }
                     }
-                    ParamRefinement::GeometryArray => {
+                    ParamRefinement::MeshArray => {
                         let one_past_last_stmt = session.stmts().len();
                         let mut visible_vars_iter =
-                            session.visible_vars_at_stmt(one_past_last_stmt, Ty::GeometryArray);
+                            session.visible_vars_at_stmt(one_past_last_stmt, Ty::MeshArray);
 
                         if visible_vars_iter.clone().count() == 0 {
                             ast::Expr::Lit(ast::LitExpr::Nil)
@@ -670,7 +670,7 @@ impl<'a> UiFrame<'a> {
                         .var_name_for_ident(var_ident)
                         .expect("Failed to find name for ident"),
                     var_ident,
-                    ty == Ty::GeometryArray,
+                    ty == Ty::MeshArray,
                 )
             })
             .unwrap_or_else(|| imgui::ImString::new("<Nil>"));
@@ -684,7 +684,7 @@ impl<'a> UiFrame<'a> {
                         .var_name_for_ident(var_ident)
                         .expect("Failed to find name for ident"),
                     var_ident,
-                    ty == Ty::GeometryArray,
+                    ty == Ty::MeshArray,
                 );
                 let selected = if let Some(selected_var_index) = selected_var_index {
                     index == selected_var_index

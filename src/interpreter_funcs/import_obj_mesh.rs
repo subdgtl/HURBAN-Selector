@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::importer::{Importer, ImporterError, ObjCache};
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, GeometryArrayValue, ParamInfo, ParamRefinement, Ty, Value,
+    Func, FuncError, FuncFlags, FuncInfo, MeshArrayValue, ParamInfo, ParamRefinement, Ty, Value,
 };
 
 #[derive(Debug, PartialEq)]
@@ -55,7 +55,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::GeometryArray
+        Ty::MeshArray
     }
 
     fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
@@ -72,8 +72,8 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
                         .map(|model| Arc::new(model.mesh))
                         .collect();
 
-                    let value = GeometryArrayValue::new(meshes);
-                    Ok(Value::GeometryArray(Arc::new(value)))
+                    let value = MeshArrayValue::new(meshes);
+                    Ok(Value::MeshArray(Arc::new(value)))
                 }
             }
             Err(err) => Err(FuncError::new(FuncImportObjMeshError::Importer(err))),
