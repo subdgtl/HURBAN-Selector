@@ -5,13 +5,13 @@ use crate::interpreter::{
 };
 use crate::mesh_tools;
 
-pub struct FuncSeparateIsolatedMeshes;
+pub struct FuncDisjointMesh;
 
-impl Func for FuncSeparateIsolatedMeshes {
+impl Func for FuncDisjointMesh {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Separate Volumes",
-            return_value_name: "Volumes Group",
+            name: "Disjoint Mesh",
+            return_value_name: "Disjoint Group",
         }
     }
 
@@ -34,7 +34,7 @@ impl Func for FuncSeparateIsolatedMeshes {
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
-        let meshes = mesh_tools::separate_isolated_meshes(&mesh);
+        let meshes = mesh_tools::disjoint_mesh(&mesh);
         let value = MeshArrayValue::new(meshes.into_iter().map(Arc::new).collect());
 
         Ok(Value::MeshArray(Arc::new(value)))

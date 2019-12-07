@@ -282,7 +282,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Mesh {
 
 /// Crawls the mesh geometry to find continuous patches. Returns a
 /// vector mesh patches.
-pub fn separate_isolated_meshes(mesh: &Mesh) -> Vec<Mesh> {
+pub fn disjoint_mesh(mesh: &Mesh) -> Vec<Mesh> {
     let face_to_face = mesh_topology_analysis::face_to_face_topology(mesh);
     let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
     let mut patches: Vec<Mesh> = Vec::new();
@@ -667,10 +667,10 @@ mod tests {
     }
 
     #[test]
-    fn test_separate_isolated_meshes_returns_similar_for_tessellated_triangle() {
+    fn test_disjoint_mesh_returns_similar_for_tessellated_triangle() {
         let mesh = tessellated_triangle_mesh();
 
-        let calculated_meshes = separate_isolated_meshes(&mesh);
+        let calculated_meshes = disjoint_mesh(&mesh);
 
         assert_eq!(calculated_meshes.len(), 1);
 
@@ -678,22 +678,22 @@ mod tests {
     }
 
     #[test]
-    fn test_separate_isolated_meshes_returns_similar_for_cube() {
+    fn test_disjoint_mesh_returns_similar_for_cube() {
         let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
 
-        let calculated_meshes = separate_isolated_meshes(&mesh);
+        let calculated_meshes = disjoint_mesh(&mesh);
 
         assert_eq!(calculated_meshes.len(), 1);
         assert!(mesh_analysis::are_similar(&mesh, &calculated_meshes[0]));
     }
 
     #[test]
-    fn test_separate_isolated_meshes_returns_similar_for_tessellated_triangle_with_island() {
+    fn test_disjoint_mesh_returns_similar_for_tessellated_triangle_with_island() {
         let mesh = tessellated_triangle_with_island_mesh();
         let mesh_triangle_correct = tessellated_triangle_mesh();
         let mesh_island_correct = triangular_island_mesh();
 
-        let calculated_meshes = separate_isolated_meshes(&mesh);
+        let calculated_meshes = disjoint_mesh(&mesh);
 
         assert_eq!(calculated_meshes.len(), 2);
 
