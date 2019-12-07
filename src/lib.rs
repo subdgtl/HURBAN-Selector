@@ -9,9 +9,9 @@ use nalgebra::geometry::Point3;
 
 use crate::camera::{Camera, CameraOptions};
 use crate::convert::cast_usize;
-use crate::geometry::Mesh;
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
+use crate::mesh::{analysis, Mesh};
 use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshId, Options as RendererOptions, Renderer};
 use crate::session::{PollInterpreterResponseNotification, Session};
 use crate::ui::Ui;
@@ -29,11 +29,12 @@ mod interpreter_funcs;
 mod interpreter_server;
 mod logger;
 mod math;
+mod mesh;
 mod mesh_analysis;
 mod mesh_smoothing;
 mod mesh_tools;
 mod mesh_topology_analysis;
-mod plane_tools;
+mod plane;
 mod platform;
 mod session;
 mod ui;
@@ -340,7 +341,7 @@ impl CameraInterpolation {
         I: IntoIterator<Item = &'a Mesh> + Clone,
     {
         let (source_origin, source_radius) = camera.visible_sphere();
-        let (target_origin, target_radius) = geometry::compute_bounding_sphere(scene_meshes);
+        let (target_origin, target_radius) = analysis::compute_bounding_sphere(scene_meshes);
 
         CameraInterpolation {
             source_origin,

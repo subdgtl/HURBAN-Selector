@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use crate::geometry;
 use crate::interpreter::{
     Float3ParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo,
     ParamRefinement, Ty, Value,
 };
+use crate::mesh::primitive;
 
 pub struct FuncCreatePlane;
 
@@ -57,7 +57,7 @@ impl Func for FuncCreatePlane {
         let position = values[0].get_float3().unwrap_or([0.0; 3]);
         let scale = values[1].get_float().unwrap_or(1.0);
 
-        let value = geometry::create_plane(position, scale);
+        let value = primitive::create_plane(position, scale);
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

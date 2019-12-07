@@ -12,7 +12,7 @@ use nalgebra::base::Vector3;
 use nalgebra::geometry::Point3;
 use tobj;
 
-use crate::geometry::{Mesh, NormalStrategy, TriangleFace};
+use crate::mesh::{Mesh, NormalStrategy, TriangleFace};
 
 #[derive(Debug, PartialEq)]
 pub enum ImporterError {

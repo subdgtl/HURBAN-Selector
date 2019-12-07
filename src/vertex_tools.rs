@@ -4,7 +4,9 @@ use nalgebra;
 use nalgebra::{Point2, Point3, Rotation3, Vector3};
 
 use crate::convert::cast_usize;
-use crate::geometry::{self, Face, Mesh, Plane, UnorientedEdge};
+use crate::geometry;
+use crate::mesh::{Face, Mesh, UnorientedEdge};
+use crate::plane::Plane;
 
 /// Compute barycentric coordinates of point P in triangle A, B, C. Returns None
 /// for degenerate triangles.
@@ -430,10 +432,12 @@ pub fn pull_point_to_plane(point: &Point3<f32>, plane: &Plane) -> PulledPointWit
 
 #[cfg(test)]
 mod tests {
+    use crate::mesh::primitive;
+
     use super::*;
 
     #[test]
-    fn test_vertex_tools_compute_barycentric_coords_for_point_inside() {
+    fn test_compute_barycentric_coords_for_point_inside() {
         let triangle_points = (
             Point2::new(0.0, 1.0),
             Point2::new(-0.866025, -0.5),
@@ -459,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_compute_barycentric_coords_for_point_outside() {
+    fn test_compute_barycentric_coords_for_point_outside() {
         let triangle_points = (
             Point2::new(0.0, 1.0),
             Point2::new(-0.866025, -0.5),
@@ -485,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_true_for_point_inside() {
+    fn test_is_point_in_triangle_returns_true_for_point_inside() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(-0.866025, -0.5, 0.0),
@@ -503,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_outside() {
+    fn test_is_point_in_triangle_returns_false_for_point_outside() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(-0.866025, -0.5, 0.0),
@@ -521,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_above() {
+    fn test_is_point_in_triangle_returns_false_for_point_above() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(-0.866025, -0.5, 0.0),
@@ -539,7 +543,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_true_for_point_inside_xy() {
+    fn test_is_point_in_triangle_returns_true_for_point_inside_xy() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(1.0, 0.0, 0.0),
@@ -557,7 +561,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_outside_xy() {
+    fn test_is_point_in_triangle_returns_false_for_point_outside_xy() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(1.0, 0.0, 0.0),
@@ -575,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_above_xy() {
+    fn test_is_point_in_triangle_returns_false_for_point_above_xy() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(1.0, 0.0, 0.0),
@@ -593,7 +597,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_true_for_point_inside_xz() {
+    fn test_is_point_in_triangle_returns_true_for_point_inside_xz() {
         let triangle_points = (
             &Point3::new(0.0, 0.0, 1.0),
             &Point3::new(1.0, 0.0, 0.0),
@@ -611,7 +615,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_outside_xz() {
+    fn test_is_point_in_triangle_returns_false_for_point_outside_xz() {
         let triangle_points = (
             &Point3::new(0.0, 0.0, 1.0),
             &Point3::new(1.0, 0.0, 0.0),
@@ -629,7 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_above_xz() {
+    fn test_is_point_in_triangle_returns_false_for_point_above_xz() {
         let triangle_points = (
             &Point3::new(0.0, 0.0, 1.0),
             &Point3::new(1.0, 0.0, 0.0),
@@ -647,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_true_for_point_inside_yz() {
+    fn test_is_point_in_triangle_returns_true_for_point_inside_yz() {
         let triangle_points = (
             &Point3::new(0.0, 0.0, 1.0),
             &Point3::new(0.0, 1.0, 0.0),
@@ -665,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_outside_yz() {
+    fn test_is_point_in_triangle_returns_false_for_point_outside_yz() {
         let triangle_points = (
             &Point3::new(0.0, 0.0, 1.0),
             &Point3::new(0.0, 1.0, 0.0),
@@ -683,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_in_triangle_returns_false_for_point_above_yz() {
+    fn test_is_point_in_triangle_returns_false_for_point_above_yz() {
         let triangle_points = (
             &Point3::new(0.0, 0.0, 1.0),
             &Point3::new(0.0, 1.0, 0.0),
@@ -702,7 +706,7 @@ mod tests {
 
     #[test]
     #[should_panic = "Ray vector zero"]
-    fn test_vertex_tools_ray_intersects_triangle_panics_for_zero_vector_ray() {
+    fn test_ray_intersects_triangle_panics_for_zero_vector_ray() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(1.0, 0.0, 0.0),
@@ -722,7 +726,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_triangle_for_horizontal_triangle_returns_point_inside() {
+    fn test_ray_intersects_triangle_for_horizontal_triangle_returns_point_inside() {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
             &Point3::new(-0.866025, -0.5, 0.0),
@@ -752,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_misses(
+    fn test_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_misses(
     ) {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
@@ -776,7 +780,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_parallel(
+    fn test_ray_intersects_triangle_for_horizontal_triangle_returns_none_because_ray_parallel(
     ) {
         let triangle_points = (
             &Point3::new(0.0, 1.0, 0.0),
@@ -800,7 +804,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_triangle_for_arbitrary_triangle_returns_point_inside() {
+    fn test_ray_intersects_triangle_for_arbitrary_triangle_returns_point_inside() {
         let triangle_points = (
             &Point3::new(0.268023, 0.8302, 0.392469),
             &Point3::new(-0.870844, -0.462665, 0.215034),
@@ -830,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_line_for_point_pulled_to_center() {
+    fn test_pull_point_to_line_for_point_pulled_to_center() {
         let line_start = &Point3::new(-1.0, 0.0, 0.0);
         let line_end = &Point3::new(1.0, 0.0, 0.0);
         let test_point = Point3::new(0.0, 1.0, 1.0);
@@ -851,7 +855,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_line_for_point_pulled_below_start() {
+    fn test_pull_point_to_line_for_point_pulled_below_start() {
         let line_start = &Point3::new(-1.0, 0.0, 0.0);
         let line_end = &Point3::new(1.0, 0.0, 0.0);
         let test_point = Point3::new(-2.0, 1.0, 1.0);
@@ -872,7 +876,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_line_for_point_pulled_beyond_end() {
+    fn test_pull_point_to_line_for_point_pulled_beyond_end() {
         let line_start = &Point3::new(-1.0, 0.0, 0.0);
         let line_end = &Point3::new(1.0, 0.0, 0.0);
         let test_point = Point3::new(2.0, 1.0, 1.0);
@@ -893,7 +897,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_line_for_point_on_the_line() {
+    fn test_pull_point_to_line_for_point_on_the_line() {
         let line_start = &Point3::new(-1.0, 0.0, 0.0);
         let line_end = &Point3::new(1.0, 0.0, 0.0);
         let test_point = Point3::new(0.0, 0.0, 0.0);
@@ -914,8 +918,8 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_mesh_cube_point_inside_left() {
-        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+    fn test_pull_point_to_mesh_cube_point_inside_left() {
+        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(-0.25, 0.0, 0.0);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -928,8 +932,8 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_mesh_cube_point_inside_top_front_right() {
-        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+    fn test_pull_point_to_mesh_cube_point_inside_top_front_right() {
+        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(0.25, 0.25, 0.25);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -950,8 +954,8 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_mesh_cube_point_outside_top_front_right() {
-        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+    fn test_pull_point_to_mesh_cube_point_outside_top_front_right() {
+        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(1.25, 1.25, 1.25);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -968,8 +972,8 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_mesh_cube_point_outside_front_right() {
-        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+    fn test_pull_point_to_mesh_cube_point_outside_front_right() {
+        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(1.25, 1.25, 0.25);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -986,8 +990,8 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_mesh_cube_point_on_face() {
-        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+    fn test_pull_point_to_mesh_cube_point_on_face() {
+        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(0.0, 0.0, 1.0);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -1002,8 +1006,8 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_mesh_cube_point_on_edge() {
-        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+    fn test_pull_point_to_mesh_cube_point_on_edge() {
+        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let test_point = Point3::new(1.0, 1.0, 0.0);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -1018,7 +1022,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_on_plane_returns_true_for_point_on_plane() {
+    fn test_is_point_on_plane_returns_true_for_point_on_plane() {
         let plane_origin = Point3::new(1.0, 0.0, 0.0);
         let plane_normal = Vector3::new(1.0, 0.0, 0.0);
         let plane = Plane::from_origin_and_normal(&plane_origin, &plane_normal);
@@ -1028,7 +1032,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_is_point_on_plane_returns_false_for_point_elsewhere() {
+    fn test_is_point_on_plane_returns_false_for_point_elsewhere() {
         let plane_origin = Point3::new(1.0, 0.0, 0.0);
         let plane_normal = Vector3::new(1.0, 0.0, 0.0);
         let plane = Plane::from_origin_and_normal(&plane_origin, &plane_normal);
@@ -1038,7 +1042,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_plane_seed_2() {
+    fn test_ray_intersects_plane_seed_2() {
         let normal = Vector3::new(0.505588, 0.843833, -0.179794);
         let ray_vector = Vector3::new(-0.708348, 0.05881, -0.703409);
         let ray_origin = Point3::new(0.328762, 0.9441, 0.02429);
@@ -1059,7 +1063,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_plane_seed_12() {
+    fn test_ray_intersects_plane_seed_12() {
         let normal = Vector3::new(-0.987928, 0.02117, -0.15346);
         let ray_vector = Vector3::new(0.515951, 0.520597, -0.680275);
         let ray_origin = Point3::new(0.758986, -0.648866, 0.053964);
@@ -1080,7 +1084,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_plane_returns_none_because_ray_parallel_to_plane() {
+    fn test_ray_intersects_plane_returns_none_because_ray_parallel_to_plane() {
         let normal = Vector3::new(0.0, 0.0, 1.0);
         let ray_vector = Vector3::new(1.0, 1.0, 0.0);
         let ray_origin = Point3::new(0.0, 0.0, 1.0);
@@ -1093,7 +1097,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_plane_returns_self_for_point_on_plane() {
+    fn test_ray_intersects_plane_returns_self_for_point_on_plane() {
         let normal = Vector3::new(0.0, 0.0, 1.0);
         let ray_vector = Vector3::new(1.0, 1.0, 1.0);
         let ray_origin = Point3::new(1.0, 1.0, 0.0);
@@ -1112,7 +1116,7 @@ mod tests {
 
     #[test]
     #[should_panic = "Ray vector zero"]
-    fn test_vertex_tools_ray_intersects_plane_panics_for_zero_vector_ray() {
+    fn test_ray_intersects_plane_panics_for_zero_vector_ray() {
         let normal = Vector3::new(0.0, 0.0, 1.0);
         let ray_vector = Vector3::zeros();
         let ray_origin = Point3::new(1.0, 1.0, 0.0);
@@ -1123,7 +1127,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_ray_intersects_plane_returns_none_for_parallel_ray() {
+    fn test_ray_intersects_plane_returns_none_for_parallel_ray() {
         let normal = Vector3::new(0.0, 0.0, 1.0);
         let ray_vector = Vector3::new(1.0, 1.0, 0.0);
         let ray_origin = Point3::new(1.0, 1.0, 1.0);
@@ -1136,7 +1140,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_plane_for_point_on_plane_and_horizontal_plane() {
+    fn test_pull_point_to_plane_for_point_on_plane_and_horizontal_plane() {
         let test_point: Point3<f32> = Point3::origin();
         let test_plane =
             Plane::from_origin_and_normal(&Point3::origin(), &Vector3::new(0.0, 0.0, 1.0));
@@ -1148,7 +1152,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_plane_for_point_on_plane_and_vertical_plane() {
+    fn test_pull_point_to_plane_for_point_on_plane_and_vertical_plane() {
         let test_point: Point3<f32> = Point3::origin();
         let test_plane =
             Plane::from_origin_and_normal(&Point3::origin(), &Vector3::new(1.0, 0.0, 0.0));
@@ -1160,7 +1164,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_plane_for_point_above_plane_and_horizontal_plane() {
+    fn test_pull_point_to_plane_for_point_above_plane_and_horizontal_plane() {
         let test_point = Point3::new(0.0, 0.0, 1.0);
         let test_plane =
             Plane::from_origin_and_normal(&Point3::origin(), &Vector3::new(0.0, 0.0, 1.0));
@@ -1175,7 +1179,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_point_to_plane_for_arbitrary_point_and_arbitrary_plane() {
+    fn test_pull_point_to_plane_for_arbitrary_point_and_arbitrary_plane() {
         let test_point = Point3::new(2.5, 4.2, 1.8);
         let test_plane = Plane::from_origin_and_normal(&Point3::origin(), &test_point.coords);
 
@@ -1192,7 +1196,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_unclamped_returns_true_for_point_on_start() {
+    fn test_pull_is_point_on_line_unclamped_returns_true_for_point_on_start() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(-1.0, -1.0, -1.0);
@@ -1205,7 +1209,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_unclamped_returns_true_for_point_on_end() {
+    fn test_pull_is_point_on_line_unclamped_returns_true_for_point_on_end() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(1.0, 1.0, 1.0);
@@ -1218,7 +1222,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_unclamped_returns_true_for_point_in_the_middle() {
+    fn test_pull_is_point_on_line_unclamped_returns_true_for_point_in_the_middle() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(0.0, 0.0, 0.0);
@@ -1231,7 +1235,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_unclamped_returns_true_for_point_before() {
+    fn test_pull_is_point_on_line_unclamped_returns_true_for_point_before() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(-2.0, -2.0, -2.0);
@@ -1244,7 +1248,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_unclamped_returns_true_for_point_after() {
+    fn test_pull_is_point_on_line_unclamped_returns_true_for_point_after() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(2.0, 2.0, 2.0);
@@ -1257,7 +1261,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_unclamped_returns_false_for_point_elsewhere() {
+    fn test_pull_is_point_on_line_unclamped_returns_false_for_point_elsewhere() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(3.0, 2.0, 1.0);
@@ -1270,7 +1274,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_clamped_returns_true_for_point_on_start() {
+    fn test_pull_is_point_on_line_clamped_returns_true_for_point_on_start() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(-1.0, -1.0, -1.0);
@@ -1283,7 +1287,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_clamped_returns_true_for_point_on_end() {
+    fn test_pull_is_point_on_line_clamped_returns_true_for_point_on_end() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(1.0, 1.0, 1.0);
@@ -1296,7 +1300,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_clamped_returns_true_for_point_in_the_middle() {
+    fn test_pull_is_point_on_line_clamped_returns_true_for_point_in_the_middle() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(0.0, 0.0, 0.0);
@@ -1309,7 +1313,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_clamped_returns_false_for_point_before() {
+    fn test_pull_is_point_on_line_clamped_returns_false_for_point_before() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(-2.0, -2.0, -2.0);
@@ -1322,7 +1326,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_clamped_returns_false_for_point_after() {
+    fn test_pull_is_point_on_line_clamped_returns_false_for_point_after() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(2.0, 2.0, 2.0);
@@ -1335,7 +1339,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vertex_tools_pull_is_point_on_line_clamped_returns_false_for_point_elsewhere() {
+    fn test_pull_is_point_on_line_clamped_returns_false_for_point_elsewhere() {
         let line_start = Point3::new(-1.0, -1.0, -1.0);
         let line_end = Point3::new(1.0, 1.0, 1.0);
         let test_point = Point3::new(3.0, 2.0, 1.0);

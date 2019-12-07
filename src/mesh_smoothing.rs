@@ -7,7 +7,7 @@ use nalgebra::geometry::Point3;
 use smallvec::SmallVec;
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::geometry::{Face, Mesh, NormalStrategy};
+use crate::mesh::{Face, Mesh, NormalStrategy};
 
 /// Relaxes angles between mesh edges, resulting in a smoother
 /// mesh, optionally keeping some vertices anchored, resulting in
@@ -353,14 +353,14 @@ mod tests {
     use nalgebra;
 
     use crate::edge_analysis;
-    use crate::geometry::{self, NormalStrategy, OrientedEdge, Vertices};
+    use crate::mesh::{primitive, NormalStrategy, OrientedEdge};
     use crate::mesh_analysis;
     use crate::mesh_topology_analysis;
 
     use super::*;
 
     // FIXME: Snapshot testing
-    fn torus() -> (Vec<(u32, u32, u32)>, Vertices) {
+    fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
             Point3::new(0.566987, -1.129e-11, 0.25),
             Point3::new(-0.716506, 1.241025, 0.25),
@@ -397,7 +397,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn triple_torus() -> (Vec<(u32, u32, u32)>, Vertices) {
+    fn triple_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
             Point3::new(15.566987, -1.129e-11, 0.25),
             Point3::new(14.283494, 1.241025, 0.25),
@@ -472,7 +472,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn shape_for_smoothing_with_anchors() -> (Vec<(u32, u32, u32)>, Vertices) {
+    fn shape_for_smoothing_with_anchors() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
             Point3::new(30.21796, -6.119943, 0.0),
             Point3::new(32.031532, 1.328689, 0.0),
@@ -502,7 +502,8 @@ mod tests {
         (faces, vertices)
     }
 
-    fn shape_for_smoothing_with_anchors_50_iterations() -> (Vec<(u32, u32, u32)>, Vertices) {
+    fn shape_for_smoothing_with_anchors_50_iterations() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>)
+    {
         let vertices = vec![
             Point3::new(30.21796, -6.119943, 0.0),
             Point3::new(32.031532, 1.328689, 0.0),
@@ -750,7 +751,7 @@ mod tests {
 
     #[test]
     fn test_loop_subdivision_snapshot_uv_sphere() {
-        let mesh = geometry::create_uv_sphere([0.0; 3], 1.0, 2, 3);
+        let mesh = primitive::create_uv_sphere([0.0; 3], 1.0, 2, 3);
         let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
         let f2f = mesh_topology_analysis::face_to_face_topology(&mesh);
 
@@ -764,7 +765,7 @@ mod tests {
 
     #[test]
     fn test_loop_subdivision_snapshot_cube_sharp() {
-        let mesh = geometry::create_cube_sharp([0.0; 3], 1.0);
+        let mesh = primitive::create_cube_sharp([0.0; 3], 1.0);
         let v2v = mesh_topology_analysis::vertex_to_vertex_topology(&mesh);
         let f2f = mesh_topology_analysis::face_to_face_topology(&mesh);
 

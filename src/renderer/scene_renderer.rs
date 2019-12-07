@@ -10,7 +10,7 @@ use nalgebra::base::{Matrix4, Vector3};
 use nalgebra::geometry::Point3;
 
 use crate::convert::cast_usize;
-use crate::geometry::{Face, Mesh};
+use crate::mesh::{Face, Mesh};
 
 use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
 
@@ -993,7 +993,7 @@ fn create_pipeline(
 
 #[cfg(test)]
 mod tests {
-    use crate::geometry::TriangleFace;
+    use crate::mesh::TriangleFace;
 
     use super::*;
 

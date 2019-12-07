@@ -1,11 +1,12 @@
 use std::iter;
 use std::sync::Arc;
 
-use crate::geometry;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
 };
+use crate::mesh::analysis;
+use crate::mesh::primitive;
 
 pub struct FuncShrinkWrap;
 
@@ -48,8 +49,8 @@ impl Func for FuncShrinkWrap {
         let mesh = args[0].unwrap_mesh();
         let sphere_density = args[1].unwrap_uint();
 
-        let (center, radius) = geometry::compute_bounding_sphere(iter::once(mesh));
-        let mut value = geometry::create_uv_sphere(
+        let (center, radius) = analysis::compute_bounding_sphere(iter::once(mesh));
+        let mut value = primitive::create_uv_sphere(
             center.coords.into(),
             radius,
             sphere_density,
@@ -57,7 +58,7 @@ impl Func for FuncShrinkWrap {
         );
 
         for vertex in value.vertices_mut() {
-            if let Some(closest) = geometry::find_closest_point(vertex, mesh) {
+            if let Some(closest) = analysis::find_closest_point(vertex, mesh) {
                 vertex.coords = closest.coords;
             }
         }

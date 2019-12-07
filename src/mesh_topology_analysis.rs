@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use smallvec::SmallVec;
 
 use crate::convert::cast_u32;
-use crate::geometry::{Face, Mesh};
+use crate::mesh::{Face, Mesh};
 
 // FIXME: @Optimization Explore whether the topologies wouldn't be
 // better served by being backed by a `Vec` instead of
@@ -98,7 +98,7 @@ mod tests {
     use nalgebra::geometry::Point3;
     use smallvec::smallvec;
 
-    use crate::geometry::NormalStrategy;
+    use crate::mesh::NormalStrategy;
 
     use super::*;
 

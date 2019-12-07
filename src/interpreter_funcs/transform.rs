@@ -3,11 +3,11 @@ use std::sync::Arc;
 use nalgebra::base::{Matrix4, Vector3};
 use nalgebra::geometry::{Rotation, Translation};
 
-use crate::geometry::Mesh;
 use crate::interpreter::{
     Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty,
     Value,
 };
+use crate::mesh::Mesh;
 
 pub struct FuncTransform;
 

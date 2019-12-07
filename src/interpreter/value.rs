@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::geometry::Mesh;
+use crate::mesh::Mesh;
 
 /// A type of a value.
 ///

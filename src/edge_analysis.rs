@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::geometry::{OrientedEdge, UnorientedEdge};
+use crate::mesh::{OrientedEdge, UnorientedEdge};
 
 /// Used in EdgeSharingMap
 /// ascending_edges contains edges oriented from lower index to higher
@@ -50,32 +50,20 @@ pub fn edge_sharing<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
 mod tests {
     use nalgebra::Point3;
 
-    use crate::geometry::{Mesh, NormalStrategy, Vertices};
+    use crate::mesh::{Mesh, NormalStrategy};
 
     use super::*;
 
-    fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
-        Point3::new(
-            scale * x + translation[0],
-            scale * y + translation[1],
-            scale * z + translation[2],
-        )
-    }
-
-    fn quad() -> (Vec<(u32, u32, u32)>, Vertices) {
+    fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         #[rustfmt::skip]
         let vertices = vec![
-            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            Point3::new(-1.0, -1.0,  0.0),
+            Point3::new( 1.0, -1.0,  0.0),
+            Point3::new( 1.0,  1.0,  0.0),
+            Point3::new(-1.0,  1.0,  0.0),
         ];
 
-        #[rustfmt::skip]
-        let faces = vec![
-            (0, 1, 2),
-            (2, 3, 0),
-        ];
+        let faces = vec![(0, 1, 2), (2, 3, 0)];
 
         (faces, vertices)
     }

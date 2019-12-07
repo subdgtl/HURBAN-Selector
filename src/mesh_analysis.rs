@@ -1,11 +1,10 @@
 use std::collections::HashSet;
 
-use nalgebra::base::Vector3;
-use nalgebra::geometry::Point3;
+use nalgebra::{Point3, Vector3};
 
 use crate::convert::{cast_i32, cast_usize};
 use crate::edge_analysis::EdgeSharingMap;
-use crate::geometry::{Face, Mesh, OrientedEdge, UnorientedEdge};
+use crate::mesh::{Face, Mesh, OrientedEdge, UnorientedEdge};
 
 /// Finds edges with a certain valency in a mesh edge collection
 ///
@@ -258,32 +257,19 @@ pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::base::Vector3;
-    use nalgebra::geometry::Point3;
+    use nalgebra::{Point3, Vector3};
 
     use crate::edge_analysis;
-    use crate::geometry::{self, NormalStrategy, TriangleFace, UnorientedEdge, Vertices};
+    use crate::mesh::{primitive, NormalStrategy, TriangleFace, UnorientedEdge};
 
     use super::*;
 
-    fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
-        Point3::new(
-            scale * x + translation[0],
-            scale * y + translation[1],
-            scale * z + translation[2],
-        )
-    }
-
-    fn n(x: f32, y: f32, z: f32) -> Vector3<f32> {
-        Vector3::new(x, y, z)
-    }
-
-    pub fn quad() -> (Vec<(u32, u32, u32)>, Vertices) {
+    pub fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
-            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(-1.0, 1.0, 0.0),
         ];
 
         let faces = vec![(0, 1, 2), (2, 3, 0)];
@@ -293,17 +279,17 @@ mod tests {
 
     pub fn quad_with_normals() -> Mesh {
         let vertices = vec![
-            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(-1.0, 1.0, 0.0),
         ];
 
         let vertex_normals = vec![
-            n(-1.0, -1.0, 1.0),
-            n(1.0, -1.0, 1.0),
-            n(1.0, 1.0, 1.0),
-            n(-1.0, 1.0, 1.0),
+            Vector3::new(-1.0, -1.0, 1.0),
+            Vector3::new(1.0, -1.0, 1.0),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector3::new(-1.0, 1.0, 1.0),
         ];
 
         let faces = vec![TriangleFace::new(0, 1, 2), TriangleFace::new(2, 3, 0)];
@@ -313,19 +299,19 @@ mod tests {
 
     pub fn quad_with_extra_vertices_and_normals() -> Mesh {
         let vertices = vec![
-            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0), // first copy of the same vertex
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0), // second copy of the same vertex
-            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0), // first copy of the same vertex
+            Point3::new(1.0, 1.0, 0.0), // second copy of the same vertex
+            Point3::new(-1.0, 1.0, 0.0),
         ];
 
         let vertex_normals = vec![
-            n(-1.0, -1.0, 1.0), // first copy of the same normal
-            n(-1.0, -1.0, 1.0), // second copy of the same normal
-            n(1.0, -1.0, 1.0),
-            n(1.0, 1.0, 1.0),
-            n(-1.0, 1.0, 1.0),
+            Vector3::new(-1.0, -1.0, 1.0), // first copy of the same normal
+            Vector3::new(-1.0, -1.0, 1.0), // second copy of the same normal
+            Vector3::new(1.0, -1.0, 1.0),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector3::new(-1.0, 1.0, 1.0),
         ];
 
         let faces = vec![
@@ -338,17 +324,17 @@ mod tests {
 
     pub fn quad_renumbered_with_normals() -> Mesh {
         let vertices = vec![
-            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(-1.0, 1.0, 0.0),
         ];
 
         let vertex_normals = vec![
-            n(1.0, -1.0, 1.0),
-            n(-1.0, -1.0, 1.0),
-            n(1.0, 1.0, 1.0),
-            n(-1.0, 1.0, 1.0),
+            Vector3::new(1.0, -1.0, 1.0),
+            Vector3::new(-1.0, -1.0, 1.0),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector3::new(-1.0, 1.0, 1.0),
         ];
 
         let faces = vec![TriangleFace::new(1, 0, 2), TriangleFace::new(3, 1, 2)];
@@ -358,17 +344,17 @@ mod tests {
 
     pub fn quad_renumbered_more_with_normals() -> Mesh {
         let vertices = vec![
-            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),  //1
-            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),  //3
-            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0), //0
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),   //2
+            Point3::new(1.0, -1.0, 0.0),  //1
+            Point3::new(-1.0, 1.0, 0.0),  //3
+            Point3::new(-1.0, -1.0, 0.0), //0
+            Point3::new(1.0, 1.0, 0.0),   //2
         ];
 
         let vertex_normals = vec![
-            n(1.0, -1.0, 1.0),  //1
-            n(-1.0, 1.0, 1.0),  //3
-            n(-1.0, -1.0, 1.0), //0
-            n(1.0, 1.0, 1.0),   //2
+            Vector3::new(1.0, -1.0, 1.0),  //1
+            Vector3::new(-1.0, 1.0, 1.0),  //3
+            Vector3::new(-1.0, -1.0, 1.0), //0
+            Vector3::new(1.0, 1.0, 1.0),   //2
         ];
 
         let faces = vec![TriangleFace::new(2, 0, 3), TriangleFace::new(2, 3, 1)];
@@ -376,7 +362,7 @@ mod tests {
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    fn torus() -> (Vec<(u32, u32, u32)>, Vertices) {
+    fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
             Point3::new(0.566987, -1.129e-11, 0.25),
             Point3::new(-0.716506, 1.241025, 0.25),
@@ -413,7 +399,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn double_torus() -> (Vec<(u32, u32, u32)>, Vertices) {
+    fn double_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
             Point3::new(5.566988, -1.129e-11, 0.25),
             Point3::new(4.283494, 1.241025, 0.25),
@@ -469,7 +455,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn triple_torus() -> (Vec<(u32, u32, u32)>, Vertices) {
+    fn triple_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
             Point3::new(15.566987, -1.129e-11, 0.25),
             Point3::new(14.283494, 1.241025, 0.25),
@@ -544,13 +530,13 @@ mod tests {
         (faces, vertices)
     }
 
-    pub fn non_manifold_shape() -> (Vec<(u32, u32, u32)>, Vertices) {
+    pub fn non_manifold_shape() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
-            v(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, -1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(-1.0, 1.0, 0.0, [0.0, 0.0, 0.0], 1.0),
-            v(0.0, 0.0, 1.0, [0.0, 0.0, 0.0], 1.0),
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(-1.0, 1.0, 0.0),
+            Point3::new(0.0, 0.0, 1.0),
         ];
 
         let faces = vec![(0, 1, 2), (2, 3, 0), (2, 4, 0)];
@@ -561,48 +547,48 @@ mod tests {
     pub fn cube_sharp_mismatching_winding(position: [f32; 3], scale: f32) -> Mesh {
         let vertex_positions = vec![
             // back
-            v(-1.0, 1.0, -1.0, position, scale),
-            v(-1.0, 1.0, 1.0, position, scale),
-            v(1.0, 1.0, 1.0, position, scale),
-            v(1.0, 1.0, -1.0, position, scale),
+            Point3::new(-1.0, 1.0, -1.0),
+            Point3::new(-1.0, 1.0, 1.0),
+            Point3::new(1.0, 1.0, 1.0),
+            Point3::new(1.0, 1.0, -1.0),
             // front
-            v(-1.0, -1.0, -1.0, position, scale),
-            v(-1.0, -1.0, 1.0, position, scale),
-            v(1.0, -1.0, 1.0, position, scale),
-            v(1.0, -1.0, -1.0, position, scale),
+            Point3::new(-1.0, -1.0, -1.0),
+            Point3::new(-1.0, -1.0, 1.0),
+            Point3::new(1.0, -1.0, 1.0),
+            Point3::new(1.0, -1.0, -1.0),
         ];
 
         let vertex_normals = vec![
             // back
-            n(0.0, 1.0, 0.0),
-            n(0.0, 1.0, 0.0),
-            n(0.0, 1.0, 0.0),
-            n(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
             // front
-            n(0.0, -1.0, 0.0),
-            n(0.0, -1.0, 0.0),
-            n(0.0, -1.0, 0.0),
-            n(0.0, -1.0, 0.0),
+            Vector3::new(0.0, -1.0, 0.0),
+            Vector3::new(0.0, -1.0, 0.0),
+            Vector3::new(0.0, -1.0, 0.0),
+            Vector3::new(0.0, -1.0, 0.0),
             // top
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
             // bottom
-            n(0.0, 0.0, -1.0),
-            n(0.0, 0.0, -1.0),
-            n(0.0, 0.0, -1.0),
-            n(0.0, 0.0, -1.0),
+            Vector3::new(0.0, 0.0, -1.0),
+            Vector3::new(0.0, 0.0, -1.0),
+            Vector3::new(0.0, 0.0, -1.0),
+            Vector3::new(0.0, 0.0, -1.0),
             // right
-            n(1.0, 0.0, 0.0),
-            n(1.0, 0.0, 0.0),
-            n(1.0, 0.0, 0.0),
-            n(1.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
             // left
-            n(-1.0, 0.0, 0.0),
-            n(-1.0, 0.0, 0.0),
-            n(-1.0, 0.0, 0.0),
-            n(-1.0, 0.0, 0.0),
+            Vector3::new(-1.0, 0.0, 0.0),
+            Vector3::new(-1.0, 0.0, 0.0),
+            Vector3::new(-1.0, 0.0, 0.0),
+            Vector3::new(-1.0, 0.0, 0.0),
         ];
 
         let faces = vec![
@@ -821,7 +807,7 @@ mod tests {
 
     #[test]
     fn test_is_mesh_orientable_returns_true_watertight_mesh() {
-        let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
@@ -854,7 +840,7 @@ mod tests {
 
     #[test]
     fn test_is_mesh_watertight_returns_true_for_watertight_mesh() {
-        let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);
 
@@ -878,7 +864,7 @@ mod tests {
 
     #[test]
     fn test_triangulated_mesh_genus_box_should_be_0() {
-        let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         assert!(mesh.is_triangulated());
 
         let edges: HashSet<UnorientedEdge> = mesh.unoriented_edges_iter().collect();
@@ -967,7 +953,7 @@ mod tests {
 
     #[test]
     fn test_border_edge_loops_returns_one_for_cube() {
-        let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_analysis::edge_sharing(&oriented_edges);

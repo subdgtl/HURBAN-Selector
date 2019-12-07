@@ -6,7 +6,7 @@ use nalgebra::geometry::Point3;
 use smallvec::{smallvec, SmallVec};
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::geometry::{Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
+use crate::mesh::{Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 use crate::mesh_topology_analysis;
 
 /// Orients all the faces the same way - matches their winding (vertex order).
@@ -363,7 +363,7 @@ mod tests {
     use nalgebra::base::Vector3;
     use nalgebra::geometry::Point3;
 
-    use crate::geometry::{self, Mesh, TriangleFace};
+    use crate::mesh::{primitive, Mesh, TriangleFace};
     use crate::mesh_analysis;
 
     use super::*;
@@ -679,7 +679,7 @@ mod tests {
 
     #[test]
     fn test_disjoint_mesh_returns_similar_for_cube() {
-        let mesh = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
 
         let calculated_meshes = disjoint_mesh(&mesh);
 
@@ -716,7 +716,7 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces() {
-        let plane = geometry::create_plane([0.0, 0.0, 0.0], 1.0);
+        let plane = primitive::create_plane([0.0, 0.0, 0.0], 1.0);
         let plane_reverted = revert_mesh_faces(&plane);
 
         let expected_reverted_faces = vec![
@@ -729,7 +729,7 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces_once_does_not_equal_original() {
-        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let cube_reverted = revert_mesh_faces(&cube);
 
         assert_ne!(cube, cube_reverted);
@@ -737,7 +737,7 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces_twice_does_equal_original() {
-        let cube = geometry::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
         let cube_twice_reverted = revert_mesh_faces(&revert_mesh_faces(&cube));
 
         assert_eq!(cube, cube_twice_reverted);
@@ -761,7 +761,7 @@ mod tests {
 
     #[test]
     fn test_synchronize_mesh_winding_for_sphere() {
-        let sphere = geometry::create_uv_sphere([0.0, 0.0, 0.0], 1.0, 10, 10);
+        let sphere = primitive::create_uv_sphere([0.0, 0.0, 0.0], 1.0, 10, 10);
         let sphere_faces_one_flipped = sphere.faces().iter().enumerate().map(|(i, f)| match f {
             Face::Triangle(t) => {
                 if i == 5 {
