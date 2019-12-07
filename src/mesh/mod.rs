@@ -13,6 +13,7 @@ use crate::geometry;
 
 pub mod analysis;
 pub mod primitive;
+pub mod smoothing;
 pub mod topology;
 
 #[derive(Debug, Clone, Copy)]

@@ -31,7 +31,6 @@ mod logger;
 mod math;
 mod mesh;
 mod mesh_analysis;
-mod mesh_smoothing;
 mod mesh_tools;
 mod plane;
 mod platform;

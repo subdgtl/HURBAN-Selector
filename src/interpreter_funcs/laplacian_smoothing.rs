@@ -5,8 +5,7 @@ use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
 };
-use crate::mesh::topology;
-use crate::mesh_smoothing;
+use crate::mesh::{smoothing, topology};
 
 pub struct FuncLaplacianSmoothing;
 
@@ -52,7 +51,7 @@ impl Func for FuncLaplacianSmoothing {
         let v2v = topology::compute_vertex_to_vertex_topology(mesh);
 
         let (value, _, _) =
-            mesh_smoothing::laplacian_smoothing(mesh, &v2v, cmp::min(255, iterations), &[], false);
+            smoothing::laplacian_smoothing(mesh, &v2v, cmp::min(255, iterations), &[], false);
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

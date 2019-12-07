@@ -30,7 +30,6 @@ fn find_edges_with_valency<'a>(
 /// Finds border edges in a mesh edge collection
 ///
 /// An edge is border when its valency is 1
-#[allow(dead_code)]
 pub fn border_edges<'a>(
     edge_sharing: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
