@@ -16,56 +16,41 @@ pub struct BoundingBox {
 }
 
 impl BoundingBox {
-    pub fn new(min_x: f32, min_y: f32, min_z: f32, max_x: f32, max_y: f32, max_z: f32) -> Self {
-        let (minimum_x, maximum_x) = if min_x < max_x {
-            (min_x, max_x)
-        } else {
-            (max_x, min_x)
-        };
-        let (minimum_y, maximum_y) = if min_y < max_y {
-            (min_y, max_y)
-        } else {
-            (max_y, min_y)
-        };
-        let (minimum_z, maximum_z) = if min_z < max_z {
-            (min_z, max_z)
-        } else {
-            (max_z, min_z)
-        };
+    #[allow(dead_code)]
+    pub fn new_separate(
+        min_x: f32,
+        min_y: f32,
+        min_z: f32,
+        max_x: f32,
+        max_y: f32,
+        max_z: f32,
+    ) -> Self {
         BoundingBox {
-            minimum_point: Point3::new(minimum_x, minimum_y, minimum_z),
-            maximum_point: Point3::new(maximum_x, maximum_y, maximum_z),
+            minimum_point: Point3::new(min_x, min_y, min_z),
+            maximum_point: Point3::new(max_x, max_y, max_z),
         }
     }
 
     #[allow(dead_code)]
-    pub fn from_extremes(minimum_point: Point3<f32>, maximum_point: Point3<f32>) -> Self {
-        BoundingBox::new(
-            minimum_point.x,
-            minimum_point.y,
-            minimum_point.z,
-            maximum_point.x,
-            maximum_point.y,
-            maximum_point.z,
-        )
+    pub fn new(minimum_point: Point3<f32>, maximum_point: Point3<f32>) -> Self {
+        BoundingBox {
+            minimum_point,
+            maximum_point,
+        }
     }
 
     pub fn from_meshes<'a, I>(meshes: I) -> Self
     where
-        I: IntoIterator<Item = &'a Mesh> + Clone,
+        I: IntoIterator<Item = &'a Mesh>,
     {
-        // TODO: don't collect here
-        let points: Vec<_> = meshes
-            .into_iter()
-            .flat_map(|mesh| mesh.vertices())
-            .collect();
+        let points = meshes.into_iter().flat_map(|mesh| mesh.vertices());
 
         BoundingBox::from_points(points)
     }
 
     pub fn from_points<'a, I>(points: I) -> Self
     where
-        I: IntoIterator<Item = &'a Point3<f32>> + Clone,
+        I: IntoIterator<Item = &'a Point3<f32>>,
     {
         let mut min_x = f32::MAX;
         let mut min_y = f32::MAX;
@@ -95,7 +80,10 @@ impl BoundingBox {
             }
         }
 
-        BoundingBox::new(min_x, min_y, min_z, max_x, max_y, max_z)
+        BoundingBox {
+            minimum_point: Point3::new(min_x, min_y, min_z),
+            maximum_point: Point3::new(max_x, max_y, max_z),
+        }
     }
 
     #[allow(dead_code)]
@@ -109,7 +97,7 @@ impl BoundingBox {
     }
 
     pub fn center(&self) -> Point3<f32> {
-        Point3::from((self.minimum_point.coords + self.maximum_point.coords) / 2.0)
+        nalgebra::center(&self.minimum_point, &self.maximum_point)
     }
 
     pub fn diagonal_length(&self) -> f32 {
