@@ -38,7 +38,7 @@ pub fn compute_barycentric_coords(
     }
 }
 
-/// Checks if all three points of lay on the same line.
+/// Checks if all three points lay on the same line.
 pub fn are_points_colinear(v0: &Point3<f32>, v1: &Point3<f32>, v2: &Point3<f32>) -> bool {
     let v0_normalized = v0.coords.normalize();
     let v1_normalized = v1.coords.normalize();
