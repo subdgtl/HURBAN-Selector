@@ -37,7 +37,7 @@ impl<C: ObjCache> FuncImportObjMesh<C> {
 impl<C: ObjCache> Func for FuncImportObjMesh<C> {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Import OBJ",
+            name: "Import OBJ as Group",
             return_value_name: "Imported Group",
         }
     }
