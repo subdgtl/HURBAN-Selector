@@ -57,7 +57,7 @@ impl Func for FuncCreatePlane {
         let position = values[0].get_float3().unwrap_or([0.0; 3]);
         let scale = values[1].get_float().unwrap_or(1.0);
 
-        let value = primitive::create_plane(position, scale);
+        let value = primitive::create_mesh_plane(position, scale);
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

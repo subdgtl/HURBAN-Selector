@@ -4,7 +4,7 @@ use crate::convert::{cast_u32, cast_usize};
 
 use super::{Mesh, NormalStrategy, TriangleFace};
 
-pub fn create_plane(position: [f32; 3], scale: f32) -> Mesh {
+pub fn create_mesh_plane(position: [f32; 3], scale: f32) -> Mesh {
     #[rustfmt::skip]
     let vertex_positions = vec![
         v(-1.0, -1.0,  0.0, position, scale),

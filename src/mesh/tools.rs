@@ -711,7 +711,7 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces() {
-        let plane = primitive::create_plane([0.0, 0.0, 0.0], 1.0);
+        let plane = primitive::create_mesh_plane([0.0, 0.0, 0.0], 1.0);
         let plane_reverted = revert_mesh_faces(&plane);
 
         let expected_reverted_faces = vec![
