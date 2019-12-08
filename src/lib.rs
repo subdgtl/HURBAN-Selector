@@ -31,9 +31,9 @@ mod math;
 mod mesh;
 mod plane;
 mod platform;
+mod pull;
 mod session;
 mod ui;
-mod vertex_tools;
 
 const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 

@@ -1,5 +1,4 @@
-use nalgebra::base::Vector3;
-use nalgebra::geometry::Point3;
+use nalgebra::{Point3, Vector3};
 
 /// Plane defining euclidean orthogonal unit space origin and orientation.
 ///
@@ -180,6 +179,14 @@ impl Plane {
     pub fn origin(&self) -> Point3<f32> {
         self.origin
     }
+
+    /// Checks if an arbitrary point lies on this plane.
+    ///
+    /// https://stackoverflow.com/questions/17227149/using-dot-product-to-determine-if-point-lies-on-a-plane
+    pub fn contains_point(&self, point: &Point3<f32>) -> bool {
+        let d = point - self.origin;
+        *point == self.origin || approx::relative_eq!(d.normalize().dot(&self.normal()), 0.0)
+    }
 }
 
 #[cfg(test)]
@@ -288,5 +295,25 @@ mod tests {
 
         assert_eq!(plane_calculated.origin(), origin_correct);
         assert_eq!(plane_calculated.normal(), normal_correct);
+    }
+
+    #[test]
+    fn test_plane_contains_point_returns_true_for_point_on_plane() {
+        let plane_origin = Point3::new(1.0, 0.0, 0.0);
+        let plane_normal = Vector3::new(1.0, 0.0, 0.0);
+        let plane = Plane::from_origin_and_normal(&plane_origin, &plane_normal);
+        let test_point = Point3::new(1.0, 1.0, 1.0);
+
+        assert!(plane.contains_point(&test_point));
+    }
+
+    #[test]
+    fn test_plane_contains_point_returns_false_for_point_elsewhere() {
+        let plane_origin = Point3::new(1.0, 0.0, 0.0);
+        let plane_normal = Vector3::new(1.0, 0.0, 0.0);
+        let plane = Plane::from_origin_and_normal(&plane_origin, &plane_normal);
+        let test_point = Point3::new(2.0, 1.0, 1.0);
+
+        assert!(!plane.contains_point(&test_point));
     }
 }
