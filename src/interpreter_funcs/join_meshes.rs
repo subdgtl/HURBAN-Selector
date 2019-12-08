@@ -42,7 +42,7 @@ impl Func for FuncJoinMeshes {
         let first_mesh = args[0].unwrap_mesh();
         let second_mesh = args[1].unwrap_mesh();
 
-        let value = tools::join_meshes(first_mesh, second_mesh);
+        let value = tools::join_multiple_meshes(vec![first_mesh, second_mesh]);
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

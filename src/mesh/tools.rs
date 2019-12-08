@@ -316,41 +316,43 @@ pub fn disjoint_mesh(mesh: &Mesh) -> Vec<Mesh> {
     patches
 }
 
-/// Joins two mesh geometries into one.
+/// Joins multiple mesh geometries into one.
 ///
-/// Concatenates vertex and normal slices, while keeping the first mesh
-/// geometry's element indices intact and second geometry's indices offset by
-/// the length of the respective elements. Reuses first mesh geometry's faces
-/// and recomputes the second mesh geometry's faces to match new indices of its
-/// elements.
-pub fn join_meshes(first_mesh: &Mesh, second_mesh: &Mesh) -> Mesh {
-    let vertex_offset = first_mesh.vertices().len();
-    let mut vertices: Vec<Point3<f32>> =
-        Vec::with_capacity(vertex_offset + second_mesh.vertices().len());
-    vertices.extend_from_slice(first_mesh.vertices());
-    vertices.extend_from_slice(second_mesh.vertices());
+/// Concatenates vertex and normal slices, while keeping the first mesh's
+/// element indices intact and all other meshes' indices offset by the number of
+/// of the respective elements already joined into the joint mesh. Reuses first
+/// mesh's faces and recomputes the other mesh's faces to match new indices of
+/// its elements.
+pub fn join_multiple_meshes<'a, I>(meshes: I) -> Mesh
+where
+    I: IntoIterator<Item = &'a Mesh>,
+{
+    let mut vertices: Vec<Point3<f32>> = Vec::new();
+    let mut normals: Vec<Vector3<f32>> = Vec::new();
+    let mut faces: Vec<Face> = Vec::new();
 
-    let normal_offset = first_mesh.normals().len();
-    let mut normals: Vec<Vector3<f32>> =
-        Vec::with_capacity(normal_offset + second_mesh.normals().len());
-    normals.extend_from_slice(first_mesh.normals());
-    normals.extend_from_slice(second_mesh.normals());
+    for mesh in meshes {
+        let vertex_offset_u32 = cast_u32(vertices.len());
+        let normal_offset_u32 = cast_u32(normals.len());
 
-    let mut faces: Vec<Face> =
-        Vec::with_capacity(first_mesh.faces().len() + second_mesh.faces().len());
-    faces.extend_from_slice(first_mesh.faces());
-    let vertex_offset_u32 = cast_u32(vertex_offset);
-    let normal_offset_u32 = cast_u32(normal_offset);
-    for face in second_mesh.faces() {
-        match face {
-            Face::Triangle(f) => faces.push(Face::Triangle(TriangleFace::new_separate(
-                f.vertices.0 + vertex_offset_u32,
-                f.vertices.1 + vertex_offset_u32,
-                f.vertices.2 + vertex_offset_u32,
-                f.normals.0 + normal_offset_u32,
-                f.normals.1 + normal_offset_u32,
-                f.normals.2 + normal_offset_u32,
-            ))),
+        vertices.extend_from_slice(mesh.vertices());
+        normals.extend_from_slice(mesh.normals());
+
+        if vertex_offset_u32 == 0 && normal_offset_u32 == 0 {
+            faces.extend_from_slice(mesh.faces());
+        } else {
+            for face in mesh.faces() {
+                match face {
+                    Face::Triangle(f) => faces.push(Face::Triangle(TriangleFace::new_separate(
+                        f.vertices.0 + vertex_offset_u32,
+                        f.vertices.1 + vertex_offset_u32,
+                        f.vertices.2 + vertex_offset_u32,
+                        f.normals.0 + normal_offset_u32,
+                        f.normals.1 + normal_offset_u32,
+                        f.normals.2 + normal_offset_u32,
+                    ))),
+                }
+            }
         }
     }
 
@@ -814,12 +816,11 @@ mod tests {
     }
 
     #[test]
-    fn test_join_meshes_returns_tessellated_triangle_with_island() {
-        let tessellated_triangle = tessellated_triangle_mesh();
-        let triangular_island = triangular_island_mesh();
+    fn test_join_multiple_meshes_returns_tessellated_triangle_with_island() {
+        let multiple_meshes = vec![tessellated_triangle_mesh(), triangular_island_mesh()];
 
         let mesh_correct = tessellated_triangle_with_island_mesh();
-        let mesh_calculated = join_meshes(&tessellated_triangle, &triangular_island);
+        let mesh_calculated = join_multiple_meshes(&multiple_meshes);
 
         assert_eq!(&mesh_correct, &mesh_calculated);
     }

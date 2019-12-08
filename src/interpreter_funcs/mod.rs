@@ -8,6 +8,7 @@ use self::create_uv_sphere::FuncCreateUvSphere;
 use self::disjoint_mesh::FuncDisjointMesh;
 use self::extract::FuncExtract;
 use self::import_obj_mesh::FuncImportObjMesh;
+use self::join_group::FuncJoinGroup;
 use self::join_meshes::FuncJoinMeshes;
 use self::laplacian_smoothing::FuncLaplacianSmoothing;
 use self::loop_subdivision::FuncLoopSubdivision;
@@ -22,6 +23,7 @@ mod create_uv_sphere;
 mod disjoint_mesh;
 mod extract;
 mod import_obj_mesh;
+mod join_group;
 mod join_meshes;
 mod laplacian_smoothing;
 mod loop_subdivision;
@@ -58,6 +60,7 @@ pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(9002);
 pub const FUNC_ID_WELD: FuncIdent = FuncIdent(9003);
 pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(9004);
 pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(9005);
+pub const FUNC_ID_JOIN_GROUP: FuncIdent = FuncIdent(9006);
 
 /// Returns the global set of function definitions available to the
 /// editor.
@@ -101,6 +104,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
         FUNC_ID_SYNCHRONIZE_MESH_FACES,
         Box::new(FuncSynchronizeMeshFaces),
     );
+    funcs.insert(FUNC_ID_JOIN_GROUP, Box::new(FuncJoinGroup));
 
     funcs
 }
