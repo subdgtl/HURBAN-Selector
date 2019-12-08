@@ -39,6 +39,8 @@ const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
+    /// Whether to open a fullscreen window.
+    pub fullscreen: bool,
     /// Which multi-sampling setting to use.
     pub msaa: Msaa,
     /// Whether to run with VSync or not.
@@ -71,12 +73,35 @@ pub fn init_and_run(options: Options) -> ! {
     logger::init(options.app_log_level, options.lib_log_level);
 
     let event_loop = winit::event_loop::EventLoop::new();
-    // let monitor_id = event_loop.primary_monitor();
-    let window = winit::window::WindowBuilder::new()
-        .with_title("H.U.R.B.A.N. Selector")
-        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
-        .build(&event_loop)
-        .expect("Failed to create window");
+    let window = if options.fullscreen {
+        log::info!("Running in fullscreen mode, looking for compatible video modes...");
+        let monitor = event_loop.primary_monitor();
+
+        // TODO: needs testing whether the best video mode is always
+        // given first on all systems
+        if let Some(video_mode) = monitor.video_modes().next() {
+            log::info!("Found fullscreen video mode: {}", video_mode);
+            winit::window::WindowBuilder::new()
+                .with_title("H.U.R.B.A.N. Selector")
+                .with_fullscreen(Some(winit::window::Fullscreen::Exclusive(video_mode)))
+                .build(&event_loop)
+                .expect("Failed to create window")
+        } else {
+            log::info!("Didn't find compatible video mode, falling back to borderless");
+            winit::window::WindowBuilder::new()
+                .with_title("H.U.R.B.A.N. Selector")
+                .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
+                .build(&event_loop)
+                .expect("Failed to create window")
+        }
+    } else {
+        log::info!("Running in windowed mode");
+        winit::window::WindowBuilder::new()
+            .with_title("H.U.R.B.A.N. Selector")
+            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+            .build(&event_loop)
+            .expect("Failed to create window")
+    };
 
     let window_size = window.inner_size().to_physical(window.hidpi_factor());
 

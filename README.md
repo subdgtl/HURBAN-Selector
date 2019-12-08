@@ -62,15 +62,33 @@ the `cargo insta review` to review snapshot diffs or new snapshots.
 
 ### Environment Variables
 
-**HS_GPU_BACKEND (optional)**: Force a GPU backend.
+Optionally configure one of the following:
 
-A gpu backend is automatically selected, but optionally a non-default
-gpu backend can be specified with `HS_GPU_BACKEND`. Can take the
-following values:
+**HS_GPU_BACKEND**: Force a GPU backend. A gpu backend is
+  automatically selected, but optionally a non-default gpu backend can
+  be specified. Can take the following values:
 
 - `vulkan` on Windows, Linux, or macOS with VulkanSDK,
 - `d3d12` on Windows,
 - `metal` on macOS.
+
+Default is primary GPU backend for the current OS.
+
+**HS_FULLSCREEN**: Run (1) or don't run (0) in fullscreen. Default is
+  no fullscreen.
+
+**HS_MSAA**: Choose the number of multisampling samples. Either 1, 4,
+  8, or 16. Default is 1.
+
+**HS_VSYNC**: Enable (1) or disable (0) VSync. Default is enabled.
+
+**HS_APP_LOG_LEVEL**: Set level of logging for the editor. Either
+  `error`, `warn`, `info` or `debug`. Default is `debug`.
+
+**HS_LIB_LOG_LEVEL**: Set level of logging for external crates. Either
+  `error`, `warn`, `info` or `debug`. Default is `warn`.
+
+### Renderer development
 
 If working on the renderer, enabling Vulkan validation layers is
 useful for additional validation:
@@ -85,17 +103,6 @@ To run with Vulkan backend on macOS, you need to setup the VulkanSDK
 (see macOS guide in [ash](https://crates.io/crates/ash)), and possibly
 [disable
 SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection-mac-os-x/)
-
-**HS_MSAA (optional)**: Force number of samples for multisampling, either 1,
-4, 8, or 16.
-
-**HS_VSYNC (optional)**: Explicitly enable (1) or disable (0) VSync.
-
-**HS_APP_LOG_LEVEL (optional)**: Changes level of logging for the editor.
-It is `debug` by default. Options are `error`, `warn`, `info` and `debug`.
-
-**HS_LIB_LOG_LEVEL (optional)**: Changes level of logging for external crates.
-It is `warn` by default. Options are `error`, `warn`, `info` and `debug`.
 
 ### Licence
 
