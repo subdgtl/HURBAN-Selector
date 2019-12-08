@@ -26,7 +26,7 @@ pub struct FuncExtract;
 impl Func for FuncExtract {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Extract",
+            name: "Extract from Group",
             return_value_name: "Extracted Mesh",
         }
     }
