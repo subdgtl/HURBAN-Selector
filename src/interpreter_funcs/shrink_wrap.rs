@@ -5,6 +5,7 @@ use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
 };
+use crate::mesh::analysis::BoundingBox;
 use crate::mesh::{analysis, primitive};
 
 pub struct FuncShrinkWrap;
@@ -48,10 +49,10 @@ impl Func for FuncShrinkWrap {
         let mesh = args[0].unwrap_mesh();
         let sphere_density = args[1].unwrap_uint();
 
-        let (center, radius) = analysis::compute_bounding_sphere(iter::once(mesh));
+        let bounding_box = BoundingBox::from_meshes(iter::once(mesh));
         let mut value = primitive::create_uv_sphere(
-            center.coords.into(),
-            radius,
+            bounding_box.center().coords.into(),
+            bounding_box.diagonal_length() / 2.0,
             sphere_density,
             sphere_density,
         );
