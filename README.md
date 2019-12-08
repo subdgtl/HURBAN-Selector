@@ -104,6 +104,18 @@ To run with Vulkan backend on macOS, you need to setup the VulkanSDK
 [disable
 SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection-mac-os-x/)
 
+### Creating a windows distribution for workshops
+
+- `cargo build --release`,
+- create a distribution directory in a place of your heart's desire,
+- copy `./target/release/hurban_selector.exe` to the distribution directory,
+- add the following `run.cmd` file to the distribution directory:
+
+```cmd
+set HS_FULLSCREEN=1
+hurban_selector.exe
+```
+
 ### Licence
 
 The editor source code is provided under the GNU GENERAL PUBLIC
