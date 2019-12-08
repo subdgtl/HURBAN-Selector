@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::f32;
 
 use nalgebra as na;
 use nalgebra::{Point3, Vector3};
@@ -7,40 +8,113 @@ use crate::convert::{cast_i32, cast_usize};
 
 use super::{Face, Mesh, OrientedEdge, UnorientedEdge};
 
-pub fn compute_bounding_sphere<'a, I>(meshes: I) -> (Point3<f32>, f32)
-where
-    I: IntoIterator<Item = &'a Mesh> + Clone,
-{
-    let centroid = compute_centroid(meshes.clone());
-    let mut max_distance_squared = 0.0;
-
-    for mesh in meshes {
-        for vertex in &mesh.vertices {
-            let distance_squared = na::distance_squared(&centroid, vertex);
-            if distance_squared > max_distance_squared {
-                max_distance_squared = distance_squared;
-            }
-        }
-    }
-
-    (centroid, max_distance_squared.sqrt())
+/// World-aligned bounding box contains the entire given geometry and defines an
+/// envelope aligned to the world (euclidean) coordinate system.
+pub struct BoundingBox {
+    minimum_point: Point3<f32>,
+    maximum_point: Point3<f32>,
 }
 
-pub fn compute_centroid<'a, I>(meshes: I) -> Point3<f32>
-where
-    I: IntoIterator<Item = &'a Mesh>,
-{
-    let mut vertex_count = 0;
-    let mut centroid = Point3::origin();
-    for mesh in meshes {
-        vertex_count += mesh.vertices.len();
-        for vertex in &mesh.vertices {
-            let v = vertex - Point3::origin();
-            centroid += v;
+impl BoundingBox {
+    pub fn new(min_x: f32, min_y: f32, min_z: f32, max_x: f32, max_y: f32, max_z: f32) -> Self {
+        let (minimum_x, maximum_x) = if min_x < max_x {
+            (min_x, max_x)
+        } else {
+            (max_x, min_x)
+        };
+        let (minimum_y, maximum_y) = if min_y < max_y {
+            (min_y, max_y)
+        } else {
+            (max_y, min_y)
+        };
+        let (minimum_z, maximum_z) = if min_z < max_z {
+            (min_z, max_z)
+        } else {
+            (max_z, min_z)
+        };
+        BoundingBox {
+            minimum_point: Point3::new(minimum_x, minimum_y, minimum_z),
+            maximum_point: Point3::new(maximum_x, maximum_y, maximum_z),
         }
     }
 
-    centroid / (vertex_count as f32)
+    #[allow(dead_code)]
+    pub fn from_extremes(minimum_point: Point3<f32>, maximum_point: Point3<f32>) -> Self {
+        BoundingBox::new(
+            minimum_point.x,
+            minimum_point.y,
+            minimum_point.z,
+            maximum_point.x,
+            maximum_point.y,
+            maximum_point.z,
+        )
+    }
+
+    pub fn from_meshes<'a, I>(meshes: I) -> Self
+    where
+        I: IntoIterator<Item = &'a Mesh> + Clone,
+    {
+        // TODO: don't collect here
+        let points: Vec<_> = meshes
+            .into_iter()
+            .flat_map(|mesh| mesh.vertices())
+            .collect();
+
+        BoundingBox::from_points(points)
+    }
+
+    pub fn from_points<'a, I>(points: I) -> Self
+    where
+        I: IntoIterator<Item = &'a Point3<f32>> + Clone,
+    {
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut min_z = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+        let mut max_z = f32::MIN;
+
+        for point in points {
+            if point.x < min_x {
+                min_x = point.x;
+            }
+            if point.y < min_y {
+                min_y = point.y;
+            }
+            if point.z < min_z {
+                min_z = point.z;
+            }
+            if point.x > max_x {
+                max_x = point.x;
+            }
+            if point.y > max_y {
+                max_y = point.y;
+            }
+            if point.z > max_z {
+                max_z = point.z;
+            }
+        }
+
+        BoundingBox::new(min_x, min_y, min_z, max_x, max_y, max_z)
+    }
+
+    #[allow(dead_code)]
+    pub fn minimum_point(&self) -> Point3<f32> {
+        self.minimum_point
+    }
+
+    #[allow(dead_code)]
+    pub fn maximum_point(&self) -> Point3<f32> {
+        self.maximum_point
+    }
+
+    pub fn center(&self) -> Point3<f32> {
+        Point3::from((self.minimum_point.coords + self.maximum_point.coords) / 2.0)
+    }
+
+    pub fn diagonal_length(&self) -> f32 {
+        nalgebra::distance(&self.minimum_point, &self.maximum_point)
+    }
 }
 
 // FIXME: Make more generic: take &[Point] or Iterator<Item=&Point>

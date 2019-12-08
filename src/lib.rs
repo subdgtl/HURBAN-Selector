@@ -11,7 +11,8 @@ use crate::camera::{Camera, CameraOptions};
 use crate::convert::cast_usize;
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
-use crate::mesh::{analysis, Mesh};
+use crate::mesh::analysis::BoundingBox;
+use crate::mesh::Mesh;
 use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshId, Options as RendererOptions, Renderer};
 use crate::session::{PollInterpreterResponseNotification, Session};
 use crate::ui::Ui;
@@ -336,13 +337,13 @@ impl CameraInterpolation {
         I: IntoIterator<Item = &'a Mesh> + Clone,
     {
         let (source_origin, source_radius) = camera.visible_sphere();
-        let (target_origin, target_radius) = analysis::compute_bounding_sphere(scene_meshes);
+        let bounding_box = BoundingBox::from_meshes(scene_meshes);
 
         CameraInterpolation {
             source_origin,
             source_radius,
-            target_origin,
-            target_radius,
+            target_origin: bounding_box.center(),
+            target_radius: bounding_box.diagonal_length() / 2.0,
             target_time: time + CAMERA_INTERPOLATION_DURATION,
         }
     }
