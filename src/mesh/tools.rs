@@ -181,10 +181,10 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Mesh {
     // value = new (averaged) vertex index It is expected that more keys will
     // share the same value; more original vertices will be replaced by a single
     // averaged vertex
-    let mut old_new_vertex_map: HashMap<u32, u32> = HashMap::new();
+    let mut old_new_vertex_map: Vec<u32> = vec![u32::max_value(); mesh.vertices().len()];
     for (new_vertex_index, old_vertex_indices) in close_vertex_clusters.clone().enumerate() {
         for old_vertex_index in old_vertex_indices {
-            old_new_vertex_map.insert(cast_u32(*old_vertex_index), cast_u32(new_vertex_index));
+            old_new_vertex_map[cast_usize(*old_vertex_index)] = cast_u32(new_vertex_index);
         }
     }
 
@@ -202,25 +202,27 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Mesh {
     // New faces with renumbered vertex (and normal) indices. Some faces might
     // end up invalid (not referencing three distinct vertices). Those will be
     // removed as they don't affect the visual appearance of the mesh geometry.
-    let new_faces = mesh
-        .faces()
-        .iter()
-        .map(|old_face| match old_face {
-            Face::Triangle(f) => Face::Triangle(TriangleFace::new(
-                *old_new_vertex_map
-                    .get(&f.vertices.0)
-                    .expect("Referencing non-existent vertex"),
-                *old_new_vertex_map
-                    .get(&f.vertices.1)
-                    .expect("Referencing non-existent vertex"),
-                *old_new_vertex_map
-                    .get(&f.vertices.2)
-                    .expect("Referencing non-existent vertex"),
-            )),
-        })
-        .filter(|new_face| match new_face {
-            Face::Triangle(f) => f.vertices.0 != f.vertices.1 && f.vertices.0 != f.vertices.2,
-        });
+    let new_faces = mesh.faces().iter().filter_map(|old_face| match old_face {
+        Face::Triangle(f) => {
+            let new_vertex_indices = (
+                old_new_vertex_map[cast_usize(f.vertices.0)],
+                old_new_vertex_map[cast_usize(f.vertices.1)],
+                old_new_vertex_map[cast_usize(f.vertices.2)],
+            );
+            if new_vertex_indices.0 != new_vertex_indices.1
+                && new_vertex_indices.0 != new_vertex_indices.2
+                && new_vertex_indices.1 != new_vertex_indices.2
+            {
+                Some(Face::Triangle(TriangleFace::new(
+                    new_vertex_indices.0,
+                    new_vertex_indices.1,
+                    new_vertex_indices.2,
+                )))
+            } else {
+                None
+            }
+        }
+    });
 
     // key = old vertex index
     // value = indices of all old normals being referenced by faces together
@@ -256,10 +258,8 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Mesh {
     let mut new_vertex_old_normals_index_map: Vec<SmallVec<[u32; 8]>> =
         vec![SmallVec::new(); new_vertices.len()];
     for (old_vertex_index, old_normals_indices) in old_vertex_normals_index_map {
-        let new_vertex_index = old_new_vertex_map
-            .get(&old_vertex_index)
-            .expect("The old vertex index not found in the old-new vertex map.");
-        new_vertex_old_normals_index_map[cast_usize(*new_vertex_index)]
+        let new_vertex_index = old_new_vertex_map[cast_usize(old_vertex_index)];
+        new_vertex_old_normals_index_map[cast_usize(new_vertex_index)]
             .extend_from_slice(&old_normals_indices);
     }
 
