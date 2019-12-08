@@ -96,7 +96,7 @@ pub fn compute_vertex_to_vertex_topology(mesh: &Mesh) -> VertexToVertexTopology 
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::geometry::Point3;
+    use nalgebra::Point3;
     use smallvec::smallvec;
 
     use crate::mesh::NormalStrategy;

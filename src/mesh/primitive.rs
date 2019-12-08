@@ -1,5 +1,4 @@
-use nalgebra::base::Vector3;
-use nalgebra::geometry::Point3;
+use nalgebra::{Point3, Vector3};
 
 use crate::convert::{cast_u32, cast_usize};
 

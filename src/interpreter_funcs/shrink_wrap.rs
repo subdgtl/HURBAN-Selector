@@ -5,8 +5,7 @@ use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
 };
-use crate::mesh::analysis;
-use crate::mesh::primitive;
+use crate::mesh::{analysis, primitive};
 
 pub struct FuncShrinkWrap;
 

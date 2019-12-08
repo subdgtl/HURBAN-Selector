@@ -2,7 +2,7 @@ pub use self::scene_renderer::{AddMeshError, DrawMeshMode, GpuMesh, GpuMeshId};
 
 use std::fmt;
 
-use nalgebra::base::Matrix4;
+use nalgebra::Matrix4;
 
 use self::imgui_renderer::{ImguiRenderer, Options as ImguiRendererOptions};
 use self::scene_renderer::{

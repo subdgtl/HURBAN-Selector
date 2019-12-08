@@ -6,8 +6,7 @@ use std::io;
 use std::iter;
 
 use bitflags::bitflags;
-use nalgebra::base::{Matrix4, Vector3};
-use nalgebra::geometry::Point3;
+use nalgebra::{Matrix4, Point3, Vector3};
 
 use crate::convert::cast_usize;
 use crate::mesh::{Face, Mesh};

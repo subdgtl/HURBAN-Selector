@@ -3,7 +3,7 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::hash::{Hash, Hasher};
 
 use nalgebra as na;
-use nalgebra::geometry::Point3;
+use nalgebra::Point3;
 use smallvec::SmallVec;
 
 use crate::convert::{cast_u32, cast_usize};

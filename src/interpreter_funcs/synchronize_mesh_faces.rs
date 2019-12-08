@@ -3,8 +3,7 @@ use std::sync::Arc;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh::tools;
-use crate::mesh::{analysis, topology};
+use crate::mesh::{analysis, tools, topology};
 
 pub struct FuncSynchronizeMeshFaces;
 

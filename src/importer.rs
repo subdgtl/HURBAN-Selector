@@ -8,8 +8,7 @@ use std::time::SystemTime;
 use crc32fast;
 #[cfg(test)]
 use mockall::{automock, lazy_static, predicate};
-use nalgebra::base::Vector3;
-use nalgebra::geometry::Point3;
+use nalgebra::{Point3, Vector3};
 use tobj;
 
 use crate::mesh::{Mesh, NormalStrategy, TriangleFace};

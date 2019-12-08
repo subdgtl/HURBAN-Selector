@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use nalgebra::geometry::Point3;
+use nalgebra::Point3;
 
 use crate::camera::{Camera, CameraOptions};
 use crate::convert::cast_usize;

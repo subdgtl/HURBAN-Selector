@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use arrayvec::ArrayVec;
-use nalgebra::base::Vector3;
-use nalgebra::geometry::Point3;
+use nalgebra::{Point3, Vector3};
 use smallvec::{smallvec, SmallVec};
 
 use crate::convert::{cast_u32, cast_usize};
@@ -360,9 +359,6 @@ pub fn join_meshes(first_mesh: &Mesh, second_mesh: &Mesh) -> Mesh {
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::base::Vector3;
-    use nalgebra::geometry::Point3;
-
     use crate::mesh::{analysis, primitive};
 
     use super::*;
