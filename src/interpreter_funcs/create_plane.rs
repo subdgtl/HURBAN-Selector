@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use crate::geometry;
 use crate::interpreter::{
     Float3ParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo,
     ParamRefinement, Ty, Value,
 };
+use crate::mesh::primitive;
 
 pub struct FuncCreatePlane;
 
@@ -50,14 +50,14 @@ impl Func for FuncCreatePlane {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
         let position = values[0].get_float3().unwrap_or([0.0; 3]);
         let scale = values[1].get_float().unwrap_or(1.0);
 
-        let value = geometry::plane_geometry(position, scale);
-        Ok(Value::Geometry(Arc::new(value)))
+        let value = primitive::create_mesh_plane(position, scale);
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

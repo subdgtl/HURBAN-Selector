@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh_tools;
+use crate::mesh::tools;
 
 pub struct FuncJoinMeshes;
 
@@ -23,26 +23,26 @@ impl Func for FuncJoinMeshes {
         &[
             ParamInfo {
                 name: "Mesh 1",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Mesh 2",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
         ]
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let first_geometry = args[0].unwrap_geometry();
-        let second_geometry = args[1].unwrap_geometry();
+        let first_mesh = args[0].unwrap_mesh();
+        let second_mesh = args[1].unwrap_mesh();
 
-        let value = mesh_tools::join_meshes(first_geometry, second_geometry);
-        Ok(Value::Geometry(Arc::new(value)))
+        let value = tools::join_meshes(first_mesh, second_mesh);
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

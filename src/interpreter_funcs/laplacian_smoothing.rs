@@ -5,8 +5,7 @@ use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
 };
-use crate::mesh_smoothing;
-use crate::mesh_topology_analysis;
+use crate::mesh::{smoothing, topology};
 
 pub struct FuncLaplacianSmoothing;
 
@@ -26,7 +25,7 @@ impl Func for FuncLaplacianSmoothing {
         &[
             ParamInfo {
                 name: "Mesh",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
@@ -42,22 +41,17 @@ impl Func for FuncLaplacianSmoothing {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_geometry();
+        let mesh = args[0].unwrap_mesh();
         let iterations = args[1].unwrap_uint();
 
-        let v2v = mesh_topology_analysis::vertex_to_vertex_topology(geometry);
+        let v2v = topology::compute_vertex_to_vertex_topology(mesh);
 
-        let (value, _, _) = mesh_smoothing::laplacian_smoothing(
-            geometry,
-            &v2v,
-            cmp::min(255, iterations),
-            &[],
-            false,
-        );
-        Ok(Value::Geometry(Arc::new(value)))
+        let (value, _, _) =
+            smoothing::laplacian_smoothing(mesh, &v2v, cmp::min(255, iterations), &[], false);
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

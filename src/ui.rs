@@ -6,7 +6,7 @@ use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use crate::convert::{clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
 use crate::interpreter::ast;
 use crate::interpreter::{ParamRefinement, Ty};
-use crate::renderer::DrawGeometryMode;
+use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
 const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
@@ -158,7 +158,7 @@ impl<'a> UiFrame<'a> {
         self.imgui_ui.render()
     }
 
-    pub fn draw_viewport_settings_window(&self, draw_mode: &mut DrawGeometryMode) -> bool {
+    pub fn draw_viewport_settings_window(&self, draw_mode: &mut DrawMeshMode) -> bool {
         let ui = &self.imgui_ui;
 
         const VIEWPORT_WINDOW_WIDTH: f32 = 150.0;
@@ -182,21 +182,17 @@ impl<'a> UiFrame<'a> {
             .build(ui, || {
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
 
-                ui.radio_button(
-                    imgui::im_str!("Shaded"),
-                    draw_mode,
-                    DrawGeometryMode::Shaded,
-                );
-                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawGeometryMode::Edges);
+                ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
+                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawMeshMode::Edges);
                 ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
                     draw_mode,
-                    DrawGeometryMode::ShadedEdges,
+                    DrawMeshMode::ShadedEdges,
                 );
                 ui.radio_button(
                     imgui::im_str!("X-RAY"),
                     draw_mode,
-                    DrawGeometryMode::ShadedEdgesXray,
+                    DrawMeshMode::ShadedEdgesXray,
                 );
 
                 reset_viewport_clicked = ui.button(imgui::im_str!("Reset Viewport"), [0.0, 0.0]);
@@ -369,12 +365,12 @@ impl<'a> UiFrame<'a> {
                                                     ));
                                                 }
                                         }
-                                        ParamRefinement::Geometry => {
+                                        ParamRefinement::Mesh => {
                                             let changed_expr = self.draw_var_combo_box(
                                                 session,
                                                 stmt_index,
                                                 arg,
-                                                Ty::Geometry,
+                                                Ty::Mesh,
                                                 &input_label,
                                             );
 
@@ -386,12 +382,12 @@ impl<'a> UiFrame<'a> {
                                                 ));
                                             }
                                         }
-                                        ParamRefinement::GeometryArray => {
+                                        ParamRefinement::MeshArray => {
                                             let changed_expr = self.draw_var_combo_box(
                                                 session,
                                                 stmt_index,
                                                 arg,
-                                                Ty::GeometryArray,
+                                                Ty::MeshArray,
                                                 &input_label,
                                             );
 
@@ -579,10 +575,10 @@ impl<'a> UiFrame<'a> {
                     ParamRefinement::String => {
                         ast::Expr::Lit(ast::LitExpr::String(Arc::new(String::new())))
                     }
-                    ParamRefinement::Geometry => {
+                    ParamRefinement::Mesh => {
                         let one_past_last_stmt = session.stmts().len();
                         let mut visible_vars_iter =
-                            session.visible_vars_at_stmt(one_past_last_stmt, Ty::Geometry);
+                            session.visible_vars_at_stmt(one_past_last_stmt, Ty::Mesh);
 
                         if visible_vars_iter.clone().count() == 0 {
                             ast::Expr::Lit(ast::LitExpr::Nil)
@@ -594,10 +590,10 @@ impl<'a> UiFrame<'a> {
                             ast::Expr::Var(ast::VarExpr::new(first))
                         }
                     }
-                    ParamRefinement::GeometryArray => {
+                    ParamRefinement::MeshArray => {
                         let one_past_last_stmt = session.stmts().len();
                         let mut visible_vars_iter =
-                            session.visible_vars_at_stmt(one_past_last_stmt, Ty::GeometryArray);
+                            session.visible_vars_at_stmt(one_past_last_stmt, Ty::MeshArray);
 
                         if visible_vars_iter.clone().count() == 0 {
                             ast::Expr::Lit(ast::LitExpr::Nil)
@@ -674,7 +670,7 @@ impl<'a> UiFrame<'a> {
                         .var_name_for_ident(var_ident)
                         .expect("Failed to find name for ident"),
                     var_ident,
-                    ty == Ty::GeometryArray,
+                    ty == Ty::MeshArray,
                 )
             })
             .unwrap_or_else(|| imgui::ImString::new("<Nil>"));
@@ -688,7 +684,7 @@ impl<'a> UiFrame<'a> {
                         .var_name_for_ident(var_ident)
                         .expect("Failed to find name for ident"),
                     var_ident,
-                    ty == Ty::GeometryArray,
+                    ty == Ty::MeshArray,
                 );
                 let selected = if let Some(selected_var_index) = selected_var_index {
                     index == selected_var_index

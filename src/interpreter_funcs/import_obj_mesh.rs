@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::importer::{Importer, ImporterError, ObjCache};
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, GeometryArrayValue, ParamInfo, ParamRefinement, Ty, Value,
+    Func, FuncError, FuncFlags, FuncInfo, MeshArrayValue, ParamInfo, ParamRefinement, Ty, Value,
 };
 
 #[derive(Debug, PartialEq)]
@@ -37,7 +37,7 @@ impl<C: ObjCache> FuncImportObjMesh<C> {
 impl<C: ObjCache> Func for FuncImportObjMesh<C> {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Import OBJ",
+            name: "Import OBJ as Group",
             return_value_name: "Imported Group",
         }
     }
@@ -55,7 +55,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::GeometryArray
+        Ty::MeshArray
     }
 
     fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
@@ -67,13 +67,13 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
                 if models.is_empty() {
                     Err(FuncError::new(FuncImportObjMeshError::Empty))
                 } else {
-                    let geometries: Vec<_> = models
+                    let meshes: Vec<_> = models
                         .into_iter()
-                        .map(|model| Arc::new(model.geometry))
+                        .map(|model| Arc::new(model.mesh))
                         .collect();
 
-                    let value = GeometryArrayValue::new(geometries);
-                    Ok(Value::GeometryArray(Arc::new(value)))
+                    let value = MeshArrayValue::new(meshes);
+                    Ok(Value::MeshArray(Arc::new(value)))
                 }
             }
             Err(err) => Err(FuncError::new(FuncImportObjMeshError::Importer(err))),

@@ -1,22 +1,22 @@
 use std::sync::Arc;
 
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
+    Func, FuncError, FuncFlags, FuncInfo, MeshArrayValue, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::tools;
 
-pub struct FuncRevertMeshFaces;
+pub struct FuncDisjointMesh;
 
-impl Func for FuncRevertMeshFaces {
+impl Func for FuncDisjointMesh {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Revert Faces",
-            return_value_name: "Reverted Mesh",
+            name: "Disjoint Mesh",
+            return_value_name: "Disjoint Group",
         }
     }
 
     fn flags(&self) -> FuncFlags {
-        FuncFlags::PURE
+        FuncFlags::empty()
     }
 
     fn param_info(&self) -> &[ParamInfo] {
@@ -28,13 +28,15 @@ impl Func for FuncRevertMeshFaces {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Mesh
+        Ty::MeshArray
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
-        let value = tools::revert_mesh_faces(mesh);
-        Ok(Value::Mesh(Arc::new(value)))
+        let meshes = tools::disjoint_mesh(&mesh);
+        let value = MeshArrayValue::new(meshes.into_iter().map(Arc::new).collect());
+
+        Ok(Value::MeshArray(Arc::new(value)))
     }
 }

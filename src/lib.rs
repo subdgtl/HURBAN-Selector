@@ -5,16 +5,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use nalgebra::geometry::Point3;
+use nalgebra::Point3;
 
 use crate::camera::{Camera, CameraOptions};
 use crate::convert::cast_usize;
-use crate::geometry::Geometry;
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
-use crate::renderer::{
-    DrawGeometryMode, GpuGeometry, GpuGeometryId, Options as RendererOptions, Renderer,
-};
+use crate::mesh::{analysis, Mesh};
+use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshId, Options as RendererOptions, Renderer};
 use crate::session::{PollInterpreterResponseNotification, Session};
 use crate::ui::Ui;
 
@@ -24,22 +22,18 @@ pub mod renderer;
 
 mod camera;
 mod convert;
-mod edge_analysis;
 mod input;
 mod interpreter;
 mod interpreter_funcs;
 mod interpreter_server;
 mod logger;
 mod math;
-mod mesh_analysis;
-mod mesh_smoothing;
-mod mesh_tools;
-mod mesh_topology_analysis;
-mod plane_tools;
+mod mesh;
+mod plane;
 mod platform;
+mod pull;
 mod session;
 mod ui;
-mod vertex_tools;
 
 const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 
@@ -109,7 +103,7 @@ pub fn init_and_run(options: Options) -> ! {
         },
     );
 
-    let mut renderer_draw_geometry_mode = DrawGeometryMode::Shaded;
+    let mut renderer_draw_mesh_mode = DrawMeshMode::Shaded;
     let mut renderer = Renderer::new(
         &window,
         &camera.projection_matrix(),
@@ -127,8 +121,8 @@ pub fn init_and_run(options: Options) -> ! {
         },
     );
 
-    let mut scene_geometries: HashMap<ValuePath, Arc<Geometry>> = HashMap::new();
-    let mut scene_gpu_geometry_ids: HashMap<ValuePath, GpuGeometryId> = HashMap::new();
+    let mut scene_meshes: HashMap<ValuePath, Arc<Mesh>> = HashMap::new();
+    let mut scene_gpu_mesh_ids: HashMap<ValuePath, GpuMeshId> = HashMap::new();
 
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
 
@@ -181,14 +175,14 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.zoom_step(input_state.camera_zoom_steps);
 
                 let ui_reset_viewport =
-                    ui_frame.draw_viewport_settings_window(&mut renderer_draw_geometry_mode);
+                    ui_frame.draw_viewport_settings_window(&mut renderer_draw_mesh_mode);
                 ui_frame.draw_pipeline_window(&mut session);
                 ui_frame.draw_operations_window(&mut session);
 
                 if input_state.camera_reset_viewport || ui_reset_viewport {
                     camera_interpolation = Some(CameraInterpolation::new(
                         &camera,
-                        scene_geometries.values().map(Arc::as_ref),
+                        scene_meshes.values().map(Arc::as_ref),
                         time,
                     ));
                 }
@@ -213,53 +207,53 @@ pub fn init_and_run(options: Options) -> ! {
 
                 session.poll_interpreter_response(|callback_value| match callback_value {
                     PollInterpreterResponseNotification::Add(var_ident, value) => match value {
-                        Value::Geometry(geometry) => {
-                            let gpu_geometry = GpuGeometry::from_geometry(&geometry);
-                            let gpu_geometry_id = renderer
-                                .add_scene_geometry(&gpu_geometry)
-                                .expect("Failed to upload scene geometry");
+                        Value::Mesh(mesh) => {
+                            let gpu_mesh = GpuMesh::from_mesh(&mesh);
+                            let gpu_mesh_id = renderer
+                                .add_scene_mesh(&gpu_mesh)
+                                .expect("Failed to upload scene mesh");
 
                             let path = ValuePath(var_ident, 0);
 
-                            scene_geometries.insert(path, geometry);
-                            scene_gpu_geometry_ids.insert(path, gpu_geometry_id);
+                            scene_meshes.insert(path, mesh);
+                            scene_gpu_mesh_ids.insert(path, gpu_mesh_id);
                         }
-                        Value::GeometryArray(geometry_array) => {
-                            for (index, geometry) in geometry_array.iter().enumerate() {
-                                let gpu_geometry = GpuGeometry::from_geometry(&geometry);
-                                let gpu_geometry_id = renderer
-                                    .add_scene_geometry(&gpu_geometry)
-                                    .expect("Failed to upload scene geometry");
+                        Value::MeshArray(mesh_array) => {
+                            for (index, mesh) in mesh_array.iter().enumerate() {
+                                let gpu_mesh = GpuMesh::from_mesh(&mesh);
+                                let gpu_mesh_id = renderer
+                                    .add_scene_mesh(&gpu_mesh)
+                                    .expect("Failed to upload scene mesh");
 
                                 let path = ValuePath(var_ident, index);
 
-                                scene_geometries.insert(path, geometry);
-                                scene_gpu_geometry_ids.insert(path, gpu_geometry_id);
+                                scene_meshes.insert(path, mesh);
+                                scene_gpu_mesh_ids.insert(path, gpu_mesh_id);
                             }
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
                     PollInterpreterResponseNotification::Remove(var_ident, value) => match value {
-                        Value::Geometry(_) => {
+                        Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
-                            scene_geometries.remove(&path);
-                            let gpu_geometry_id = scene_gpu_geometry_ids
+                            scene_meshes.remove(&path);
+                            let gpu_mesh_id = scene_gpu_mesh_ids
                                 .remove(&path)
-                                .expect("Gpu geometry ID was not tracked");
+                                .expect("Gpu mesh ID was not tracked");
 
-                            renderer.remove_scene_geometry(gpu_geometry_id);
+                            renderer.remove_scene_mesh(gpu_mesh_id);
                         }
-                        Value::GeometryArray(geometry_array) => {
-                            for index in 0..geometry_array.len() {
+                        Value::MeshArray(mesh_array) => {
+                            for index in 0..mesh_array.len() {
                                 let path = ValuePath(var_ident, cast_usize(index));
 
-                                scene_geometries.remove(&path);
-                                let gpu_geometry_id = scene_gpu_geometry_ids
+                                scene_meshes.remove(&path);
+                                let gpu_mesh_id = scene_gpu_mesh_ids
                                     .remove(&path)
-                                    .expect("Gpu geometry ID was not tracked");
+                                    .expect("Gpu mesh ID was not tracked");
 
-                                renderer.remove_scene_geometry(gpu_geometry_id);
+                                renderer.remove_scene_mesh(gpu_mesh_id);
                             }
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
@@ -285,8 +279,7 @@ pub fn init_and_run(options: Options) -> ! {
                 renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
                 let mut render_pass = renderer.begin_render_pass();
 
-                render_pass
-                    .draw_geometry(scene_gpu_geometry_ids.values(), renderer_draw_geometry_mode);
+                render_pass.draw_mesh(scene_gpu_mesh_ids.values(), renderer_draw_mesh_mode);
                 render_pass.draw_ui(imgui_draw_data);
 
                 render_pass.submit();
@@ -338,12 +331,12 @@ struct CameraInterpolation {
 }
 
 impl CameraInterpolation {
-    fn new<'a, I>(camera: &Camera, scene_geometries: I, time: Instant) -> Self
+    fn new<'a, I>(camera: &Camera, scene_meshes: I, time: Instant) -> Self
     where
-        I: IntoIterator<Item = &'a Geometry> + Clone,
+        I: IntoIterator<Item = &'a Mesh> + Clone,
     {
         let (source_origin, source_radius) = camera.visible_sphere();
-        let (target_origin, target_radius) = geometry::compute_bounding_sphere(scene_geometries);
+        let (target_origin, target_radius) = analysis::compute_bounding_sphere(scene_meshes);
 
         CameraInterpolation {
             source_origin,

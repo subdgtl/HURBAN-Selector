@@ -11,7 +11,7 @@ pub use self::func::{
     BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncFlags, FuncInfo,
     IntParamRefinement, ParamInfo, ParamRefinement, UintParamRefinement,
 };
-pub use self::value::{GeometryArrayValue, Ty, Value};
+pub use self::value::{MeshArrayValue, Ty, Value};
 
 pub mod ast;
 pub mod func;
@@ -806,8 +806,8 @@ mod tests {
                 Ty::Float => ParamRefinement::Float(FloatParamRefinement::default()),
                 Ty::Float3 => ParamRefinement::Float3(Float3ParamRefinement::default()),
                 Ty::String => ParamRefinement::String,
-                Ty::Geometry => ParamRefinement::Geometry,
-                Ty::GeometryArray => ParamRefinement::GeometryArray,
+                Ty::Mesh => ParamRefinement::Mesh,
+                Ty::MeshArray => ParamRefinement::MeshArray,
             },
             optional,
         }

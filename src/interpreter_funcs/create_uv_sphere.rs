@@ -2,11 +2,11 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::geometry;
 use crate::interpreter::{
     Float3ParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo,
     ParamRefinement, Ty, UintParamRefinement, Value,
 };
+use crate::mesh::primitive;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncCreateUvSphereError {
@@ -100,7 +100,7 @@ impl Func for FuncCreateUvSphere {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
@@ -121,7 +121,7 @@ impl Func for FuncCreateUvSphere {
             }));
         }
 
-        let value = geometry::uv_sphere_geometry(position, scale, n_parallels, n_meridians);
-        Ok(Value::Geometry(Arc::new(value)))
+        let value = primitive::create_uv_sphere(position, scale, n_parallels, n_meridians);
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

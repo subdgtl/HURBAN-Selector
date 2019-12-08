@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::geometry::Geometry;
+use crate::mesh::Mesh;
 
 /// A type of a value.
 ///
@@ -17,8 +17,8 @@ pub enum Ty {
     Float,
     Float3,
     String,
-    Geometry,
-    GeometryArray,
+    Mesh,
+    MeshArray,
 }
 
 impl fmt::Display for Ty {
@@ -31,8 +31,8 @@ impl fmt::Display for Ty {
             Ty::Float => f.write_str("Float"),
             Ty::Float3 => f.write_str("Float3"),
             Ty::String => f.write_str("String"),
-            Ty::Geometry => f.write_str("Geometry"),
-            Ty::GeometryArray => f.write_str("GeometryArray"),
+            Ty::Mesh => f.write_str("Mesh"),
+            Ty::MeshArray => f.write_str("MeshArray"),
         }
     }
 }
@@ -47,8 +47,8 @@ pub enum Value {
     Float(f32),
     Float3([f32; 3]),
     String(Arc<String>),
-    Geometry(Arc<Geometry>),
-    GeometryArray(Arc<GeometryArrayValue>),
+    Mesh(Arc<Mesh>),
+    MeshArray(Arc<MeshArrayValue>),
 }
 
 impl Value {
@@ -62,8 +62,8 @@ impl Value {
             Value::Float(_) => Ty::Float,
             Value::Float3(_) => Ty::Float3,
             Value::String(_) => Ty::String,
-            Value::Geometry(_) => Ty::Geometry,
-            Value::GeometryArray(_) => Ty::GeometryArray,
+            Value::Mesh(_) => Ty::Mesh,
+            Value::MeshArray(_) => Ty::MeshArray,
         }
     }
 
@@ -121,13 +121,13 @@ impl Value {
         }
     }
 
-    /// Get the value if geometry, otherwise `None`.
+    /// Get the value if mesh, otherwise `None`.
     ///
     /// Useful for getting a value of an optional parameter.
     #[allow(dead_code)]
-    pub fn get_geometry(&self) -> Option<&Geometry> {
+    pub fn get_mesh(&self) -> Option<&Mesh> {
         match self {
-            Value::Geometry(geometry_ptr) => Some(geometry_ptr),
+            Value::Mesh(mesh_ptr) => Some(mesh_ptr),
             _ => None,
         }
     }
@@ -201,49 +201,49 @@ impl Value {
         }
     }
 
-    /// Get the value if geometry, otherwise panic.
+    /// Get the value if mesh, otherwise panic.
     ///
     /// # Panics
-    /// This function panics when value is not a geometry.
-    pub fn unwrap_geometry(&self) -> &Geometry {
+    /// This function panics when value is not a mesh.
+    pub fn unwrap_mesh(&self) -> &Mesh {
         match self {
-            Value::Geometry(geometry_ptr) => geometry_ptr,
-            _ => panic!("Value not geometry"),
+            Value::Mesh(mesh_ptr) => mesh_ptr,
+            _ => panic!("Value not mesh"),
         }
     }
 
-    /// Get the refcounted value if geometry, otherwise panic.
+    /// Get the refcounted value if mesh, otherwise panic.
     ///
     /// # Panics
-    /// This function panics when value is not a geometry.
-    pub fn unwrap_refcounted_geometry(&self) -> Arc<Geometry> {
+    /// This function panics when value is not a mesh.
+    pub fn unwrap_refcounted_mesh(&self) -> Arc<Mesh> {
         match self {
-            Value::Geometry(geometry_ptr) => Arc::clone(geometry_ptr),
-            _ => panic!("Value not geometry"),
+            Value::Mesh(mesh_ptr) => Arc::clone(mesh_ptr),
+            _ => panic!("Value not mesh"),
         }
     }
 
-    /// Get the value if geometry array, otherwise panic.
+    /// Get the value if mesh array, otherwise panic.
     ///
     /// # Panics
-    /// This function panics when value is not a geometry array.
-    pub fn unwrap_geometry_array(&self) -> &GeometryArrayValue {
+    /// This function panics when value is not a mesh array.
+    pub fn unwrap_mesh_array(&self) -> &MeshArrayValue {
         match self {
-            Value::GeometryArray(geometry_array_ptr) => geometry_array_ptr,
-            _ => panic!("Value not geometry array"),
+            Value::MeshArray(mesh_array_ptr) => mesh_array_ptr,
+            _ => panic!("Value not mesh array"),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct GeometryArrayValue(Vec<Arc<Geometry>>);
+pub struct MeshArrayValue(Vec<Arc<Mesh>>);
 
-impl GeometryArrayValue {
-    pub fn new(geometries: Vec<Arc<Geometry>>) -> Self {
-        Self(geometries)
+impl MeshArrayValue {
+    pub fn new(meshes: Vec<Arc<Mesh>>) -> Self {
+        Self(meshes)
     }
 
-    pub fn get_refcounted(&self, index: u32) -> Option<Arc<Geometry>> {
+    pub fn get_refcounted(&self, index: u32) -> Option<Arc<Mesh>> {
         self.0.get(cast_usize(index)).map(Arc::clone)
     }
 
@@ -255,7 +255,7 @@ impl GeometryArrayValue {
         self.0.is_empty()
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = Arc<Geometry>> + 'a {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = Arc<Mesh>> + 'a {
         self.0.iter().cloned()
     }
 }
@@ -272,19 +272,17 @@ impl fmt::Display for Value {
                 write!(f, "<float3 [{}, {}, {}]>", float3[0], float3[1], float3[2])
             }
             Value::String(string) => write!(f, "<string {}>", string),
-            Value::Geometry(geometry) => {
-                let vertex_count = geometry.vertices().len();
-                let face_count = geometry.faces().len();
+            Value::Mesh(mesh) => {
+                let vertex_count = mesh.vertices().len();
+                let face_count = mesh.faces().len();
 
                 write!(
                     f,
-                    "<geometry (vertices: {}, faces: {})>",
+                    "<mesh (vertices: {}, faces: {})>",
                     vertex_count, face_count
                 )
             }
-            Value::GeometryArray(geometry_array) => {
-                write!(f, "<geometry-array (size: {})>", geometry_array.len())
-            }
+            Value::MeshArray(mesh_array) => write!(f, "<mesh-array (size: {})>", mesh_array.len()),
         }
     }
 }

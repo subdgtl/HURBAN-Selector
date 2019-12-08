@@ -1,11 +1,11 @@
 use std::iter;
 use std::sync::Arc;
 
-use crate::geometry;
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
 };
+use crate::mesh::{analysis, primitive};
 
 pub struct FuncShrinkWrap;
 
@@ -25,7 +25,7 @@ impl Func for FuncShrinkWrap {
         &[
             ParamInfo {
                 name: "Mesh",
-                refinement: ParamRefinement::Geometry,
+                refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
@@ -41,15 +41,15 @@ impl Func for FuncShrinkWrap {
     }
 
     fn return_ty(&self) -> Ty {
-        Ty::Geometry
+        Ty::Mesh
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let geometry = args[0].unwrap_geometry();
+        let mesh = args[0].unwrap_mesh();
         let sphere_density = args[1].unwrap_uint();
 
-        let (center, radius) = geometry::compute_bounding_sphere(iter::once(geometry));
-        let mut value = geometry::uv_sphere_geometry(
+        let (center, radius) = analysis::compute_bounding_sphere(iter::once(mesh));
+        let mut value = primitive::create_uv_sphere(
             center.coords.into(),
             radius,
             sphere_density,
@@ -57,11 +57,11 @@ impl Func for FuncShrinkWrap {
         );
 
         for vertex in value.vertices_mut() {
-            if let Some(closest) = geometry::find_closest_point(vertex, geometry) {
+            if let Some(closest) = analysis::find_closest_point(vertex, mesh) {
                 vertex.coords = closest.coords;
             }
         }
 
-        Ok(Value::Geometry(Arc::new(value)))
+        Ok(Value::Mesh(Arc::new(value)))
     }
 }

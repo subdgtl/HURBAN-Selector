@@ -5,13 +5,13 @@ use crate::interpreter::{Func, FuncIdent};
 
 use self::create_plane::FuncCreatePlane;
 use self::create_uv_sphere::FuncCreateUvSphere;
+use self::disjoint_mesh::FuncDisjointMesh;
 use self::extract::FuncExtract;
 use self::import_obj_mesh::FuncImportObjMesh;
 use self::join_meshes::FuncJoinMeshes;
 use self::laplacian_smoothing::FuncLaplacianSmoothing;
 use self::loop_subdivision::FuncLoopSubdivision;
 use self::revert_mesh_faces::FuncRevertMeshFaces;
-use self::separate_isolated_meshes::FuncSeparateIsolatedMeshes;
 use self::shrink_wrap::FuncShrinkWrap;
 use self::synchronize_mesh_faces::FuncSynchronizeMeshFaces;
 use self::transform::FuncTransform;
@@ -19,13 +19,13 @@ use self::weld::FuncWeld;
 
 mod create_plane;
 mod create_uv_sphere;
+mod disjoint_mesh;
 mod extract;
 mod import_obj_mesh;
 mod join_meshes;
 mod laplacian_smoothing;
 mod loop_subdivision;
 mod revert_mesh_faces;
-mod separate_isolated_meshes;
 mod shrink_wrap;
 mod synchronize_mesh_faces;
 mod transform;
@@ -53,7 +53,7 @@ pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(3001);
 
 // Tool funcs
 pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(9000);
-pub const FUNC_ID_SEPARATE_ISOLATED_MESHES: FuncIdent = FuncIdent(9001);
+pub const FUNC_ID_DISJOINT_MESH: FuncIdent = FuncIdent(9001);
 pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(9002);
 pub const FUNC_ID_WELD: FuncIdent = FuncIdent(9003);
 pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(9004);
@@ -93,10 +93,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
 
     // Tool funcs
     funcs.insert(FUNC_ID_SHRINK_WRAP, Box::new(FuncShrinkWrap));
-    funcs.insert(
-        FUNC_ID_SEPARATE_ISOLATED_MESHES,
-        Box::new(FuncSeparateIsolatedMeshes),
-    );
+    funcs.insert(FUNC_ID_DISJOINT_MESH, Box::new(FuncDisjointMesh));
     funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncJoinMeshes));
     funcs.insert(FUNC_ID_WELD, Box::new(FuncWeld));
     funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncRevertMeshFaces));

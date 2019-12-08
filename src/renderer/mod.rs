@@ -1,8 +1,8 @@
-pub use self::scene_renderer::{AddGeometryError, DrawGeometryMode, GpuGeometry, GpuGeometryId};
+pub use self::scene_renderer::{AddMeshError, DrawMeshMode, GpuMesh, GpuMeshId};
 
 use std::fmt;
 
-use nalgebra::base::Matrix4;
+use nalgebra::Matrix4;
 
 use self::imgui_renderer::{ImguiRenderer, Options as ImguiRendererOptions};
 use self::scene_renderer::{
@@ -265,21 +265,18 @@ impl Renderer {
         self.depth_texture_view = depth_texture.create_default_view();
     }
 
-    /// Upload geometry to the GPU to be used in scene rendering. It
+    /// Uploads mesh to the GPU to be used in scene rendering. It
     /// will be available for drawing in subsequent render passes.
-    pub fn add_scene_geometry(
-        &mut self,
-        geometry: &GpuGeometry,
-    ) -> Result<GpuGeometryId, AddGeometryError> {
-        self.scene_renderer.add_geometry(&self.device, geometry)
+    pub fn add_scene_mesh(&mut self, mesh: &GpuMesh) -> Result<GpuMeshId, AddMeshError> {
+        self.scene_renderer.add_mesh(&self.device, mesh)
     }
 
-    /// Remove geometry from the GPU.
-    pub fn remove_scene_geometry(&mut self, id: GpuGeometryId) {
-        self.scene_renderer.remove_geometry(id);
+    /// Removes mesh from the GPU.
+    pub fn remove_scene_mesh(&mut self, id: GpuMeshId) {
+        self.scene_renderer.remove_mesh(id);
     }
 
-    /// Upload an RGBA8 texture to the GPU to be used in UI
+    /// Uploads an RGBA8 texture to the GPU to be used in UI
     /// rendering. It will be available for drawing in the subsequent
     /// render passes.
     #[allow(dead_code)]
@@ -298,13 +295,13 @@ impl Renderer {
         )
     }
 
-    /// Remove texture from the GPU.
+    /// Removes texture from the GPU.
     #[allow(dead_code)]
     pub fn remove_ui_texture(&mut self, id: imgui::TextureId) {
         self.imgui_renderer.remove_texture(id);
     }
 
-    /// Start recording draw commands.
+    /// Starts recording draw commands.
     pub fn begin_render_pass(&mut self) -> RenderPass {
         let frame = self.swap_chain.get_next_texture();
         let encoder = self
@@ -342,12 +339,12 @@ pub struct RenderPass<'a> {
 }
 
 impl RenderPass<'_> {
-    /// Record a geometry drawing operation to the command
-    /// buffer. Geometries with provided ids must be present in the
+    /// Record a mesh drawing operation to the command
+    /// buffer. Meshes with provided ids must be present in the
     /// renderer.
-    pub fn draw_geometry<'a, I>(&mut self, ids: I, mode: DrawGeometryMode)
+    pub fn draw_mesh<'a, I>(&mut self, ids: I, mode: DrawMeshMode)
     where
-        I: IntoIterator<Item = &'a GpuGeometryId> + Clone,
+        I: IntoIterator<Item = &'a GpuMeshId> + Clone,
     {
         let mut clear_flags = SceneRendererClearFlags::empty();
         if self.color_needs_clearing {
@@ -357,7 +354,7 @@ impl RenderPass<'_> {
             clear_flags.insert(SceneRendererClearFlags::DEPTH);
         }
 
-        self.scene_renderer.draw_geometry(
+        self.scene_renderer.draw_mesh(
             mode,
             clear_flags,
             self.encoder

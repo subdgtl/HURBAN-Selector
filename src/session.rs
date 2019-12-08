@@ -34,14 +34,14 @@ pub struct Session {
 
     unused_values: HashMap<VarIdent, Value>,
 
-    // Auxiliary side-arrays for prog. Determine geometry and
-    // geometry-array vars visible from a stmt. The value is read by
-    // producing a slice from the begining of the array to the current
-    // stmt's index (exclusive), and filtering only `Some`
-    // values. E.g. 0th stmt can not see any vars, 1st stmt can see
-    // vars produced by the 0th stmt (if it is `Some`), etc.
-    var_visibility_geometry: Vec<Option<VarIdent>>,
-    var_visibility_geometry_array: Vec<Option<VarIdent>>,
+    // Auxiliary side-arrays for prog. Determine mesh and mesh-array
+    // vars visible from a stmt. The value is read by producing a
+    // slice from the begining of the array to the current stmt's
+    // index (exclusive), and filtering only `Some` values. E.g. 0th
+    // stmt can not see any vars, 1st stmt can see vars produced by
+    // the 0th stmt (if it is `Some`), etc.
+    var_visibility_mesh: Vec<Option<VarIdent>>,
+    var_visibility_mesh_array: Vec<Option<VarIdent>>,
 
     function_table: BTreeMap<FuncIdent, Box<dyn Func>>,
 }
@@ -57,8 +57,8 @@ impl Session {
 
             unused_values: HashMap::new(),
 
-            var_visibility_geometry: Vec::new(),
-            var_visibility_geometry_array: Vec::new(),
+            var_visibility_mesh: Vec::new(),
+            var_visibility_mesh_array: Vec::new(),
 
             // FIXME: @Correctness this is a hack that is currently
             // harmless, but should eventually be cleaned up. Some
@@ -213,8 +213,8 @@ impl Session {
     ) -> impl Iterator<Item = VarIdent> + Clone + 'a {
         static EMPTY: Vec<Option<VarIdent>> = Vec::new();
         let var_visibility = match ty {
-            Ty::Geometry => &self.var_visibility_geometry,
-            Ty::GeometryArray => &self.var_visibility_geometry_array,
+            Ty::Mesh => &self.var_visibility_mesh,
+            Ty::MeshArray => &self.var_visibility_mesh_array,
             _ => &EMPTY,
         };
 
@@ -399,36 +399,35 @@ impl Session {
     fn recompute_var_visibility(&mut self) {
         // FIXME: Get variable visibility analysis from interpreter
 
-        self.var_visibility_geometry.clear();
-        self.var_visibility_geometry_array.clear();
+        self.var_visibility_mesh.clear();
+        self.var_visibility_mesh_array.clear();
 
-        let mut n_geometries = 0;
-        let mut n_geometry_arrays = 0;
+        let mut n_mesh = 0;
+        let mut n_mesh_array = 0;
 
         for stmt in self.prog.stmts() {
             let Stmt::VarDecl(var_decl) = stmt;
             let func_ident = var_decl.init_expr().ident();
             let func = &self.function_table[&func_ident];
             match func.return_ty() {
-                Ty::Geometry => {
-                    self.var_visibility_geometry.push(Some(var_decl.ident()));
-                    self.var_visibility_geometry_array.push(None);
+                Ty::Mesh => {
+                    self.var_visibility_mesh.push(Some(var_decl.ident()));
+                    self.var_visibility_mesh_array.push(None);
 
-                    n_geometries += 1;
+                    n_mesh += 1;
                 }
-                Ty::GeometryArray => {
-                    self.var_visibility_geometry.push(None);
-                    self.var_visibility_geometry_array
-                        .push(Some(var_decl.ident()));
+                Ty::MeshArray => {
+                    self.var_visibility_mesh.push(None);
+                    self.var_visibility_mesh_array.push(Some(var_decl.ident()));
 
-                    n_geometry_arrays += 1;
+                    n_mesh_array += 1;
                 }
                 _ => panic!("Unsupported variable type"),
             }
         }
 
         assert_eq!(
-            n_geometries + n_geometry_arrays,
+            n_mesh + n_mesh_array,
             self.prog.stmts().len(),
             "Each stmt is a var decl and must produce a variable",
         );
