@@ -43,7 +43,7 @@ where
     centroid / (vertex_count as f32)
 }
 
-// FIXME: deprecate and remove, superseded by pull point to mesh
+// FIXME: Make more generic: take &[Point] or Iterator<Item=&Point>
 pub fn find_closest_point(position: &Point3<f32>, mesh: &Mesh) -> Option<Point3<f32>> {
     let vertices = mesh.vertices();
     if vertices.is_empty() {
