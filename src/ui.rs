@@ -764,12 +764,12 @@ fn file_input(
     file_ext_filter: Option<(&str, &str)>,
     buffer: &mut imgui::ImString,
 ) -> bool {
+    use std::env;
+    use std::path::Path;
+
     let open_button_label = imgui::im_str!("Open##{}", label);
     let open_button_width = ui.calc_text_size(&open_button_label, true, 50.0)[0] + 8.0;
     let input_position = open_button_width + 2.0; // Padding
-
-    use std::env;
-    use std::fs;
 
     let ext: Option<(&[&str], &str)> = file_ext_filter
         .as_ref()
@@ -780,21 +780,18 @@ fn file_input(
     let group_token = ui.begin_group();
 
     if ui.button(&open_button_label, [open_button_width, 0.0]) {
-        if let Some(absolute_path) = tinyfiledialogs::open_file_dialog("Open", "", ext) {
-            let current_dir = env::current_dir().expect("Couldn't get current dir");
-
-            let current_dir_canonical =
-                fs::canonicalize(&current_dir).expect("Failed path canonicalization");
-            let path_canonical =
-                fs::canonicalize(absolute_path).expect("Failed path canonicalization");
-
+        if let Some(absolute_path_string) = tinyfiledialogs::open_file_dialog("Open", "", ext) {
             buffer.clear();
-            match path_canonical.strip_prefix(&current_dir_canonical) {
+
+            let current_dir = env::current_dir().expect("Couldn't get current dir");
+            let absolute_path = Path::new(&absolute_path_string);
+
+            match absolute_path.strip_prefix(&current_dir) {
                 Ok(stripped_path) => {
                     buffer.push_str(&stripped_path.to_string_lossy());
                 }
                 Err(_) => {
-                    buffer.push_str(&path_canonical.to_string_lossy());
+                    buffer.push_str(&absolute_path.to_string_lossy());
                 }
             }
         }
