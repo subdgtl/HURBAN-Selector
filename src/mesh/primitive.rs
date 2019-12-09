@@ -27,7 +27,7 @@ pub fn create_mesh_plane(position: [f32; 3], scale: f32) -> Mesh {
 }
 
 #[allow(dead_code)]
-pub fn create_box_sharp(center: Point3<f32>, scale: [f32; 3]) -> Mesh {
+pub fn create_box(center: Point3<f32>, scale: [f32; 3]) -> Mesh {
     #[rustfmt::skip]
 
     let vertex_positions = vec![
