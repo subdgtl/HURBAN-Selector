@@ -358,20 +358,18 @@ impl<'a> UiFrame<'a> {
                                                         ast::Expr::Lit(ast::LitExpr::String(string_value)),
                                                     ));
                                                 }
-                                            } else {
-                                                if ui
-                                                    .input_text(&input_label, &mut imstring_buffer)
-                                                    .read_only(interpreter_busy)
-                                                    .build() {
-                                                        let string_value = format!("{}", imstring_buffer);
-                                                        let string_value = Arc::new(string_value);
-                                                        change = Some((
-                                                            stmt_index,
-                                                            arg_index,
-                                                            ast::Expr::Lit(ast::LitExpr::String(string_value)),
-                                                        ));
-                                                    }
-                                            }
+                                            } else if ui
+                                                .input_text(&input_label, &mut imstring_buffer)
+                                                .read_only(interpreter_busy)
+                                                .build() {
+                                                    let string_value = format!("{}", imstring_buffer);
+                                                    let string_value = Arc::new(string_value);
+                                                    change = Some((
+                                                        stmt_index,
+                                                        arg_index,
+                                                        ast::Expr::Lit(ast::LitExpr::String(string_value)),
+                                                    ));
+                                                }
 
                                             imstring_buffer.clear();
                                         }
@@ -781,10 +779,7 @@ fn file_input(
 
     let group_token = ui.begin_group();
 
-    if ui.button(
-        &imgui::im_str!("Edit##{}", label),
-        [edit_button_width, 0.0],
-    ) {
+    if ui.button(&imgui::im_str!("Edit##{}", label), [edit_button_width, 0.0]) {
         if let Some(absolute_path) = tinyfiledialogs::open_file_dialog("Open", "", ext) {
             let current_dir = env::current_dir().expect("Couldn't get current dir");
 
