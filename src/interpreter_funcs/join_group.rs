@@ -11,7 +11,7 @@ impl Func for FuncJoinGroup {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Join Group",
-            return_value_name: "Joined Meshes",
+            return_value_name: "Joined Mesh",
         }
     }
 
