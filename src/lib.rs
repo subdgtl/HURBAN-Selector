@@ -220,7 +220,7 @@ pub fn init_and_run(options: Options) -> ! {
                             scene_gpu_mesh_ids.insert(path, gpu_mesh_id);
                         }
                         Value::MeshArray(mesh_array) => {
-                            for (index, mesh) in mesh_array.iter().enumerate() {
+                            for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
                                 let gpu_mesh = GpuMesh::from_mesh(&mesh);
                                 let gpu_mesh_id = renderer
                                     .add_scene_mesh(&gpu_mesh)
