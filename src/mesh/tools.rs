@@ -674,7 +674,7 @@ mod tests {
 
     #[test]
     fn test_disjoint_mesh_returns_similar_for_cube() {
-        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let mesh = primitive::create_box_sharp(Point3::origin(), [1.0; 3]);
 
         let calculated_meshes = disjoint_mesh(&mesh);
 
@@ -724,7 +724,7 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces_once_does_not_equal_original() {
-        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_box_sharp(Point3::origin(), [1.0; 3]);
         let cube_reverted = revert_mesh_faces(&cube);
 
         assert_ne!(cube, cube_reverted);
@@ -732,7 +732,7 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces_twice_does_equal_original() {
-        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_box_sharp(Point3::origin(), [1.0; 3]);
         let cube_twice_reverted = revert_mesh_faces(&revert_mesh_faces(&cube));
 
         assert_eq!(cube, cube_twice_reverted);

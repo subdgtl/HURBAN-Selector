@@ -84,14 +84,6 @@ pub fn create_cube_smooth(position: [f32; 3], scale: f32) -> Mesh {
 }
 
 #[allow(dead_code)]
-pub fn create_cube_sharp(position: [f32; 3], scale: f32) -> Mesh {
-    create_box_sharp(
-        Point3::new(position[0], position[1], position[2]),
-        [scale, scale, scale],
-    )
-}
-
-#[allow(dead_code)]
 pub fn create_box_sharp(center: Point3<f32>, scale: [f32; 3]) -> Mesh {
     #[rustfmt::skip]
 

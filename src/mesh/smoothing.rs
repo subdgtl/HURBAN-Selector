@@ -761,8 +761,8 @@ mod tests {
     }
 
     #[test]
-    fn test_loop_subdivision_snapshot_cube_sharp() {
-        let mesh = primitive::create_cube_sharp([0.0; 3], 1.0);
+    fn test_loop_subdivision_snapshot_box_sharp() {
+        let mesh = primitive::create_box_sharp(Point3::origin(), [1.0; 3]);
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh);
 
