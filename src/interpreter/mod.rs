@@ -805,7 +805,7 @@ mod tests {
                 Ty::Uint => ParamRefinement::Uint(UintParamRefinement::default()),
                 Ty::Float => ParamRefinement::Float(FloatParamRefinement::default()),
                 Ty::Float3 => ParamRefinement::Float3(Float3ParamRefinement::default()),
-                Ty::String => ParamRefinement::String,
+                Ty::String => ParamRefinement::String(StringParamRefinement::default()),
                 Ty::Mesh => ParamRefinement::Mesh,
                 Ty::MeshArray => ParamRefinement::MeshArray,
             },
