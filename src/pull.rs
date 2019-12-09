@@ -245,8 +245,7 @@ fn is_point_in_triangle(
         horizontal_vertex1.xy(),
         horizontal_vertex2.xy(),
         horizontal_point.xy(),
-    )
-    .expect("The triangle is degenerate");
+    );
 
     barycentric_point.x >= 0.0
         && barycentric_point.x <= 1.0

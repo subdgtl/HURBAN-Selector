@@ -12,14 +12,14 @@ pub fn compute_triangle_normal(
     Vector3::cross(&u, &v).normalize()
 }
 
-/// Computes barycentric coordinates of point P in triangle A, B,
-/// C. Returns `None` for degenerate triangles.
+
+/// Computes barycentric coordinates of point P in triangle A, B, C.
 pub fn compute_barycentric_coords(
     a: Point2<f32>,
     b: Point2<f32>,
     c: Point2<f32>,
     p: Point2<f32>,
-) -> Option<Point3<f32>> {
+) -> Point3<f32> {
     let ab = b - a;
     let ac = c - a;
     let pa = a - p;
@@ -27,15 +27,11 @@ pub fn compute_barycentric_coords(
     let ys = Vector3::new(ac.y, ab.y, pa.y);
     let ortho = xs.cross(&ys);
 
-    if f32::abs(ortho.z) < 1.0 {
-        None
-    } else {
-        Some(Point3::new(
-            1.0 - (ortho.x + ortho.y) / ortho.z,
-            ortho.y / ortho.z,
-            ortho.x / ortho.z,
-        ))
-    }
+    Point3::new(
+        1.0 - (ortho.x + ortho.y) / ortho.z,
+        ortho.y / ortho.z,
+        ortho.x / ortho.z,
+    )
 }
 
 /// Checks if all three points lay on the same line.
@@ -103,8 +99,7 @@ mod tests {
             triangle_points.1,
             triangle_points.2,
             test_point,
-        )
-        .expect("Could not calculate the barycentric coords");
+        );
 
         let barycentric_correct = Point3::new(0.333333, 0.333333, 0.333333);
 
@@ -129,8 +124,7 @@ mod tests {
             triangle_points.1,
             triangle_points.2,
             test_point,
-        )
-        .expect("Could not calculate the barycentric coords");
+        );
 
         let barycentric_correct = Point3::new(1.6666667, -0.33333334, -0.33333334);
 
