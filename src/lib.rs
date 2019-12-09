@@ -77,8 +77,6 @@ pub fn init_and_run(options: Options) -> ! {
         log::info!("Running in fullscreen mode, looking for compatible video modes...");
         let monitor = event_loop.primary_monitor();
 
-        // TODO: needs testing whether the best video mode is always
-        // given first on all systems
         if let Some(video_mode) = monitor.video_modes().next() {
             log::info!("Found fullscreen video mode: {}", video_mode);
             winit::window::WindowBuilder::new()
