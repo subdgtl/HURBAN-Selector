@@ -139,6 +139,63 @@ pub fn create_cube_sharp(position: [f32; 3], scale: f32) -> Mesh {
     Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
+#[allow(dead_code)]
+pub fn create_box_sharp(center: Point3<f32>, scale: [f32; 3]) -> Mesh {
+    #[rustfmt::skip]
+
+    let vertex_positions = vec![
+        // back
+        Point3::new(-0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
+        Point3::new(-0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
+        Point3::new( 0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
+        Point3::new( 0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
+        // front
+        Point3::new(-0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
+        Point3::new( 0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
+        Point3::new( 0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
+        Point3::new(-0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
+    ];
+
+    #[rustfmt::skip]
+    let vertex_normals = vec![
+        // back
+        Vector3::new( 0.0,  1.0,  0.0),
+        // front
+        Vector3::new( 0.0, -1.0,  0.0),
+        // top
+        Vector3::new( 0.0,  0.0,  1.0),
+        // bottom
+        Vector3::new( 0.0,  0.0, -1.0),
+        // right
+        Vector3::new( 1.0,  0.0,  0.0),
+        // left
+        Vector3::new(-1.0,  0.0,  0.0),
+    ];
+
+    let faces = vec![
+        // back
+        TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
+        TriangleFace::new_separate(2, 3, 0, 0, 0, 0),
+        // front
+        TriangleFace::new_separate(4, 5, 6, 1, 1, 1),
+        TriangleFace::new_separate(6, 7, 4, 1, 1, 1),
+        // top
+        TriangleFace::new_separate(7, 6, 1, 2, 2, 2),
+        TriangleFace::new_separate(2, 1, 6, 2, 2, 2),
+        // bottom
+        TriangleFace::new_separate(5, 0, 3, 3, 3, 3),
+        TriangleFace::new_separate(0, 5, 4, 3, 3, 3),
+        // right
+        TriangleFace::new_separate(6, 3, 2, 4, 4, 4),
+        TriangleFace::new_separate(3, 6, 5, 4, 4, 4),
+        // left
+        TriangleFace::new_separate(4, 7, 0, 5, 5, 5),
+        TriangleFace::new_separate(1, 0, 7, 5, 5, 5),
+    ];
+
+    Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
+}
+
 /// Create UV Sphere primitive at `position` with `scale`,
 /// `n_parallels` and `n_meridians`.
 ///
