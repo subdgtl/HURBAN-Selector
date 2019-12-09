@@ -788,6 +788,7 @@ fn file_input(
             let path_canonical =
                 fs::canonicalize(absolute_path).expect("Failed path canonicalization");
 
+            buffer.clear();
             match path_canonical.strip_prefix(&current_dir_canonical) {
                 Ok(stripped_path) => {
                     buffer.push_str(&stripped_path.to_string_lossy());
