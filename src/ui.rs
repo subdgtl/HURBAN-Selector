@@ -111,11 +111,11 @@ impl Ui {
             .prepare_frame(self.imgui_context.io_mut(), window)
             .expect("Failed to start imgui frame");
 
-        UiFrame::new(
-            &mut self.imgui_context,
-            &self.imgui_winit_platform,
-            &self.font_ids,
-        )
+        UiFrame {
+            imgui_winit_platform: &self.imgui_winit_platform,
+            imgui_ui: self.imgui_context.frame(),
+            _font_ids: &self.font_ids,
+        }
     }
 
     pub fn set_delta_time(&mut self, duration_last_frame_s: f32) {
@@ -132,18 +132,6 @@ pub struct UiFrame<'a> {
 }
 
 impl<'a> UiFrame<'a> {
-    pub fn new(
-        imgui_context: &'a mut imgui::Context,
-        imgui_winit_platform: &'a WinitPlatform,
-        font_ids: &'a FontIds,
-    ) -> Self {
-        UiFrame {
-            imgui_winit_platform,
-            imgui_ui: imgui_context.frame(),
-            _font_ids: font_ids,
-        }
-    }
-
     pub fn want_capture_keyboard(&self) -> bool {
         self.imgui_ui.io().want_capture_keyboard
     }
@@ -215,6 +203,9 @@ impl<'a> UiFrame<'a> {
 
         let interpreter_busy = session.interpreter_busy();
         let mut change = None;
+
+        // FIXME: @Optimization Try to not allocate this every frame.
+        let mut imstring_buffer = imgui::ImString::with_capacity(256);
 
         imgui::Window::new(imgui::im_str!("Pipeline"))
             .movable(false)
@@ -347,23 +338,32 @@ impl<'a> UiFrame<'a> {
                                                 ));
                                             }
                                         }
-                                        ParamRefinement::String => {
+                                        ParamRefinement::String(param_refinement_string) => {
                                             let string_lit = arg.unwrap_literal().unwrap_string();
-                                            let mut imstring_value = imgui::ImString::new(string_lit);
-                                            imstring_value.reserve(128);
+                                            imstring_buffer.push_str(string_lit);
 
-                                            if ui
-                                                .input_text(&input_label, &mut imstring_value)
-                                                .read_only(interpreter_busy)
-                                                .build() {
-                                                    let string_value = format!("{}", imstring_value);
-                                                    let string_value = Arc::new(string_value);
-                                                    change = Some((
-                                                        stmt_index,
-                                                        arg_index,
-                                                        ast::Expr::Lit(ast::LitExpr::String(string_value)),
-                                                    ));
-                                                }
+                                            if param_refinement_string.file_path {
+                                                // TODO: A file path picker can be in two states:
+                                                // - dormant: displaying an existing (read-only)
+                                                //   path and a button to activate
+                                                // - active: displaying the file picker
+                                                unimplemented!();
+                                            } else {
+                                                if ui
+                                                    .input_text(&input_label, &mut imstring_buffer)
+                                                    .read_only(interpreter_busy)
+                                                    .build() {
+                                                        let string_value = format!("{}", imstring_buffer);
+                                                        let string_value = Arc::new(string_value);
+                                                        change = Some((
+                                                            stmt_index,
+                                                            arg_index,
+                                                            ast::Expr::Lit(ast::LitExpr::String(string_value)),
+                                                        ));
+                                                    }
+                                            }
+
+                                            imstring_buffer.clear();
                                         }
                                         ParamRefinement::Mesh => {
                                             let changed_expr = self.draw_var_combo_box(
@@ -572,8 +572,9 @@ impl<'a> UiFrame<'a> {
                             float3_param_refinement.default_value_z.unwrap_or_default(),
                         ]))
                     }
-                    ParamRefinement::String => {
-                        ast::Expr::Lit(ast::LitExpr::String(Arc::new(String::new())))
+                    ParamRefinement::String(string_param_refinement) => {
+                        let initial_value = String::from(string_param_refinement.default_value);
+                        ast::Expr::Lit(ast::LitExpr::String(Arc::new(initial_value)))
                     }
                     ParamRefinement::Mesh => {
                         let one_past_last_stmt = session.stmts().len();

@@ -9,7 +9,7 @@ use std::time::Instant;
 pub use self::ast::{FuncIdent, VarIdent};
 pub use self::func::{
     BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncFlags, FuncInfo,
-    IntParamRefinement, ParamInfo, ParamRefinement, UintParamRefinement,
+    IntParamRefinement, ParamInfo, ParamRefinement, StringParamRefinement, UintParamRefinement,
 };
 pub use self::value::{MeshArrayValue, Ty, Value};
 
