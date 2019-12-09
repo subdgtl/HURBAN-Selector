@@ -344,7 +344,7 @@ impl<'a> UiFrame<'a> {
                                             imstring_buffer.push_str(string_lit);
 
                                             if param_refinement_string.file_path {
-                                                if file_picker(
+                                                if file_input(
                                                     ui,
                                                     &input_label,
                                                     param_refinement_string.file_ext_filter,
@@ -760,26 +760,30 @@ fn push_disabled_style(ui: &imgui::Ui) -> (imgui::ColorStackToken, imgui::StyleS
     (color_token, style_token)
 }
 
-fn file_picker(
+fn file_input(
     ui: &imgui::Ui,
     label: &imgui::ImStr,
     file_ext_filter: Option<(&str, &str)>,
     buffer: &mut imgui::ImString,
 ) -> bool {
+    let edit_button_label = imgui::im_str!("Edit##{}");
+    let edit_button_width = ui.calc_text_size(&edit_button_label, true, 50.0)[0] + 8.0;
+    let input_position = edit_button_width + 2.0; // Padding
+
     use std::env;
     use std::fs;
 
-    ui.input_text(&label, buffer).read_only(true).build();
     let ext: Option<(&[&str], &str)> = file_ext_filter
         .as_ref()
         .map(|filter| (slice::from_ref(&filter.0), filter.1));
 
-    // TODO: decide when and how we will output relative vs absolute paths
-    // TODO: column layout
+    let mut changed = false;
+
+    let group_token = ui.begin_group();
 
     if ui.button(
         &imgui::im_str!("Edit##{}", label),
-        [-f32::MIN_POSITIVE, 20.0],
+        [edit_button_width, 0.0],
     ) {
         if let Some(absolute_path) = tinyfiledialogs::open_file_dialog("Open", "", ext) {
             let current_dir = env::current_dir().expect("Couldn't get current dir");
@@ -799,8 +803,15 @@ fn file_picker(
             }
         }
 
-        return true;
+        changed = true;
     }
 
-    false
+    ui.same_line(input_position);
+    ui.set_next_item_width(ui.calc_item_width() - input_position);
+
+    ui.input_text(&label, buffer).read_only(true).build();
+
+    group_token.end(ui);
+
+    changed
 }
