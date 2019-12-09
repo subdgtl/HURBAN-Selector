@@ -779,7 +779,7 @@ fn file_input(
 
     let group_token = ui.begin_group();
 
-    if ui.button(&imgui::im_str!("Edit##{}", label), [edit_button_width, 0.0]) {
+    if ui.button(&imgui::im_str!("Open##{}", label), [edit_button_width, 0.0]) {
         if let Some(absolute_path) = tinyfiledialogs::open_file_dialog("Open", "", ext) {
             let current_dir = env::current_dir().expect("Couldn't get current dir");
 
