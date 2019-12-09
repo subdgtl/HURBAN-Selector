@@ -1,4 +1,5 @@
 use std::f32;
+use std::slice;
 use std::sync::Arc;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
@@ -343,11 +344,20 @@ impl<'a> UiFrame<'a> {
                                             imstring_buffer.push_str(string_lit);
 
                                             if param_refinement_string.file_path {
-                                                // TODO: A file path picker can be in two states:
-                                                // - dormant: displaying an existing (read-only)
-                                                //   path and a button to activate
-                                                // - active: displaying the file picker
-                                                unimplemented!();
+                                                if file_picker(
+                                                    ui,
+                                                    &input_label,
+                                                    param_refinement_string.file_ext_filter,
+                                                    &mut imstring_buffer,
+                                                ) {
+                                                    let string_value = format!("{}", imstring_buffer);
+                                                    let string_value = Arc::new(string_value);
+                                                    change = Some((
+                                                        stmt_index,
+                                                        arg_index,
+                                                        ast::Expr::Lit(ast::LitExpr::String(string_value)),
+                                                    ));
+                                                }
                                             } else {
                                                 if ui
                                                     .input_text(&input_label, &mut imstring_buffer)
@@ -748,4 +758,49 @@ fn push_disabled_style(ui: &imgui::Ui) -> (imgui::ColorStackToken, imgui::StyleS
     let style_token = ui.push_style_vars(&[imgui::StyleVar::Alpha(0.5)]);
 
     (color_token, style_token)
+}
+
+fn file_picker(
+    ui: &imgui::Ui,
+    label: &imgui::ImStr,
+    file_ext_filter: Option<(&str, &str)>,
+    buffer: &mut imgui::ImString,
+) -> bool {
+    use std::env;
+    use std::fs;
+
+    ui.input_text(&label, buffer).read_only(true).build();
+    let ext: Option<(&[&str], &str)> = file_ext_filter
+        .as_ref()
+        .map(|filter| (slice::from_ref(&filter.0), filter.1));
+
+    // TODO: decide when and how we will output relative vs absolute paths
+    // TODO: column layout
+
+    if ui.button(
+        &imgui::im_str!("Edit##{}", label),
+        [-f32::MIN_POSITIVE, 20.0],
+    ) {
+        if let Some(absolute_path) = tinyfiledialogs::open_file_dialog("Open", "", ext) {
+            let current_dir = env::current_dir().expect("Couldn't get current dir");
+
+            let current_dir_canonical =
+                fs::canonicalize(&current_dir).expect("Failed path canonicalization");
+            let path_canonical =
+                fs::canonicalize(absolute_path).expect("Failed path canonicalization");
+
+            match path_canonical.strip_prefix(&current_dir_canonical) {
+                Ok(stripped_path) => {
+                    buffer.push_str(&stripped_path.to_string_lossy());
+                }
+                Err(_) => {
+                    buffer.push_str(&path_canonical.to_string_lossy());
+                }
+            }
+        }
+
+        return true;
+    }
+
+    false
 }
