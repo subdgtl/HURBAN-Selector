@@ -34,7 +34,6 @@ impl Func for FuncJoinGroup {
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let mesh_arc_array = args[0].unwrap_mesh_array();
 
-        // TODO: this doesn't work :(
         let meshes = mesh_arc_array.iter();
         let value = tools::join_multiple_meshes(meshes);
         Ok(Value::Mesh(Arc::new(value)))
