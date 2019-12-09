@@ -12,7 +12,6 @@ pub fn compute_triangle_normal(
     Vector3::cross(&u, &v).normalize()
 }
 
-
 /// Computes barycentric coordinates of point P in triangle A, B, C.
 pub fn compute_barycentric_coords(
     a: Point2<f32>,
