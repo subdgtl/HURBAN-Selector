@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use crate::importer::{Importer, ImporterError, ObjCache};
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, MeshArrayValue, ParamInfo, ParamRefinement, Ty, Value,
+    Func, FuncError, FuncFlags, FuncInfo, MeshArrayValue, ParamInfo, ParamRefinement,
+    StringParamRefinement, Ty, Value,
 };
 
 #[derive(Debug, PartialEq)]
@@ -49,7 +50,11 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
     fn param_info(&self) -> &[ParamInfo] {
         &[ParamInfo {
             name: "Path",
-            refinement: ParamRefinement::String,
+            refinement: ParamRefinement::String(StringParamRefinement {
+                default_value: "",
+                file_path: true,
+                file_ext_filter: Some(("*.obj", "Wavefront (.obj)")),
+            }),
             optional: false,
         }]
     }

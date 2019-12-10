@@ -9,7 +9,7 @@ use std::time::Instant;
 pub use self::ast::{FuncIdent, VarIdent};
 pub use self::func::{
     BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncFlags, FuncInfo,
-    IntParamRefinement, ParamInfo, ParamRefinement, UintParamRefinement,
+    IntParamRefinement, ParamInfo, ParamRefinement, StringParamRefinement, UintParamRefinement,
 };
 pub use self::value::{MeshArrayValue, Ty, Value};
 
@@ -805,7 +805,7 @@ mod tests {
                 Ty::Uint => ParamRefinement::Uint(UintParamRefinement::default()),
                 Ty::Float => ParamRefinement::Float(FloatParamRefinement::default()),
                 Ty::Float3 => ParamRefinement::Float3(Float3ParamRefinement::default()),
-                Ty::String => ParamRefinement::String,
+                Ty::String => ParamRefinement::String(StringParamRefinement::default()),
                 Ty::Mesh => ParamRefinement::Mesh,
                 Ty::MeshArray => ParamRefinement::MeshArray,
             },

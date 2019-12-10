@@ -54,7 +54,7 @@ pub enum ParamRefinement {
     Uint(UintParamRefinement),
     Float(FloatParamRefinement),
     Float3(Float3ParamRefinement),
-    String,
+    String(StringParamRefinement),
     Mesh,
     MeshArray,
 }
@@ -67,7 +67,7 @@ impl ParamRefinement {
             Self::Uint(_) => Ty::Uint,
             Self::Float(_) => Ty::Float,
             Self::Float3(_) => Ty::Float3,
-            Self::String => Ty::String,
+            Self::String(_) => Ty::String,
             Self::Mesh => Ty::Mesh,
             Self::MeshArray => Ty::MeshArray,
         }
@@ -198,6 +198,13 @@ impl Float3ParamRefinement {
 
         [x, y, z]
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct StringParamRefinement {
+    pub default_value: &'static str,
+    pub file_path: bool,
+    pub file_ext_filter: Option<(&'static str, &'static str)>,
 }
 
 /// An interface describing a function as seen by the interpreter.

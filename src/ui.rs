@@ -1,4 +1,5 @@
 use std::f32;
+use std::slice;
 use std::sync::Arc;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
@@ -111,11 +112,11 @@ impl Ui {
             .prepare_frame(self.imgui_context.io_mut(), window)
             .expect("Failed to start imgui frame");
 
-        UiFrame::new(
-            &mut self.imgui_context,
-            &self.imgui_winit_platform,
-            &self.font_ids,
-        )
+        UiFrame {
+            imgui_winit_platform: &self.imgui_winit_platform,
+            imgui_ui: self.imgui_context.frame(),
+            _font_ids: &self.font_ids,
+        }
     }
 
     pub fn set_delta_time(&mut self, duration_last_frame_s: f32) {
@@ -132,18 +133,6 @@ pub struct UiFrame<'a> {
 }
 
 impl<'a> UiFrame<'a> {
-    pub fn new(
-        imgui_context: &'a mut imgui::Context,
-        imgui_winit_platform: &'a WinitPlatform,
-        font_ids: &'a FontIds,
-    ) -> Self {
-        UiFrame {
-            imgui_winit_platform,
-            imgui_ui: imgui_context.frame(),
-            _font_ids: font_ids,
-        }
-    }
-
     pub fn want_capture_keyboard(&self) -> bool {
         self.imgui_ui.io().want_capture_keyboard
     }
@@ -215,6 +204,9 @@ impl<'a> UiFrame<'a> {
 
         let interpreter_busy = session.interpreter_busy();
         let mut change = None;
+
+        // FIXME: @Optimization Try to not allocate this every frame.
+        let mut imstring_buffer = imgui::ImString::with_capacity(256);
 
         imgui::Window::new(imgui::im_str!("Pipeline"))
             .movable(false)
@@ -347,16 +339,18 @@ impl<'a> UiFrame<'a> {
                                                 ));
                                             }
                                         }
-                                        ParamRefinement::String => {
+                                        ParamRefinement::String(param_refinement_string) => {
                                             let string_lit = arg.unwrap_literal().unwrap_string();
-                                            let mut imstring_value = imgui::ImString::new(string_lit);
-                                            imstring_value.reserve(128);
+                                            imstring_buffer.push_str(string_lit);
 
-                                            if ui
-                                                .input_text(&input_label, &mut imstring_value)
-                                                .read_only(interpreter_busy)
-                                                .build() {
-                                                    let string_value = format!("{}", imstring_value);
+                                            if param_refinement_string.file_path {
+                                                if file_input(
+                                                    ui,
+                                                    &input_label,
+                                                    param_refinement_string.file_ext_filter,
+                                                    &mut imstring_buffer,
+                                                ) {
+                                                    let string_value = format!("{}", imstring_buffer);
                                                     let string_value = Arc::new(string_value);
                                                     change = Some((
                                                         stmt_index,
@@ -364,6 +358,20 @@ impl<'a> UiFrame<'a> {
                                                         ast::Expr::Lit(ast::LitExpr::String(string_value)),
                                                     ));
                                                 }
+                                            } else if ui
+                                                .input_text(&input_label, &mut imstring_buffer)
+                                                .read_only(interpreter_busy)
+                                                .build() {
+                                                    let string_value = format!("{}", imstring_buffer);
+                                                    let string_value = Arc::new(string_value);
+                                                    change = Some((
+                                                        stmt_index,
+                                                        arg_index,
+                                                        ast::Expr::Lit(ast::LitExpr::String(string_value)),
+                                                    ));
+                                                }
+
+                                            imstring_buffer.clear();
                                         }
                                         ParamRefinement::Mesh => {
                                             let changed_expr = self.draw_var_combo_box(
@@ -572,8 +580,9 @@ impl<'a> UiFrame<'a> {
                             float3_param_refinement.default_value_z.unwrap_or_default(),
                         ]))
                     }
-                    ParamRefinement::String => {
-                        ast::Expr::Lit(ast::LitExpr::String(Arc::new(String::new())))
+                    ParamRefinement::String(string_param_refinement) => {
+                        let initial_value = String::from(string_param_refinement.default_value);
+                        ast::Expr::Lit(ast::LitExpr::String(Arc::new(initial_value)))
                     }
                     ParamRefinement::Mesh => {
                         let one_past_last_stmt = session.stmts().len();
@@ -747,4 +756,55 @@ fn push_disabled_style(ui: &imgui::Ui) -> (imgui::ColorStackToken, imgui::StyleS
     let style_token = ui.push_style_vars(&[imgui::StyleVar::Alpha(0.5)]);
 
     (color_token, style_token)
+}
+
+fn file_input(
+    ui: &imgui::Ui,
+    label: &imgui::ImStr,
+    file_ext_filter: Option<(&str, &str)>,
+    buffer: &mut imgui::ImString,
+) -> bool {
+    use std::env;
+    use std::path::Path;
+
+    let open_button_label = imgui::im_str!("Open##{}", label);
+    let open_button_width = ui.calc_text_size(&open_button_label, true, 50.0)[0] + 8.0;
+    let input_position = open_button_width + 2.0; // Padding
+
+    let ext: Option<(&[&str], &str)> = file_ext_filter
+        .as_ref()
+        .map(|filter| (slice::from_ref(&filter.0), filter.1));
+
+    let mut changed = false;
+
+    let group_token = ui.begin_group();
+
+    if ui.button(&open_button_label, [open_button_width, 0.0]) {
+        if let Some(absolute_path_string) = tinyfiledialogs::open_file_dialog("Open", "", ext) {
+            buffer.clear();
+
+            let current_dir = env::current_dir().expect("Couldn't get current dir");
+            let absolute_path = Path::new(&absolute_path_string);
+
+            match absolute_path.strip_prefix(&current_dir) {
+                Ok(stripped_path) => {
+                    buffer.push_str(&stripped_path.to_string_lossy());
+                }
+                Err(_) => {
+                    buffer.push_str(&absolute_path.to_string_lossy());
+                }
+            }
+        }
+
+        changed = true;
+    }
+
+    ui.same_line(input_position);
+    ui.set_next_item_width(ui.calc_item_width() - input_position);
+
+    ui.input_text(&label, buffer).read_only(true).build();
+
+    group_token.end(ui);
+
+    changed
 }
