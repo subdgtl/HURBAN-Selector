@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use nalgebra::Point3;
 
 use crate::camera::{Camera, CameraOptions};
-use crate::convert::cast_usize;
+use crate::convert::{cast_u8_color_to_f64, cast_usize};
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
 use crate::mesh::analysis::BoundingBox;
@@ -139,7 +139,7 @@ pub fn init_and_run(options: Options) -> ! {
         RendererOptions {
             clear_color: match options.theme {
                 Theme::Dark => [0.1, 0.1, 0.1, 1.0],
-                Theme::Funky => [0xEA as f64, 0xE7 as f64, 0xE1 as f64, 1.0],
+                Theme::Funky => cast_u8_color_to_f64([0xea, 0xe7, 0xe1, 0xff]),
             },
             // FIXME: @Correctness Msaa X4 is the only value currently
             // working on all devices we tried. Once msaa capabilities

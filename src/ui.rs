@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
-use crate::convert::{clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
+use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
 use crate::interpreter::ast;
 use crate::interpreter::{ParamRefinement, Ty};
 use crate::renderer::DrawMeshMode;
@@ -74,67 +74,58 @@ impl Ui {
             style.scrollbar_rounding = 0.0;
             style.grab_rounding = 0.0;
 
-            fn cast_color_f32(color: [u8; 4]) -> [f32; 4] {
-                [
-                    color[0] as f32 / 255.0,
-                    color[1] as f32 / 255.0,
-                    color[2] as f32 / 255.0,
-                    color[3] as f32 / 255.0,
-                ]
-            }
-
-            const TRANSPARENT: [f32; 4] = [1.0, 1.0, 1.0, 0.5];
-            let blue = cast_color_f32([0x52, 0x87, 0x9c, 0xff]);
-            let blue_transparent = cast_color_f32([0x52, 0x87, 0x9c, 0x40]);
-            let orange = cast_color_f32([0xF2, 0x80, 0x37, 0xFF]);
-            let orange_light = cast_color_f32([0xF2, 0xAC, 0x79, 0xFF]);
-            let orange_light_transparent = cast_color_f32([0xF2, 0xAC, 0x79, 0x40]);
-            let orange_dark = cast_color_f32([0xD0, 0x5D, 0x20, 0xFF]);
+            let light_transparent = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0x40]);
+            let blue = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0xff]);
+            let blue_transparent = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0x40]);
+            let orange = cast_u8_color_to_f32([0xf2, 0x80, 0x37, 0xff]);
+            let orange_light = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0xff]);
+            let orange_light_transparent = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0x40]);
+            let orange_dark = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0xff]);
 
             // TODO: integrate material
 
             style[imgui::StyleColor::Text] = orange;
             style[imgui::StyleColor::TextDisabled] = orange_light;
-            style[imgui::StyleColor::WindowBg] = TRANSPARENT;
-            style[imgui::StyleColor::PopupBg] = TRANSPARENT;
-            style[imgui::StyleColor::Border] = TRANSPARENT;
-            style[imgui::StyleColor::FrameBg] = TRANSPARENT;
-            style[imgui::StyleColor::FrameBgHovered] = TRANSPARENT;
-            style[imgui::StyleColor::FrameBgActive] = TRANSPARENT;
-            style[imgui::StyleColor::TitleBg] = TRANSPARENT;
-            style[imgui::StyleColor::TitleBgActive] = TRANSPARENT;
-            style[imgui::StyleColor::TitleBgCollapsed] = TRANSPARENT;
-            style[imgui::StyleColor::MenuBarBg] = TRANSPARENT;
-            style[imgui::StyleColor::ScrollbarBg] = TRANSPARENT;
+            style[imgui::StyleColor::WindowBg] = light_transparent;
+            style[imgui::StyleColor::PopupBg] = light_transparent;
+            style[imgui::StyleColor::Border] = light_transparent;
+            style[imgui::StyleColor::FrameBg] = light_transparent;
+            style[imgui::StyleColor::FrameBgHovered] = light_transparent;
+            style[imgui::StyleColor::FrameBgActive] = light_transparent;
+            style[imgui::StyleColor::TitleBg] = light_transparent;
+            style[imgui::StyleColor::TitleBgActive] = light_transparent;
+            style[imgui::StyleColor::TitleBgCollapsed] = light_transparent;
+            style[imgui::StyleColor::MenuBarBg] = light_transparent;
+            style[imgui::StyleColor::ScrollbarBg] = light_transparent;
             style[imgui::StyleColor::ScrollbarGrab] = orange_dark;
             style[imgui::StyleColor::ScrollbarGrabHovered] = orange;
             style[imgui::StyleColor::ScrollbarGrabActive] = orange_light;
             style[imgui::StyleColor::CheckMark] = orange;
             style[imgui::StyleColor::SliderGrab] = orange;
             style[imgui::StyleColor::SliderGrabActive] = orange_light;
-            style[imgui::StyleColor::Button] = TRANSPARENT;
+            style[imgui::StyleColor::Button] = light_transparent;
             style[imgui::StyleColor::ButtonHovered] = orange_light_transparent;
             style[imgui::StyleColor::ButtonActive] = orange_light_transparent;
-            style[imgui::StyleColor::Header] = TRANSPARENT;
-            style[imgui::StyleColor::HeaderHovered] = TRANSPARENT;
-            style[imgui::StyleColor::HeaderActive] = TRANSPARENT;
+            style[imgui::StyleColor::Header] = light_transparent;
+            style[imgui::StyleColor::HeaderHovered] = light_transparent;
+            style[imgui::StyleColor::HeaderActive] = light_transparent;
             style[imgui::StyleColor::Separator] = orange_light;
             style[imgui::StyleColor::SeparatorHovered] = orange_light;
             style[imgui::StyleColor::SeparatorActive] = orange_light;
             style[imgui::StyleColor::ResizeGrip] = orange;
             style[imgui::StyleColor::ResizeGripHovered] = orange_light;
             style[imgui::StyleColor::ResizeGripActive] = orange_light;
-            style[imgui::StyleColor::Tab] = TRANSPARENT;
-            style[imgui::StyleColor::TabHovered] = TRANSPARENT;
-            style[imgui::StyleColor::TabActive] = TRANSPARENT;
-            style[imgui::StyleColor::TabUnfocused] = TRANSPARENT;
-            style[imgui::StyleColor::TabUnfocusedActive] = TRANSPARENT;
+            style[imgui::StyleColor::Tab] = light_transparent;
+            style[imgui::StyleColor::TabHovered] = light_transparent;
+            style[imgui::StyleColor::TabActive] = light_transparent;
+            style[imgui::StyleColor::TabUnfocused] = light_transparent;
+            style[imgui::StyleColor::TabUnfocusedActive] = light_transparent;
             style[imgui::StyleColor::PlotLines] = orange;
             style[imgui::StyleColor::TextSelectedBg] = orange_light_transparent;
-            style[imgui::StyleColor::NavHighlight] = TRANSPARENT;
+            style[imgui::StyleColor::NavHighlight] = light_transparent;
 
             colors.special_button_text = blue;
-            colors.special_button = TRANSPARENT;
+            colors.special_button = light_transparent;
             colors.special_button_hovered = blue_transparent;
             colors.special_button_active = blue_transparent;
         }
