@@ -155,7 +155,7 @@ pub fn revert_mesh_faces(mesh: &Mesh) -> Mesh {
 ///
 /// Weld is one of the auto-fixes leading to a simplified, watertight or
 /// true-to-its-genus mesh geometries.
-pub fn weld(mesh: &Mesh, tolerance: f32) -> Mesh {
+pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
     // key = rounded vertex position with a tolerance (it's expected that the
     // same value will be shared by more close vertices)
     // value = actual positions of close vertices
@@ -276,7 +276,15 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Mesh {
         })
         .collect();
 
-    Mesh::from_faces_with_vertices_and_normals(new_faces, new_vertices, new_normals)
+    if new_faces.clone().next().is_some() {
+        Some(Mesh::from_faces_with_vertices_and_normals(
+            new_faces,
+            new_vertices,
+            new_normals,
+        ))
+    } else {
+        None
+    }
 }
 
 /// Crawls the mesh geometry to find continuous patches. Returns a
@@ -794,7 +802,7 @@ mod tests {
         let mesh = tessellated_triangle_mesh_for_welding();
         let mesh_after_welding_correct = welded_tessellated_triangle_mesh();
 
-        let mesh_after_welding = weld(&mesh, 0.1);
+        let mesh_after_welding = weld(&mesh, 0.1).expect("Welding failed");
 
         assert!(analysis::are_similar(
             &mesh_after_welding_correct,
@@ -807,7 +815,7 @@ mod tests {
         let mesh = open_cube_sharp_mesh([0.0, 0.0, 0.0], 1.0);
         let mesh_after_welding_correct = welded_cube_smooth_mesh([0.0, 0.0, 0.0], 1.0);
 
-        let mesh_after_welding = weld(&mesh, 0.1);
+        let mesh_after_welding = weld(&mesh, 0.1).expect("Welding failed");
 
         assert!(analysis::are_similar(
             &mesh_after_welding_correct,
