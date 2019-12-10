@@ -531,7 +531,7 @@ mod tests {
 
     #[test]
     fn test_pull_point_to_mesh_cube_point_inside_left() {
-        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
         let test_point = Point3::new(-0.25, 0.0, 0.0);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -545,7 +545,7 @@ mod tests {
 
     #[test]
     fn test_pull_point_to_mesh_cube_point_inside_top_front_right() {
-        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
         let test_point = Point3::new(0.25, 0.25, 0.25);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn test_pull_point_to_mesh_cube_point_outside_top_front_right() {
-        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
         let test_point = Point3::new(1.25, 1.25, 1.25);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -585,7 +585,7 @@ mod tests {
 
     #[test]
     fn test_pull_point_to_mesh_cube_point_outside_front_right() {
-        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
         let test_point = Point3::new(1.25, 1.25, 0.25);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -603,7 +603,7 @@ mod tests {
 
     #[test]
     fn test_pull_point_to_mesh_cube_point_on_face() {
-        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
         let test_point = Point3::new(0.0, 0.0, 1.0);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 
@@ -619,7 +619,7 @@ mod tests {
 
     #[test]
     fn test_pull_point_to_mesh_cube_point_on_edge() {
-        let cube = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
         let test_point = Point3::new(1.0, 1.0, 0.0);
         let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
 

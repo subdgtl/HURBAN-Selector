@@ -5,6 +5,18 @@ use std::env;
 use hurban_selector as hs;
 
 fn main() {
+    let fullscreen = env::var("HS_FULLSCREEN")
+        .ok()
+        .map(|fullscreen| match fullscreen.as_str() {
+            "0" => false,
+            "1" => true,
+            unsupported_fullscreen => panic!(
+                "Unsupported fullscreen value requested: {}",
+                unsupported_fullscreen,
+            ),
+        })
+        .unwrap_or(false);
+
     let msaa = env::var("HS_MSAA")
         .ok()
         .map(|msaa| match msaa.as_str() {
@@ -19,8 +31,8 @@ fn main() {
     let present_mode = env::var("HS_VSYNC")
         .ok()
         .map(|vsync| match vsync.as_str() {
-            "1" => hs::PresentMode::Vsync,
             "0" => hs::PresentMode::NoVsync,
+            "1" => hs::PresentMode::Vsync,
             unsupported_vsync => panic!(
                 "Unsupported vsync behavior requested: {}",
                 unsupported_vsync,
@@ -58,6 +70,7 @@ fn main() {
         });
 
     hs::init_and_run(hs::Options {
+        fullscreen,
         msaa,
         present_mode,
         gpu_backend,

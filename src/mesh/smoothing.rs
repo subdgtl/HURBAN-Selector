@@ -761,15 +761,15 @@ mod tests {
     }
 
     #[test]
-    fn test_loop_subdivision_snapshot_cube_sharp() {
-        let mesh = primitive::create_cube_sharp([0.0; 3], 1.0);
+    fn test_loop_subdivision_snapshot_box_sharp() {
+        let mesh = primitive::create_box(Point3::origin(), [1.0; 3]);
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh);
 
         let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f);
 
         insta::assert_json_snapshot!(
-            "cube_sharp_after_1_iteration_of_loop_subdivision",
+            "box_sharp_after_1_iteration_of_loop_subdivision",
             &subdivided_mesh
         );
     }

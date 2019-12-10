@@ -11,7 +11,8 @@ use crate::camera::{Camera, CameraOptions};
 use crate::convert::cast_usize;
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
-use crate::mesh::{analysis, Mesh};
+use crate::mesh::analysis::BoundingBox;
+use crate::mesh::Mesh;
 use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshId, Options as RendererOptions, Renderer};
 use crate::session::{PollInterpreterResponseNotification, Session};
 use crate::ui::Ui;
@@ -39,6 +40,8 @@ const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
+    /// Whether to open a fullscreen window.
+    pub fullscreen: bool,
     /// Which multi-sampling setting to use.
     pub msaa: Msaa,
     /// Whether to run with VSync or not.
@@ -71,12 +74,33 @@ pub fn init_and_run(options: Options) -> ! {
     logger::init(options.app_log_level, options.lib_log_level);
 
     let event_loop = winit::event_loop::EventLoop::new();
-    // let monitor_id = event_loop.primary_monitor();
-    let window = winit::window::WindowBuilder::new()
-        .with_title("H.U.R.B.A.N. Selector")
-        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
-        .build(&event_loop)
-        .expect("Failed to create window");
+    let window = if options.fullscreen {
+        log::info!("Running in fullscreen mode, looking for compatible video modes...");
+        let monitor = event_loop.primary_monitor();
+
+        if let Some(video_mode) = monitor.video_modes().next() {
+            log::info!("Found fullscreen video mode: {}", video_mode);
+            winit::window::WindowBuilder::new()
+                .with_title("H.U.R.B.A.N. Selector")
+                .with_fullscreen(Some(winit::window::Fullscreen::Exclusive(video_mode)))
+                .build(&event_loop)
+                .expect("Failed to create window")
+        } else {
+            log::info!("Didn't find compatible video mode, falling back to borderless");
+            winit::window::WindowBuilder::new()
+                .with_title("H.U.R.B.A.N. Selector")
+                .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
+                .build(&event_loop)
+                .expect("Failed to create window")
+        }
+    } else {
+        log::info!("Running in windowed mode");
+        winit::window::WindowBuilder::new()
+            .with_title("H.U.R.B.A.N. Selector")
+            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+            .build(&event_loop)
+            .expect("Failed to create window")
+    };
 
     let window_size = window.inner_size().to_physical(window.hidpi_factor());
 
@@ -219,7 +243,7 @@ pub fn init_and_run(options: Options) -> ! {
                             scene_gpu_mesh_ids.insert(path, gpu_mesh_id);
                         }
                         Value::MeshArray(mesh_array) => {
-                            for (index, mesh) in mesh_array.iter().enumerate() {
+                            for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
                                 let gpu_mesh = GpuMesh::from_mesh(&mesh);
                                 let gpu_mesh_id = renderer
                                     .add_scene_mesh(&gpu_mesh)
@@ -336,13 +360,13 @@ impl CameraInterpolation {
         I: IntoIterator<Item = &'a Mesh> + Clone,
     {
         let (source_origin, source_radius) = camera.visible_sphere();
-        let (target_origin, target_radius) = analysis::compute_bounding_sphere(scene_meshes);
+        let bounding_box = BoundingBox::from_meshes(scene_meshes);
 
         CameraInterpolation {
             source_origin,
             source_radius,
-            target_origin,
-            target_radius,
+            target_origin: bounding_box.center(),
+            target_radius: bounding_box.diagonal_length() / 2.0,
             target_time: time + CAMERA_INTERPOLATION_DURATION,
         }
     }

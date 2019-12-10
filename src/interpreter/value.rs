@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::convert::{cast_u32, cast_usize};
@@ -255,8 +256,14 @@ impl MeshArrayValue {
         self.0.is_empty()
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = Arc<Mesh>> + 'a {
+    pub fn iter_refcounted<'a>(&'a self) -> impl Iterator<Item = Arc<Mesh>> + 'a {
         self.0.iter().cloned()
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Mesh> + 'a {
+        self.0
+            .iter()
+            .map(|refcounted_mesh| Arc::deref(refcounted_mesh))
     }
 }
 
