@@ -10,16 +10,27 @@ use crate::interpreter::{ParamRefinement, Ty};
 use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
-const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
-const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Bold.ttf");
-const OPENSANS_LIGHT_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Light.ttf");
+const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
+const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Bold.ttf");
 
 const MARGIN: f32 = 10.0;
 
-pub struct FontIds {
-    _regular: imgui::FontId,
-    _light: imgui::FontId,
-    _bold: imgui::FontId,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Theme {
+    Dark,
+    Funky,
+}
+
+struct FontIds {
+    regular: imgui::FontId,
+    bold: imgui::FontId,
+}
+
+struct Colors {
+    special_button_text: [f32; 4],
+    special_button: [f32; 4],
+    special_button_hovered: [f32; 4],
+    special_button_active: [f32; 4],
 }
 
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
@@ -28,13 +39,20 @@ pub struct Ui {
     imgui_context: imgui::Context,
     imgui_winit_platform: WinitPlatform,
     font_ids: FontIds,
+    colors: Colors,
 }
 
 impl Ui {
     /// Initializes imgui with default settings for our application.
-    pub fn new(window: &winit::window::Window) -> Self {
+    pub fn new(window: &winit::window::Window, theme: Theme) -> Self {
         let mut imgui_context = imgui::Context::create();
         let mut style = imgui_context.style_mut();
+        let mut colors = Colors {
+            special_button_text: [0.2, 0.7, 0.3, 1.0],
+            special_button: style[imgui::StyleColor::Button],
+            special_button_hovered: style[imgui::StyleColor::ButtonHovered],
+            special_button_active: style[imgui::StyleColor::ButtonActive],
+        };
 
         style.window_padding = [4.0, 4.0];
         style.frame_padding = [4.0, 2.0];
@@ -49,6 +67,77 @@ impl Ui {
         style.frame_rounding = 3.0;
         style.scrollbar_rounding = 3.0;
         style.grab_rounding = 3.0;
+
+        if theme == Theme::Funky {
+            style.window_rounding = 0.0;
+            style.frame_rounding = 0.0;
+            style.scrollbar_rounding = 0.0;
+            style.grab_rounding = 0.0;
+
+            fn cast_color_f32(color: [u8; 4]) -> [f32; 4] {
+                [
+                    color[0] as f32 / 255.0,
+                    color[1] as f32 / 255.0,
+                    color[2] as f32 / 255.0,
+                    color[3] as f32 / 255.0,
+                ]
+            }
+
+            const TRANSPARENT: [f32; 4] = [1.0, 1.0, 1.0, 0.5];
+            let blue = cast_color_f32([0x52, 0x87, 0x9c, 0xff]);
+            let blue_transparent = cast_color_f32([0x52, 0x87, 0x9c, 0x40]);
+            let orange = cast_color_f32([0xF2, 0x80, 0x37, 0xFF]);
+            let orange_light = cast_color_f32([0xF2, 0xAC, 0x79, 0xFF]);
+            let orange_light_transparent = cast_color_f32([0xF2, 0xAC, 0x79, 0x40]);
+            let orange_dark = cast_color_f32([0xD0, 0x5D, 0x20, 0xFF]);
+
+            // TODO: integrate material
+
+            style[imgui::StyleColor::Text] = orange;
+            style[imgui::StyleColor::TextDisabled] = orange_light;
+            style[imgui::StyleColor::WindowBg] = TRANSPARENT;
+            style[imgui::StyleColor::PopupBg] = TRANSPARENT;
+            style[imgui::StyleColor::Border] = TRANSPARENT;
+            style[imgui::StyleColor::FrameBg] = TRANSPARENT;
+            style[imgui::StyleColor::FrameBgHovered] = TRANSPARENT;
+            style[imgui::StyleColor::FrameBgActive] = TRANSPARENT;
+            style[imgui::StyleColor::TitleBg] = TRANSPARENT;
+            style[imgui::StyleColor::TitleBgActive] = TRANSPARENT;
+            style[imgui::StyleColor::TitleBgCollapsed] = TRANSPARENT;
+            style[imgui::StyleColor::MenuBarBg] = TRANSPARENT;
+            style[imgui::StyleColor::ScrollbarBg] = TRANSPARENT;
+            style[imgui::StyleColor::ScrollbarGrab] = orange_dark;
+            style[imgui::StyleColor::ScrollbarGrabHovered] = orange;
+            style[imgui::StyleColor::ScrollbarGrabActive] = orange_light;
+            style[imgui::StyleColor::CheckMark] = orange;
+            style[imgui::StyleColor::SliderGrab] = orange;
+            style[imgui::StyleColor::SliderGrabActive] = orange_light;
+            style[imgui::StyleColor::Button] = TRANSPARENT;
+            style[imgui::StyleColor::ButtonHovered] = orange_light_transparent;
+            style[imgui::StyleColor::ButtonActive] = orange_light_transparent;
+            style[imgui::StyleColor::Header] = TRANSPARENT;
+            style[imgui::StyleColor::HeaderHovered] = TRANSPARENT;
+            style[imgui::StyleColor::HeaderActive] = TRANSPARENT;
+            style[imgui::StyleColor::Separator] = orange_light;
+            style[imgui::StyleColor::SeparatorHovered] = orange_light;
+            style[imgui::StyleColor::SeparatorActive] = orange_light;
+            style[imgui::StyleColor::ResizeGrip] = orange;
+            style[imgui::StyleColor::ResizeGripHovered] = orange_light;
+            style[imgui::StyleColor::ResizeGripActive] = orange_light;
+            style[imgui::StyleColor::Tab] = TRANSPARENT;
+            style[imgui::StyleColor::TabHovered] = TRANSPARENT;
+            style[imgui::StyleColor::TabActive] = TRANSPARENT;
+            style[imgui::StyleColor::TabUnfocused] = TRANSPARENT;
+            style[imgui::StyleColor::TabUnfocusedActive] = TRANSPARENT;
+            style[imgui::StyleColor::PlotLines] = orange;
+            style[imgui::StyleColor::TextSelectedBg] = orange_light_transparent;
+            style[imgui::StyleColor::NavHighlight] = TRANSPARENT;
+
+            colors.special_button_text = blue;
+            colors.special_button = TRANSPARENT;
+            colors.special_button_hovered = blue_transparent;
+            colors.special_button_active = blue_transparent;
+        }
 
         imgui_context.set_ini_filename(None);
 
@@ -73,13 +162,6 @@ impl Ui {
                 size_pixels: font_size,
                 config: None,
             }]);
-        let light_font_id = imgui_context
-            .fonts()
-            .add_font(&[imgui::FontSource::TtfData {
-                data: OPENSANS_LIGHT_BYTES,
-                size_pixels: font_size,
-                config: None,
-            }]);
 
         imgui_context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
@@ -87,10 +169,10 @@ impl Ui {
             imgui_context,
             imgui_winit_platform: platform,
             font_ids: FontIds {
-                _regular: regular_font_id,
-                _bold: bold_font_id,
-                _light: light_font_id,
+                regular: regular_font_id,
+                bold: bold_font_id,
             },
+            colors,
         }
     }
 
@@ -115,7 +197,8 @@ impl Ui {
         UiFrame {
             imgui_winit_platform: &self.imgui_winit_platform,
             imgui_ui: self.imgui_context.frame(),
-            _font_ids: &self.font_ids,
+            font_ids: &self.font_ids,
+            colors: &self.colors,
         }
     }
 
@@ -129,7 +212,8 @@ impl Ui {
 pub struct UiFrame<'a> {
     imgui_winit_platform: &'a WinitPlatform,
     imgui_ui: imgui::Ui<'a>,
-    _font_ids: &'a FontIds,
+    font_ids: &'a FontIds,
+    colors: &'a Colors,
 }
 
 impl<'a> UiFrame<'a> {
@@ -157,9 +241,11 @@ impl<'a> UiFrame<'a> {
 
         let mut reset_viewport_clicked = false;
 
+        let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Viewport Settings"))
             .movable(false)
             .resizable(false)
+            .collapsible(false)
             .size(
                 [VIEWPORT_WINDOW_WIDTH, VIEWPORT_WINDOW_HEIGHT],
                 imgui::Condition::Always,
@@ -169,6 +255,7 @@ impl<'a> UiFrame<'a> {
                 imgui::Condition::Always,
             )
             .build(ui, || {
+                let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
 
                 ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
@@ -185,7 +272,9 @@ impl<'a> UiFrame<'a> {
                 );
 
                 reset_viewport_clicked = ui.button(imgui::im_str!("Reset Viewport"), [0.0, 0.0]);
+                regular_font_token.pop(ui);
             });
+        bold_font_token.pop(ui);
 
         reset_viewport_clicked
     }
@@ -195,7 +284,7 @@ impl<'a> UiFrame<'a> {
         let function_table = session.function_table();
 
         const PIPELINE_WINDOW_WIDTH: f32 = 400.0;
-        const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 0.8;
+        const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 0.7;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -208,12 +297,15 @@ impl<'a> UiFrame<'a> {
         // FIXME: @Optimization Try to not allocate this every frame.
         let mut imstring_buffer = imgui::ImString::with_capacity(256);
 
+        let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Pipeline"))
             .movable(false)
             .resizable(false)
+            .collapsible(false)
             .size([PIPELINE_WINDOW_WIDTH, pipeline_window_height], imgui::Condition::Always)
             .position([MARGIN, MARGIN], imgui::Condition::Always)
             .build(ui, || {
+                let regular_font_token = ui.push_font(self.font_ids.regular);
                 for (stmt_index, stmt) in session.stmts().iter().enumerate() {
                     match stmt {
                         ast::Stmt::VarDecl(var_decl) => {
@@ -411,14 +503,14 @@ impl<'a> UiFrame<'a> {
                                 }
 
                                 let token = ui.push_style_color(
-                                    imgui::StyleColor::FrameBg,
-                                    [0.080, 0.080, 0.080, 0.940],
+                                    imgui::StyleColor::Text,
+                                    ui.style_color(imgui::StyleColor::TextDisabled),
                                 );
 
                                 imgui::InputTextMultiline::new(
                                     ui,
                                     &imgui::im_str!("##console{}", stmt_index),
-                                    &mut imgui::ImString::new("Lorem Ipsum Dolor Sit Amet"),
+                                    &mut imgui::ImString::new("This console will contain debug information"),
                                     [0.0, 60.0],
                                 )
                                     .read_only(true)
@@ -436,7 +528,9 @@ impl<'a> UiFrame<'a> {
                         }
                     }
                 }
+                regular_font_token.pop(ui);
             });
+        bold_font_token.pop(ui);
 
         // FIXME: Debounce changes to parameters
 
@@ -464,7 +558,7 @@ impl<'a> UiFrame<'a> {
         let function_table = session.function_table();
 
         const OPERATIONS_WINDOW_WIDTH: f32 = 400.0;
-        const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.2;
+        const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.3;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -481,9 +575,11 @@ impl<'a> UiFrame<'a> {
         let mut interpret_clicked = false;
         let mut pop_stmt_clicked = false;
 
+        let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Operations"))
             .movable(false)
             .resizable(false)
+            .collapsible(false)
             .size(
                 [OPERATIONS_WINDOW_WIDTH, operations_window_height],
                 imgui::Condition::Always,
@@ -493,8 +589,21 @@ impl<'a> UiFrame<'a> {
                 imgui::Condition::Always,
             )
             .build(ui, || {
+                let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.columns(2, imgui::im_str!("Controls columns"), false);
 
+                let pipeline_button_color_token = ui.push_style_colors(&[
+                    (imgui::StyleColor::Text, self.colors.special_button_text),
+                    (imgui::StyleColor::Button, self.colors.special_button),
+                    (
+                        imgui::StyleColor::ButtonHovered,
+                        self.colors.special_button_hovered,
+                    ),
+                    (
+                        imgui::StyleColor::ButtonActive,
+                        self.colors.special_button_active,
+                    ),
+                ]);
                 let running_tokens = if running_enabled {
                     None
                 } else {
@@ -509,6 +618,7 @@ impl<'a> UiFrame<'a> {
                     color_token.pop(ui);
                     style_token.pop(ui);
                 }
+                pipeline_button_color_token.pop(ui);
 
                 ui.next_column();
 
@@ -551,7 +661,9 @@ impl<'a> UiFrame<'a> {
                     color_token.pop(ui);
                     style_token.pop(ui);
                 }
+                regular_font_token.pop(ui);
             });
+        bold_font_token.pop(ui);
 
         if let Some(func_ident) = function_clicked {
             let func = &function_table[&func_ident];
@@ -746,12 +858,14 @@ fn format_var_name(
 }
 
 fn push_disabled_style(ui: &imgui::Ui) -> (imgui::ColorStackToken, imgui::StyleStackToken) {
-    let frame_color = ui.style_color(imgui::StyleColor::Button);
+    let button_color = ui.style_color(imgui::StyleColor::Button);
+    let text_color = ui.style_color(imgui::StyleColor::TextDisabled);
 
     let color_token = ui.push_style_colors(&[
-        (imgui::StyleColor::Button, frame_color),
-        (imgui::StyleColor::ButtonHovered, frame_color),
-        (imgui::StyleColor::ButtonActive, frame_color),
+        (imgui::StyleColor::Text, text_color),
+        (imgui::StyleColor::Button, button_color),
+        (imgui::StyleColor::ButtonHovered, button_color),
+        (imgui::StyleColor::ButtonActive, button_color),
     ]);
     let style_token = ui.push_style_vars(&[imgui::StyleVar::Alpha(0.5)]);
 

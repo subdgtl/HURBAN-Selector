@@ -5,6 +5,17 @@ use std::env;
 use hurban_selector as hs;
 
 fn main() {
+    let theme = env::var("HS_THEME")
+        .ok()
+        .map(|theme| match theme.as_str() {
+            "dark" => hs::Theme::Dark,
+            "funky" => hs::Theme::Funky,
+            unsupported_theme => {
+                panic!("Unsupported theme value requested: {}", unsupported_theme,)
+            }
+        })
+        .unwrap_or(hs::Theme::Dark);
+
     let fullscreen = env::var("HS_FULLSCREEN")
         .ok()
         .map(|fullscreen| match fullscreen.as_str() {
@@ -70,6 +81,7 @@ fn main() {
         });
 
     hs::init_and_run(hs::Options {
+        theme,
         fullscreen,
         msaa,
         present_mode,

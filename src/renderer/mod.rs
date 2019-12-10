@@ -20,6 +20,8 @@ const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
+    /// With what color to clear the screen.
+    pub clear_color: [f64; 4],
     /// Which multi-sampling setting to use.
     pub msaa: Msaa,
     /// Whether to run with VSync or not.
@@ -185,6 +187,7 @@ impl Renderer {
             projection_matrix,
             view_matrix,
             SceneRendererOptions {
+                clear_color: options.clear_color,
                 sample_count: options.msaa.sample_count(),
                 output_color_attachment_format: SWAP_CHAIN_FORMAT,
                 output_depth_attachment_format: DEPTH_FORMAT,
@@ -196,6 +199,7 @@ impl Renderer {
             &device,
             &mut queue,
             ImguiRendererOptions {
+                clear_color: options.clear_color,
                 sample_count: options.msaa.sample_count(),
                 output_color_attachment_format: SWAP_CHAIN_FORMAT,
             },
