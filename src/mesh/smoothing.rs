@@ -93,7 +93,7 @@ pub fn laplacian_smoothing(
 ///    depending on where the vertex is in the topology and whether
 ///    the vertex is newly created, or did already exist.
 ///
-/// The mesh **must** be triangulated.
+/// The mesh **must** be triangulated and manifold.
 ///
 /// Implementation based on [mdfisher]
 /// (https://graphics.stanford.edu/~mdfisher/subdivision.html).
@@ -101,7 +101,7 @@ pub fn loop_subdivision(
     mesh: &Mesh,
     vertex_to_vertex_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
     face_to_face_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
-) -> Mesh {
+) -> Option<Mesh> {
     #[derive(Debug, Eq)]
     struct UnorderedPair(u32, u32);
 
@@ -118,10 +118,9 @@ pub fn loop_subdivision(
         }
     }
 
-    assert!(
-        mesh.is_triangulated(),
-        "Loop Subdivision is only defined for triangulated meshes",
-    );
+    if !mesh.is_triangulated() {
+        return None;
+    }
 
     let mut vertices: Vec<Point3<f32>> = mesh.vertices().iter().copied().collect();
 
@@ -274,13 +273,12 @@ pub fn loop_subdivision(
                                             let f1_opposite_vertex = f1v
                                                 .iter()
                                                 .copied()
-                                                .find(|vi| !f2v.contains(&vi))
-                                                .expect("Failed to find opposite vertex");
+                                                .find(|vi| !f2v.contains(&vi))?;
+
                                             let f2_opposite_vertex = f2v
                                                 .iter()
                                                 .copied()
-                                                .find(|vi| !f1v.contains(&vi))
-                                                .expect("Failed to find opposite vertex");
+                                                .find(|vi| !f1v.contains(&vi))?;
 
                                             (f1_opposite_vertex, f2_opposite_vertex)
                                         }
@@ -320,12 +318,9 @@ pub fn loop_subdivision(
                     mid_vertex_indices[edge_index] = Some(mid_vertex_index);
                 }
 
-                let mid_v1v2_index =
-                    mid_vertex_indices[0].expect("Must have been produced by earlier loop");
-                let mid_v2v3_index =
-                    mid_vertex_indices[1].expect("Must have been produced by earlier loop");
-                let mid_v3v1_index =
-                    mid_vertex_indices[2].expect("Must have been produced by earlier loop");
+                let mid_v1v2_index = mid_vertex_indices[0]?;
+                let mid_v2v3_index = mid_vertex_indices[1]?;
+                let mid_v3v1_index = mid_vertex_indices[2]?;
 
                 faces.push((vi1, mid_v1v2_index, mid_v3v1_index));
                 faces.push((vi2, mid_v2v3_index, mid_v1v2_index));
@@ -339,10 +334,12 @@ pub fn loop_subdivision(
     assert_eq!(faces.capacity(), faces_len_estimate);
 
     // FIXME: Calculate better normals here? Maybe use `Smooth` strategy once we have it?
-    Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-        faces,
-        vertices,
-        NormalStrategy::Sharp,
+    Some(
+        Mesh::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
+            NormalStrategy::Sharp,
+        ),
     )
 }
 
@@ -752,7 +749,8 @@ mod tests {
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh);
 
-        let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f);
+        let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f)
+            .expect("The mesh doesn't meet the loop subdivision prerequisites");
 
         insta::assert_json_snapshot!(
             "uv_sphere_2_3_after_1_iteration_of_loop_subdivision",
@@ -766,7 +764,8 @@ mod tests {
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh);
 
-        let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f);
+        let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f)
+            .expect("The mesh doesn't meet the loop subdivision prerequisites");
 
         insta::assert_json_snapshot!(
             "box_sharp_after_1_iteration_of_loop_subdivision",

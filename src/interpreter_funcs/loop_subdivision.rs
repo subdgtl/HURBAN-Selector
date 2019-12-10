@@ -1,4 +1,6 @@
 use std::cmp;
+use std::error;
+use std::fmt;
 use std::sync::Arc;
 
 use crate::interpreter::{
@@ -6,6 +8,24 @@ use crate::interpreter::{
     Value,
 };
 use crate::mesh::{smoothing, topology};
+
+#[derive(Debug, PartialEq)]
+pub enum FuncLoopSubdivisionError {
+    InvalidMesh,
+}
+
+impl fmt::Display for FuncLoopSubdivisionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::InvalidMesh => write!(
+                f,
+                "The mesh doesn't meet the loop subdivision prerequisites"
+            ),
+        }
+    }
+}
+
+impl error::Error for FuncLoopSubdivisionError {}
 
 pub struct FuncLoopSubdivision;
 
@@ -58,14 +78,18 @@ impl Func for FuncLoopSubdivision {
 
         let mut v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let mut f2f = topology::compute_face_to_face_topology(&mesh);
-        let mut current_mesh = smoothing::loop_subdivision(&mesh, &v2v, &f2f);
-
-        for _ in 1..iterations {
-            v2v = topology::compute_vertex_to_vertex_topology(&current_mesh);
-            f2f = topology::compute_face_to_face_topology(&current_mesh);
-            current_mesh = smoothing::loop_subdivision(&current_mesh, &v2v, &f2f);
+        if let Some(mut current_mesh) = smoothing::loop_subdivision(&mesh, &v2v, &f2f) {
+            for _ in 1..iterations {
+                v2v = topology::compute_vertex_to_vertex_topology(&current_mesh);
+                f2f = topology::compute_face_to_face_topology(&current_mesh);
+                current_mesh = match smoothing::loop_subdivision(&current_mesh, &v2v, &f2f) {
+                    Some(m) => m,
+                    None => return Err(FuncError::new(FuncLoopSubdivisionError::InvalidMesh)),
+                }
+            }
+            Ok(Value::Mesh(Arc::new(current_mesh)))
+        } else {
+            Err(FuncError::new(FuncLoopSubdivisionError::InvalidMesh))
         }
-
-        Ok(Value::Mesh(Arc::new(current_mesh)))
     }
 }
