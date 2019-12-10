@@ -183,7 +183,20 @@ fn is_point_in_triangle(
     // If the triangle is degenerated into a line, check if the point lies on
     // the line.
     if geometry::are_points_collinear(triangle_vertex0, triangle_vertex1, triangle_vertex2) {
-        return is_point_on_line_clamped(point, triangle_vertex0, triangle_vertex1);
+        let dist01 = nalgebra::distance_squared(triangle_vertex0, triangle_vertex1);
+        let dist02 = nalgebra::distance_squared(triangle_vertex0, triangle_vertex2);
+        let dist12 = nalgebra::distance_squared(triangle_vertex1, triangle_vertex2);
+
+        // Get the longest span of the three collinear points
+        let (a, b) = if dist01 > dist02 && dist01 > dist12 {
+            (triangle_vertex0, triangle_vertex1)
+        } else if dist02 > dist01 && dist02 > dist12 {
+            (triangle_vertex0, triangle_vertex2)
+        } else {
+            (triangle_vertex1, triangle_vertex2)
+        };
+
+        return is_point_on_line_clamped(point, a, b);
     }
 
     let plane = Plane::from_three_points(triangle_vertex0, triangle_vertex1, triangle_vertex2);
