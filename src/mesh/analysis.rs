@@ -1025,7 +1025,7 @@ mod tests {
 
     #[test]
     fn test_is_mesh_orientable_returns_true_watertight_mesh() {
-        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let mesh = primitive::create_box(Point3::origin(), [1.0; 3]);
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_sharing(&oriented_edges);
 
@@ -1058,7 +1058,7 @@ mod tests {
 
     #[test]
     fn test_is_mesh_watertight_returns_true_for_watertight_mesh() {
-        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let mesh = primitive::create_box(Point3::origin(), [1.0; 3]);
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_sharing(&oriented_edges);
 
@@ -1082,7 +1082,7 @@ mod tests {
 
     #[test]
     fn test_triangulated_mesh_genus_box_should_be_0() {
-        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+        let mesh = primitive::create_box(Point3::origin(), [1.0; 3]);
         assert!(mesh.is_triangulated());
 
         let edges: HashSet<UnorientedEdge> = mesh.unoriented_edges_iter().collect();
@@ -1170,8 +1170,8 @@ mod tests {
     }
 
     #[test]
-    fn test_border_edge_loops_returns_one_for_cube() {
-        let mesh = primitive::create_cube_sharp([0.0, 0.0, 0.0], 1.0);
+    fn test_border_edge_loops_returns_one_for_box() {
+        let mesh = primitive::create_box(Point3::origin(), [1.0; 3]);
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_sharing(&oriented_edges);

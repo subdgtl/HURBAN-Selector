@@ -27,76 +27,20 @@ pub fn create_mesh_plane(position: [f32; 3], scale: f32) -> Mesh {
 }
 
 #[allow(dead_code)]
-pub fn create_cube_smooth(position: [f32; 3], scale: f32) -> Mesh {
+pub fn create_box(center: Point3<f32>, scale: [f32; 3]) -> Mesh {
     #[rustfmt::skip]
+
     let vertex_positions = vec![
         // back
-        v(-1.0,  1.0, -1.0, position, scale),
-        v(-1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0, -1.0, position, scale),
+        Point3::new(-0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
+        Point3::new(-0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
+        Point3::new( 0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
+        Point3::new( 0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
         // front
-        v(-1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0,  1.0, position, scale),
-        v(-1.0, -1.0,  1.0, position, scale),
-    ];
-
-    // FIXME: make const once sqrt is const stabilized
-    let frac_1_sqrt_3 = 1.0f32 / 3.0f32.sqrt();
-
-    #[rustfmt::skip]
-    let vertex_normals = vec![
-        // back
-        Vector3::new(-frac_1_sqrt_3,  frac_1_sqrt_3, -frac_1_sqrt_3),
-        Vector3::new(-frac_1_sqrt_3,  frac_1_sqrt_3,  frac_1_sqrt_3),
-        Vector3::new( frac_1_sqrt_3,  frac_1_sqrt_3,  frac_1_sqrt_3),
-        Vector3::new( frac_1_sqrt_3,  frac_1_sqrt_3, -frac_1_sqrt_3),
-        // front
-        Vector3::new(-frac_1_sqrt_3, -frac_1_sqrt_3, -frac_1_sqrt_3),
-        Vector3::new( frac_1_sqrt_3, -frac_1_sqrt_3, -frac_1_sqrt_3),
-        Vector3::new( frac_1_sqrt_3, -frac_1_sqrt_3,  frac_1_sqrt_3),
-        Vector3::new(-frac_1_sqrt_3, -frac_1_sqrt_3,  frac_1_sqrt_3),
-    ];
-
-    let faces = vec![
-        // back
-        TriangleFace::new(0, 1, 2),
-        TriangleFace::new(2, 3, 0),
-        // front
-        TriangleFace::new(4, 5, 6),
-        TriangleFace::new(6, 7, 4),
-        // top
-        TriangleFace::new(7, 6, 2),
-        TriangleFace::new(2, 1, 7),
-        // bottom
-        TriangleFace::new(4, 0, 3),
-        TriangleFace::new(3, 5, 4),
-        // right
-        TriangleFace::new(5, 3, 2),
-        TriangleFace::new(2, 6, 5),
-        // left
-        TriangleFace::new(4, 7, 1),
-        TriangleFace::new(1, 0, 4),
-    ];
-
-    Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
-}
-
-#[allow(dead_code)]
-pub fn create_cube_sharp(position: [f32; 3], scale: f32) -> Mesh {
-    #[rustfmt::skip]
-    let vertex_positions = vec![
-        // back
-        v(-1.0,  1.0, -1.0, position, scale),
-        v(-1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0,  1.0, position, scale),
-        v( 1.0,  1.0, -1.0, position, scale),
-        // front
-        v(-1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0, -1.0, position, scale),
-        v( 1.0, -1.0,  1.0, position, scale),
-        v(-1.0, -1.0,  1.0, position, scale),
+        Point3::new(-0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
+        Point3::new( 0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
+        Point3::new( 0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
+        Point3::new(-0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
     ];
 
     #[rustfmt::skip]
