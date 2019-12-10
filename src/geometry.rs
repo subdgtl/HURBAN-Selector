@@ -27,10 +27,6 @@ pub fn compute_barycentric_coords(
     let ys = Vector3::new(ac.y, ab.y, pa.y);
     let ortho = xs.cross(&ys);
 
-    // FIXME: This was originally looked like this: `if f32::abs(ortho.z) < 1.0`
-    // but reported some valid solutions as None. This is a trial&error fix!
-    // Investigate how should this look to be correct.
-    // https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=02fa693bf67be9432d126d9f1735ced3
     if f32::abs(ortho.z) == 0.0 {
         None
     } else {
