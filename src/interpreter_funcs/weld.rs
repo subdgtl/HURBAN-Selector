@@ -49,7 +49,7 @@ impl Func for FuncWeld {
             ParamInfo {
                 name: "Tolerance",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
-                    default_value: Some(1.0),
+                    default_value: Some(0.001),
                     min_value: Some(0.0),
                     max_value: None,
                 }),
