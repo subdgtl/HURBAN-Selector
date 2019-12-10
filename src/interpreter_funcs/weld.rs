@@ -1,3 +1,5 @@
+use std::error;
+use std::fmt;
 use std::sync::Arc;
 
 use crate::interpreter::{
@@ -5,6 +7,23 @@ use crate::interpreter::{
     Value,
 };
 use crate::mesh::tools;
+
+#[derive(Debug, PartialEq)]
+pub enum FuncWeldError {
+    AllFacesDegenerate,
+}
+
+impl fmt::Display for FuncWeldError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FuncWeldError::AllFacesDegenerate => {
+                write!(f, "All faces remained degenerate after welding")
+            }
+        }
+    }
+}
+
+impl error::Error for FuncWeldError {}
 
 pub struct FuncWeld;
 
@@ -47,7 +66,10 @@ impl Func for FuncWeld {
         let mesh = args[0].unwrap_mesh();
         let tolerance = args[1].unwrap_float();
 
-        let value = tools::weld(mesh, tolerance);
-        Ok(Value::Mesh(Arc::new(value)))
+        if let Some(welded) = tools::weld(&mesh, tolerance) {
+            Ok(Value::Mesh(Arc::new(welded)))
+        } else {
+            Err(FuncError::new(FuncWeldError::AllFacesDegenerate))
+        }
     }
 }
