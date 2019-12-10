@@ -39,11 +39,18 @@ pub fn compute_barycentric_coords(
 }
 
 /// Checks if all three points lay on the same line.
-pub fn are_points_colinear(v0: &Point3<f32>, v1: &Point3<f32>, v2: &Point3<f32>) -> bool {
-    let v0_normalized = v0.coords.normalize();
-    let v1_normalized = v1.coords.normalize();
-    let v2_normalized = v2.coords.normalize();
-    v0_normalized == v1_normalized && v0_normalized == v2_normalized
+///
+/// http://www.ambrsoft.com/TrigoCalc/Line3D/LineColinear.htm
+pub fn are_points_collinear(v0: &Point3<f32>, v1: &Point3<f32>, v2: &Point3<f32>) -> bool {
+    if v0.coords.relative_eq(&v1.coords, 0.0001, 0.0001)
+        || v0.coords.relative_eq(&v2.coords, 0.0001, 0.0001)
+    {
+        return true;
+    }
+    let n1 = v1 - v0;
+    let n2 = v2 - v0;
+    let cross = n1.cross(&n2);
+    cross.relative_eq(&Vector3::zeros(), 0.001, 0.001)
 }
 
 #[cfg(test)]
