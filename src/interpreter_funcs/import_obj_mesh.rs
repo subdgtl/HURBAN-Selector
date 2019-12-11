@@ -53,7 +53,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
             refinement: ParamRefinement::String(StringParamRefinement {
                 default_value: "",
                 file_path: true,
-                file_ext_filter: Some(("*.obj", "Wavefront (.obj)")),
+                file_ext_filter: Some((&["*.obj", "*.OBJ"], "Wavefront (.obj)")),
             }),
             optional: false,
         }]
