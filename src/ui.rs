@@ -31,6 +31,9 @@ struct Colors {
     special_button: [f32; 4],
     special_button_hovered: [f32; 4],
     special_button_active: [f32; 4],
+    combo_box_selected_item: [f32; 4],
+    combo_box_selected_item_hovered: [f32; 4],
+    combo_box_selected_item_active: [f32; 4],
 }
 
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
@@ -52,6 +55,9 @@ impl Ui {
             special_button: style[imgui::StyleColor::Button],
             special_button_hovered: style[imgui::StyleColor::ButtonHovered],
             special_button_active: style[imgui::StyleColor::ButtonActive],
+            combo_box_selected_item: style[imgui::StyleColor::Header],
+            combo_box_selected_item_hovered: style[imgui::StyleColor::HeaderHovered],
+            combo_box_selected_item_active: style[imgui::StyleColor::HeaderActive],
         };
 
         style.window_padding = [4.0, 4.0];
@@ -74,6 +80,7 @@ impl Ui {
             style.scrollbar_rounding = 0.0;
             style.grab_rounding = 0.0;
 
+            let light = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0xff]);
             let light_transparent = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0x40]);
             let blue = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0xff]);
             let blue_transparent = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0x40]);
@@ -81,13 +88,12 @@ impl Ui {
             let orange_light = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0xff]);
             let orange_light_transparent = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0x40]);
             let orange_dark = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0xff]);
-
-            // TODO: integrate material
+            let orange_dark_transparent = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0x40]);
 
             style[imgui::StyleColor::Text] = orange;
             style[imgui::StyleColor::TextDisabled] = orange_light;
             style[imgui::StyleColor::WindowBg] = light_transparent;
-            style[imgui::StyleColor::PopupBg] = light_transparent;
+            style[imgui::StyleColor::PopupBg] = light;
             style[imgui::StyleColor::Border] = light_transparent;
             style[imgui::StyleColor::FrameBg] = light_transparent;
             style[imgui::StyleColor::FrameBgHovered] = light_transparent;
@@ -105,7 +111,7 @@ impl Ui {
             style[imgui::StyleColor::SliderGrabActive] = orange_light;
             style[imgui::StyleColor::Button] = light_transparent;
             style[imgui::StyleColor::ButtonHovered] = orange_light_transparent;
-            style[imgui::StyleColor::ButtonActive] = orange_light_transparent;
+            style[imgui::StyleColor::ButtonActive] = orange_dark_transparent;
             style[imgui::StyleColor::Header] = light_transparent;
             style[imgui::StyleColor::HeaderHovered] = light_transparent;
             style[imgui::StyleColor::HeaderActive] = light_transparent;
@@ -128,6 +134,9 @@ impl Ui {
             colors.special_button = light_transparent;
             colors.special_button_hovered = blue_transparent;
             colors.special_button_active = blue_transparent;
+            colors.combo_box_selected_item = light;
+            colors.combo_box_selected_item_hovered = orange_light;
+            colors.combo_box_selected_item_active = orange_dark;
         }
 
         imgui_context.set_ini_filename(None);
@@ -789,6 +798,11 @@ impl<'a> UiFrame<'a> {
 
         combo = combo.preview_value(&preview_value);
 
+        let combo_box_color_token = ui.push_style_colors(&[
+            (imgui::StyleColor::Header, self.colors.combo_box_selected_item),
+            (imgui::StyleColor::HeaderHovered, self.colors.combo_box_selected_item_hovered),
+            (imgui::StyleColor::HeaderActive, self.colors.combo_box_selected_item_active),
+        ]);
         if let Some(combo_token) = combo.begin(ui) {
             for (index, var_ident) in visible_vars_iter.clone().enumerate() {
                 let text = format_var_name(
@@ -820,6 +834,7 @@ impl<'a> UiFrame<'a> {
 
             combo_token.end(ui);
         }
+        combo_box_color_token.pop(ui);
 
         if combo_changed {
             if let Some(selected_var_index) = selected_var_index {
