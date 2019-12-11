@@ -12,8 +12,8 @@ pub struct FuncLaplacianSmoothing;
 impl Func for FuncLaplacianSmoothing {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Laplacian Smoothing",
-            return_value_name: "Smoothed Mesh",
+            name: "Relax",
+            return_value_name: "Relaxed Mesh",
         }
     }
 
