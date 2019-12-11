@@ -799,9 +799,18 @@ impl<'a> UiFrame<'a> {
         combo = combo.preview_value(&preview_value);
 
         let combo_box_color_token = ui.push_style_colors(&[
-            (imgui::StyleColor::Header, self.colors.combo_box_selected_item),
-            (imgui::StyleColor::HeaderHovered, self.colors.combo_box_selected_item_hovered),
-            (imgui::StyleColor::HeaderActive, self.colors.combo_box_selected_item_active),
+            (
+                imgui::StyleColor::Header,
+                self.colors.combo_box_selected_item,
+            ),
+            (
+                imgui::StyleColor::HeaderHovered,
+                self.colors.combo_box_selected_item_hovered,
+            ),
+            (
+                imgui::StyleColor::HeaderActive,
+                self.colors.combo_box_selected_item_active,
+            ),
         ]);
         if let Some(combo_token) = combo.begin(ui) {
             for (index, var_ident) in visible_vars_iter.clone().enumerate() {
