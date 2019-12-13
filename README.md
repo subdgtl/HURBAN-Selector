@@ -64,6 +64,16 @@ the `cargo insta review` to review snapshot diffs or new snapshots.
 
 Optionally configure one of the following:
 
+**HS_THEME**: Either `dark` or `funky`. Default is `dark`.
+
+**HS_FULLSCREEN**: Run (1) or don't run (0) in fullscreen. Default is
+  no fullscreen.
+
+**HS_MSAA**: Choose the number of multisampling samples. Either 1, 4,
+  8, or 16. Default is 1.
+
+**HS_VSYNC**: Enable (1) or disable (0) VSync. Default is enabled.
+
 **HS_GPU_BACKEND**: Force a GPU backend. A gpu backend is
   automatically selected, but optionally a non-default gpu backend can
   be specified. Can take the following values:
@@ -73,14 +83,6 @@ Optionally configure one of the following:
 - `metal` on macOS.
 
 Default is primary GPU backend for the current OS.
-
-**HS_FULLSCREEN**: Run (1) or don't run (0) in fullscreen. Default is
-  no fullscreen.
-
-**HS_MSAA**: Choose the number of multisampling samples. Either 1, 4,
-  8, or 16. Default is 1.
-
-**HS_VSYNC**: Enable (1) or disable (0) VSync. Default is enabled.
 
 **HS_APP_LOG_LEVEL**: Set level of logging for the editor. Either
   `error`, `warn`, `info` or `debug`. Default is `debug`.

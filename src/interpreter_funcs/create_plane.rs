@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
+use nalgebra::{Point3, Vector3};
+
 use crate::interpreter::{
     Float3ParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo,
     ParamRefinement, Ty, Value,
 };
 use crate::mesh::primitive;
+use crate::plane::Plane;
 
 pub struct FuncCreatePlane;
 
@@ -57,7 +60,12 @@ impl Func for FuncCreatePlane {
         let position = values[0].get_float3().unwrap_or([0.0; 3]);
         let scale = values[1].get_float().unwrap_or(1.0);
 
-        let value = primitive::create_mesh_plane(position, scale);
+        let plane = Plane::from_origin_and_normal(
+            &Point3::from_slice(&position),
+            &Vector3::new(0.0, 0.0, 1.0),
+        );
+
+        let value = primitive::create_mesh_plane(plane, [scale; 2]);
         Ok(Value::Mesh(Arc::new(value)))
     }
 }
