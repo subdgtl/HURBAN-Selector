@@ -81,7 +81,7 @@ impl Func for FuncCreateUvSphere {
             ParamInfo {
                 name: "Parallels",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
-                    default_value: Some(Self::MIN_PARALLELS),
+                    default_value: Some(8),
                     min_value: Some(Self::MIN_PARALLELS),
                     max_value: None,
                 }),
@@ -90,7 +90,7 @@ impl Func for FuncCreateUvSphere {
             ParamInfo {
                 name: "Meridians",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
-                    default_value: Some(Self::MIN_MERIDIANS),
+                    default_value: Some(8),
                     min_value: Some(Self::MIN_MERIDIANS),
                     max_value: None,
                 }),
