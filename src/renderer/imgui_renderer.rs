@@ -12,8 +12,9 @@ pub enum Error {
     BadTexture(imgui::TextureId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
+    pub clear_color: [f64; 4],
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
 }
@@ -25,6 +26,8 @@ pub struct ImguiRenderer {
     transform_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     render_pipeline: wgpu::RenderPipeline,
+
+    options: Options,
 }
 
 impl ImguiRenderer {
@@ -212,6 +215,7 @@ impl ImguiRenderer {
             transform_buffer,
             transform_bind_group,
             texture_bind_group_layout,
+            options,
         })
     }
 
@@ -329,10 +333,10 @@ impl ImguiRenderer {
                 load_op: color_load_op,
                 store_op: wgpu::StoreOp::Store,
                 clear_color: wgpu::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
+                    r: self.options.clear_color[0],
+                    g: self.options.clear_color[1],
+                    b: self.options.clear_color[2],
+                    a: self.options.clear_color[3],
                 },
             }
         } else {
@@ -342,10 +346,10 @@ impl ImguiRenderer {
                 load_op: color_load_op,
                 store_op: wgpu::StoreOp::Store,
                 clear_color: wgpu::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
+                    r: self.options.clear_color[0],
+                    g: self.options.clear_color[1],
+                    b: self.options.clear_color[2],
+                    a: self.options.clear_color[3],
                 },
             }
         };

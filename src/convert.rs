@@ -54,3 +54,25 @@ pub fn clamp_cast_i32_to_u32(n: i32) -> u32 {
         n as u32
     }
 }
+
+/// Convert u8 based color array to f32 based color array with
+/// floating point domain `[0..1]`.
+pub fn cast_u8_color_to_f32(color: [u8; 4]) -> [f32; 4] {
+    [
+        color[0] as f32 / 255.0,
+        color[1] as f32 / 255.0,
+        color[2] as f32 / 255.0,
+        color[3] as f32 / 255.0,
+    ]
+}
+
+/// Convert u8 based color array to f64 based color array with
+/// floating point domain `[0..1]`.
+pub fn cast_u8_color_to_f64(color: [u8; 4]) -> [f64; 4] {
+    [
+        color[0] as f64 / 255.0,
+        color[1] as f64 / 255.0,
+        color[2] as f64 / 255.0,
+        color[3] as f64 / 255.0,
+    ]
+}

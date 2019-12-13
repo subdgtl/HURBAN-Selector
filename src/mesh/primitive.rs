@@ -1,22 +1,28 @@
 use nalgebra::{Point3, Vector3};
 
 use crate::convert::{cast_u32, cast_usize};
+use crate::plane::Plane;
 
 use super::{Mesh, NormalStrategy, TriangleFace};
 
-pub fn create_mesh_plane(position: [f32; 3], scale: f32) -> Mesh {
+pub fn create_mesh_plane(plane: Plane, scale: [f32; 2]) -> Mesh {
     #[rustfmt::skip]
     let vertex_positions = vec![
-        v(-1.0, -1.0,  0.0, position, scale),
-        v( 1.0, -1.0,  0.0, position, scale),
-        v( 1.0,  1.0,  0.0, position, scale),
-        v(-1.0,  1.0,  0.0, position, scale),
+        plane.origin()
+            + (-0.5 * plane.x_vector() * scale[0])
+            + (-0.5 * plane.y_vector() * scale[1]),
+        plane.origin()
+            + (0.5 * plane.x_vector() * scale[0])
+            + (-0.5 * plane.y_vector() * scale[1]),
+        plane.origin()
+            + (0.5 * plane.x_vector() * scale[0])
+            + (0.5 * plane.y_vector() * scale[1]),
+        plane.origin()
+            + (-0.5 * plane.x_vector() * scale[0])
+            + (0.5 * plane.y_vector() * scale[1]),
     ];
 
-    #[rustfmt::skip]
-    let vertex_normals = vec![
-        Vector3::new( 0.0,  0.0,  1.0),
-    ];
+    let vertex_normals = vec![Vector3::new(0.0, 0.0, 1.0)];
 
     let faces = vec![
         TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
