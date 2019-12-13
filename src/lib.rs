@@ -1,5 +1,6 @@
 pub use crate::logger::LogLevel;
 pub use crate::renderer::{GpuBackend, Msaa, PresentMode};
+pub use crate::ui::Theme;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,7 +9,7 @@ use std::time::{Duration, Instant};
 use nalgebra::Point3;
 
 use crate::camera::{Camera, CameraOptions};
-use crate::convert::cast_usize;
+use crate::convert::{cast_u8_color_to_f64, cast_usize};
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
 use crate::mesh::analysis::BoundingBox;
@@ -40,6 +41,8 @@ const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
+    /// What theme to use.
+    pub theme: Theme,
     /// Whether to open a fullscreen window.
     pub fullscreen: bool,
     /// Which multi-sampling setting to use.
@@ -106,7 +109,7 @@ pub fn init_and_run(options: Options) -> ! {
 
     let mut session = Session::new();
     let mut input_manager = InputManager::new();
-    let mut ui = Ui::new(&window);
+    let mut ui = Ui::new(&window, options.theme);
 
     let mut camera = Camera::new(
         window_size,
@@ -134,6 +137,10 @@ pub fn init_and_run(options: Options) -> ! {
         &camera.view_matrix(),
         ui.fonts(),
         RendererOptions {
+            clear_color: match options.theme {
+                Theme::Dark => [0.1, 0.1, 0.1, 1.0],
+                Theme::Funky => cast_u8_color_to_f64([0xea, 0xe7, 0xe1, 0xff]),
+            },
             // FIXME: @Correctness Msaa X4 is the only value currently
             // working on all devices we tried. Once msaa capabilities
             // are queryable with wgpu `Limits`, we should have a
