@@ -1,5 +1,4 @@
 use std::f32;
-use std::slice;
 use std::sync::Arc;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
@@ -890,7 +889,7 @@ fn push_disabled_style(ui: &imgui::Ui) -> (imgui::ColorStackToken, imgui::StyleS
 fn file_input(
     ui: &imgui::Ui,
     label: &imgui::ImStr,
-    file_ext_filter: Option<(&str, &str)>,
+    file_ext_filter: Option<(&[&str], &str)>,
     buffer: &mut imgui::ImString,
 ) -> bool {
     use std::env;
@@ -900,16 +899,14 @@ fn file_input(
     let open_button_width = ui.calc_text_size(&open_button_label, true, 50.0)[0] + 8.0;
     let input_position = open_button_width + 2.0; // Padding
 
-    let ext: Option<(&[&str], &str)> = file_ext_filter
-        .as_ref()
-        .map(|filter| (slice::from_ref(&filter.0), filter.1));
-
     let mut changed = false;
 
     let group_token = ui.begin_group();
 
     if ui.button(&open_button_label, [open_button_width, 0.0]) {
-        if let Some(absolute_path_string) = tinyfiledialogs::open_file_dialog("Open", "", ext) {
+        if let Some(absolute_path_string) =
+            tinyfiledialogs::open_file_dialog("Open", "", file_ext_filter)
+        {
             buffer.clear();
 
             let current_dir = env::current_dir().expect("Couldn't get current dir");

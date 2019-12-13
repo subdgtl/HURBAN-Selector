@@ -204,7 +204,7 @@ impl Float3ParamRefinement {
 pub struct StringParamRefinement {
     pub default_value: &'static str,
     pub file_path: bool,
-    pub file_ext_filter: Option<(&'static str, &'static str)>,
+    pub file_ext_filter: Option<(&'static [&'static str], &'static str)>,
 }
 
 /// An interface describing a function as seen by the interpreter.
