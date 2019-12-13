@@ -370,6 +370,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::mesh::{analysis, primitive};
+    use crate::plane::Plane;
 
     use super::*;
 
@@ -721,8 +722,12 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces() {
-        let plane = primitive::create_mesh_plane([0.0, 0.0, 0.0], 1.0);
-        let plane_reverted = revert_mesh_faces(&plane);
+        let plane = Plane::from_origin_and_normal(
+            &Point3::new(0.0, 0.0, 0.0),
+            &Vector3::new(0.0, 0.0, 1.0),
+        );
+        let plane_mesh = primitive::create_mesh_plane(plane, [2.0; 2]);
+        let plane_reverted = revert_mesh_faces(&plane_mesh);
 
         let expected_reverted_faces = vec![
             Face::Triangle(TriangleFace::new_separate(2, 1, 0, 0, 0, 0)),
