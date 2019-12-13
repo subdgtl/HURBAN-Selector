@@ -698,32 +698,32 @@ impl<'a> UiFrame<'a> {
                     }
                     ParamRefinement::Mesh => {
                         let one_past_last_stmt = session.stmts().len();
-                        let mut visible_vars_iter =
+                        let visible_vars_iter =
                             session.visible_vars_at_stmt(one_past_last_stmt, Ty::Mesh);
 
                         if visible_vars_iter.clone().count() == 0 {
                             ast::Expr::Lit(ast::LitExpr::Nil)
                         } else {
-                            let first = visible_vars_iter
-                                .next()
+                            let last = visible_vars_iter
+                                .last()
                                 .expect("Need at least one variable to provide default value");
 
-                            ast::Expr::Var(ast::VarExpr::new(first))
+                            ast::Expr::Var(ast::VarExpr::new(last))
                         }
                     }
                     ParamRefinement::MeshArray => {
                         let one_past_last_stmt = session.stmts().len();
-                        let mut visible_vars_iter =
+                        let visible_vars_iter =
                             session.visible_vars_at_stmt(one_past_last_stmt, Ty::MeshArray);
 
                         if visible_vars_iter.clone().count() == 0 {
                             ast::Expr::Lit(ast::LitExpr::Nil)
                         } else {
-                            let first = visible_vars_iter
-                                .next()
+                            let last = visible_vars_iter
+                                .last()
                                 .expect("Need at least one variable to provide default value");
 
-                            ast::Expr::Var(ast::VarExpr::new(first))
+                            ast::Expr::Var(ast::VarExpr::new(last))
                         }
                     }
                 };
