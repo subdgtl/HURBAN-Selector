@@ -114,9 +114,14 @@ SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection
 - add the following `run.cmd` file to the distribution directory:
 
 ```cmd
-set HS_FULLSCREEN=1
+REM Set environment variables here
+set HS_THEME=funky
 hurban_selector.exe
 ```
+
+Before running on target computer, make sure "Microsoft Visual C++
+Redistributable for Visual Studio 2019" is installed (get it
+[here](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads))
 
 ### Licence
 
