@@ -566,7 +566,7 @@ impl<'a> UiFrame<'a> {
         let operations_window_vertical_position =
             MARGIN * 2.0 + (1.0 - OPERATIONS_WINDOW_HEIGHT_MULT) * window_inner_height;
 
-        let running_enabled = !session.interpreter_busy() && !session.stmts().is_empty();
+        let running_enabled = !session.interpreter_busy();
         let popping_enabled = !session.interpreter_busy() && !session.stmts().is_empty();
         let pushing_enabled = !session.interpreter_busy();
 
