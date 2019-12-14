@@ -225,7 +225,7 @@ pub fn init_and_run(options: Options) -> ! {
                 if let Some(logical_size) = input_state.window_resized {
                     let physical_size = logical_size.to_physical(window.hidpi_factor());
                     log::debug!(
-                        "Window resized to new size: logical [{},{}], physical [{},{}]",
+                        "Window resized to new size: logical {}x{}, physical {}x{}",
                         logical_size.width,
                         logical_size.height,
                         physical_size.width,
