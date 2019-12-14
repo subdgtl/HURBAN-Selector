@@ -53,6 +53,7 @@ pub enum ParamRefinement {
     Int(IntParamRefinement),
     Uint(UintParamRefinement),
     Float(FloatParamRefinement),
+    Float2(Float2ParamRefinement),
     Float3(Float3ParamRefinement),
     String(StringParamRefinement),
     Mesh,
@@ -66,6 +67,7 @@ impl ParamRefinement {
             Self::Int(_) => Ty::Int,
             Self::Uint(_) => Ty::Uint,
             Self::Float(_) => Ty::Float,
+            Self::Float2(_) => Ty::Float2,
             Self::Float3(_) => Ty::Float3,
             Self::String(_) => Ty::String,
             Self::Mesh => Ty::Mesh,
@@ -148,6 +150,42 @@ impl FloatParamRefinement {
         }
 
         value
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Float2ParamRefinement {
+    pub default_value_x: Option<f32>,
+    pub min_value_x: Option<f32>,
+    pub max_value_x: Option<f32>,
+    pub default_value_y: Option<f32>,
+    pub min_value_y: Option<f32>,
+    pub max_value_y: Option<f32>,
+}
+
+impl Float2ParamRefinement {
+    pub fn clamp(&self, value: [f32; 2]) -> [f32; 2] {
+        let x = if let Some(min_x) = self.min_value_x {
+            if value[0] < min_x {
+                min_x
+            } else {
+                value[0]
+            }
+        } else {
+            value[0]
+        };
+
+        let y = if let Some(min_y) = self.min_value_y {
+            if value[1] < min_y {
+                min_y
+            } else {
+                value[1]
+            }
+        } else {
+            value[1]
+        };
+
+        [x, y]
     }
 }
 

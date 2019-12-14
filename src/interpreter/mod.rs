@@ -8,8 +8,9 @@ use std::time::Instant;
 
 pub use self::ast::{FuncIdent, VarIdent};
 pub use self::func::{
-    BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncFlags, FuncInfo,
-    IntParamRefinement, ParamInfo, ParamRefinement, StringParamRefinement, UintParamRefinement,
+    BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, FloatParamRefinement,
+    Func, FuncFlags, FuncInfo, IntParamRefinement, ParamInfo, ParamRefinement,
+    StringParamRefinement, UintParamRefinement,
 };
 pub use self::value::{MeshArrayValue, Ty, Value};
 
@@ -699,6 +700,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
         ast::LitExpr::Int(int) => Value::Int(*int),
         ast::LitExpr::Uint(uint) => Value::Uint(*uint),
         ast::LitExpr::Float(float) => Value::Float(*float),
+        ast::LitExpr::Float2(float2) => Value::Float2(*float2),
         ast::LitExpr::Float3(float3) => Value::Float3(*float3),
         ast::LitExpr::String(string) => Value::String(Arc::clone(&string)),
         ast::LitExpr::Nil => Value::Nil,
@@ -804,6 +806,7 @@ mod tests {
                 Ty::Int => ParamRefinement::Int(IntParamRefinement::default()),
                 Ty::Uint => ParamRefinement::Uint(UintParamRefinement::default()),
                 Ty::Float => ParamRefinement::Float(FloatParamRefinement::default()),
+                Ty::Float2 => ParamRefinement::Float2(Float2ParamRefinement::default()),
                 Ty::Float3 => ParamRefinement::Float3(Float3ParamRefinement::default()),
                 Ty::String => ParamRefinement::String(StringParamRefinement::default()),
                 Ty::Mesh => ParamRefinement::Mesh,
@@ -1773,7 +1776,10 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Ok(Value::Float(values[0].get_float().unwrap_or(1.0))),
+                |values| match &values[0] {
+                    Value::Float(float_value) => Ok(Value::Float(*float_value)),
+                    _ => Ok(Value::Float(1.0)),
+                },
                 FuncFlags::PURE,
                 vec![param_info(Ty::Float, true)],
                 Ty::Float,
@@ -1801,7 +1807,10 @@ mod tests {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
-                |values| Ok(Value::Float(values[0].get_float().unwrap_or(1.0))),
+                |values| match &values[0] {
+                    Value::Float(float_value) => Ok(Value::Float(*float_value)),
+                    _ => Ok(Value::Float(1.0)),
+                },
                 FuncFlags::PURE,
                 vec![param_info(Ty::Float, true)],
                 Ty::Float,

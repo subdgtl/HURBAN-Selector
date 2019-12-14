@@ -1,6 +1,8 @@
 use std::iter;
 use std::sync::Arc;
 
+use nalgebra::{Rotation3, Vector3};
+
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
@@ -52,7 +54,12 @@ impl Func for FuncShrinkWrap {
         let bounding_box = BoundingBox::from_meshes(iter::once(mesh));
         let mut value = primitive::create_uv_sphere(
             bounding_box.center().coords.into(),
-            bounding_box.diagonal_length() / 2.0,
+            Rotation3::identity(),
+            Vector3::new(
+                bounding_box.diagonal_length() / 2.0,
+                bounding_box.diagonal_length() / 2.0,
+                bounding_box.diagonal_length() / 2.0,
+            ),
             sphere_density,
             sphere_density,
         );

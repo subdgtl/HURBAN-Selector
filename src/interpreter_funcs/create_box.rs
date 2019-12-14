@@ -1,21 +1,20 @@
 use std::sync::Arc;
 
-use nalgebra::{Point3, Rotation3, Vector2, Vector3};
+use nalgebra::{Point3, Rotation3, Vector3};
 
 use crate::interpreter::{
-    Float2ParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo,
-    ParamRefinement, Ty, Value,
+    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty,
+    Value,
 };
 use crate::mesh::primitive;
-use crate::plane::Plane;
 
-pub struct FuncCreatePlane;
+pub struct FuncCreateBox;
 
-impl Func for FuncCreatePlane {
+impl Func for FuncCreateBox {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Create Plane",
-            return_value_name: "Plane",
+            name: "Create Box",
+            return_value_name: "Box",
         }
     }
 
@@ -57,13 +56,16 @@ impl Func for FuncCreatePlane {
             },
             ParamInfo {
                 name: "Scale",
-                refinement: ParamRefinement::Float2(Float2ParamRefinement {
+                refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
-                    min_value_x: Some(0.0),
+                    min_value_x: None,
                     max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: Some(0.0),
+                    min_value_y: None,
                     max_value_y: None,
+                    default_value_z: Some(1.0),
+                    min_value_z: None,
+                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -77,21 +79,17 @@ impl Func for FuncCreatePlane {
     fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
         let center = values[0].unwrap_float3();
         let rotate = values[1].unwrap_float3();
-        let scale = values[2].unwrap_float2();
+        let scale = values[2].unwrap_float3();
 
-        let rotation = Rotation3::from_euler_angles(
-            rotate[0].to_radians(),
-            rotate[1].to_radians(),
-            rotate[2].to_radians(),
+        let value = primitive::create_box(
+            Point3::from(center),
+            Rotation3::from_euler_angles(
+                rotate[0].to_radians(),
+                rotate[1].to_radians(),
+                rotate[2].to_radians(),
+            ),
+            Vector3::from(scale),
         );
-
-        let plane = Plane::new(
-            &Point3::from_slice(&center),
-            &rotation.transform_vector(&Vector3::new(1.0, 0.0, 0.0)),
-            &rotation.transform_vector(&Vector3::new(0.0, 1.0, 0.0)),
-        );
-
-        let value = primitive::create_mesh_plane(plane, Vector2::from(scale));
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

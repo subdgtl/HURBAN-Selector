@@ -350,7 +350,7 @@ pub fn loop_subdivision(
 mod tests {
     use std::iter::FromIterator;
 
-    use nalgebra;
+    use nalgebra::{Rotation3, Vector3};
 
     use crate::mesh::{analysis, primitive, topology, NormalStrategy, OrientedEdge};
 
@@ -748,7 +748,13 @@ mod tests {
 
     #[test]
     fn test_loop_subdivision_snapshot_uv_sphere() {
-        let mesh = primitive::create_uv_sphere([0.0; 3], 1.0, 2, 3);
+        let mesh = primitive::create_uv_sphere(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(2.0, 2.0, 2.0),
+            2,
+            3,
+        );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh);
 
@@ -763,7 +769,11 @@ mod tests {
 
     #[test]
     fn test_loop_subdivision_snapshot_box_sharp() {
-        let mesh = primitive::create_box(Point3::origin(), [1.0; 3]);
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(1.0, 1.0, 1.0),
+        );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh);
 
