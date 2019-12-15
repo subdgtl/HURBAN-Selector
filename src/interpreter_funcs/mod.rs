@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::importer::{EndlessCache, Importer};
 use crate::interpreter::{Func, FuncIdent};
 
+use self::create_box::FuncCreateBox;
 use self::create_plane::FuncCreatePlane;
 use self::create_uv_sphere::FuncCreateUvSphere;
 use self::disjoint_mesh::FuncDisjointMesh;
@@ -18,6 +19,7 @@ use self::synchronize_mesh_faces::FuncSynchronizeMeshFaces;
 use self::transform::FuncTransform;
 use self::weld::FuncWeld;
 
+mod create_box;
 mod create_plane;
 mod create_uv_sphere;
 mod disjoint_mesh;
@@ -45,6 +47,7 @@ pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(1);
 // Create funcs
 pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(1000);
 pub const FUNC_ID_CREATE_PLANE: FuncIdent = FuncIdent(1001);
+pub const FUNC_ID_CREATE_BOX: FuncIdent = FuncIdent(1002);
 
 // Import/Export funcs
 pub const FUNC_ID_IMPORT_OBJ_MESH: FuncIdent = FuncIdent(2000);
@@ -78,6 +81,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     // Create funcs
     funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncCreateUvSphere));
     funcs.insert(FUNC_ID_CREATE_PLANE, Box::new(FuncCreatePlane));
+    funcs.insert(FUNC_ID_CREATE_BOX, Box::new(FuncCreateBox));
 
     // Import/Export funcs
     funcs.insert(

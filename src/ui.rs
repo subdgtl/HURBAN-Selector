@@ -411,6 +411,25 @@ impl<'a> UiFrame<'a> {
                                                 ));
                                             }
                                         }
+                                        ParamRefinement::Float2(param_refinement_float2) => {
+                                            let mut float2_lit =
+                                                arg.unwrap_literal().unwrap_float2();
+
+                                            if ui
+                                                .input_float2(&input_label, &mut float2_lit)
+                                                .read_only(interpreter_busy)
+                                                .build()
+                                            {
+                                                float2_lit = param_refinement_float2.clamp(float2_lit);
+                                                change = Some((
+                                                    stmt_index,
+                                                    arg_index,
+                                                    ast::Expr::Lit(ast::LitExpr::Float2(
+                                                        float2_lit,
+                                                    )),
+                                                ));
+                                            }
+                                        }
                                         ParamRefinement::Float3(param_refinement_float3) => {
                                             let mut float3_lit =
                                                 arg.unwrap_literal().unwrap_float3();
@@ -683,6 +702,12 @@ impl<'a> UiFrame<'a> {
                         ast::Expr::Lit(ast::LitExpr::Float(
                             float_param_refinement.default_value.unwrap_or_default(),
                         ))
+                    }
+                    ParamRefinement::Float2(float2_param_refinement) => {
+                        ast::Expr::Lit(ast::LitExpr::Float2([
+                            float2_param_refinement.default_value_x.unwrap_or_default(),
+                            float2_param_refinement.default_value_y.unwrap_or_default(),
+                        ]))
                     }
                     ParamRefinement::Float3(float3_param_refinement) => {
                         ast::Expr::Lit(ast::LitExpr::Float3([
