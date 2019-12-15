@@ -221,8 +221,9 @@ impl fmt::Display for AddMeshError {
 
 impl error::Error for AddMeshError {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
+    pub clear_color: [f64; 4],
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
     pub output_depth_attachment_format: wgpu::TextureFormat,
@@ -259,6 +260,7 @@ pub struct SceneRenderer {
     matcap_texture_bind_group: wgpu::BindGroup,
     render_pipeline_opaque: wgpu::RenderPipeline,
     render_pipeline_transparent: wgpu::RenderPipeline,
+    options: Options,
 }
 
 impl SceneRenderer {
@@ -514,6 +516,7 @@ impl SceneRenderer {
             matcap_texture_bind_group,
             render_pipeline_opaque,
             render_pipeline_transparent,
+            options,
         }
     }
 
@@ -635,10 +638,10 @@ impl SceneRenderer {
                 load_op: color_load_op,
                 store_op: wgpu::StoreOp::Store,
                 clear_color: wgpu::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
+                    r: self.options.clear_color[0],
+                    g: self.options.clear_color[1],
+                    b: self.options.clear_color[2],
+                    a: self.options.clear_color[3],
                 },
             }
         } else {
@@ -648,10 +651,10 @@ impl SceneRenderer {
                 load_op: color_load_op,
                 store_op: wgpu::StoreOp::Store,
                 clear_color: wgpu::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
+                    r: self.options.clear_color[0],
+                    g: self.options.clear_color[1],
+                    b: self.options.clear_color[2],
+                    a: self.options.clear_color[3],
                 },
             }
         };

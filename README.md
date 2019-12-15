@@ -64,6 +64,16 @@ the `cargo insta review` to review snapshot diffs or new snapshots.
 
 Optionally configure one of the following:
 
+**HS_THEME**: Either `dark` or `funky`. Default is `dark`.
+
+**HS_FULLSCREEN**: Run (1) or don't run (0) in fullscreen. Default is
+  no fullscreen.
+
+**HS_MSAA**: Choose the number of multisampling samples. Either 1, 4,
+  8, or 16. Default is 1.
+
+**HS_VSYNC**: Enable (1) or disable (0) VSync. Default is enabled.
+
 **HS_GPU_BACKEND**: Force a GPU backend. A gpu backend is
   automatically selected, but optionally a non-default gpu backend can
   be specified. Can take the following values:
@@ -73,14 +83,6 @@ Optionally configure one of the following:
 - `metal` on macOS.
 
 Default is primary GPU backend for the current OS.
-
-**HS_FULLSCREEN**: Run (1) or don't run (0) in fullscreen. Default is
-  no fullscreen.
-
-**HS_MSAA**: Choose the number of multisampling samples. Either 1, 4,
-  8, or 16. Default is 1.
-
-**HS_VSYNC**: Enable (1) or disable (0) VSync. Default is enabled.
 
 **HS_APP_LOG_LEVEL**: Set level of logging for the editor. Either
   `error`, `warn`, `info` or `debug`. Default is `debug`.
@@ -112,9 +114,14 @@ SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection
 - add the following `run.cmd` file to the distribution directory:
 
 ```cmd
-set HS_FULLSCREEN=1
+REM Set environment variables here
+set HS_THEME=funky
 hurban_selector.exe
 ```
+
+Before running on target computer, make sure "Microsoft Visual C++
+Redistributable for Visual Studio 2019" is installed (get it
+[here](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads))
 
 ### Licence
 

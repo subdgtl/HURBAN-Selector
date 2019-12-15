@@ -1,25 +1,38 @@
 use std::f32;
-use std::slice;
 use std::sync::Arc;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
-use crate::convert::{clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
+use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
 use crate::interpreter::ast;
 use crate::interpreter::{ParamRefinement, Ty};
 use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
-const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Regular.ttf");
-const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Bold.ttf");
-const OPENSANS_LIGHT_BYTES: &[u8] = include_bytes!("../resources/OpenSans-Light.ttf");
+const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
+const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Bold.ttf");
 
 const MARGIN: f32 = 10.0;
 
-pub struct FontIds {
-    _regular: imgui::FontId,
-    _light: imgui::FontId,
-    _bold: imgui::FontId,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Theme {
+    Dark,
+    Funky,
+}
+
+struct FontIds {
+    regular: imgui::FontId,
+    bold: imgui::FontId,
+}
+
+struct Colors {
+    special_button_text: [f32; 4],
+    special_button: [f32; 4],
+    special_button_hovered: [f32; 4],
+    special_button_active: [f32; 4],
+    combo_box_selected_item: [f32; 4],
+    combo_box_selected_item_hovered: [f32; 4],
+    combo_box_selected_item_active: [f32; 4],
 }
 
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
@@ -28,13 +41,23 @@ pub struct Ui {
     imgui_context: imgui::Context,
     imgui_winit_platform: WinitPlatform,
     font_ids: FontIds,
+    colors: Colors,
 }
 
 impl Ui {
     /// Initializes imgui with default settings for our application.
-    pub fn new(window: &winit::window::Window) -> Self {
+    pub fn new(window: &winit::window::Window, theme: Theme) -> Self {
         let mut imgui_context = imgui::Context::create();
         let mut style = imgui_context.style_mut();
+        let mut colors = Colors {
+            special_button_text: [0.2, 0.7, 0.3, 1.0],
+            special_button: style[imgui::StyleColor::Button],
+            special_button_hovered: style[imgui::StyleColor::ButtonHovered],
+            special_button_active: style[imgui::StyleColor::ButtonActive],
+            combo_box_selected_item: style[imgui::StyleColor::Header],
+            combo_box_selected_item_hovered: style[imgui::StyleColor::HeaderHovered],
+            combo_box_selected_item_active: style[imgui::StyleColor::HeaderActive],
+        };
 
         style.window_padding = [4.0, 4.0];
         style.frame_padding = [4.0, 2.0];
@@ -49,6 +72,71 @@ impl Ui {
         style.frame_rounding = 3.0;
         style.scrollbar_rounding = 3.0;
         style.grab_rounding = 3.0;
+
+        if theme == Theme::Funky {
+            style.window_rounding = 0.0;
+            style.frame_rounding = 0.0;
+            style.scrollbar_rounding = 0.0;
+            style.grab_rounding = 0.0;
+
+            let light = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0xff]);
+            let light_transparent = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0x40]);
+            let blue = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0xff]);
+            let blue_transparent = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0x40]);
+            let orange = cast_u8_color_to_f32([0xf2, 0x80, 0x37, 0xff]);
+            let orange_light = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0xff]);
+            let orange_light_transparent = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0x40]);
+            let orange_dark = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0xff]);
+            let orange_dark_transparent = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0x40]);
+
+            style[imgui::StyleColor::Text] = orange;
+            style[imgui::StyleColor::TextDisabled] = orange_light;
+            style[imgui::StyleColor::WindowBg] = light_transparent;
+            style[imgui::StyleColor::PopupBg] = light;
+            style[imgui::StyleColor::Border] = light_transparent;
+            style[imgui::StyleColor::FrameBg] = light_transparent;
+            style[imgui::StyleColor::FrameBgHovered] = light_transparent;
+            style[imgui::StyleColor::FrameBgActive] = light_transparent;
+            style[imgui::StyleColor::TitleBg] = light_transparent;
+            style[imgui::StyleColor::TitleBgActive] = light_transparent;
+            style[imgui::StyleColor::TitleBgCollapsed] = light_transparent;
+            style[imgui::StyleColor::MenuBarBg] = light_transparent;
+            style[imgui::StyleColor::ScrollbarBg] = light_transparent;
+            style[imgui::StyleColor::ScrollbarGrab] = orange_dark;
+            style[imgui::StyleColor::ScrollbarGrabHovered] = orange;
+            style[imgui::StyleColor::ScrollbarGrabActive] = orange_light;
+            style[imgui::StyleColor::CheckMark] = orange;
+            style[imgui::StyleColor::SliderGrab] = orange;
+            style[imgui::StyleColor::SliderGrabActive] = orange_light;
+            style[imgui::StyleColor::Button] = light_transparent;
+            style[imgui::StyleColor::ButtonHovered] = orange_light_transparent;
+            style[imgui::StyleColor::ButtonActive] = orange_dark_transparent;
+            style[imgui::StyleColor::Header] = light_transparent;
+            style[imgui::StyleColor::HeaderHovered] = light_transparent;
+            style[imgui::StyleColor::HeaderActive] = light_transparent;
+            style[imgui::StyleColor::Separator] = orange_light;
+            style[imgui::StyleColor::SeparatorHovered] = orange_light;
+            style[imgui::StyleColor::SeparatorActive] = orange_light;
+            style[imgui::StyleColor::ResizeGrip] = orange;
+            style[imgui::StyleColor::ResizeGripHovered] = orange_light;
+            style[imgui::StyleColor::ResizeGripActive] = orange_light;
+            style[imgui::StyleColor::Tab] = light_transparent;
+            style[imgui::StyleColor::TabHovered] = light_transparent;
+            style[imgui::StyleColor::TabActive] = light_transparent;
+            style[imgui::StyleColor::TabUnfocused] = light_transparent;
+            style[imgui::StyleColor::TabUnfocusedActive] = light_transparent;
+            style[imgui::StyleColor::PlotLines] = orange;
+            style[imgui::StyleColor::TextSelectedBg] = orange_light_transparent;
+            style[imgui::StyleColor::NavHighlight] = light_transparent;
+
+            colors.special_button_text = blue;
+            colors.special_button = light_transparent;
+            colors.special_button_hovered = blue_transparent;
+            colors.special_button_active = blue_transparent;
+            colors.combo_box_selected_item = light;
+            colors.combo_box_selected_item_hovered = orange_light;
+            colors.combo_box_selected_item_active = orange_dark;
+        }
 
         imgui_context.set_ini_filename(None);
 
@@ -73,13 +161,6 @@ impl Ui {
                 size_pixels: font_size,
                 config: None,
             }]);
-        let light_font_id = imgui_context
-            .fonts()
-            .add_font(&[imgui::FontSource::TtfData {
-                data: OPENSANS_LIGHT_BYTES,
-                size_pixels: font_size,
-                config: None,
-            }]);
 
         imgui_context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
@@ -87,10 +168,10 @@ impl Ui {
             imgui_context,
             imgui_winit_platform: platform,
             font_ids: FontIds {
-                _regular: regular_font_id,
-                _bold: bold_font_id,
-                _light: light_font_id,
+                regular: regular_font_id,
+                bold: bold_font_id,
             },
+            colors,
         }
     }
 
@@ -115,7 +196,8 @@ impl Ui {
         UiFrame {
             imgui_winit_platform: &self.imgui_winit_platform,
             imgui_ui: self.imgui_context.frame(),
-            _font_ids: &self.font_ids,
+            font_ids: &self.font_ids,
+            colors: &self.colors,
         }
     }
 
@@ -129,7 +211,8 @@ impl Ui {
 pub struct UiFrame<'a> {
     imgui_winit_platform: &'a WinitPlatform,
     imgui_ui: imgui::Ui<'a>,
-    _font_ids: &'a FontIds,
+    font_ids: &'a FontIds,
+    colors: &'a Colors,
 }
 
 impl<'a> UiFrame<'a> {
@@ -157,9 +240,11 @@ impl<'a> UiFrame<'a> {
 
         let mut reset_viewport_clicked = false;
 
+        let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Viewport Settings"))
             .movable(false)
             .resizable(false)
+            .collapsible(false)
             .size(
                 [VIEWPORT_WINDOW_WIDTH, VIEWPORT_WINDOW_HEIGHT],
                 imgui::Condition::Always,
@@ -169,6 +254,7 @@ impl<'a> UiFrame<'a> {
                 imgui::Condition::Always,
             )
             .build(ui, || {
+                let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
 
                 ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
@@ -185,7 +271,9 @@ impl<'a> UiFrame<'a> {
                 );
 
                 reset_viewport_clicked = ui.button(imgui::im_str!("Reset Viewport"), [0.0, 0.0]);
+                regular_font_token.pop(ui);
             });
+        bold_font_token.pop(ui);
 
         reset_viewport_clicked
     }
@@ -195,7 +283,7 @@ impl<'a> UiFrame<'a> {
         let function_table = session.function_table();
 
         const PIPELINE_WINDOW_WIDTH: f32 = 400.0;
-        const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 0.8;
+        const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 0.7;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -208,12 +296,15 @@ impl<'a> UiFrame<'a> {
         // FIXME: @Optimization Try to not allocate this every frame.
         let mut imstring_buffer = imgui::ImString::with_capacity(256);
 
+        let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Pipeline"))
             .movable(false)
             .resizable(false)
+            .collapsible(false)
             .size([PIPELINE_WINDOW_WIDTH, pipeline_window_height], imgui::Condition::Always)
             .position([MARGIN, MARGIN], imgui::Condition::Always)
             .build(ui, || {
+                let regular_font_token = ui.push_font(self.font_ids.regular);
                 for (stmt_index, stmt) in session.stmts().iter().enumerate() {
                     match stmt {
                         ast::Stmt::VarDecl(var_decl) => {
@@ -320,6 +411,25 @@ impl<'a> UiFrame<'a> {
                                                 ));
                                             }
                                         }
+                                        ParamRefinement::Float2(param_refinement_float2) => {
+                                            let mut float2_lit =
+                                                arg.unwrap_literal().unwrap_float2();
+
+                                            if ui
+                                                .input_float2(&input_label, &mut float2_lit)
+                                                .read_only(interpreter_busy)
+                                                .build()
+                                            {
+                                                float2_lit = param_refinement_float2.clamp(float2_lit);
+                                                change = Some((
+                                                    stmt_index,
+                                                    arg_index,
+                                                    ast::Expr::Lit(ast::LitExpr::Float2(
+                                                        float2_lit,
+                                                    )),
+                                                ));
+                                            }
+                                        }
                                         ParamRefinement::Float3(param_refinement_float3) => {
                                             let mut float3_lit =
                                                 arg.unwrap_literal().unwrap_float3();
@@ -411,14 +521,14 @@ impl<'a> UiFrame<'a> {
                                 }
 
                                 let token = ui.push_style_color(
-                                    imgui::StyleColor::FrameBg,
-                                    [0.080, 0.080, 0.080, 0.940],
+                                    imgui::StyleColor::Text,
+                                    ui.style_color(imgui::StyleColor::TextDisabled),
                                 );
 
                                 imgui::InputTextMultiline::new(
                                     ui,
                                     &imgui::im_str!("##console{}", stmt_index),
-                                    &mut imgui::ImString::new("Lorem Ipsum Dolor Sit Amet"),
+                                    &mut imgui::ImString::new("This console will contain debug information"),
                                     [0.0, 60.0],
                                 )
                                     .read_only(true)
@@ -436,7 +546,9 @@ impl<'a> UiFrame<'a> {
                         }
                     }
                 }
+                regular_font_token.pop(ui);
             });
+        bold_font_token.pop(ui);
 
         // FIXME: Debounce changes to parameters
 
@@ -464,7 +576,7 @@ impl<'a> UiFrame<'a> {
         let function_table = session.function_table();
 
         const OPERATIONS_WINDOW_WIDTH: f32 = 400.0;
-        const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.2;
+        const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.3;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -473,7 +585,7 @@ impl<'a> UiFrame<'a> {
         let operations_window_vertical_position =
             MARGIN * 2.0 + (1.0 - OPERATIONS_WINDOW_HEIGHT_MULT) * window_inner_height;
 
-        let running_enabled = !session.interpreter_busy() && !session.stmts().is_empty();
+        let running_enabled = !session.interpreter_busy();
         let popping_enabled = !session.interpreter_busy() && !session.stmts().is_empty();
         let pushing_enabled = !session.interpreter_busy();
 
@@ -481,9 +593,11 @@ impl<'a> UiFrame<'a> {
         let mut interpret_clicked = false;
         let mut pop_stmt_clicked = false;
 
+        let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Operations"))
             .movable(false)
             .resizable(false)
+            .collapsible(false)
             .size(
                 [OPERATIONS_WINDOW_WIDTH, operations_window_height],
                 imgui::Condition::Always,
@@ -493,8 +607,21 @@ impl<'a> UiFrame<'a> {
                 imgui::Condition::Always,
             )
             .build(ui, || {
+                let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.columns(2, imgui::im_str!("Controls columns"), false);
 
+                let pipeline_button_color_token = ui.push_style_colors(&[
+                    (imgui::StyleColor::Text, self.colors.special_button_text),
+                    (imgui::StyleColor::Button, self.colors.special_button),
+                    (
+                        imgui::StyleColor::ButtonHovered,
+                        self.colors.special_button_hovered,
+                    ),
+                    (
+                        imgui::StyleColor::ButtonActive,
+                        self.colors.special_button_active,
+                    ),
+                ]);
                 let running_tokens = if running_enabled {
                     None
                 } else {
@@ -509,6 +636,7 @@ impl<'a> UiFrame<'a> {
                     color_token.pop(ui);
                     style_token.pop(ui);
                 }
+                pipeline_button_color_token.pop(ui);
 
                 ui.next_column();
 
@@ -551,7 +679,9 @@ impl<'a> UiFrame<'a> {
                     color_token.pop(ui);
                     style_token.pop(ui);
                 }
+                regular_font_token.pop(ui);
             });
+        bold_font_token.pop(ui);
 
         if let Some(func_ident) = function_clicked {
             let func = &function_table[&func_ident];
@@ -573,6 +703,12 @@ impl<'a> UiFrame<'a> {
                             float_param_refinement.default_value.unwrap_or_default(),
                         ))
                     }
+                    ParamRefinement::Float2(float2_param_refinement) => {
+                        ast::Expr::Lit(ast::LitExpr::Float2([
+                            float2_param_refinement.default_value_x.unwrap_or_default(),
+                            float2_param_refinement.default_value_y.unwrap_or_default(),
+                        ]))
+                    }
                     ParamRefinement::Float3(float3_param_refinement) => {
                         ast::Expr::Lit(ast::LitExpr::Float3([
                             float3_param_refinement.default_value_x.unwrap_or_default(),
@@ -586,32 +722,32 @@ impl<'a> UiFrame<'a> {
                     }
                     ParamRefinement::Mesh => {
                         let one_past_last_stmt = session.stmts().len();
-                        let mut visible_vars_iter =
+                        let visible_vars_iter =
                             session.visible_vars_at_stmt(one_past_last_stmt, Ty::Mesh);
 
                         if visible_vars_iter.clone().count() == 0 {
                             ast::Expr::Lit(ast::LitExpr::Nil)
                         } else {
-                            let first = visible_vars_iter
-                                .next()
+                            let last = visible_vars_iter
+                                .last()
                                 .expect("Need at least one variable to provide default value");
 
-                            ast::Expr::Var(ast::VarExpr::new(first))
+                            ast::Expr::Var(ast::VarExpr::new(last))
                         }
                     }
                     ParamRefinement::MeshArray => {
                         let one_past_last_stmt = session.stmts().len();
-                        let mut visible_vars_iter =
+                        let visible_vars_iter =
                             session.visible_vars_at_stmt(one_past_last_stmt, Ty::MeshArray);
 
                         if visible_vars_iter.clone().count() == 0 {
                             ast::Expr::Lit(ast::LitExpr::Nil)
                         } else {
-                            let first = visible_vars_iter
-                                .next()
+                            let last = visible_vars_iter
+                                .last()
                                 .expect("Need at least one variable to provide default value");
 
-                            ast::Expr::Var(ast::VarExpr::new(first))
+                            ast::Expr::Var(ast::VarExpr::new(last))
                         }
                     }
                 };
@@ -686,6 +822,20 @@ impl<'a> UiFrame<'a> {
 
         combo = combo.preview_value(&preview_value);
 
+        let combo_box_color_token = ui.push_style_colors(&[
+            (
+                imgui::StyleColor::Header,
+                self.colors.combo_box_selected_item,
+            ),
+            (
+                imgui::StyleColor::HeaderHovered,
+                self.colors.combo_box_selected_item_hovered,
+            ),
+            (
+                imgui::StyleColor::HeaderActive,
+                self.colors.combo_box_selected_item_active,
+            ),
+        ]);
         if let Some(combo_token) = combo.begin(ui) {
             for (index, var_ident) in visible_vars_iter.clone().enumerate() {
                 let text = format_var_name(
@@ -717,6 +867,7 @@ impl<'a> UiFrame<'a> {
 
             combo_token.end(ui);
         }
+        combo_box_color_token.pop(ui);
 
         if combo_changed {
             if let Some(selected_var_index) = selected_var_index {
@@ -746,12 +897,14 @@ fn format_var_name(
 }
 
 fn push_disabled_style(ui: &imgui::Ui) -> (imgui::ColorStackToken, imgui::StyleStackToken) {
-    let frame_color = ui.style_color(imgui::StyleColor::Button);
+    let button_color = ui.style_color(imgui::StyleColor::Button);
+    let text_color = ui.style_color(imgui::StyleColor::TextDisabled);
 
     let color_token = ui.push_style_colors(&[
-        (imgui::StyleColor::Button, frame_color),
-        (imgui::StyleColor::ButtonHovered, frame_color),
-        (imgui::StyleColor::ButtonActive, frame_color),
+        (imgui::StyleColor::Text, text_color),
+        (imgui::StyleColor::Button, button_color),
+        (imgui::StyleColor::ButtonHovered, button_color),
+        (imgui::StyleColor::ButtonActive, button_color),
     ]);
     let style_token = ui.push_style_vars(&[imgui::StyleVar::Alpha(0.5)]);
 
@@ -761,7 +914,7 @@ fn push_disabled_style(ui: &imgui::Ui) -> (imgui::ColorStackToken, imgui::StyleS
 fn file_input(
     ui: &imgui::Ui,
     label: &imgui::ImStr,
-    file_ext_filter: Option<(&str, &str)>,
+    file_ext_filter: Option<(&[&str], &str)>,
     buffer: &mut imgui::ImString,
 ) -> bool {
     use std::env;
@@ -771,16 +924,14 @@ fn file_input(
     let open_button_width = ui.calc_text_size(&open_button_label, true, 50.0)[0] + 8.0;
     let input_position = open_button_width + 2.0; // Padding
 
-    let ext: Option<(&[&str], &str)> = file_ext_filter
-        .as_ref()
-        .map(|filter| (slice::from_ref(&filter.0), filter.1));
-
     let mut changed = false;
 
     let group_token = ui.begin_group();
 
     if ui.button(&open_button_label, [open_button_width, 0.0]) {
-        if let Some(absolute_path_string) = tinyfiledialogs::open_file_dialog("Open", "", ext) {
+        if let Some(absolute_path_string) =
+            tinyfiledialogs::open_file_dialog("Open", "", file_ext_filter)
+        {
             buffer.clear();
 
             let current_dir = env::current_dir().expect("Couldn't get current dir");

@@ -369,7 +369,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::{Rotation3, Vector2};
+
     use crate::mesh::{analysis, primitive};
+    use crate::plane::Plane;
 
     use super::*;
 
@@ -530,7 +533,7 @@ mod tests {
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    pub fn open_cube_sharp_mesh(position: [f32; 3], scale: f32) -> Mesh {
+    pub fn open_box_sharp_mesh(position: [f32; 3], scale: f32) -> Mesh {
         let vertex_positions = vec![
             // back
             v(-1.0, 1.0, -1.0, position, scale), //0
@@ -621,7 +624,7 @@ mod tests {
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
     }
 
-    pub fn welded_cube_smooth_mesh(position: [f32; 3], scale: f32) -> Mesh {
+    pub fn welded_box_smooth_mesh(position: [f32; 3], scale: f32) -> Mesh {
         let vertex_positions = vec![
             // back
             v(-1.0, 1.0, -1.0, position, scale),
@@ -684,7 +687,11 @@ mod tests {
 
     #[test]
     fn test_disjoint_mesh_returns_similar_for_box() {
-        let mesh = primitive::create_box(Point3::origin(), [1.0; 3]);
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(1.0, 1.0, 1.0),
+        );
 
         let calculated_meshes = disjoint_mesh(&mesh);
 
@@ -721,8 +728,12 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces() {
-        let plane = primitive::create_mesh_plane([0.0, 0.0, 0.0], 1.0);
-        let plane_reverted = revert_mesh_faces(&plane);
+        let plane = Plane::from_origin_and_normal(
+            &Point3::new(0.0, 0.0, 0.0),
+            &Vector3::new(0.0, 0.0, 1.0),
+        );
+        let plane_mesh = primitive::create_mesh_plane(plane, Vector2::new(2.0, 2.0));
+        let plane_reverted = revert_mesh_faces(&plane_mesh);
 
         let expected_reverted_faces = vec![
             Face::Triangle(TriangleFace::new_separate(2, 1, 0, 0, 0, 0)),
@@ -734,18 +745,26 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces_once_does_not_equal_original() {
-        let cube = primitive::create_box(Point3::origin(), [1.0; 3]);
-        let cube_reverted = revert_mesh_faces(&cube);
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(1.0, 1.0, 1.0),
+        );
+        let mesh_reverted = revert_mesh_faces(&mesh);
 
-        assert_ne!(cube, cube_reverted);
+        assert_ne!(mesh, mesh_reverted);
     }
 
     #[test]
     fn test_revert_mesh_faces_twice_does_equal_original() {
-        let cube = primitive::create_box(Point3::origin(), [1.0; 3]);
-        let cube_twice_reverted = revert_mesh_faces(&revert_mesh_faces(&cube));
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(1.0, 1.0, 1.0),
+        );
+        let mesh_twice_reverted = revert_mesh_faces(&revert_mesh_faces(&mesh));
 
-        assert_eq!(cube, cube_twice_reverted);
+        assert_eq!(mesh, mesh_twice_reverted);
     }
 
     #[test]
@@ -766,7 +785,13 @@ mod tests {
 
     #[test]
     fn test_synchronize_mesh_winding_for_sphere() {
-        let sphere = primitive::create_uv_sphere([0.0, 0.0, 0.0], 1.0, 10, 10);
+        let sphere = primitive::create_uv_sphere(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(1.0, 1.0, 1.0),
+            10,
+            10,
+        );
         let sphere_faces_one_flipped = sphere.faces().iter().enumerate().map(|(i, f)| match f {
             Face::Triangle(t) => {
                 if i == 5 {
@@ -811,9 +836,9 @@ mod tests {
     }
 
     #[test]
-    fn test_weld_cube_sharp_same_len() {
-        let mesh = open_cube_sharp_mesh([0.0, 0.0, 0.0], 1.0);
-        let mesh_after_welding_correct = welded_cube_smooth_mesh([0.0, 0.0, 0.0], 1.0);
+    fn test_weld_box_sharp_same_len() {
+        let mesh = open_box_sharp_mesh([0.0, 0.0, 0.0], 1.0);
+        let mesh_after_welding_correct = welded_box_smooth_mesh([0.0, 0.0, 0.0], 1.0);
 
         let mesh_after_welding = weld(&mesh, 0.1).expect("Welding failed");
 

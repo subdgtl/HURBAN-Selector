@@ -1,22 +1,28 @@
-use nalgebra::{Point3, Vector3};
+use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
 
 use crate::convert::{cast_u32, cast_usize};
+use crate::plane::Plane;
 
 use super::{Mesh, NormalStrategy, TriangleFace};
 
-pub fn create_mesh_plane(position: [f32; 3], scale: f32) -> Mesh {
+pub fn create_mesh_plane(plane: Plane, scale: Vector2<f32>) -> Mesh {
     #[rustfmt::skip]
     let vertex_positions = vec![
-        v(-1.0, -1.0,  0.0, position, scale),
-        v( 1.0, -1.0,  0.0, position, scale),
-        v( 1.0,  1.0,  0.0, position, scale),
-        v(-1.0,  1.0,  0.0, position, scale),
+        plane.origin()
+            + (-0.5 * plane.x_vector() * scale.x)
+            + (-0.5 * plane.y_vector() * scale.y),
+        plane.origin()
+            + ( 0.5 * plane.x_vector() * scale.x)
+            + (-0.5 * plane.y_vector() * scale.y),
+        plane.origin()
+            + ( 0.5 * plane.x_vector() * scale.x)
+            + ( 0.5 * plane.y_vector() * scale.y),
+        plane.origin()
+            + (-0.5 * plane.x_vector() * scale.x)
+            + ( 0.5 * plane.y_vector() * scale.y),
     ];
 
-    #[rustfmt::skip]
-    let vertex_normals = vec![
-        Vector3::new( 0.0,  0.0,  1.0),
-    ];
+    let vertex_normals = vec![Vector3::new(0.0, 0.0, 1.0)];
 
     let faces = vec![
         TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
@@ -26,21 +32,25 @@ pub fn create_mesh_plane(position: [f32; 3], scale: f32) -> Mesh {
     Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
 }
 
-#[allow(dead_code)]
-pub fn create_box(center: Point3<f32>, scale: [f32; 3]) -> Mesh {
-    #[rustfmt::skip]
+pub fn create_box(center: Point3<f32>, rotate: Rotation3<f32>, scale: Vector3<f32>) -> Mesh {
+    let translation = Matrix4::new_translation(&center.coords);
+    let rotation = Matrix4::from(rotate);
+    let scaling = Matrix4::new_nonuniform_scaling(&scale);
 
+    let t = translation * rotation * scaling;
+
+    #[rustfmt::skip]
     let vertex_positions = vec![
         // back
-        Point3::new(-0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
-        Point3::new(-0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
-        Point3::new( 0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
-        Point3::new( 0.5 * scale[0] + center.x,  0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
+        t.transform_point(&Point3::new(-0.5,  0.5, -0.5)),
+        t.transform_point(&Point3::new(-0.5,  0.5,  0.5)),
+        t.transform_point(&Point3::new( 0.5,  0.5,  0.5)),
+        t.transform_point(&Point3::new( 0.5,  0.5, -0.5)),
         // front
-        Point3::new(-0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
-        Point3::new( 0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y, -0.5 * scale[2] + center.z),
-        Point3::new( 0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
-        Point3::new(-0.5 * scale[0] + center.x, -0.5 * scale[1] + center.y,  0.5 * scale[2] + center.z),
+        t.transform_point(&Point3::new(-0.5, -0.5, -0.5)),
+        t.transform_point(&Point3::new( 0.5, -0.5, -0.5)),
+        t.transform_point(&Point3::new( 0.5, -0.5,  0.5)),
+        t.transform_point(&Point3::new(-0.5, -0.5,  0.5)),
     ];
 
     #[rustfmt::skip]
@@ -90,13 +100,20 @@ pub fn create_box(center: Point3<f32>, scale: [f32; 3]) -> Mesh {
 /// Panics if number of parallels is less than 2 or number of
 /// meridians is less than 3.
 pub fn create_uv_sphere(
-    position: [f32; 3],
-    scale: f32,
+    center: Point3<f32>,
+    rotate: Rotation3<f32>,
+    scale: Vector3<f32>,
     n_parallels: u32,
     n_meridians: u32,
 ) -> Mesh {
     assert!(n_parallels >= 2, "Need at least 2 parallels");
     assert!(n_meridians >= 3, "Need at least 3 meridians");
+
+    let translation = Matrix4::new_translation(&center.coords);
+    let rotation = Matrix4::from(rotate);
+    let scaling = Matrix4::new_nonuniform_scaling(&scale);
+
+    let t = translation * rotation * scaling;
 
     // Add the poles
     let lat_line_max = n_parallels + 2;
@@ -121,7 +138,8 @@ pub fn create_uv_sphere(
             let y = (PI * polar_t).sin() * (TWO_PI * azimuthal_t).sin();
             let z = (PI * polar_t).cos();
 
-            vertex_positions.push(v(x, y, z, position, scale));
+            let point = t.transform_point(&Point3::new(x * 0.5, y * 0.5, z * 0.5));
+            vertex_positions.push(point);
         }
     }
 
@@ -149,10 +167,10 @@ pub fn create_uv_sphere(
     // Add vertex data and band-connecting faces for North and South poles
 
     let north_pole = cast_u32(vertex_positions.len());
-    vertex_positions.push(v(0.0, 0.0, 1.0, position, scale));
+    vertex_positions.push(t.transform_point(&Point3::new(0.0, 0.0, 0.5)));
 
     let south_pole = cast_u32(vertex_positions.len());
-    vertex_positions.push(v(0.0, 0.0, -1.0, position, scale));
+    vertex_positions.push(t.transform_point(&Point3::new(0.0, 0.0, -0.5)));
 
     for i in 0..n_meridians {
         let north_p1 = i;
@@ -174,13 +192,5 @@ pub fn create_uv_sphere(
         faces,
         vertex_positions,
         NormalStrategy::Sharp,
-    )
-}
-
-fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
-    Point3::new(
-        scale * x + translation[0],
-        scale * y + translation[1],
-        scale * z + translation[2],
     )
 }

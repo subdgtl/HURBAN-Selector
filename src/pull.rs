@@ -529,24 +529,35 @@ mod tests {
     }
 
     #[test]
-    fn test_pull_point_to_mesh_cube_point_inside_left() {
-        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
+    fn test_pull_point_to_mesh_box_point_inside_left() {
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(2.0, 2.0, 2.0),
+        );
         let test_point = Point3::new(-0.25, 0.0, 0.0);
-        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
         let point_on_mesh_correct = Point3::new(-1.0, 0.0, 0.0);
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
-        assert_eq!(point_on_mesh_correct, pulled_point_on_mesh_calculated.point);
+        assert!(approx::relative_eq!(
+            pulled_point_on_mesh_calculated.point,
+            point_on_mesh_correct,
+        ));
         assert_eq!(0.75, pulled_point_on_mesh_calculated.distance);
     }
 
     #[test]
-    fn test_pull_point_to_mesh_cube_point_inside_top_front_right() {
-        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
+    fn test_pull_point_to_mesh_box_point_inside_top_front_right() {
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(2.0, 2.0, 2.0),
+        );
         let test_point = Point3::new(0.25, 0.25, 0.25);
-        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
         // any of the following points on mesh would be correct
         let points_on_mesh_correct = vec![
@@ -555,7 +566,7 @@ mod tests {
             Point3::new(0.25, 0.25, 1.0),
         ];
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
         assert!(points_on_mesh_correct
             .iter()
@@ -565,15 +576,19 @@ mod tests {
     }
 
     #[test]
-    fn test_pull_point_to_mesh_cube_point_outside_top_front_right() {
-        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
+    fn test_pull_point_to_mesh_box_point_outside_top_front_right() {
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(2.0, 2.0, 2.0),
+        );
         let test_point = Point3::new(1.25, 1.25, 1.25);
-        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
         // corner
         let point_on_mesh_correct = Point3::new(1.0, 1.0, 1.0);
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
         assert_eq!(pulled_point_on_mesh_calculated.point, point_on_mesh_correct);
         assert_eq!(
@@ -583,15 +598,19 @@ mod tests {
     }
 
     #[test]
-    fn test_pull_point_to_mesh_cube_point_outside_front_right() {
-        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
+    fn test_pull_point_to_mesh_box_point_outside_front_right() {
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(2.0, 2.0, 2.0),
+        );
         let test_point = Point3::new(1.25, 1.25, 0.25);
-        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
         // on the edge
         let point_on_mesh_correct = Point3::new(1.0, 1.0, 0.25);
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
         assert_eq!(pulled_point_on_mesh_calculated.point, point_on_mesh_correct);
         assert_eq!(
@@ -601,13 +620,17 @@ mod tests {
     }
 
     #[test]
-    fn test_pull_point_to_mesh_cube_point_on_face() {
-        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
+    fn test_pull_point_to_mesh_box_point_on_face() {
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(2.0, 2.0, 2.0),
+        );
         let test_point = Point3::new(0.0, 0.0, 1.0);
-        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
         assert_eq!(pulled_point_on_mesh_calculated.point, test_point);
         assert_eq!(
@@ -617,13 +640,17 @@ mod tests {
     }
 
     #[test]
-    fn test_pull_point_to_mesh_cube_point_on_edge() {
-        let cube = primitive::create_box(Point3::origin(), [2.0; 3]);
+    fn test_pull_point_to_mesh_box_point_on_edge() {
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(2.0, 2.0, 2.0),
+        );
         let test_point = Point3::new(1.0, 1.0, 0.0);
-        let unoriented_edges: Vec<_> = cube.unoriented_edges_iter().collect();
+        let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
         let pulled_point_on_mesh_calculated =
-            pull_point_to_mesh(&test_point, &cube, &unoriented_edges);
+            pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
         assert_eq!(pulled_point_on_mesh_calculated.point, test_point);
         assert_eq!(
