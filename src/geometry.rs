@@ -27,7 +27,7 @@ pub fn compute_barycentric_coords(
     let ys = Vector3::new(ac.y, ab.y, pa.y);
     let ortho = xs.cross(&ys);
 
-    if f32::abs(ortho.z) == 0.0 {
+    if approx::relative_eq!(f32::abs(ortho.z), 0.0) {
         None
     } else {
         Some(Point3::new(
@@ -50,7 +50,7 @@ pub fn are_points_collinear(v0: &Point3<f32>, v1: &Point3<f32>, v2: &Point3<f32>
     let n1 = v1 - v0;
     let n2 = v2 - v0;
     let cross = n1.cross(&n2);
-    cross.relative_eq(&Vector3::zeros(), 0.001, 0.001)
+    approx::relative_eq!(cross, Vector3::zeros())
 }
 
 #[cfg(test)]
