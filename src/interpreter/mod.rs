@@ -1,3 +1,4 @@
+use std::cmp;
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::{BTreeMap, HashSet};
 use std::error;
@@ -224,8 +225,9 @@ pub type InterpretResult = Result<ValueSet, InterpretError>;
 /// certain point in a program.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueSet {
-    /// The value of the last executed statement.
-    pub last_value: Value,
+    /// The value of the last executed statement. `None` if no
+    /// statement was executed.
+    pub last_value: Option<Value>,
 
     /// The variable values that were used as parameters to funcs
     /// within the executed part of the program.
@@ -398,38 +400,29 @@ impl Interpreter {
 
     /// Interprets the whole currently set program and returns the
     /// used/unused values after the last statement.
-    ///
-    /// # Panics
-    /// Panics if the currently set program is empty.
     pub fn interpret(&mut self) -> InterpretResult {
-        assert!(
-            !self.prog.stmts().is_empty(),
-            "Can not execute empty program",
-        );
-        self.interpret_up_until(self.prog.stmts().len() - 1)
+        self.interpret_up_until(self.prog.stmts().len().saturating_sub(1))
     }
 
     /// Interprets the currently set program up until the `index`-th
     /// statement (inclusive) and returns the used/unused values after
     /// it.
     ///
-    /// # Panics
-    /// Panics if the currently set program is empty or if `index` is
-    /// out of bounds.
-    pub fn interpret_up_until(&mut self, index: usize) -> InterpretResult {
-        assert!(
-            !self.prog.stmts().is_empty(),
-            "Can not execute empty program",
-        );
-
-        let max_index = self.prog.stmts().len() - 1;
-        assert!(
-            max_index >= index,
-            "Can not execute past the program length",
-        );
+    /// If the program does not contain enough statements, interprets
+    /// the program up until the end.
+    pub fn interpret_up_until(&mut self, mut index: usize) -> InterpretResult {
+        if self.prog.stmts().is_empty() {
+            return Ok(ValueSet {
+                last_value: None,
+                used_values: Vec::new(),
+                unused_values: Vec::new(),
+            });
+        }
 
         self.resolve()?;
         self.typecheck()?;
+
+        index = cmp::min(index, self.prog.stmts().len().saturating_sub(1));
 
         log::debug!("PC before invalidation: {}", self.pc);
         self.invalidate();
@@ -485,7 +478,7 @@ impl Interpreter {
         }
 
         Ok(ValueSet {
-            last_value,
+            last_value: Some(last_value),
             used_values,
             unused_values,
         })
@@ -908,7 +901,7 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
     #[test]
@@ -935,7 +928,7 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
     #[test]
@@ -962,7 +955,7 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
     #[test]
@@ -989,7 +982,7 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
     #[test]
@@ -1035,7 +1028,7 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
     #[test]
@@ -1081,35 +1074,50 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
     // Prog index
 
     #[test]
-    #[should_panic(expected = "Can not execute empty program")]
     fn test_interpreter_interpret_empty_prog() {
         let prog = ast::Prog::new(vec![]);
 
         let mut interpreter = Interpreter::new(BTreeMap::new());
         interpreter.set_prog(prog);
 
-        let _ = interpreter.interpret();
+        let value = interpreter.interpret().unwrap();
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: None,
+                used_values: Vec::new(),
+                unused_values: Vec::new(),
+            },
+        );
+        assert_eq!(interpreter.pc, 0);
     }
 
     #[test]
-    #[should_panic(expected = "Can not execute empty program")]
     fn test_interpreter_interpret_up_until_empty_prog() {
         let prog = ast::Prog::new(vec![]);
 
         let mut interpreter = Interpreter::new(BTreeMap::new());
         interpreter.set_prog(prog);
 
-        let _ = interpreter.interpret_up_until(1);
+        let value = interpreter.interpret_up_until(0).unwrap();
+        assert_eq!(
+            value,
+            ValueSet {
+                last_value: None,
+                used_values: Vec::new(),
+                unused_values: Vec::new(),
+            },
+        );
+        assert_eq!(interpreter.pc, 0);
     }
 
     #[test]
-    #[should_panic(expected = "Can not execute past the program length")]
     fn test_interpreter_interpret_up_until_invalid_index() {
         let (func_id, func) = (
             FuncIdent(0),
@@ -1132,7 +1140,12 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let _ = interpreter.interpret_up_until(2);
+        let value = interpreter.interpret_up_until(1).unwrap();
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
+        // The PC must have stayed pointed at 1st stmt, even though it
+        // would normally point to 2nd, because we executed less
+        // statements than what was requested.
+        assert_eq!(interpreter.pc, 1);
     }
 
     #[test]
@@ -1165,7 +1178,7 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret_up_until(0).unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
     // Var invalidation tests
@@ -1200,10 +1213,10 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
         assert_eq!(n_calls.get(), 1);
     }
 
@@ -1237,10 +1250,10 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
         assert_eq!(n_calls.get(), 2);
     }
 
@@ -1289,7 +1302,7 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         // Change the args but not the func
         interpreter.set_prog_stmt_at(
@@ -1307,7 +1320,7 @@ mod tests {
         );
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(false));
+        assert_eq!(value.last_value, Some(Value::Boolean(false)));
         assert_eq!(n_calls.get(), 2);
     }
 
@@ -1381,7 +1394,7 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         // Change the func but not the args
         interpreter.set_prog_stmt_at(
@@ -1399,7 +1412,7 @@ mod tests {
         );
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         assert_eq!(n_calls1.get(), 1);
         assert_eq!(n_calls2.get(), 1);
@@ -1460,10 +1473,10 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Boolean(true));
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         assert_eq!(n_calls1.get(), 2);
         assert_eq!(n_calls2.get(), 2);
@@ -1799,7 +1812,7 @@ mod tests {
         interpreter.set_prog(prog);
 
         let value = interpreter.interpret().unwrap();
-        assert_eq!(value.last_value, Value::Float(1.0));
+        assert_eq!(value.last_value, Some(Value::Float(1.0)));
     }
 
     #[test]
@@ -1983,7 +1996,7 @@ mod tests {
         assert_eq!(
             value,
             ValueSet {
-                last_value: Value::Float(8.0),
+                last_value: Some(Value::Float(8.0)),
                 used_values: vec![
                     (VarIdent(0), Value::Float(2.0)),
                     (VarIdent(1), Value::Float(4.0)),
