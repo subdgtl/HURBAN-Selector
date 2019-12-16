@@ -115,8 +115,8 @@ impl VoxelCloud {
                     let divisions = (longest_edge_len / shortest_voxel_dimension).ceil() as usize;
                     let divisions_f32 = divisions as f32;
 
-                    for ui in 0..(divisions + 1) {
-                        for wi in 0..(divisions + 1) {
+                    for ui in 0..=divisions {
+                        for wi in 0..=divisions {
                             let u_f32 = ui as f32 / divisions_f32;
                             let w_f32 = wi as f32 / divisions_f32;
                             let v_f32 = 1.0 - u_f32 - w_f32;
