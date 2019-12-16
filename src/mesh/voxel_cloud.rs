@@ -100,14 +100,14 @@ impl VoxelCloud {
         // Iterate through mesh faces.
         for face in mesh.faces() {
             match face {
-                Face::Triangle(f) => {
-                    let a = &mesh.vertices()[cast_usize(f.vertices.0)];
-                    let b = &mesh.vertices()[cast_usize(f.vertices.1)];
-                    let c = &mesh.vertices()[cast_usize(f.vertices.2)];
+                Face::Triangle(triangle_face) => {
+                    let point_a = &mesh.vertices()[cast_usize(triangle_face.vertices.0)];
+                    let point_b = &mesh.vertices()[cast_usize(triangle_face.vertices.1)];
+                    let point_c = &mesh.vertices()[cast_usize(triangle_face.vertices.2)];
                     // Calculate the density of points on the respective face
-                    let ab_distance_sq = nalgebra::distance_squared(a, b);
-                    let bc_distance_sq = nalgebra::distance_squared(b, c);
-                    let ca_distance_sq = nalgebra::distance_squared(c, a);
+                    let ab_distance_sq = nalgebra::distance_squared(point_a, point_b);
+                    let bc_distance_sq = nalgebra::distance_squared(point_b, point_c);
+                    let ca_distance_sq = nalgebra::distance_squared(point_c, point_a);
                     let longest_edge_len = ab_distance_sq
                         .max(bc_distance_sq.max(ca_distance_sq))
                         .sqrt();
@@ -117,14 +117,14 @@ impl VoxelCloud {
 
                     for ui in 0..(divisions + 1) {
                         for wi in 0..(divisions + 1) {
-                            let u = ui as f32 / divisions_f32;
-                            let w = wi as f32 / divisions_f32;
-                            let v = 1.0 - u - w;
-                            if v >= 0.0 {
-                                let barycentric = Point3::new(u, v, w);
+                            let u_f32 = ui as f32 / divisions_f32;
+                            let w_f32 = wi as f32 / divisions_f32;
+                            let v_f32 = 1.0 - u_f32 - w_f32;
+                            if v_f32 >= 0.0 {
+                                let barycentric = Point3::new(u_f32, v_f32, w_f32);
                                 // Calculate point position in model space
                                 let cartesian =
-                                    geometry::barycentric_to_cartesian(&barycentric, &a, &b, &c);
+                                    geometry::barycentric_to_cartesian(&barycentric, &point_a, &point_b, &point_c);
                                 // and set a voxel containing the point to be on
                                 voxel_cloud.set_cartesian(Voxel::On, &cartesian);
                             }
@@ -152,10 +152,10 @@ impl VoxelCloud {
         );
 
         // Iterate through the existing voxel cloud.
-        for z in 0..self.block_dimensions.z as i32 {
-            for y in 0..self.block_dimensions.y as i32 {
-                for x in 0..self.block_dimensions.x as i32 {
-                    let voxel_coords = Point3::new(x as i32, y as i32, z as i32);
+        for z_coord in 0..self.block_dimensions.z as i32 {
+            for y_coord in 0..self.block_dimensions.y as i32 {
+                for x_coord in 0..self.block_dimensions.x as i32 {
+                    let voxel_coords = Point3::new(x_coord as i32, y_coord as i32, z_coord as i32);
                     let voxel_state = self.get_relative(&voxel_coords);
                     // if the voxel is on
                     if let Voxel::On = voxel_state {
@@ -385,11 +385,11 @@ impl VoxelCloud {
             Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.z);
 
         // Iterate through the voxel cloud
-        for z in 0..self.block_dimensions.z as i32 {
-            for y in 0..self.block_dimensions.y as i32 {
-                for x in 0..self.block_dimensions.x as i32 {
+        for z_coord in 0..self.block_dimensions.z as i32 {
+            for y_coord in 0..self.block_dimensions.y as i32 {
+                for x_coord in 0..self.block_dimensions.x as i32 {
                     // If the current voxel is on
-                    let voxel_coords = Point3::new(x, y, z);
+                    let voxel_coords = Point3::new(x_coord, y_coord, z_coord);
                     if let Voxel::On = self.get_relative(&voxel_coords) {
                         // calculate the position of its center in model space coordinates
                         let voxel_center = self.relative_voxel_to_cartesian_coords(&voxel_coords);
