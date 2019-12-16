@@ -318,9 +318,12 @@ pub fn loop_subdivision(
                     mid_vertex_indices[edge_index] = Some(mid_vertex_index);
                 }
 
-                let mid_v1v2_index = mid_vertex_indices[0]?;
-                let mid_v2v3_index = mid_vertex_indices[1]?;
-                let mid_v3v1_index = mid_vertex_indices[2]?;
+                let mid_v1v2_index =
+                    mid_vertex_indices[0].expect("Must have been produced by earlier loop");
+                let mid_v2v3_index =
+                    mid_vertex_indices[1].expect("Must have been produced by earlier loop");
+                let mid_v3v1_index =
+                    mid_vertex_indices[2].expect("Must have been produced by earlier loop");
 
                 faces.push((vi1, mid_v1v2_index, mid_v3v1_index));
                 faces.push((vi2, mid_v2v3_index, mid_v1v2_index));
