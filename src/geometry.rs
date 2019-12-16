@@ -56,7 +56,7 @@ pub fn barycentric_to_cartesian(
 ///
 /// http://www.ambrsoft.com/TrigoCalc/Line3D/LineColinear.htm
 pub fn are_points_collinear(v0: &Point3<f32>, v1: &Point3<f32>, v2: &Point3<f32>) -> bool {
-    if approx::relative_eq!(v0.coords, &v1.coords) || approx::relative_eq!(v0.coords, &v2.coords) {
+    if approx::relative_eq!(v0, v1) || approx::relative_eq!(v0, v2) {
         return true;
     }
     let n1 = v1 - v0;

@@ -258,14 +258,12 @@ impl VoxelCloud {
             || relative_coords.z >= self.block_dimensions.z as i32
         {
             Voxel::OutOfBounds
+        } else if self.voxel_map[cast_usize(
+            self.relative_three_dimensional_coordinate_to_one_dimensional(relative_coords),
+        )] {
+            Voxel::On
         } else {
-            if self.voxel_map[cast_usize(
-                self.relative_three_dimensional_coordinate_to_one_dimensional(relative_coords),
-            )] {
-                Voxel::On
-            } else {
-                Voxel::Off
-            }
+            Voxel::Off
         }
     }
 
@@ -280,14 +278,12 @@ impl VoxelCloud {
             || absolute_coords.z < self.block_start.z
         {
             Voxel::OutOfBounds
+        } else if self.voxel_map[cast_usize(
+            self.absolute_three_dimensional_coordinate_to_one_dimensional(absolute_coords),
+        )] {
+            Voxel::On
         } else {
-            if self.voxel_map[cast_usize(
-                self.absolute_three_dimensional_coordinate_to_one_dimensional(absolute_coords),
-            )] {
-                Voxel::On
-            } else {
-                Voxel::Off
-            }
+            Voxel::Off
         }
     }
 
