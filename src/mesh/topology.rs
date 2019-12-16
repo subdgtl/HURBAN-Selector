@@ -17,9 +17,16 @@ pub type VertexToFaceTopology = Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>>;
 /// Calculates topological relations (neighborhood) of mesh vertex -> faces.
 /// Returns a Map (key: vertex index, value: list of its neighboring faces indices)
 pub fn calculate_vertex_to_face_topology(mesh: &Mesh) -> VertexToFaceTopology {
-    let mut v2f: Vec<SmallVec<[u32; 8]>> = vec![SmallVec::new(); mesh.vertices().len()];
+    calculate_vertex_to_face_topology_from_components(mesh.faces(), cast_u32(mesh.vertices().len()))
+}
 
-    for (face_index, face) in mesh.faces().iter().enumerate() {
+pub fn calculate_vertex_to_face_topology_from_components(
+    faces: &[Face],
+    vertex_count: u32,
+) -> VertexToFaceTopology {
+    let mut v2f: Vec<SmallVec<[u32; 8]>> = vec![SmallVec::new(); cast_usize(vertex_count)];
+
+    for (face_index, face) in faces.iter().enumerate() {
         let face_index_u32 = cast_u32(face_index);
 
         match face {
@@ -58,19 +65,17 @@ pub fn compute_face_to_face_topology(
                     if *first_vertex_in_face != cast_u32(face_index)
                         && (v2f[cast_usize(vertices.1)].contains(&first_vertex_in_face)
                             || v2f[cast_usize(vertices.2)].contains(&first_vertex_in_face))
+                        && !f2f[face_index].contains(first_vertex_in_face)
                     {
-                        if !f2f[face_index].contains(first_vertex_in_face) {
-                            f2f[face_index].push(*first_vertex_in_face);
-                        }
+                        f2f[face_index].push(*first_vertex_in_face);
                     }
                 }
                 for second_vertex_in_face in &v2f[cast_usize(vertices.1)] {
                     if *second_vertex_in_face != cast_u32(face_index)
                         && (v2f[cast_usize(vertices.2)].contains(&second_vertex_in_face))
+                        && !f2f[face_index].contains(second_vertex_in_face)
                     {
-                        if !f2f[face_index].contains(second_vertex_in_face) {
-                            f2f[face_index].push(*second_vertex_in_face);
-                        }
+                        f2f[face_index].push(*second_vertex_in_face);
                     }
                 }
             }
