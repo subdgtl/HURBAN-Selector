@@ -123,8 +123,12 @@ impl VoxelCloud {
                             if v_f32 >= 0.0 {
                                 let barycentric = Point3::new(u_f32, v_f32, w_f32);
                                 // Calculate point position in model space
-                                let cartesian =
-                                    geometry::barycentric_to_cartesian(&barycentric, &point_a, &point_b, &point_c);
+                                let cartesian = geometry::barycentric_to_cartesian(
+                                    &barycentric,
+                                    &point_a,
+                                    &point_b,
+                                    &point_c,
+                                );
                                 // and set a voxel containing the point to be on
                                 voxel_cloud.set_cartesian(Voxel::On, &cartesian);
                             }
