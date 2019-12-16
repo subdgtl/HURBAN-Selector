@@ -4,9 +4,9 @@ use std::hash::{Hash, Hasher};
 
 use nalgebra as na;
 use nalgebra::Point3;
-use smallvec::SmallVec;
 
 use crate::convert::{cast_u32, cast_usize};
+use crate::mesh::topology::{FaceToFaceTopology, VertexToVertexTopology};
 use crate::mesh::{Face, Mesh, NormalStrategy};
 
 /// Relaxes angles between mesh edges, resulting in a smoother
@@ -26,7 +26,7 @@ use crate::mesh::{Face, Mesh, NormalStrategy};
 /// Returns `(smooth_mesh: Mesh, executed_iterations: u32, stable: bool)`.
 pub fn laplacian_smoothing(
     mesh: &Mesh,
-    vertex_to_vertex_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
+    vertex_to_vertex_topology: &VertexToVertexTopology,
     max_iterations: u32,
     fixed_vertex_indices: &[u32],
     stop_when_stable: bool,
@@ -46,10 +46,12 @@ pub fn laplacian_smoothing(
         stable = !fixed_vertex_indices.is_empty();
         mesh_vertices = vertices.clone();
 
-        for (current_vertex_index, neighbors_indices) in vertex_to_vertex_topology.iter() {
+        for (current_vertex_index, neighbors_indices) in
+            vertex_to_vertex_topology.iter().enumerate()
+        {
             if fixed_vertex_indices
                 .iter()
-                .all(|i| i != current_vertex_index)
+                .all(|i| *i != cast_u32(current_vertex_index))
                 && !neighbors_indices.is_empty()
             {
                 let mut average_position: Point3<f32> = Point3::origin();
@@ -59,9 +61,9 @@ pub fn laplacian_smoothing(
                 average_position /= neighbors_indices.len() as f32;
                 stable &= approx::relative_eq!(
                     &average_position.coords,
-                    &vertices[cast_usize(*current_vertex_index)].coords,
+                    &vertices[current_vertex_index].coords,
                 );
-                vertices[cast_usize(*current_vertex_index)] = average_position;
+                vertices[current_vertex_index] = average_position;
             }
         }
         iteration += 1;
@@ -99,8 +101,8 @@ pub fn laplacian_smoothing(
 /// (https://graphics.stanford.edu/~mdfisher/subdivision.html).
 pub fn loop_subdivision(
     mesh: &Mesh,
-    vertex_to_vertex_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
-    face_to_face_topology: &HashMap<u32, SmallVec<[u32; 8]>>,
+    vertex_to_vertex_topology: &VertexToVertexTopology,
+    face_to_face_topology: &FaceToFaceTopology,
 ) -> Option<Mesh> {
     #[derive(Debug, Eq)]
     struct UnorderedPair(u32, u32);
@@ -126,7 +128,7 @@ pub fn loop_subdivision(
 
     // Relocate existing vertices first
     for (i, vertex) in vertices.iter_mut().enumerate() {
-        let neighbors = &vertex_to_vertex_topology[&cast_u32(i)];
+        let neighbors = &vertex_to_vertex_topology[i];
 
         match neighbors.len() {
             // N == 0 means this is an orphan vertex. N == 1 can't
@@ -201,7 +203,7 @@ pub fn loop_subdivision(
         match face {
             Face::Triangle(triangle_face) => {
                 let (vi1, vi2, vi3) = triangle_face.vertices;
-                let face_neighbors = &face_to_face_topology[&face_index_u32];
+                let face_neighbors = &face_to_face_topology[face_index];
 
                 // Our current face should have up to 3 neighboring
                 // faces. The mid vertices we are going to create need
@@ -756,7 +758,8 @@ mod tests {
             3,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
-        let f2f = topology::compute_face_to_face_topology(&mesh);
+        let v2f = topology::calculate_vertex_to_face_topology(&mesh);
+        let f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
 
         let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f)
             .expect("The mesh doesn't meet the loop subdivision prerequisites");
@@ -775,7 +778,8 @@ mod tests {
             Vector3::new(1.0, 1.0, 1.0),
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
-        let f2f = topology::compute_face_to_face_topology(&mesh);
+        let v2f = topology::calculate_vertex_to_face_topology(&mesh);
+        let f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
 
         let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f)
             .expect("The mesh doesn't meet the loop subdivision prerequisites");
