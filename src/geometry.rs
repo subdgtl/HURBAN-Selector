@@ -42,9 +42,7 @@ pub fn compute_barycentric_coords(
 ///
 /// http://www.ambrsoft.com/TrigoCalc/Line3D/LineColinear.htm
 pub fn are_points_collinear(v0: &Point3<f32>, v1: &Point3<f32>, v2: &Point3<f32>) -> bool {
-    if v0.coords.relative_eq(&v1.coords, 0.0001, 0.0001)
-        || v0.coords.relative_eq(&v2.coords, 0.0001, 0.0001)
-    {
+    if approx::relative_eq!(v0.coords, &v1.coords) || approx::relative_eq!(v0.coords, &v2.coords) {
         return true;
     }
     let n1 = v1 - v0;
