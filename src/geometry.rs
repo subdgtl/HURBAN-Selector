@@ -27,7 +27,7 @@ pub fn compute_barycentric_coords(
     let ys = Vector3::new(ac.y, ab.y, pa.y);
     let ortho = xs.cross(&ys);
 
-    if f32::abs(ortho.z) < 1.0 {
+    if approx::relative_eq!(f32::abs(ortho.z), 0.0) {
         None
     } else {
         Some(Point3::new(
@@ -38,12 +38,33 @@ pub fn compute_barycentric_coords(
     }
 }
 
+/// Converts barycentric coordinates into cartesian.
+pub fn barycentric_to_cartesian(
+    barycentric_coords: &Point3<f32>,
+    a: &Point3<f32>,
+    b: &Point3<f32>,
+    c: &Point3<f32>,
+) -> Point3<f32> {
+    Point3::from(
+        barycentric_coords.x * a.coords
+            + barycentric_coords.y * b.coords
+            + barycentric_coords.z * c.coords,
+    )
+}
+
 /// Checks if all three points lay on the same line.
-pub fn are_points_colinear(v0: &Point3<f32>, v1: &Point3<f32>, v2: &Point3<f32>) -> bool {
-    let v0_normalized = v0.coords.normalize();
-    let v1_normalized = v1.coords.normalize();
-    let v2_normalized = v2.coords.normalize();
-    v0_normalized == v1_normalized && v0_normalized == v2_normalized
+///
+/// http://www.ambrsoft.com/TrigoCalc/Line3D/LineColinear.htm
+pub fn are_points_collinear(v0: &Point3<f32>, v1: &Point3<f32>, v2: &Point3<f32>) -> bool {
+    if v0.coords.relative_eq(&v1.coords, 0.0001, 0.0001)
+        || v0.coords.relative_eq(&v2.coords, 0.0001, 0.0001)
+    {
+        return true;
+    }
+    let n1 = v1 - v0;
+    let n2 = v2 - v0;
+    let cross = n1.cross(&n2);
+    approx::relative_eq!(cross, Vector3::zeros())
 }
 
 #[cfg(test)]
@@ -104,7 +125,7 @@ mod tests {
             triangle_points.2,
             test_point,
         )
-        .expect("Could not calculate the barycentric coords");
+        .expect("Failed to calculate barycentric coords");
 
         let barycentric_correct = Point3::new(0.333333, 0.333333, 0.333333);
 
@@ -130,7 +151,7 @@ mod tests {
             triangle_points.2,
             test_point,
         )
-        .expect("Could not calculate the barycentric coords");
+        .expect("Failed to calculate barycentric coords");
 
         let barycentric_correct = Point3::new(1.6666667, -0.33333334, -0.33333334);
 

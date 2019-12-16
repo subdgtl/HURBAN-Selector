@@ -101,19 +101,22 @@ pub fn pull_point_to_mesh(
             geometry::compute_triangle_normal(face_vertices.0, face_vertices.1, face_vertices.2),
         )
     });
-    let mut is_on_mesh = false;
+
+    let pulled_identity = PulledPointWithDistance {
+        point: *point,
+        distance: 0.0,
+    };
 
     let mut pulled_points: Vec<PulledPointWithDistance> = Vec::new();
     // Pull to faces
     for (face_vertices, face_normal) in all_mesh_faces_with_normals {
-        // If the point already lays in the face, it means it's already puled to the mesh.
+        // If the point already lies in the face, it means it's already puled to the mesh.
         if is_point_in_triangle(point, face_vertices.0, face_vertices.1, face_vertices.2) {
-            is_on_mesh = true;
-            break;
+            return pulled_identity;
         }
-        // If triangle vertices are colinear, it's enough to pull to
+        // If triangle vertices are collinear, it's enough to pull to
         // triangle edges later on.
-        if !geometry::are_points_colinear(face_vertices.0, face_vertices.1, face_vertices.2) {
+        if !geometry::are_points_collinear(face_vertices.0, face_vertices.1, face_vertices.2) {
             if let Some(intersection_point) = ray_intersects_triangle(
                 point,
                 &(-1.0 * face_normal),
@@ -126,14 +129,6 @@ pub fn pull_point_to_mesh(
         }
     }
 
-    // Exit and return the point itself.
-    if is_on_mesh {
-        return PulledPointWithDistance {
-            point: *point,
-            distance: 0.0,
-        };
-    }
-
     // Pull to edges
     for u_e in unoriented_edges {
         let closest_point = pull_point_to_line(
@@ -141,23 +136,14 @@ pub fn pull_point_to_mesh(
             &vertices[cast_usize(u_e.0.vertices.0)],
             &vertices[cast_usize(u_e.0.vertices.1)],
         );
-        // If the point already lays in the edge, it means it's already puled to the mesh.
+        // If the point already lies in the edge, it means it's already puled to the mesh.
         if closest_point.clamped == *point {
-            is_on_mesh = true;
-            break;
+            return pulled_identity;
         }
         pulled_points.push(PulledPointWithDistance {
             point: closest_point.clamped,
             distance: nalgebra::distance(point, &closest_point.clamped),
         });
-    }
-
-    // Exit and return the point itself.
-    if is_on_mesh {
-        return PulledPointWithDistance {
-            point: *point,
-            distance: 0.0,
-        };
     }
 
     let mut closest_pulled_point = pulled_points.pop().expect("No pulled point found");
@@ -173,7 +159,7 @@ pub fn pull_point_to_mesh(
 /// Checks if a point lies in a triangle.
 ///
 /// #Panics
-/// Panics if triangle is colinear
+/// Panics if triangle is collinear
 ///
 /// https://math.stackexchange.com/questions/4322/check-whether-a-point-is-within-a-3d-triangle
 fn is_point_in_triangle(
@@ -196,8 +182,21 @@ fn is_point_in_triangle(
 
     // If the triangle is degenerated into a line, check if the point lies on
     // the line.
-    if geometry::are_points_colinear(triangle_vertex0, triangle_vertex1, triangle_vertex2) {
-        return is_point_on_line_clamped(point, triangle_vertex0, triangle_vertex1);
+    if geometry::are_points_collinear(triangle_vertex0, triangle_vertex1, triangle_vertex2) {
+        let dist01 = nalgebra::distance_squared(triangle_vertex0, triangle_vertex1);
+        let dist02 = nalgebra::distance_squared(triangle_vertex0, triangle_vertex2);
+        let dist12 = nalgebra::distance_squared(triangle_vertex1, triangle_vertex2);
+
+        // Get the longest span of the three collinear points
+        let (a, b) = if dist01 > dist02 && dist01 > dist12 {
+            (triangle_vertex0, triangle_vertex1)
+        } else if dist02 > dist01 && dist02 > dist12 {
+            (triangle_vertex0, triangle_vertex2)
+        } else {
+            (triangle_vertex1, triangle_vertex2)
+        };
+
+        return is_point_on_line_clamped(point, a, b);
     }
 
     let plane = Plane::from_three_points(triangle_vertex0, triangle_vertex1, triangle_vertex2);
@@ -230,6 +229,17 @@ fn is_point_in_triangle(
                 rotation_to_horizontal * triangle_vertex2,
                 rotation_to_horizontal * point,
             )
+        } else if let Some(rotation_to_horizontal) =
+            Rotation3::rotation_between(&(-1.0 * plane.normal()), &Vector3::new(0.0, 0.0, 1.0))
+        {
+            // In case the triangle isn't horizontal rotate the triangle to
+            // become horizontal and rotate also the test point.
+            (
+                rotation_to_horizontal * triangle_vertex0,
+                rotation_to_horizontal * triangle_vertex1,
+                rotation_to_horizontal * triangle_vertex2,
+                rotation_to_horizontal * point,
+            )
         } else {
             // The original triangle is not horizontal and it's not possible to
             // rotate it to become horizontal. This case should never happen but
@@ -246,8 +256,7 @@ fn is_point_in_triangle(
         horizontal_vertex2.xy(),
         horizontal_point.xy(),
     )
-    .expect("The triangle is degenerate");
-
+    .expect("Failed to calculate barycentric coords");
     barycentric_point.x >= 0.0
         && barycentric_point.x <= 1.0
         && barycentric_point.y >= 0.0

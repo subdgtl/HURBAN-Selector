@@ -22,7 +22,7 @@ pub fn create_mesh_plane(plane: Plane, scale: Vector2<f32>) -> Mesh {
             + ( 0.5 * plane.y_vector() * scale.y),
     ];
 
-    let vertex_normals = vec![Vector3::new(0.0, 0.0, 1.0)];
+    let vertex_normals = vec![plane.normal()];
 
     let faces = vec![
         TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
