@@ -12,18 +12,18 @@ use super::{Face, Mesh};
 /// contain before it spills into heap. Implementation detail.
 const MAX_INLINE_NEIGHBOR_COUNT: usize = 8;
 
-pub type VertexToFaceTopology = Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>>;
+pub type VertexToFaceRelation = SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>;
 
 /// Calculates topological relations (neighborhood) of mesh vertex -> faces.
 /// Returns a Map (key: vertex index, value: list of its neighboring faces indices)
-pub fn calculate_vertex_to_face_topology(mesh: &Mesh) -> VertexToFaceTopology {
+pub fn calculate_vertex_to_face_topology(mesh: &Mesh) -> Vec<VertexToFaceRelation> {
     calculate_vertex_to_face_topology_from_components(mesh.faces(), cast_u32(mesh.vertices().len()))
 }
 
 pub fn calculate_vertex_to_face_topology_from_components(
     faces: &[Face],
     vertex_count: u32,
-) -> VertexToFaceTopology {
+) -> Vec<VertexToFaceRelation> {
     let mut v2f: Vec<SmallVec<[u32; 8]>> = vec![SmallVec::new(); cast_usize(vertex_count)];
 
     for (face_index, face) in faces.iter().enumerate() {
@@ -48,13 +48,13 @@ pub fn calculate_vertex_to_face_topology_from_components(
 /// A topology containing neighborhood relations between faces. Two
 /// faces are neighbors if and only if they they share an unoriented
 /// edge.
-pub type FaceToFaceTopology = Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>>;
+pub type FaceToFaceRelation = SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>;
 
 /// Computes face to face topology for mesh.
 pub fn compute_face_to_face_topology(
     mesh: &Mesh,
-    v2f: &VertexToFaceTopology,
-) -> FaceToFaceTopology {
+    v2f: &[VertexToFaceRelation],
+) -> Vec<FaceToFaceRelation> {
     let mut f2f: Vec<SmallVec<[u32; 8]>> = vec![SmallVec::new(); mesh.faces().len()];
 
     for (face_index, face) in mesh.faces().iter().enumerate() {
@@ -88,11 +88,11 @@ pub fn compute_face_to_face_topology(
 /// A topology containing neighborhood relations between vertices. Two
 /// vertices are neighbors if and only if they they are end points of
 /// an edge.
-pub type VertexToVertexTopology = Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>>;
+pub type VertexToVertexRelation = SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>;
 
 /// Computes vertex to vertex topology for mesh.
-pub fn compute_vertex_to_vertex_topology(mesh: &Mesh) -> VertexToVertexTopology {
-    let mut v2v: VertexToVertexTopology = vec![SmallVec::new(); mesh.vertices().len()];
+pub fn compute_vertex_to_vertex_topology(mesh: &Mesh) -> Vec<VertexToVertexRelation> {
+    let mut v2v = vec![SmallVec::new(); mesh.vertices().len()];
 
     for face in mesh.faces() {
         match face {
@@ -170,7 +170,7 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let face_to_face_topology_correct: FaceToFaceTopology =
+        let face_to_face_topology_correct: Vec<FaceToFaceRelation> =
             vec![smallvec![1], smallvec![0, 2, 3], smallvec![1], smallvec![1]];
 
         let vertex_to_face_topology = calculate_vertex_to_face_topology(&mesh);
