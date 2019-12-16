@@ -101,19 +101,22 @@ pub fn pull_point_to_mesh(
             geometry::compute_triangle_normal(face_vertices.0, face_vertices.1, face_vertices.2),
         )
     });
-    let mut is_on_mesh = false;
+
+    let pulled_identity = PulledPointWithDistance {
+        point: *point,
+        distance: 0.0,
+    };
 
     let mut pulled_points: Vec<PulledPointWithDistance> = Vec::new();
     // Pull to faces
     for (face_vertices, face_normal) in all_mesh_faces_with_normals {
         // If the point already lays in the face, it means it's already puled to the mesh.
         if is_point_in_triangle(point, face_vertices.0, face_vertices.1, face_vertices.2) {
-            is_on_mesh = true;
-            break;
+            return pulled_identity;
         }
         // If triangle vertices are colinear, it's enough to pull to
         // triangle edges later on.
-        if !geometry::are_points_colinear(face_vertices.0, face_vertices.1, face_vertices.2) {
+        if !geometry::are_points_collinear(face_vertices.0, face_vertices.1, face_vertices.2) {
             if let Some(intersection_point) = ray_intersects_triangle(
                 point,
                 &(-1.0 * face_normal),
@@ -126,14 +129,6 @@ pub fn pull_point_to_mesh(
         }
     }
 
-    // Exit and return the point itself.
-    if is_on_mesh {
-        return PulledPointWithDistance {
-            point: *point,
-            distance: 0.0,
-        };
-    }
-
     // Pull to edges
     for u_e in unoriented_edges {
         let closest_point = pull_point_to_line(
@@ -143,21 +138,12 @@ pub fn pull_point_to_mesh(
         );
         // If the point already lays in the edge, it means it's already puled to the mesh.
         if closest_point.clamped == *point {
-            is_on_mesh = true;
-            break;
+            return pulled_identity;
         }
         pulled_points.push(PulledPointWithDistance {
             point: closest_point.clamped,
             distance: nalgebra::distance(point, &closest_point.clamped),
         });
-    }
-
-    // Exit and return the point itself.
-    if is_on_mesh {
-        return PulledPointWithDistance {
-            point: *point,
-            distance: 0.0,
-        };
     }
 
     let mut closest_pulled_point = pulled_points.pop().expect("No pulled point found");
@@ -196,8 +182,21 @@ fn is_point_in_triangle(
 
     // If the triangle is degenerated into a line, check if the point lies on
     // the line.
-    if geometry::are_points_colinear(triangle_vertex0, triangle_vertex1, triangle_vertex2) {
-        return is_point_on_line_clamped(point, triangle_vertex0, triangle_vertex1);
+    if geometry::are_points_collinear(triangle_vertex0, triangle_vertex1, triangle_vertex2) {
+        let dist01 = nalgebra::distance_squared(triangle_vertex0, triangle_vertex1);
+        let dist02 = nalgebra::distance_squared(triangle_vertex0, triangle_vertex2);
+        let dist12 = nalgebra::distance_squared(triangle_vertex1, triangle_vertex2);
+
+        // Get the longest span of the three collinear points
+        let (a, b) = if dist01 > dist02 && dist01 > dist12 {
+            (triangle_vertex0, triangle_vertex1)
+        } else if dist02 > dist01 && dist02 > dist12 {
+            (triangle_vertex0, triangle_vertex2)
+        } else {
+            (triangle_vertex1, triangle_vertex2)
+        };
+
+        return is_point_on_line_clamped(point, a, b);
     }
 
     let plane = Plane::from_three_points(triangle_vertex0, triangle_vertex1, triangle_vertex2);
