@@ -108,7 +108,7 @@ pub type VertexToVertexRelation = SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>;
 /// Computes topological relations (connections) of mesh vertex -> vertices.
 ///
 /// Output: The index represents a vertex index, the value is a list of vertices
-/// connected to the respective face with an edge.
+/// connected to the respective vertex.
 pub fn compute_vertex_to_vertex_topology(mesh: &Mesh) -> Vec<VertexToVertexRelation> {
     let mut v2v = vec![SmallVec::new(); mesh.vertices().len()];
 
