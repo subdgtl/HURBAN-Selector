@@ -12,29 +12,29 @@ use super::{Face, Mesh};
 
 /// The number of relations/neighbors a `SmallVec` is allowed to
 /// contain before it spills into heap. Implementation detail.
-const MAX_INLINE_NEIGHBOR_COUNT: usize = 8;
+pub const MAX_INLINE_NEIGHBOR_COUNT: usize = 8;
 
-/// Containment relations between vertices and faces. A face is related to a
-/// vertex if and only if it contains the vertex.
-pub type VertexToFaceRelation = SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>;
-
-/// Computes topological relations of mesh vertex -> faces.
+/// Computes topological relations of mesh vertex -> faces. A vertex is related
+/// to a face if and only if the face contains the respective vertex.
 ///
 /// Output: The index represents a vertex index, the value is a list of faces
 /// containing the respective vertex.
-pub fn compute_vertex_to_face_topology(mesh: &Mesh) -> Vec<VertexToFaceRelation> {
+pub fn compute_vertex_to_face_topology(
+    mesh: &Mesh,
+) -> Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> {
     compute_vertex_to_face_topology_from_components(mesh.faces(), cast_u32(mesh.vertices().len()))
 }
 
 /// Computes topological relations of mesh vertex -> faces from standalone mesh
-/// components: faces and vertex count.
+/// components: faces and vertex count. A vertex is related to a face if and
+/// only if the face contains the respective vertex.
 ///
 /// Output: The index represents a vertex index, the value is a list of faces
 /// containing the respective vertex.
 pub fn compute_vertex_to_face_topology_from_components(
     faces: &[Face],
     vertex_count: u32,
-) -> Vec<VertexToFaceRelation> {
+) -> Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> {
     let mut v2f: Vec<SmallVec<[u32; 8]>> = vec![SmallVec::new(); cast_usize(vertex_count)];
 
     for (face_index, face) in faces.iter().enumerate() {
@@ -56,18 +56,15 @@ pub fn compute_vertex_to_face_topology_from_components(
     v2f
 }
 
-/// Neighborhood relations between faces. Two faces are neighbors if and only if
-/// they they share an unoriented edge.
-pub type FaceToFaceRelation = SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>;
-
-/// Computes topological relations (neighborhood) of mesh face -> faces.
+/// Computes topological relations (neighborhood) of mesh face -> faces. Two
+/// faces are neighbors if and only if they they share an unoriented edge.
 ///
 /// Output: The index represents a face index, the value is a list of faces
 /// neighboring with the respective face.
 pub fn compute_face_to_face_topology(
     mesh: &Mesh,
-    v2f: &[VertexToFaceRelation],
-) -> Vec<FaceToFaceRelation> {
+    v2f: &[SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>],
+) -> Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> {
     let mut f2f: Vec<SmallVec<[u32; 8]>> = vec![SmallVec::new(); mesh.faces().len()];
 
     for (face_index, face) in mesh.faces().iter().enumerate() {
@@ -101,15 +98,14 @@ pub fn compute_face_to_face_topology(
     f2f
 }
 
-/// Neighborhood / connection relations between vertices. Two vertices are
-/// neighbors if and only if they they are end points of an edge.
-pub type VertexToVertexRelation = SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>;
-
-/// Computes topological relations (connections) of mesh vertex -> vertices.
+/// Computes topological relations (connections) of mesh vertex -> vertices. Two
+/// vertices are neighbors if and only if they they are end points of an edge.
 ///
 /// Output: The index represents a vertex index, the value is a list of vertices
 /// connected to the respective vertex.
-pub fn compute_vertex_to_vertex_topology(mesh: &Mesh) -> Vec<VertexToVertexRelation> {
+pub fn compute_vertex_to_vertex_topology(
+    mesh: &Mesh,
+) -> Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> {
     let mut v2v = vec![SmallVec::new(); mesh.vertices().len()];
 
     for face in mesh.faces() {
@@ -189,7 +185,7 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let face_to_face_topology_correct: Vec<FaceToFaceRelation> =
+        let face_to_face_topology_correct: Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> =
             vec![smallvec![1], smallvec![0, 2, 3], smallvec![1], smallvec![1]];
 
         let vertex_to_face_topology = compute_vertex_to_face_topology(&mesh);

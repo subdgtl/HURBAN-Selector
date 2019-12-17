@@ -5,7 +5,6 @@ use nalgebra::{Point3, Vector3};
 use smallvec::{smallvec, SmallVec};
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::mesh::topology::FaceToFaceRelation;
 
 use super::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 
@@ -35,7 +34,10 @@ use super::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 /// The results might be unpredictable for non-manifold meshes and moebius-like
 /// topologies.
 ///
-pub fn synchronize_mesh_winding(mesh: &Mesh, face_to_face_topology: &[FaceToFaceRelation]) -> Mesh {
+pub fn synchronize_mesh_winding(
+    mesh: &Mesh,
+    face_to_face_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
+) -> Mesh {
     // FIXME: Flip also vertex normals if the visual/practical tests prove it's
     // needed
 

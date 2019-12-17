@@ -2,12 +2,13 @@ use std::cmp;
 use std::collections::hash_map::{Entry, HashMap};
 use std::hash::{Hash, Hasher};
 
+use smallvec::SmallVec;
+
 use nalgebra as na;
 use nalgebra::Point3;
 
 use crate::convert::{cast_u32, cast_usize};
-use crate::mesh::topology::{FaceToFaceRelation, VertexToVertexRelation};
-use crate::mesh::{Face, Mesh, NormalStrategy};
+use crate::mesh::{topology, Face, Mesh, NormalStrategy};
 
 /// Relaxes angles between mesh edges, resulting in a smoother
 /// mesh, optionally keeping some vertices anchored, resulting in
@@ -26,7 +27,7 @@ use crate::mesh::{Face, Mesh, NormalStrategy};
 /// Returns `(smooth_mesh: Mesh, executed_iterations: u32, stable: bool)`.
 pub fn laplacian_smoothing(
     mesh: &Mesh,
-    vertex_to_vertex_topology: &[VertexToVertexRelation],
+    vertex_to_vertex_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
     max_iterations: u32,
     fixed_vertex_indices: &[u32],
     stop_when_stable: bool,
@@ -101,8 +102,8 @@ pub fn laplacian_smoothing(
 /// (https://graphics.stanford.edu/~mdfisher/subdivision.html).
 pub fn loop_subdivision(
     mesh: &Mesh,
-    vertex_to_vertex_topology: &[VertexToVertexRelation],
-    face_to_face_topology: &[FaceToFaceRelation],
+    vertex_to_vertex_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
+    face_to_face_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
 ) -> Option<Mesh> {
     #[derive(Debug, Eq)]
     struct UnorderedPair(u32, u32);
