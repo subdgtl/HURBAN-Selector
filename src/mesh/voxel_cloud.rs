@@ -243,46 +243,82 @@ impl VoxelCloud {
         // envelope of volumes stored in the voxel cloud
         let mut plane_meshes: Vec<Mesh> = Vec::new();
 
+        struct VoxelMeshHelper {
+            plane: Plane,
+            direction_to_wall: Vector3<f32>,
+            direction_to_neighbor: Vector3<i32>,
+            voxel_dimensions: Vector2<f32>,
+        }
+
         // Pre-calculated geometry helpers
-        let top_plane = Plane::new(
-            &Point3::origin(),
-            &Vector3::new(1.0, 0.0, 0.0),
-            &Vector3::new(0.0, 1.0, 0.0),
-        );
-        let bottom_plane = Plane::new(
-            &Point3::origin(),
-            &Vector3::new(1.0, 0.0, 0.0),
-            &Vector3::new(0.0, -1.0, 0.0),
-        );
-        let right_plane = Plane::new(
-            &Point3::origin(),
-            &Vector3::new(0.0, 1.0, 0.0),
-            &Vector3::new(0.0, 0.0, 1.0),
-        );
-        let left_plane = Plane::new(
-            &Point3::origin(),
-            &Vector3::new(0.0, 1.0, 0.0),
-            &Vector3::new(0.0, 0.0, -1.0),
-        );
-        let front_plane = Plane::new(
-            &Point3::origin(),
-            &Vector3::new(1.0, 0.0, 0.0),
-            &Vector3::new(0.0, 0.0, 1.0),
-        );
-        let rear_plane = Plane::new(
-            &Point3::origin(),
-            &Vector3::new(1.0, 0.0, 0.0),
-            &Vector3::new(0.0, 0.0, -1.0),
-        );
-        let right_voxel_direction = Vector3::new(self.voxel_dimensions.x / 2.0, 0.0, 0.0);
-        let front_voxel_direction = Vector3::new(0.0, self.voxel_dimensions.y / 2.0, 0.0);
-        let upwards_voxel_direction = Vector3::new(0.0, 0.0, self.voxel_dimensions.z / 2.0);
-        let top_bottom_voxel_dimensions =
-            Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.y);
-        let right_left_voxel_dimensions =
-            Vector2::new(self.voxel_dimensions.y, self.voxel_dimensions.z);
-        let front_rear_voxel_dimensions =
-            Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.z);
+        let neighbor_helpers = [
+            VoxelMeshHelper {
+                //top
+                plane: Plane::new(
+                    &Point3::origin(),
+                    &Vector3::new(1.0, 0.0, 0.0),
+                    &Vector3::new(0.0, 1.0, 0.0),
+                ),
+                direction_to_wall: Vector3::new(0.0, 0.0, self.voxel_dimensions.z / 2.0),
+                direction_to_neighbor: Vector3::new(0, 0, 1),
+                voxel_dimensions: Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.y),
+            },
+            VoxelMeshHelper {
+                //bottom
+                plane: Plane::new(
+                    &Point3::origin(),
+                    &Vector3::new(1.0, 0.0, 0.0),
+                    &Vector3::new(0.0, -1.0, 0.0),
+                ),
+                direction_to_wall: Vector3::new(0.0, 0.0, -self.voxel_dimensions.z / 2.0),
+                direction_to_neighbor: Vector3::new(0, 0, -1),
+                voxel_dimensions: Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.y),
+            },
+            VoxelMeshHelper {
+                //right
+                plane: Plane::new(
+                    &Point3::origin(),
+                    &Vector3::new(0.0, 1.0, 0.0),
+                    &Vector3::new(0.0, 0.0, 1.0),
+                ),
+                direction_to_wall: Vector3::new(self.voxel_dimensions.x / 2.0, 0.0, 0.0),
+                direction_to_neighbor: Vector3::new(1, 0, 0),
+                voxel_dimensions: Vector2::new(self.voxel_dimensions.y, self.voxel_dimensions.z),
+            },
+            VoxelMeshHelper {
+                //left
+                plane: Plane::new(
+                    &Point3::origin(),
+                    &Vector3::new(0.0, 1.0, 0.0),
+                    &Vector3::new(0.0, 0.0, -1.0),
+                ),
+                direction_to_wall: Vector3::new(-self.voxel_dimensions.x / 2.0, 0.0, 0.0),
+                direction_to_neighbor: Vector3::new(-1, 0, 0),
+                voxel_dimensions: Vector2::new(self.voxel_dimensions.y, self.voxel_dimensions.z),
+            },
+            VoxelMeshHelper {
+                //front
+                plane: Plane::new(
+                    &Point3::origin(),
+                    &Vector3::new(1.0, 0.0, 0.0),
+                    &Vector3::new(0.0, 0.0, 1.0),
+                ),
+                direction_to_wall: Vector3::new(0.0, self.voxel_dimensions.y / 2.0, 0.0),
+                direction_to_neighbor: Vector3::new(0, 1, 0),
+                voxel_dimensions: Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.z),
+            },
+            VoxelMeshHelper {
+                //rear
+                plane: Plane::new(
+                    &Point3::origin(),
+                    &Vector3::new(1.0, 0.0, 0.0),
+                    &Vector3::new(0.0, 0.0, -1.0),
+                ),
+                direction_to_wall: Vector3::new(0.0, -self.voxel_dimensions.y / 2.0, 0.0),
+                direction_to_neighbor: Vector3::new(0, -1, 0),
+                voxel_dimensions: Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.z),
+            },
+        ];
 
         // Iterate through the voxel cloud
         for z in 0..self.block_dimensions.z {
@@ -290,16 +326,15 @@ impl VoxelCloud {
                 for x in 0..self.block_dimensions.x {
                     // If the current voxel is on
                     let voxel_coords = Point3::new(cast_i32(x), cast_i32(y), cast_i32(z));
-                    if let Some(state) = self.voxel_at_relative_coords(&voxel_coords) {
-                        if state {
-                            // calculate the position of its center in model space coordinates
-                            let voxel_center =
-                                self.relative_voxel_to_cartesian_coords(&voxel_coords);
-                            // top
-                            // and check if there is any voxel above it
-                            match self
-                                .voxel_at_relative_coords(&(voxel_coords + Vector3::new(0, 0, 1)))
-                            {
+                    if let Some(true) = self.voxel_at_relative_coords(&voxel_coords) {
+                        // calculate the position of its center in model space coordinates
+                        let voxel_center = self.relative_voxel_to_cartesian_coords(&voxel_coords);
+                        // top
+                        // and check if there is any voxel around it
+                        for helper in &neighbor_helpers {
+                            match self.voxel_at_relative_coords(
+                                &(voxel_coords + helper.direction_to_neighbor),
+                            ) {
                                 // if there isn't or if the current voxel is on the
                                 // boundary of the voxel space block
                                 Some(false) | None => {
@@ -307,93 +342,18 @@ impl VoxelCloud {
                                     plane_meshes.push(primitive::create_mesh_plane(
                                         Plane::from_origin_and_plane(
                                             // above the voxel center half way the height of the voxel
-                                            &(voxel_center + upwards_voxel_direction),
+                                            &(voxel_center + helper.direction_to_wall),
                                             // align it properly
-                                            &top_plane,
+                                            &helper.plane,
                                         ),
                                         // and set_voxel_at_absolute_coords its size to match the dimensions
                                         // of the top side of a voxel
-                                        top_bottom_voxel_dimensions,
+                                        helper.voxel_dimensions,
                                     ));
                                 }
                                 // if there is a neighbor above the current voxel,
                                 // it means no boundary side of the voxel box should
                                 // be materialized
-                                _ => {}
-                            }
-                            // bottom
-                            match self
-                                .voxel_at_relative_coords(&(voxel_coords + Vector3::new(0, 0, -1)))
-                            {
-                                Some(false) | None => {
-                                    plane_meshes.push(primitive::create_mesh_plane(
-                                        Plane::from_origin_and_plane(
-                                            &(voxel_center - upwards_voxel_direction),
-                                            &bottom_plane,
-                                        ),
-                                        top_bottom_voxel_dimensions,
-                                    ));
-                                }
-                                _ => {}
-                            }
-                            // right
-                            match self
-                                .voxel_at_relative_coords(&(voxel_coords + Vector3::new(1, 0, 0)))
-                            {
-                                Some(false) | None => {
-                                    plane_meshes.push(primitive::create_mesh_plane(
-                                        Plane::from_origin_and_plane(
-                                            &(voxel_center + right_voxel_direction),
-                                            &right_plane,
-                                        ),
-                                        right_left_voxel_dimensions,
-                                    ));
-                                }
-                                _ => {}
-                            }
-                            // left
-                            match self
-                                .voxel_at_relative_coords(&(voxel_coords + Vector3::new(-1, 0, 0)))
-                            {
-                                Some(false) | None => {
-                                    plane_meshes.push(primitive::create_mesh_plane(
-                                        Plane::from_origin_and_plane(
-                                            &(voxel_center - right_voxel_direction),
-                                            &left_plane,
-                                        ),
-                                        right_left_voxel_dimensions,
-                                    ));
-                                }
-                                _ => {}
-                            }
-                            // front
-                            match self
-                                .voxel_at_relative_coords(&(voxel_coords + Vector3::new(0, 1, 0)))
-                            {
-                                Some(false) | None => {
-                                    plane_meshes.push(primitive::create_mesh_plane(
-                                        Plane::from_origin_and_plane(
-                                            &(voxel_center + front_voxel_direction),
-                                            &front_plane,
-                                        ),
-                                        front_rear_voxel_dimensions,
-                                    ));
-                                }
-                                _ => {}
-                            }
-                            // rear
-                            match self
-                                .voxel_at_relative_coords(&(voxel_coords + Vector3::new(0, -1, 0)))
-                            {
-                                Some(false) | None => {
-                                    plane_meshes.push(primitive::create_mesh_plane(
-                                        Plane::from_origin_and_plane(
-                                            &(voxel_center - front_voxel_direction),
-                                            &rear_plane,
-                                        ),
-                                        front_rear_voxel_dimensions,
-                                    ));
-                                }
                                 _ => {}
                             }
                         }
