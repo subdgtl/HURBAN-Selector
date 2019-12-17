@@ -1,0 +1,83 @@
+---
+source: src/mesh/voxel_cloud.rs
+expression: "&voxel_cloud"
+---
+{
+  "block_start": [
+    -1,
+    -2,
+    -1
+  ],
+  "block_dimensions": [
+    4,
+    5,
+    3
+  ],
+  "voxel_dimensions": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "voxel_map": [
+    false,
+    false,
+    false,
+    false,
+    true,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    false,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    false,
+    false,
+    true,
+    true,
+    true,
+    false,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ]
+}
