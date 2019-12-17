@@ -224,7 +224,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
         }
     });
 
-    // key = old vertex index
+    // index = old vertex index
     // value = indices of all old normals being referenced by faces together
     // with the vertex
     //
@@ -233,7 +233,8 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
     // which normals should be averaged to be matched with the new vertices.
     // Therefore it's important to collect all the normals associated with the
     // original vertices in clusters and averaging those.
-    let mut old_vertex_normals_index_map: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+    let mut old_vertex_normals_index_map: Vec<SmallVec<[u32; 8]>> =
+        vec![SmallVec::new(); mesh.vertices().len()];
     for face in mesh.faces() {
         match face {
             Face::Triangle(f) => {
@@ -243,12 +244,9 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
                     (f.vertices.2, f.normals.2),
                 ];
                 for (vertex_index, normal_index) in &vertex_indices {
-                    let associated_normals = old_vertex_normals_index_map
-                        .entry(*vertex_index)
-                        .or_insert_with(SmallVec::new);
-                    if !associated_normals.contains(&normal_index) {
-                        associated_normals.push(*normal_index);
-                    }
+                    let associated_normals =
+                        &mut old_vertex_normals_index_map[cast_usize(*vertex_index)];
+                    associated_normals.push(*normal_index);
                 }
             }
         }
@@ -257,7 +255,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
     // Associate old normals to the new averaged vertices
     let mut new_vertex_old_normals_index_map: Vec<SmallVec<[u32; 8]>> =
         vec![SmallVec::new(); new_vertices.len()];
-    for (old_vertex_index, old_normals_indices) in old_vertex_normals_index_map {
+    for (old_vertex_index, old_normals_indices) in old_vertex_normals_index_map.iter().enumerate() {
         let new_vertex_index = old_new_vertex_map[cast_usize(old_vertex_index)];
         new_vertex_old_normals_index_map[cast_usize(new_vertex_index)]
             .extend_from_slice(&old_normals_indices);
@@ -270,9 +268,8 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
             old_normals_indices
                 .iter()
                 .fold(Vector3::zeros(), |avg, o_n_i| {
-                    avg + mesh.normals()[cast_usize(*o_n_i)]
+                    avg + mesh.normals()[cast_usize(*o_n_i)] / old_normals_indices.len() as f32
                 })
-                / old_normals_indices.len() as f32
         })
         .collect();
 
@@ -534,38 +531,38 @@ mod tests {
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    pub fn open_box_sharp_mesh(position: [f32; 3], scale: f32) -> Mesh {
+    pub fn open_box_sharp_mesh() -> Mesh {
         let vertex_positions = vec![
             // back
-            v(-1.0, 1.0, -1.0, position, scale), //0
-            v(-1.0, 1.0, 1.0, position, scale),  //1
-            v(1.0, 1.0, 1.0, position, scale),   //2
-            v(1.0, 1.0, -1.0, position, scale),  //3
+            Point3::new(-1.0, 1.0, -1.0), //0
+            Point3::new(-1.0, 1.0, 1.0),  //1
+            Point3::new(1.0, 1.0, 1.0),   //2
+            Point3::new(1.0, 1.0, -1.0),  //3
             // front
-            v(-1.0, -1.0, -1.0, position, scale), //4
-            v(1.0, -1.0, -1.0, position, scale),  //5
-            v(1.0, -1.0, 1.0, position, scale),   //6
-            v(-1.0, -1.0, 1.0, position, scale),  //7
+            Point3::new(-1.0, -1.0, -1.0), //4
+            Point3::new(1.0, -1.0, -1.0),  //5
+            Point3::new(1.0, -1.0, 1.0),   //6
+            Point3::new(-1.0, -1.0, 1.0),  //7
             // top
-            v(-1.0, 1.0, 1.0, position, scale),  //8
-            v(-1.0, -1.0, 1.0, position, scale), //9
-            v(1.0, -1.0, 1.0, position, scale),  //10
-            v(1.0, 1.0, 1.0, position, scale),   //11
+            Point3::new(-1.0, 1.0, 1.0),  //8
+            Point3::new(-1.0, -1.0, 1.0), //9
+            Point3::new(1.0, -1.0, 1.0),  //10
+            Point3::new(1.0, 1.0, 1.0),   //11
             // bottom
-            v(-1.0, 1.0, -1.0, position, scale),  //12
-            v(1.0, 1.0, -1.0, position, scale),   //13
-            v(1.0, -1.0, -1.0, position, scale),  //14
-            v(-1.0, -1.0, -1.0, position, scale), //15
+            Point3::new(-1.0, 1.0, -1.0),  //12
+            Point3::new(1.0, 1.0, -1.0),   //13
+            Point3::new(1.0, -1.0, -1.0),  //14
+            Point3::new(-1.0, -1.0, -1.0), //15
             // right
-            v(1.0, 1.0, -1.0, position, scale),  //16
-            v(1.0, 1.0, 1.0, position, scale),   //17
-            v(1.0, -1.0, 1.0, position, scale),  //18
-            v(1.0, -1.0, -1.0, position, scale), //19
+            Point3::new(1.0, 1.0, -1.0),  //16
+            Point3::new(1.0, 1.0, 1.0),   //17
+            Point3::new(1.0, -1.0, 1.0),  //18
+            Point3::new(1.0, -1.0, -1.0), //19
             // left
-            v(-1.0, 1.0, -1.0, position, scale),  //20
-            v(-1.0, -1.0, -1.0, position, scale), //21
-            v(-1.0, -1.0, 1.0, position, scale),  //22
-            v(-1.0, 1.0, 1.0, position, scale),   //23
+            Point3::new(-1.0, 1.0, -1.0),  //20
+            Point3::new(-1.0, -1.0, -1.0), //21
+            Point3::new(-1.0, -1.0, 1.0),  //22
+            Point3::new(-1.0, 1.0, 1.0),   //23
         ];
 
         let vertex_normals = vec![
@@ -625,54 +622,45 @@ mod tests {
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
     }
 
-    pub fn welded_box_smooth_mesh(position: [f32; 3], scale: f32) -> Mesh {
-        let vertex_positions = vec![
-            // back
-            v(-1.0, 1.0, -1.0, position, scale),
-            v(-1.0, 1.0, 1.0, position, scale),
-            v(1.0, 1.0, 1.0, position, scale),
-            v(1.0, 1.0, -1.0, position, scale),
-            // front
-            v(-1.0, -1.0, -1.0, position, scale),
-            v(1.0, -1.0, -1.0, position, scale),
-            v(1.0, -1.0, 1.0, position, scale),
-            v(-1.0, -1.0, 1.0, position, scale),
+    pub fn welded_box_smooth_mesh() -> Mesh {
+        let vertices = vec![
+            Point3::new(1.0, 1.0, 1.0),
+            Point3::new(-1.0, -1.0, 1.0),
+            Point3::new(-1.0, 1.0, 1.0),
+            Point3::new(1.0, 1.0, -1.0),
+            Point3::new(-1.0, 1.0, -1.0),
+            Point3::new(-1.0, -1.0, -1.0),
+            Point3::new(1.0, -1.0, 1.0),
+            Point3::new(1.0, -1.0, -1.0),
         ];
 
-        let vertex_normals = vec![
-            n(-1.0 / 3.0, 1.0 / 3.0, -1.0 / 3.0),
-            n(-1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
-            n(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
-            n(1.0 / 3.0, 1.0 / 3.0, -1.0 / 3.0),
-            // front
-            n(-1.0 / 3.0, -1.0 / 3.0, -1.0 / 3.0),
-            n(1.0 / 3.0, -1.0 / 3.0, -1.0 / 3.0),
-            n(1.0 / 3.0, -1.0 / 3.0, 1.0 / 3.0),
-            n(-1.0 / 3.0, -1.0 / 3.0, 1.0 / 3.0),
+        let normals = vec![
+            n(0.25, 0.5, 0.25),
+            n(-0.5, -0.25, 0.25),
+            n(-0.25, 0.25, 0.5),
+            n(0.5, 0.25, -0.25),
+            n(-0.33333334, 0.33333334, -0.33333334),
+            n(-0.25, -0.5, -0.25),
+            n(0.33333334, -0.33333334, 0.33333334),
+            n(0.25, -0.25, -0.5),
         ];
 
         let faces = vec![
-            // back
-            TriangleFace::new(0, 1, 2),
-            TriangleFace::new(2, 3, 0),
-            // front
-            TriangleFace::new(4, 5, 6),
-            TriangleFace::new(6, 7, 4),
-            // top
-            TriangleFace::new(7, 6, 1),
-            TriangleFace::new(2, 1, 6),
-            // bottom
-            TriangleFace::new(5, 0, 3),
-            TriangleFace::new(0, 5, 4),
-            // right
-            TriangleFace::new(6, 3, 2),
-            TriangleFace::new(3, 6, 5),
-            // left
-            TriangleFace::new(4, 7, 0),
-            TriangleFace::new(1, 0, 7),
+            TriangleFace::new_separate(0, 4, 2, 0, 4, 2),
+            TriangleFace::new_separate(0, 3, 4, 0, 3, 4),
+            TriangleFace::new_separate(5, 7, 6, 5, 7, 6),
+            TriangleFace::new_separate(1, 5, 6, 1, 5, 6),
+            TriangleFace::new_separate(1, 6, 2, 1, 6, 2),
+            TriangleFace::new_separate(0, 2, 6, 0, 2, 6),
+            TriangleFace::new_separate(3, 7, 4, 3, 7, 4),
+            TriangleFace::new_separate(4, 7, 5, 4, 7, 5),
+            TriangleFace::new_separate(0, 6, 3, 0, 6, 3),
+            TriangleFace::new_separate(3, 6, 7, 3, 6, 7),
+            TriangleFace::new_separate(1, 4, 5, 1, 4, 5),
+            TriangleFace::new_separate(1, 2, 4, 1, 2, 4),
         ];
 
-        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals)
     }
 
     #[test]
@@ -826,7 +814,7 @@ mod tests {
     }
 
     #[test]
-    fn test_weld_tesselated_triangle() {
+    fn test_weld_tessellated_triangle() {
         let mesh = tessellated_triangle_mesh_for_welding();
         let mesh_after_welding_correct = welded_tessellated_triangle_mesh();
 
@@ -840,8 +828,8 @@ mod tests {
 
     #[test]
     fn test_weld_box_sharp_same_len() {
-        let mesh = open_box_sharp_mesh([0.0, 0.0, 0.0], 1.0);
-        let mesh_after_welding_correct = welded_box_smooth_mesh([0.0, 0.0, 0.0], 1.0);
+        let mesh = open_box_sharp_mesh();
+        let mesh_after_welding_correct = welded_box_smooth_mesh();
 
         let mesh_after_welding = weld(&mesh, 0.1).expect("Welding failed");
 

@@ -331,9 +331,11 @@ pub fn triangulated_mesh_genus(vertex_count: usize, edge_count: usize, face_coun
 
 /// Checks if two meshes are similar.
 ///
-/// Two mesh geometries are similar when they are visually similar
-/// (see the definition of `are_visually_similar`), and they have the
-/// same number of vertices and normals.
+/// Two mesh geometries are similar when they are visually similar (see the
+/// definition of `are_visually_similar`), and they have the same number of
+/// vertices and normals. Therefore they are going to be treated the same by all
+/// functions of this software and all their transformations result in similar
+/// mesh geometries.
 #[allow(dead_code)]
 pub fn are_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
     mesh1.vertices().len() == mesh2.vertices().len()
@@ -357,10 +359,11 @@ pub fn are_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
 /// normals are identical, because one mesh may reuse (share) vertices and
 /// normals in more faces and the other doesn't (applies to all or some faces).
 ///
-/// They mesh geometries are not necessarily identical in memory but they look
+/// The mesh geometries are not necessarily identical in memory but they look
 /// the same. If the number of vertices differs, the mesh geometries don't share
 /// the same qualities (they are not welded in the same places and at least one
-/// of them is not watertight) are not going to be treated the same by some
+/// of them is not watertight). Despite of that, they are considered to be
+/// visually similar but they are not going to be treated the same by some
 /// functions of this software and all their transformations result in different
 /// mesh geometries.
 #[allow(dead_code)]
