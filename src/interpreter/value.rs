@@ -16,6 +16,7 @@ pub enum Ty {
     Int,
     Uint,
     Float,
+    Float2,
     Float3,
     String,
     Mesh,
@@ -30,6 +31,7 @@ impl fmt::Display for Ty {
             Ty::Int => f.write_str("Int"),
             Ty::Uint => f.write_str("Uint"),
             Ty::Float => f.write_str("Float"),
+            Ty::Float2 => f.write_str("Float2"),
             Ty::Float3 => f.write_str("Float3"),
             Ty::String => f.write_str("String"),
             Ty::Mesh => f.write_str("Mesh"),
@@ -46,6 +48,7 @@ pub enum Value {
     Int(i32),
     Uint(u32),
     Float(f32),
+    Float2([f32; 2]),
     Float3([f32; 3]),
     String(Arc<String>),
     Mesh(Arc<Mesh>),
@@ -61,75 +64,11 @@ impl Value {
             Value::Int(_) => Ty::Int,
             Value::Uint(_) => Ty::Uint,
             Value::Float(_) => Ty::Float,
+            Value::Float2(_) => Ty::Float2,
             Value::Float3(_) => Ty::Float3,
             Value::String(_) => Ty::String,
             Value::Mesh(_) => Ty::Mesh,
             Value::MeshArray(_) => Ty::MeshArray,
-        }
-    }
-
-    /// Get the value if boolean, otherwise `None`.
-    ///
-    /// Useful for getting a value of an optional parameter.
-    #[allow(dead_code)]
-    pub fn get_boolean(&self) -> Option<bool> {
-        match self {
-            Value::Boolean(boolean) => Some(*boolean),
-            _ => None,
-        }
-    }
-
-    /// Get the value if int, otherwise `None`.
-    ///
-    /// Useful for getting a value of an optional parameter.
-    #[allow(dead_code)]
-    pub fn get_int(&self) -> Option<i32> {
-        match self {
-            Value::Int(int) => Some(*int),
-            _ => None,
-        }
-    }
-
-    /// Get the value if uint, otherwise `None`.
-    ///
-    /// Useful for getting a value of an optional parameter.
-    #[allow(dead_code)]
-    pub fn get_uint(&self) -> Option<u32> {
-        match self {
-            Value::Uint(uint) => Some(*uint),
-            _ => None,
-        }
-    }
-
-    /// Get the value if float, otherwise `None`.
-    ///
-    /// Useful for getting a value of an optional parameter.
-    #[allow(dead_code)]
-    pub fn get_float(&self) -> Option<f32> {
-        match self {
-            Value::Float(float) => Some(*float),
-            _ => None,
-        }
-    }
-
-    /// Get the value if float3, otherwise `None`.
-    ///
-    /// Useful for getting a value of an optional parameter.
-    pub fn get_float3(&self) -> Option<[f32; 3]> {
-        match self {
-            Value::Float3(flaot3) => Some(*flaot3),
-            _ => None,
-        }
-    }
-
-    /// Get the value if mesh, otherwise `None`.
-    ///
-    /// Useful for getting a value of an optional parameter.
-    #[allow(dead_code)]
-    pub fn get_mesh(&self) -> Option<&Mesh> {
-        match self {
-            Value::Mesh(mesh_ptr) => Some(mesh_ptr),
-            _ => None,
         }
     }
 
@@ -179,11 +118,21 @@ impl Value {
         }
     }
 
+    /// Get the value if float2, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when value is not a float2.
+    pub fn unwrap_float2(&self) -> [f32; 2] {
+        match self {
+            Value::Float2(float2) => *float2,
+            _ => panic!("Value not float2"),
+        }
+    }
+
     /// Get the value if float3, otherwise panic.
     ///
     /// # Panics
     /// This function panics when value is not a float3.
-    #[allow(dead_code)]
     pub fn unwrap_float3(&self) -> [f32; 3] {
         match self {
             Value::Float3(float3) => *float3,
@@ -275,6 +224,7 @@ impl fmt::Display for Value {
             Value::Int(int) => write!(f, "<int {}>", int),
             Value::Uint(uint) => write!(f, "<uint {}>", uint),
             Value::Float(float) => write!(f, "<float {}>", float),
+            Value::Float2(float2) => write!(f, "<float2 [{}, {}]>", float2[0], float2[1]),
             Value::Float3(float3) => {
                 write!(f, "<float3 [{}, {}, {}]>", float3[0], float3[1], float3[2])
             }

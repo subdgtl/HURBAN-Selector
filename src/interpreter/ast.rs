@@ -156,17 +156,14 @@ impl fmt::Display for Expr {
 /// An expression that evaluates to a constant, literal value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LitExpr {
-    #[allow(dead_code)]
     Nil,
     #[allow(dead_code)]
     Boolean(bool),
     #[allow(dead_code)]
     Int(i32),
-    #[allow(dead_code)]
     Uint(u32),
-    #[allow(dead_code)]
     Float(f32),
-    #[allow(dead_code)]
+    Float2([f32; 2]),
     Float3([f32; 3]),
     String(Arc<String>),
 }
@@ -216,6 +213,17 @@ impl LitExpr {
         }
     }
 
+    /// Get the literal value if float2, otherwise panic.
+    ///
+    /// # Panics
+    /// This function panics when literal value is not a float2.
+    pub fn unwrap_float2(&self) -> [f32; 2] {
+        match self {
+            LitExpr::Float2(float2) => *float2,
+            _ => panic!("Literal expression not float2"),
+        }
+    }
+
     /// Get the literal value if float3, otherwise panic.
     ///
     /// # Panics
@@ -247,6 +255,7 @@ impl fmt::Display for LitExpr {
             LitExpr::Int(int) => write!(f, "<int {}>", int),
             LitExpr::Uint(uint) => write!(f, "<uint {}>", uint),
             LitExpr::Float(float) => write!(f, "<float {}>", float),
+            LitExpr::Float2(float2) => write!(f, "<float2 [{}, {}]>", float2[0], float2[1]),
             LitExpr::Float3(float3) => {
                 write!(f, "<float3 [{}, {}, {}]>", float3[0], float3[1], float3[2])
             }
