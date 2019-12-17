@@ -1,90 +1,127 @@
-use std::collections::HashMap;
-
 use smallvec::SmallVec;
 
-use crate::convert::cast_u32;
+use crate::convert::{cast_u32, cast_usize};
 
 use super::{Face, Mesh};
 
-// FIXME: @Optimization Explore whether the topologies wouldn't be
-// better served by being backed by a `Vec` instead of
-// `HashMap`. Ideally, we'd also create a wrapper struct that casts
-// the indices to/from u32 as necessary.
-
-// FIXME: @Optimization Analyze where this threshold is overly
-// benevolent and define different thresholds for different
-// topologies.
+// FIXME: Ideally, we'd also create a wrapper struct that casts the indices
+// to/from u32 as necessary.
+//
+// FIXME: @Optimization Analyze where this threshold is overly benevolent and
+// define different thresholds for different topologies.
 
 /// The number of relations/neighbors a `SmallVec` is allowed to
 /// contain before it spills into heap. Implementation detail.
-const MAX_INLINE_NEIGHBOR_COUNT: usize = 8;
+pub const MAX_INLINE_NEIGHBOR_COUNT: usize = 8;
 
-/// A topology containing neighborhood relations between faces. Two
-/// faces are neighbors if and only if they they share an unoriented
-/// edge.
-pub type FaceToFaceTopology = HashMap<u32, SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>>;
+/// Computes topological relations of mesh vertex -> faces. A vertex is related
+/// to a face if and only if the face contains the respective vertex.
+///
+/// Output: The index represents a vertex index, the value is a list of faces
+/// containing the respective vertex.
+pub fn compute_vertex_to_face_topology(
+    mesh: &Mesh,
+) -> Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> {
+    compute_vertex_to_face_topology_from_components(mesh.faces(), cast_u32(mesh.vertices().len()))
+}
 
-/// Computes face to face topology for mesh.
-pub fn compute_face_to_face_topology(mesh: &Mesh) -> FaceToFaceTopology {
-    let mut f2f: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+/// Computes topological relations of mesh vertex -> faces from standalone mesh
+/// components: faces and vertex count. A vertex is related to a face if and
+/// only if the face contains the respective vertex.
+///
+/// Output: The index represents a vertex index, the value is a list of faces
+/// containing the respective vertex.
+pub fn compute_vertex_to_face_topology_from_components(
+    faces: &[Face],
+    vertex_count: u32,
+) -> Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> {
+    let mut v2f: Vec<SmallVec<[u32; 8]>> = vec![SmallVec::new(); cast_usize(vertex_count)];
 
-    for (from_face_index, from_face) in mesh.faces().iter().enumerate() {
-        let from_face_index_u32 = cast_u32(from_face_index);
-        let mut neighbors = SmallVec::new();
+    for (face_index, face) in faces.iter().enumerate() {
+        let face_index_u32 = cast_u32(face_index);
 
-        match from_face {
+        match face {
             Face::Triangle(triangle_face) => {
-                let [e1, e2, e3] = triangle_face.to_unoriented_edges();
-                for (to_face_index, to_face) in mesh.faces().iter().enumerate() {
-                    let to_face_index_u32 = cast_u32(to_face_index);
+                let vertices = &triangle_face.vertices;
 
-                    match to_face {
-                        Face::Triangle(triangle_face) => {
-                            let face_contains_edge = triangle_face.contains_unoriented_edge(e1)
-                                || triangle_face.contains_unoriented_edge(e2)
-                                || triangle_face.contains_unoriented_edge(e3);
-                            if face_contains_edge
-                                && from_face_index != to_face_index
-                                && !neighbors.contains(&to_face_index_u32)
-                            {
-                                neighbors.push(to_face_index_u32);
-                            }
-                        }
+                for from_vertex in &[vertices.0, vertices.1, vertices.2] {
+                    if !v2f[cast_usize(*from_vertex)].contains(&face_index_u32) {
+                        v2f[cast_usize(*from_vertex)].push(face_index_u32);
                     }
                 }
             }
         }
+    }
 
-        f2f.insert(from_face_index_u32, neighbors);
+    v2f
+}
+
+/// Computes topological relations (neighborhood) of mesh face -> faces. Two
+/// faces are neighbors if and only if they they share an unoriented edge.
+///
+/// Output: The index represents a face index, the value is a list of faces
+/// neighboring with the respective face.
+pub fn compute_face_to_face_topology(
+    mesh: &Mesh,
+    v2f: &[SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>],
+) -> Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> {
+    let mut f2f: Vec<SmallVec<[u32; 8]>> = vec![SmallVec::new(); mesh.faces().len()];
+
+    for (face_index, face) in mesh.faces().iter().enumerate() {
+        match face {
+            Face::Triangle(triangle_face) => {
+                let vertices = &triangle_face.vertices;
+                let faces_containing_1st_vertex = &v2f[cast_usize(vertices.0)];
+                let faces_containing_2nd_vertex = &v2f[cast_usize(vertices.1)];
+                let faces_containing_3rd_vertex = &v2f[cast_usize(vertices.2)];
+                for face_containing_1st_vertex in faces_containing_1st_vertex {
+                    if *face_containing_1st_vertex != cast_u32(face_index)
+                        && (faces_containing_2nd_vertex.contains(&face_containing_1st_vertex)
+                            || faces_containing_3rd_vertex.contains(&face_containing_1st_vertex))
+                        && !f2f[face_index].contains(face_containing_1st_vertex)
+                    {
+                        f2f[face_index].push(*face_containing_1st_vertex);
+                    }
+                }
+                for face_containing_second_vertex in faces_containing_2nd_vertex {
+                    if *face_containing_second_vertex != cast_u32(face_index)
+                        && (faces_containing_3rd_vertex.contains(&face_containing_second_vertex))
+                        && !f2f[face_index].contains(face_containing_second_vertex)
+                    {
+                        f2f[face_index].push(*face_containing_second_vertex);
+                    }
+                }
+            }
+        }
     }
 
     f2f
 }
 
-/// A topology containing neighborhood relations between vertices. Two
-/// vertices are neighbors if and only if they they are end points of
-/// an edge.
-pub type VertexToVertexTopology = HashMap<u32, SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>>;
-
-/// Computes vertex to vertex topology for mesh.
-pub fn compute_vertex_to_vertex_topology(mesh: &Mesh) -> VertexToVertexTopology {
-    let mut v2v: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+/// Computes topological relations (connections) of mesh vertex -> vertices. Two
+/// vertices are neighbors if and only if they they are end points of an edge.
+///
+/// Output: The index represents a vertex index, the value is a list of vertices
+/// connected to the respective vertex.
+pub fn compute_vertex_to_vertex_topology(
+    mesh: &Mesh,
+) -> Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> {
+    let mut v2v = vec![SmallVec::new(); mesh.vertices().len()];
 
     for face in mesh.faces() {
         match face {
             Face::Triangle(f) => {
                 let vertex_indices = &[f.vertices.0, f.vertices.1, f.vertices.2];
                 for i in 0..vertex_indices.len() {
-                    let neighbors = v2v.entry(vertex_indices[i]).or_insert_with(SmallVec::new);
-
                     let neighbor_candidate1 = vertex_indices[(i + 1) % 3];
                     let neighbor_candidate2 = vertex_indices[(i + 2) % 3];
 
-                    if !neighbors.contains(&neighbor_candidate1) {
-                        neighbors.push(neighbor_candidate1)
+                    let neighbor_vertices = &mut v2v[cast_usize(vertex_indices[i])];
+                    if !neighbor_vertices.contains(&neighbor_candidate1) {
+                        neighbor_vertices.push(neighbor_candidate1)
                     }
-                    if !neighbors.contains(&neighbor_candidate2) {
-                        neighbors.push(neighbor_candidate2)
+                    if !neighbor_vertices.contains(&neighbor_candidate2) {
+                        neighbor_vertices.push(neighbor_candidate2)
                     }
                 }
             }
@@ -131,10 +168,12 @@ mod tests {
             vertices,
             NormalStrategy::Sharp,
         );
-        let face_to_face_topology = compute_face_to_face_topology(&mesh);
+        let vertex_to_face_topology = compute_vertex_to_face_topology(&mesh);
+        let face_to_face_topology_calculated =
+            compute_face_to_face_topology(&mesh, &vertex_to_face_topology);
 
-        for (key, value) in face_to_face_topology {
-            assert!(!value.contains(&key));
+        for (self_index, neighbor_indices) in face_to_face_topology_calculated.iter().enumerate() {
+            assert!(!neighbor_indices.contains(&cast_u32(self_index)));
         }
     }
 
@@ -146,13 +185,12 @@ mod tests {
             vertices.clone(),
             NormalStrategy::Sharp,
         );
-        let mut face_to_face_topology_correct: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
-        face_to_face_topology_correct.insert(0, smallvec![1]);
-        face_to_face_topology_correct.insert(1, smallvec![0, 2, 3]);
-        face_to_face_topology_correct.insert(2, smallvec![1]);
-        face_to_face_topology_correct.insert(3, smallvec![1]);
+        let face_to_face_topology_correct: Vec<SmallVec<[u32; MAX_INLINE_NEIGHBOR_COUNT]>> =
+            vec![smallvec![1], smallvec![0, 2, 3], smallvec![1], smallvec![1]];
 
-        let face_to_face_topology_calculated = compute_face_to_face_topology(&mesh);
+        let vertex_to_face_topology = compute_vertex_to_face_topology(&mesh);
+        let face_to_face_topology_calculated =
+            compute_face_to_face_topology(&mesh, &vertex_to_face_topology);
 
         assert_eq!(
             face_to_face_topology_calculated,
@@ -173,11 +211,11 @@ mod tests {
 
         let two_neighbors_count = vertex_to_vertex_topology_calculated
             .iter()
-            .filter(|(_, to)| to.len() == 2)
+            .filter(|to| to.len() == 2)
             .count();
         let four_neighbors_count = vertex_to_vertex_topology_calculated
             .iter()
-            .filter(|(_, to)| to.len() == 4)
+            .filter(|to| to.len() == 4)
             .count();
 
         assert_eq!(two_neighbors_count, 3);

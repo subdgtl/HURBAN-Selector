@@ -36,7 +36,7 @@ use super::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 ///
 pub fn synchronize_mesh_winding(
     mesh: &Mesh,
-    face_to_face: &HashMap<u32, SmallVec<[u32; 8]>>,
+    face_to_face_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
 ) -> Mesh {
     // FIXME: Flip also vertex normals if the visual/practical tests prove it's
     // needed
@@ -91,7 +91,7 @@ pub fn synchronize_mesh_winding(
                     .collect();
 
             // For each face's neighbor index
-            for &neighbor_face_index in &face_to_face[&cast_u32(face_index)] {
+            for &neighbor_face_index in &face_to_face_topology[face_index] {
                 // check if it was already discovered and added to the queue.
                 if !discovered[cast_usize(neighbor_face_index)] {
                     // If it wasn't, unwrap the triangle face
@@ -290,8 +290,9 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
 /// Crawls the mesh geometry to find continuous patches. Returns a
 /// vector mesh patches.
 pub fn disjoint_mesh(mesh: &Mesh) -> Vec<Mesh> {
-    let face_to_face = topology::compute_face_to_face_topology(mesh);
-    let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
+    let vertex_to_face_topology = topology::compute_vertex_to_face_topology(&mesh);
+    let face_to_face = topology::compute_face_to_face_topology(mesh, &vertex_to_face_topology);
+    let mut available_face_indices: HashSet<u32> = (0..cast_u32(mesh.faces().len())).collect();
     let mut patches: Vec<Mesh> = Vec::new();
     let mut index_stack: Vec<u32> = Vec::new();
     let mut connected_face_indices = HashSet::new();
@@ -303,7 +304,7 @@ pub fn disjoint_mesh(mesh: &Mesh) -> Vec<Mesh> {
 
         while let Some(current_face_index) = index_stack.pop() {
             if connected_face_indices.insert(current_face_index) {
-                for neighbor_index in &face_to_face[&current_face_index] {
+                for neighbor_index in &face_to_face[cast_usize(current_face_index)] {
                     if available_face_indices.contains(neighbor_index) {
                         index_stack.push(*neighbor_index);
                         available_face_indices.remove(neighbor_index);
@@ -369,6 +370,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::{Rotation3, Vector2};
+
     use crate::mesh::{analysis, primitive};
     use crate::plane::Plane;
 
@@ -531,7 +534,7 @@ mod tests {
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    pub fn open_cube_sharp_mesh(position: [f32; 3], scale: f32) -> Mesh {
+    pub fn open_box_sharp_mesh(position: [f32; 3], scale: f32) -> Mesh {
         let vertex_positions = vec![
             // back
             v(-1.0, 1.0, -1.0, position, scale), //0
@@ -622,7 +625,7 @@ mod tests {
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
     }
 
-    pub fn welded_cube_smooth_mesh(position: [f32; 3], scale: f32) -> Mesh {
+    pub fn welded_box_smooth_mesh(position: [f32; 3], scale: f32) -> Mesh {
         let vertex_positions = vec![
             // back
             v(-1.0, 1.0, -1.0, position, scale),
@@ -685,7 +688,11 @@ mod tests {
 
     #[test]
     fn test_disjoint_mesh_returns_similar_for_box() {
-        let mesh = primitive::create_box(Point3::origin(), [1.0; 3]);
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(1.0, 1.0, 1.0),
+        );
 
         let calculated_meshes = disjoint_mesh(&mesh);
 
@@ -726,7 +733,7 @@ mod tests {
             &Point3::new(0.0, 0.0, 0.0),
             &Vector3::new(0.0, 0.0, 1.0),
         );
-        let plane_mesh = primitive::create_mesh_plane(plane, [2.0; 2]);
+        let plane_mesh = primitive::create_mesh_plane(plane, Vector2::new(2.0, 2.0));
         let plane_reverted = revert_mesh_faces(&plane_mesh);
 
         let expected_reverted_faces = vec![
@@ -739,18 +746,26 @@ mod tests {
 
     #[test]
     fn test_revert_mesh_faces_once_does_not_equal_original() {
-        let cube = primitive::create_box(Point3::origin(), [1.0; 3]);
-        let cube_reverted = revert_mesh_faces(&cube);
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(1.0, 1.0, 1.0),
+        );
+        let mesh_reverted = revert_mesh_faces(&mesh);
 
-        assert_ne!(cube, cube_reverted);
+        assert_ne!(mesh, mesh_reverted);
     }
 
     #[test]
     fn test_revert_mesh_faces_twice_does_equal_original() {
-        let cube = primitive::create_box(Point3::origin(), [1.0; 3]);
-        let cube_twice_reverted = revert_mesh_faces(&revert_mesh_faces(&cube));
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(1.0, 1.0, 1.0),
+        );
+        let mesh_twice_reverted = revert_mesh_faces(&revert_mesh_faces(&mesh));
 
-        assert_eq!(cube, cube_twice_reverted);
+        assert_eq!(mesh, mesh_twice_reverted);
     }
 
     #[test]
@@ -758,7 +773,8 @@ mod tests {
         let mesh = flipped_tessellated_triangle_with_island_mesh();
         let mesh_with_synced_winding_expected = tessellated_triangle_with_island_mesh();
 
-        let f2f = topology::compute_face_to_face_topology(&mesh);
+        let v2f = topology::compute_vertex_to_face_topology(&mesh);
+        let f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
         let mesh_with_synced_winding = synchronize_mesh_winding(&mesh, &f2f);
 
         // Can't use Eq here, because the algorithm can produce faces
@@ -771,7 +787,13 @@ mod tests {
 
     #[test]
     fn test_synchronize_mesh_winding_for_sphere() {
-        let sphere = primitive::create_uv_sphere([0.0, 0.0, 0.0], 1.0, 10, 10);
+        let sphere = primitive::create_uv_sphere(
+            Point3::origin(),
+            Rotation3::identity(),
+            Vector3::new(1.0, 1.0, 1.0),
+            10,
+            10,
+        );
         let sphere_faces_one_flipped = sphere.faces().iter().enumerate().map(|(i, f)| match f {
             Face::Triangle(t) => {
                 if i == 5 {
@@ -788,7 +810,8 @@ mod tests {
             sphere.normals().iter().copied(),
         );
 
-        let f2f = topology::compute_face_to_face_topology(&sphere_with_faces_one_flipped);
+        let v2f = topology::compute_vertex_to_face_topology(&sphere_with_faces_one_flipped);
+        let f2f = topology::compute_face_to_face_topology(&sphere_with_faces_one_flipped, &v2f);
 
         let sphere_with_synced_winding =
             synchronize_mesh_winding(&sphere_with_faces_one_flipped, &f2f);
@@ -816,9 +839,9 @@ mod tests {
     }
 
     #[test]
-    fn test_weld_cube_sharp_same_len() {
-        let mesh = open_cube_sharp_mesh([0.0, 0.0, 0.0], 1.0);
-        let mesh_after_welding_correct = welded_cube_smooth_mesh([0.0, 0.0, 0.0], 1.0);
+    fn test_weld_box_sharp_same_len() {
+        let mesh = open_box_sharp_mesh([0.0, 0.0, 0.0], 1.0);
+        let mesh_after_welding_correct = welded_box_smooth_mesh([0.0, 0.0, 0.0], 1.0);
 
         let mesh_after_welding = weld(&mesh, 0.1).expect("Welding failed");
 

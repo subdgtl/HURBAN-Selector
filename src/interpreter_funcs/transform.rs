@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nalgebra::{Matrix4, Rotation, Translation, Vector3};
+use nalgebra::{Matrix4, Rotation, Vector3};
 
 use crate::interpreter::{
     Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty,
@@ -42,7 +42,7 @@ impl Func for FuncTransform {
                     min_value_z: None,
                     max_value_z: None,
                 }),
-                optional: true,
+                optional: false,
             },
             ParamInfo {
                 name: "Rotate (deg)",
@@ -57,7 +57,7 @@ impl Func for FuncTransform {
                     min_value_z: None,
                     max_value_z: None,
                 }),
-                optional: true,
+                optional: false,
             },
             ParamInfo {
                 name: "Scale",
@@ -72,7 +72,7 @@ impl Func for FuncTransform {
                     min_value_z: None,
                     max_value_z: None,
                 }),
-                optional: true,
+                optional: false,
             },
         ]
     }
@@ -84,30 +84,20 @@ impl Func for FuncTransform {
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
-        let translate = args[1]
-            .get_float3()
-            .map(Vector3::from)
-            .unwrap_or_else(Vector3::zeros);
-        let rotate = args[2]
-            .get_float3()
-            .map(|rot| {
-                [
-                    rot[0].to_radians(),
-                    rot[1].to_radians(),
-                    rot[2].to_radians(),
-                ]
-            })
-            .unwrap_or([0.0; 3]);
-        let scale = args[3]
-            .get_float3()
-            .map(Vector3::from)
-            .unwrap_or_else(|| Vector3::new(1.0, 1.0, 1.0));
+        let translate = Vector3::from(args[1].unwrap_float3());
+        let rotate = args[2].unwrap_float3();
+        let scale = Vector3::from(args[3].unwrap_float3());
 
-        let translation = Translation::from(translate);
-        let rotation = Rotation::from_euler_angles(rotate[0], rotate[1], rotate[2]);
+        let translation = Matrix4::new_translation(&translate);
+        let rotation = Rotation::from_euler_angles(
+            rotate[0].to_radians(),
+            rotate[1].to_radians(),
+            rotate[2].to_radians(),
+        );
         let scaling = Matrix4::new_nonuniform_scaling(&scale);
 
-        let t = Matrix4::from(translation) * Matrix4::from(rotation) * scaling;
+        let t = translation * Matrix4::from(rotation) * scaling;
+
         let vertices_iter = mesh.vertices().iter().map(|v| t.transform_point(v));
         let normals_iter = mesh.normals().iter().map(|n| t.transform_vector(n));
 

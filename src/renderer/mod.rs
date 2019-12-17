@@ -119,6 +119,8 @@ pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface,
+    width: u32,
+    height: u32,
     swap_chain: wgpu::SwapChain,
     msaa_texture_view: Option<wgpu::TextureView>,
     depth_texture_view: wgpu::TextureView,
@@ -163,7 +165,10 @@ impl Renderer {
         });
 
         let window_size = window.inner_size().to_physical(window.hidpi_factor());
-        let (width, height) = (window_size.width as u32, window_size.height as u32);
+        let (width, height) = (
+            window_size.width.round() as u32,
+            window_size.height.round() as u32,
+        );
 
         let swap_chain = create_swap_chain(&device, &surface, width, height, options.present_mode);
 
@@ -210,6 +215,8 @@ impl Renderer {
             device,
             queue,
             surface,
+            width,
+            height,
             swap_chain,
             msaa_texture_view: msaa_texture.map(|texture| texture.create_default_view()),
             depth_texture_view: depth_texture.create_default_view(),
@@ -241,32 +248,43 @@ impl Renderer {
             window_size.height.round() as u32,
         );
 
-        self.swap_chain = create_swap_chain(
-            &self.device,
-            &self.surface,
-            width,
-            height,
-            self.options.present_mode,
-        );
+        if (width, height) != (self.width, self.height) {
+            log::debug!(
+                "Resizing renderer screen textures to dimensions {}x{}",
+                width,
+                height,
+            );
 
-        if self.options.msaa.enabled() {
-            let msaa_texture = create_msaa_texture(
+            self.width = width;
+            self.height = height;
+
+            self.swap_chain = create_swap_chain(
+                &self.device,
+                &self.surface,
+                width,
+                height,
+                self.options.present_mode,
+            );
+
+            if self.options.msaa.enabled() {
+                let msaa_texture = create_msaa_texture(
+                    &self.device,
+                    width,
+                    height,
+                    self.options.msaa.sample_count(),
+                );
+
+                self.msaa_texture_view = Some(msaa_texture.create_default_view());
+            }
+
+            let depth_texture = create_depth_texture(
                 &self.device,
                 width,
                 height,
                 self.options.msaa.sample_count(),
             );
-
-            self.msaa_texture_view = Some(msaa_texture.create_default_view());
+            self.depth_texture_view = depth_texture.create_default_view();
         }
-
-        let depth_texture = create_depth_texture(
-            &self.device,
-            width,
-            height,
-            self.options.msaa.sample_count(),
-        );
-        self.depth_texture_view = depth_texture.create_default_view();
     }
 
     /// Uploads mesh to the GPU to be used in scene rendering. It
@@ -417,7 +435,7 @@ fn create_swap_chain(
     present_mode: PresentMode,
 ) -> wgpu::SwapChain {
     log::debug!(
-        "Creating swapchain with dimensions [{},{}] and {}",
+        "Creating swapchain with dimensions {}x{} and {}",
         width,
         height,
         present_mode,
