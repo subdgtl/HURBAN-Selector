@@ -40,7 +40,7 @@ impl Func for FuncSynchronizeMeshFaces {
         if !analysis::is_mesh_orientable(&edge_sharing_map)
             && analysis::is_mesh_manifold(&edge_sharing_map)
         {
-            let vertex_to_face = topology::calculate_vertex_to_face_topology(&mesh);
+            let vertex_to_face = topology::compute_vertex_to_face_topology(&mesh);
             let face_to_face = topology::compute_face_to_face_topology(&mesh, &vertex_to_face);
 
             let value = Arc::new(tools::synchronize_mesh_winding(&mesh, &face_to_face));

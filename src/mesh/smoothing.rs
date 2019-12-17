@@ -758,7 +758,7 @@ mod tests {
             3,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
-        let v2f = topology::calculate_vertex_to_face_topology(&mesh);
+        let v2f = topology::compute_vertex_to_face_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
 
         let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f)
@@ -778,7 +778,7 @@ mod tests {
             Vector3::new(1.0, 1.0, 1.0),
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
-        let v2f = topology::calculate_vertex_to_face_topology(&mesh);
+        let v2f = topology::compute_vertex_to_face_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
 
         let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f)

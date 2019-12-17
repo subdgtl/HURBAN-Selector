@@ -288,7 +288,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
 /// Crawls the mesh geometry to find continuous patches. Returns a
 /// vector mesh patches.
 pub fn disjoint_mesh(mesh: &Mesh) -> Vec<Mesh> {
-    let vertex_to_face_topology = topology::calculate_vertex_to_face_topology(&mesh);
+    let vertex_to_face_topology = topology::compute_vertex_to_face_topology(&mesh);
     let face_to_face = topology::compute_face_to_face_topology(mesh, &vertex_to_face_topology);
     let mut available_face_indices: HashSet<u32> = (0..cast_u32(mesh.faces().len())).collect();
     let mut patches: Vec<Mesh> = Vec::new();
@@ -771,7 +771,7 @@ mod tests {
         let mesh = flipped_tessellated_triangle_with_island_mesh();
         let mesh_with_synced_winding_expected = tessellated_triangle_with_island_mesh();
 
-        let v2f = topology::calculate_vertex_to_face_topology(&mesh);
+        let v2f = topology::compute_vertex_to_face_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
         let mesh_with_synced_winding = synchronize_mesh_winding(&mesh, &f2f);
 
@@ -808,7 +808,7 @@ mod tests {
             sphere.normals().iter().copied(),
         );
 
-        let v2f = topology::calculate_vertex_to_face_topology(&sphere_with_faces_one_flipped);
+        let v2f = topology::compute_vertex_to_face_topology(&sphere_with_faces_one_flipped);
         let f2f = topology::compute_face_to_face_topology(&sphere_with_faces_one_flipped, &v2f);
 
         let sphere_with_synced_winding =
