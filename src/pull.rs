@@ -229,17 +229,6 @@ fn is_point_in_triangle(
                 rotation_to_horizontal * triangle_vertex2,
                 rotation_to_horizontal * point,
             )
-        } else if let Some(rotation_to_horizontal) =
-            Rotation3::rotation_between(&(-1.0 * plane.normal()), &Vector3::new(0.0, 0.0, 1.0))
-        {
-            // In case the triangle isn't horizontal rotate the triangle to
-            // become horizontal and rotate also the test point.
-            (
-                rotation_to_horizontal * triangle_vertex0,
-                rotation_to_horizontal * triangle_vertex1,
-                rotation_to_horizontal * triangle_vertex2,
-                rotation_to_horizontal * point,
-            )
         } else {
             // The original triangle is not horizontal and it's not possible to
             // rotate it to become horizontal. This case should never happen but
