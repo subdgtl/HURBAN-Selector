@@ -36,7 +36,7 @@ use super::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 ///
 pub fn synchronize_mesh_winding(
     mesh: &Mesh,
-    face_to_face: &HashMap<u32, SmallVec<[u32; 8]>>,
+    face_to_face_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
 ) -> Mesh {
     // FIXME: Flip also vertex normals if the visual/practical tests prove it's
     // needed
@@ -91,7 +91,7 @@ pub fn synchronize_mesh_winding(
                     .collect();
 
             // For each face's neighbor index
-            for &neighbor_face_index in &face_to_face[&cast_u32(face_index)] {
+            for &neighbor_face_index in &face_to_face_topology[face_index] {
                 // check if it was already discovered and added to the queue.
                 if !discovered[cast_usize(neighbor_face_index)] {
                     // If it wasn't, unwrap the triangle face
@@ -290,8 +290,9 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
 /// Crawls the mesh geometry to find continuous patches. Returns a
 /// vector mesh patches.
 pub fn disjoint_mesh(mesh: &Mesh) -> Vec<Mesh> {
-    let face_to_face = topology::compute_face_to_face_topology(mesh);
-    let mut available_face_indices: HashSet<u32> = face_to_face.keys().copied().collect();
+    let vertex_to_face_topology = topology::compute_vertex_to_face_topology(&mesh);
+    let face_to_face = topology::compute_face_to_face_topology(mesh, &vertex_to_face_topology);
+    let mut available_face_indices: HashSet<u32> = (0..cast_u32(mesh.faces().len())).collect();
     let mut patches: Vec<Mesh> = Vec::new();
     let mut index_stack: Vec<u32> = Vec::new();
     let mut connected_face_indices = HashSet::new();
@@ -303,7 +304,7 @@ pub fn disjoint_mesh(mesh: &Mesh) -> Vec<Mesh> {
 
         while let Some(current_face_index) = index_stack.pop() {
             if connected_face_indices.insert(current_face_index) {
-                for neighbor_index in &face_to_face[&current_face_index] {
+                for neighbor_index in &face_to_face[cast_usize(current_face_index)] {
                     if available_face_indices.contains(neighbor_index) {
                         index_stack.push(*neighbor_index);
                         available_face_indices.remove(neighbor_index);
@@ -772,7 +773,8 @@ mod tests {
         let mesh = flipped_tessellated_triangle_with_island_mesh();
         let mesh_with_synced_winding_expected = tessellated_triangle_with_island_mesh();
 
-        let f2f = topology::compute_face_to_face_topology(&mesh);
+        let v2f = topology::compute_vertex_to_face_topology(&mesh);
+        let f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
         let mesh_with_synced_winding = synchronize_mesh_winding(&mesh, &f2f);
 
         // Can't use Eq here, because the algorithm can produce faces
@@ -808,7 +810,8 @@ mod tests {
             sphere.normals().iter().copied(),
         );
 
-        let f2f = topology::compute_face_to_face_topology(&sphere_with_faces_one_flipped);
+        let v2f = topology::compute_vertex_to_face_topology(&sphere_with_faces_one_flipped);
+        let f2f = topology::compute_face_to_face_topology(&sphere_with_faces_one_flipped, &v2f);
 
         let sphere_with_synced_winding =
             synchronize_mesh_winding(&sphere_with_faces_one_flipped, &f2f);
