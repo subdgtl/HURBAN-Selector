@@ -15,6 +15,7 @@ pub mod primitive;
 pub mod smoothing;
 pub mod tools;
 pub mod topology;
+pub mod voxel_cloud;
 
 #[derive(Debug, Clone, Copy)]
 pub enum NormalStrategy {

@@ -17,6 +17,7 @@ use self::revert_mesh_faces::FuncRevertMeshFaces;
 use self::shrink_wrap::FuncShrinkWrap;
 use self::synchronize_mesh_faces::FuncSynchronizeMeshFaces;
 use self::transform::FuncTransform;
+use self::voxelize::FuncVoxelize;
 use self::weld::FuncWeld;
 
 mod create_box;
@@ -33,6 +34,7 @@ mod revert_mesh_faces;
 mod shrink_wrap;
 mod synchronize_mesh_faces;
 mod transform;
+mod voxelize;
 mod weld;
 
 // IMPORTANT: Do not change these IDs, ever! When adding a new
@@ -64,6 +66,7 @@ pub const FUNC_ID_WELD: FuncIdent = FuncIdent(9003);
 pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(9004);
 pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(9005);
 pub const FUNC_ID_JOIN_GROUP: FuncIdent = FuncIdent(9006);
+pub const FUNC_ID_VOXELIZE: FuncIdent = FuncIdent(9007);
 
 /// Returns the global set of function definitions available to the
 /// editor.
@@ -109,6 +112,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
         Box::new(FuncSynchronizeMeshFaces),
     );
     funcs.insert(FUNC_ID_JOIN_GROUP, Box::new(FuncJoinGroup));
+    funcs.insert(FUNC_ID_VOXELIZE, Box::new(FuncVoxelize));
 
     funcs
 }

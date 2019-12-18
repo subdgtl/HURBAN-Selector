@@ -38,6 +38,20 @@ pub fn compute_barycentric_coords(
     }
 }
 
+/// Converts barycentric coordinates into cartesian.
+pub fn barycentric_to_cartesian(
+    barycentric_coords: &Point3<f32>,
+    a: &Point3<f32>,
+    b: &Point3<f32>,
+    c: &Point3<f32>,
+) -> Point3<f32> {
+    Point3::from(
+        barycentric_coords.x * a.coords
+            + barycentric_coords.y * b.coords
+            + barycentric_coords.z * c.coords,
+    )
+}
+
 /// Checks if all three points lay on the same line.
 ///
 /// http://www.ambrsoft.com/TrigoCalc/Line3D/LineColinear.htm
@@ -109,7 +123,7 @@ mod tests {
             triangle_points.2,
             test_point,
         )
-        .expect("Could not calculate the barycentric coords");
+        .expect("Failed to calculate barycentric coords");
 
         let barycentric_correct = Point3::new(0.333333, 0.333333, 0.333333);
 
@@ -135,7 +149,7 @@ mod tests {
             triangle_points.2,
             test_point,
         )
-        .expect("Could not calculate the barycentric coords");
+        .expect("Failed to calculate barycentric coords");
 
         let barycentric_correct = Point3::new(1.6666667, -0.33333334, -0.33333334);
 
