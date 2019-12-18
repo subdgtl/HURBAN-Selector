@@ -33,7 +33,6 @@ use super::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 /// # Warning
 /// The results might be unpredictable for non-manifold meshes and moebius-like
 /// topologies.
-///
 pub fn synchronize_mesh_winding(
     mesh: &Mesh,
     face_to_face_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],

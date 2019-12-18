@@ -74,12 +74,13 @@ pub fn laplacian_smoothing(
         }
     }
 
-    // FIXME: Calculate smooth normals for the result once we support them
     (
-        Mesh::from_faces_with_vertices_and_normals(
-            mesh.faces().to_vec(),
+        Mesh::from_triangle_faces_with_vertices_and_computed_normals(
+            mesh.faces().iter().map(|face| match face {
+                Face::Triangle(t_f) => (t_f.vertices.0, t_f.vertices.1, t_f.vertices.2),
+            }),
             vertices,
-            mesh.normals().to_vec(),
+            NormalStrategy::Smooth,
         ),
         iteration,
         stable,
@@ -534,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn test_laplacian_smoothing_preserves_face_vertex_normal_count() {
+    fn test_laplacian_smoothing_vertex_normal_count_equals_vertex_count() {
         let (faces, vertices) = torus();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
@@ -550,15 +551,53 @@ mod tests {
         let (relaxed_mesh_10, _, _) =
             laplacian_smoothing(&mesh, &vertex_to_vertex_topology, 10, &[], false);
 
-        assert_eq!(relaxed_mesh_0.faces().len(), mesh.faces().len(),);
-        assert_eq!(relaxed_mesh_1.faces().len(), mesh.faces().len(),);
-        assert_eq!(relaxed_mesh_10.faces().len(), mesh.faces().len(),);
-        assert_eq!(relaxed_mesh_0.vertices().len(), mesh.vertices().len(),);
-        assert_eq!(relaxed_mesh_1.vertices().len(), mesh.vertices().len(),);
-        assert_eq!(relaxed_mesh_10.vertices().len(), mesh.vertices().len(),);
-        assert_eq!(relaxed_mesh_0.normals().len(), mesh.normals().len());
-        assert_eq!(relaxed_mesh_1.normals().len(), mesh.normals().len());
-        assert_eq!(relaxed_mesh_10.normals().len(), mesh.normals().len(),);
+        assert_eq!(
+            relaxed_mesh_0.faces().len(),
+            mesh.faces().len(),
+            "Faces for 0 iterations"
+        );
+        assert_eq!(
+            relaxed_mesh_1.faces().len(),
+            mesh.faces().len(),
+            "Faces for 1 iteration"
+        );
+        assert_eq!(
+            relaxed_mesh_10.faces().len(),
+            mesh.faces().len(),
+            "Faces for 10 iterations"
+        );
+        assert_eq!(
+            relaxed_mesh_0.vertices().len(),
+            mesh.vertices().len(),
+            "Vertices for 0 iterations"
+        );
+        assert_eq!(
+            relaxed_mesh_1.vertices().len(),
+            mesh.vertices().len(),
+            "Vertices for 1 iteration"
+        );
+        assert_eq!(
+            relaxed_mesh_10.vertices().len(),
+            mesh.vertices().len(),
+            "Vertices for 10 iterations"
+        );
+        // In this specific case nothing changes, therefore the smoothened mesh
+        // should be equal to the original mesh.
+        assert_eq!(
+            relaxed_mesh_0.normals().len(),
+            mesh.normals().len(),
+            "Normals for 0 iterations"
+        );
+        assert_eq!(
+            relaxed_mesh_1.normals().len(),
+            mesh.vertices().len(),
+            "Normals for 1 iteration"
+        );
+        assert_eq!(
+            relaxed_mesh_10.normals().len(),
+            mesh.vertices().len(),
+            "Normals for 10 iterations"
+        );
     }
 
     #[test]
@@ -581,7 +620,7 @@ mod tests {
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
             vertices,
-            NormalStrategy::Sharp,
+            NormalStrategy::Smooth,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
@@ -598,7 +637,7 @@ mod tests {
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
             vertices,
-            NormalStrategy::Sharp,
+            NormalStrategy::Smooth,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
@@ -615,7 +654,7 @@ mod tests {
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
             vertices,
-            NormalStrategy::Sharp,
+            NormalStrategy::Smooth,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
@@ -632,7 +671,7 @@ mod tests {
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
-            NormalStrategy::Sharp,
+            NormalStrategy::Smooth,
         );
 
         let fixed_vertex_indices: Vec<u32> = vec![0, 1, 7, 8, 6];
@@ -641,7 +680,7 @@ mod tests {
         let test_mesh_correct = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces_correct.clone(),
             vertices_correct.clone(),
-            NormalStrategy::Sharp,
+            NormalStrategy::Smooth,
         );
 
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
@@ -684,16 +723,31 @@ mod tests {
         let test_mesh_correct = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces_correct.clone(),
             vertices_correct.clone(),
-            NormalStrategy::Sharp,
+            NormalStrategy::Smooth,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let (relaxed_mesh, _, _) =
             laplacian_smoothing(&mesh, &v2v, 50, &fixed_vertex_indices, false);
 
-        let relaxed_mesh_faces = relaxed_mesh.faces();
-        let test_mesh_faces = test_mesh_correct.faces();
+        // The faces should be made of the same vertex indices (and they should
+        // remain in the original order) but the normals can be different due to
+        // smoothing.
+        let relaxed_mesh_faces_vertices: Vec<_> = relaxed_mesh
+            .faces()
+            .iter()
+            .map(|face| match face {
+                Face::Triangle(t) => t.vertices,
+            })
+            .collect();
+        let test_mesh_faces_vertices: Vec<_> = test_mesh_correct
+            .faces()
+            .iter()
+            .map(|face| match face {
+                Face::Triangle(t) => t.vertices,
+            })
+            .collect();
 
-        assert_eq!(relaxed_mesh_faces, test_mesh_faces);
+        assert_eq!(relaxed_mesh_faces_vertices, test_mesh_faces_vertices);
 
         let relaxed_mesh_vertices = relaxed_mesh.vertices();
         let test_mesh_vertices = test_mesh_correct.vertices();
@@ -732,10 +786,25 @@ mod tests {
         let (relaxed_mesh, _, _) =
             laplacian_smoothing(&mesh, &v2v, 255, &fixed_vertex_indices, true);
 
-        let relaxed_mesh_faces = relaxed_mesh.faces();
-        let test_mesh_faces = test_mesh_correct.faces();
+        // The faces should be made of the same vertex indices (and they should
+        // remain in the original order) but the normals can be different due to
+        // smoothing.
+        let relaxed_mesh_faces_vertices: Vec<_> = relaxed_mesh
+            .faces()
+            .iter()
+            .map(|face| match face {
+                Face::Triangle(t) => t.vertices,
+            })
+            .collect();
+        let test_mesh_faces_vertices: Vec<_> = test_mesh_correct
+            .faces()
+            .iter()
+            .map(|face| match face {
+                Face::Triangle(t) => t.vertices,
+            })
+            .collect();
 
-        assert_eq!(relaxed_mesh_faces, test_mesh_faces);
+        assert_eq!(relaxed_mesh_faces_vertices, test_mesh_faces_vertices);
 
         let relaxed_mesh_vertices = relaxed_mesh.vertices();
         let test_mesh_vertices = test_mesh_correct.vertices();

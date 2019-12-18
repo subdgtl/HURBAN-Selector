@@ -7,7 +7,7 @@ pub fn compute_triangle_normal(
     p3: &Point3<f32>,
 ) -> Vector3<f32> {
     let u = p2 - p1;
-    let v = p3 - p1;
+    let v = p3 - p2;
 
     Vector3::cross(&u, &v).normalize()
 }

@@ -6,6 +6,7 @@ use std::iter::IntoIterator;
 
 use arrayvec::ArrayVec;
 use nalgebra::{Point3, Vector3};
+use smallvec::SmallVec;
 
 use crate::convert::{cast_u32, cast_usize};
 use crate::geometry;
@@ -20,7 +21,7 @@ pub mod voxel_cloud;
 #[derive(Debug, Clone, Copy)]
 pub enum NormalStrategy {
     Sharp,
-    // FIXME: add `Smooth`
+    Smooth,
 }
 
 /// Geometric data containing multiple possibly _variable-length_
@@ -58,13 +59,15 @@ impl Mesh {
         F: IntoIterator<Item = (u32, u32, u32)>,
         V: IntoIterator<Item = Point3<f32>>,
     {
-        match normal_strategy {
+        let vertices_collection: Vec<_> = vertices.into_iter().collect();
+
+        let (faces_collection, normals_collection) = match normal_strategy {
             NormalStrategy::Sharp => {
                 // To avoid one additional cloning of this collection, we
                 // first materialize it into its final structure (Vec<Face>),
                 // and later assert the only kind of faces there are
                 // triangles.
-                let faces_collection: Vec<_> = faces
+                let faces_collection_sharp: Vec<_> = faces
                     .into_iter()
                     .enumerate()
                     .map(|(i, (i1, i2, i3))| {
@@ -81,16 +84,9 @@ impl Mesh {
                     .map(Face::from)
                     .collect();
 
-                assert!(
-                    !faces_collection.is_empty(),
-                    "Empty (faceless) meshes are not supported",
-                );
-
-                let vertices_collection: Vec<_> = vertices.into_iter().collect();
-                let mut normals_collection = Vec::with_capacity(faces_collection.len());
-
+                let mut normals_collection_sharp = Vec::with_capacity(faces_collection_sharp.len());
                 let vertices_range = 0..cast_u32(vertices_collection.len());
-                for face in &faces_collection {
+                for face in &faces_collection_sharp {
                     match face {
                         Face::Triangle(triangle_face) => {
                             let (v1, v2, v3) = triangle_face.vertices;
@@ -114,23 +110,53 @@ impl Mesh {
                                 &vertices_collection[cast_usize(v3)],
                             );
 
-                            normals_collection.push(face_normal);
-
+                            normals_collection_sharp.push(face_normal);
                         }
-                        // FIXME: once we add other kinds of faces, they must panic here
-                        // _ => panic!("Face must be a triangle, we just created it"),
                     }
                 }
-
-                assert_eq!(normals_collection.len(), faces_collection.len());
-                assert_eq!(normals_collection.capacity(), faces_collection.len());
-
-                Self {
-                    faces: faces_collection,
-                    vertices: vertices_collection,
-                    normals: normals_collection,
-                }
+                assert_eq!(normals_collection_sharp.len(), faces_collection_sharp.len());
+                assert_eq!(
+                    normals_collection_sharp.capacity(),
+                    faces_collection_sharp.len()
+                );
+                (faces_collection_sharp, normals_collection_sharp)
             }
+            NormalStrategy::Smooth => {
+                let faces_collection_smooth: Vec<_> = faces
+                    .into_iter()
+                    .map(|(i1, i2, i3)| TriangleFace::new_separate(i1, i2, i3, i1, i2, i3))
+                    .map(Face::from)
+                    .collect();
+
+                let v2f = topology::compute_vertex_to_face_topology_from_components(
+                    &faces_collection_smooth,
+                    cast_u32(vertices_collection.len()),
+                );
+
+                let normals_collection_smooth = calculate_smooth_normals_from_components(
+                    &vertices_collection,
+                    &faces_collection_smooth,
+                    &v2f,
+                );
+
+                assert_eq!(normals_collection_smooth.len(), vertices_collection.len());
+                assert_eq!(
+                    normals_collection_smooth.capacity(),
+                    vertices_collection.len()
+                );
+                (faces_collection_smooth, normals_collection_smooth)
+            }
+        };
+
+        assert!(
+            !faces_collection.is_empty(),
+            "Empty (faceless) meshes are not supported",
+        );
+
+        Self {
+            faces: faces_collection,
+            vertices: vertices_collection,
+            normals: normals_collection,
         }
     }
 
@@ -794,6 +820,35 @@ fn remove_orphan_vertices_and_normals(
     normals_reduced.shrink_to_fit();
 
     (faces_renumbered, vertices_reduced, normals_reduced)
+}
+
+pub fn calculate_smooth_normals_from_components(
+    vertices: &[Point3<f32>],
+    faces: &[Face],
+    vertex_to_face_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
+) -> Vec<Vector3<f32>> {
+    let vertex_count = vertices.len();
+
+    let mut normals: Vec<Vector3<f32>> = Vec::with_capacity(vertex_count);
+
+    for shared_face_indices in vertex_to_face_topology {
+        let shared_faces_count_f32 = shared_face_indices.len() as f32;
+        let mut normal: Vector3<f32> = Vector3::zeros();
+        for face_index in shared_face_indices {
+            match faces[cast_usize(*face_index)] {
+                Face::Triangle(face) => {
+                    normal += geometry::compute_triangle_normal(
+                        &vertices[cast_usize(face.vertices.0)],
+                        &vertices[cast_usize(face.vertices.1)],
+                        &vertices[cast_usize(face.vertices.2)],
+                    ) / shared_faces_count_f32;
+                }
+            }
+        }
+        normals.push(normal);
+    }
+
+    normals
 }
 
 #[cfg(test)]

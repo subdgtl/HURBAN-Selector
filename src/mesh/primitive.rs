@@ -191,6 +191,6 @@ pub fn create_uv_sphere(
     Mesh::from_triangle_faces_with_vertices_and_computed_normals(
         faces,
         vertex_positions,
-        NormalStrategy::Sharp,
+        NormalStrategy::Smooth,
     )
 }
