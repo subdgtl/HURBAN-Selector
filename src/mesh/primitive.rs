@@ -105,6 +105,7 @@ pub fn create_uv_sphere(
     scale: Vector3<f32>,
     n_parallels: u32,
     n_meridians: u32,
+    normal_strategy: NormalStrategy,
 ) -> Mesh {
     assert!(n_parallels >= 2, "Need at least 2 parallels");
     assert!(n_meridians >= 3, "Need at least 3 meridians");
@@ -191,6 +192,6 @@ pub fn create_uv_sphere(
     Mesh::from_triangle_faces_with_vertices_and_computed_normals(
         faces,
         vertex_positions,
-        NormalStrategy::Smooth,
+        normal_strategy,
     )
 }

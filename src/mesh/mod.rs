@@ -44,6 +44,30 @@ pub struct Mesh {
 }
 
 impl Mesh {
+    /// Creates new triangulated mesh geometry from provided faces and vertices.
+    /// It discards the existing normals and computes normals based on
+    /// `normal_strategy` instead.
+    ///
+    /// # Panics
+    /// Panics if faces refer to out-of-bounds vertices.
+    pub fn from_faces_with_vertices_and_computed_normals<F, V>(
+        faces: F,
+        vertices: V,
+        normal_strategy: NormalStrategy,
+    ) -> Self
+    where
+        F: IntoIterator<Item = Face>,
+        V: IntoIterator<Item = Point3<f32>>,
+    {
+        Mesh::from_triangle_faces_with_vertices_and_computed_normals(
+            faces.into_iter().map(|face| match face {
+                Face::Triangle(t_f) => (t_f.vertices.0, t_f.vertices.1, t_f.vertices.2),
+            }),
+            vertices,
+            normal_strategy,
+        )
+    }
+
     /// Creates new triangulated mesh geometry from provided triangle
     /// faces and vertices, and computes normals based on
     /// `normal_strategy`.
@@ -112,6 +136,11 @@ impl Mesh {
 
                             normals_collection_sharp.push(face_normal);
                         }
+                        // FIXME: once we add other kinds of faces, they must
+                        // panic here 
+                        //
+                        // _ => panic!("Face must be a triangle, we just created
+                        // it"),
                     }
                 }
                 assert_eq!(normals_collection_sharp.len(), faces_collection_sharp.len());
@@ -124,7 +153,7 @@ impl Mesh {
             NormalStrategy::Smooth => {
                 let faces_collection_smooth: Vec<_> = faces
                     .into_iter()
-                    .map(|(i1, i2, i3)| TriangleFace::new_separate(i1, i2, i3, i1, i2, i3))
+                    .map(|(i1, i2, i3)| TriangleFace::new(i1, i2, i3))
                     .map(Face::from)
                     .collect();
 
@@ -249,7 +278,10 @@ impl Mesh {
         );
 
         let vertices_collection: Vec<_> = vertices.into_iter().collect();
-        let normals_collection: Vec<_> = normals.into_iter().collect();
+        let normals_collection: Vec<_> = normals
+            .into_iter()
+            .map(|normal| normal.normalize())
+            .collect();
 
         let vertices_range = 0..cast_u32(vertices_collection.len());
         let normals_range = 0..cast_u32(normals_collection.len());
@@ -418,9 +450,9 @@ impl fmt::Display for Mesh {
             .map(|(i, n)| format!("{}: ({}, {}, {})", i, n.x, n.y, n.z))
             .collect();
 
-        write!(
+        writeln!(
             f,
-            "G( V({}): {:?}, N({}): {:?}, F({}): {:?} )",
+            "G(\nV({}): {:?},\nN({}): {:?},\nF({}): {:?}\n)",
             self.vertices.len(),
             vertices,
             self.normals.len(),
@@ -832,7 +864,6 @@ pub fn calculate_smooth_normals_from_components(
     let mut normals: Vec<Vector3<f32>> = Vec::with_capacity(vertex_count);
 
     for shared_face_indices in vertex_to_face_topology {
-        let shared_faces_count_f32 = shared_face_indices.len() as f32;
         let mut normal: Vector3<f32> = Vector3::zeros();
         for face_index in shared_face_indices {
             match faces[cast_usize(*face_index)] {
@@ -841,11 +872,11 @@ pub fn calculate_smooth_normals_from_components(
                         &vertices[cast_usize(face.vertices.0)],
                         &vertices[cast_usize(face.vertices.1)],
                         &vertices[cast_usize(face.vertices.2)],
-                    ) / shared_faces_count_f32;
+                    );
                 }
             }
         }
-        normals.push(normal);
+        normals.push(normal.normalize());
     }
 
     normals
