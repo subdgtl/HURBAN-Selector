@@ -362,10 +362,9 @@ pub fn are_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
 /// The mesh geometries are not necessarily identical in memory but they look
 /// the same. If the number of vertices differs, the mesh geometries don't share
 /// the same qualities (they are not welded in the same places and at least one
-/// of them is not watertight). Despite of that, they are considered to be
-/// visually similar but they are not going to be treated the same by some
-/// functions of this software and all their transformations result in different
-/// mesh geometries.
+/// of them is not watertight). Despite that they are considered visually
+/// similar, they are not going to be treated the same by some functions of this
+/// software and all their transformations result in different mesh geometries.
 #[allow(dead_code)]
 pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
     struct UnpackedFace {
@@ -474,7 +473,10 @@ mod tests {
             Vector3::new(-1.0,  1.0,  1.0),
         ];
 
-        let faces = vec![TriangleFace::new(0, 1, 2), TriangleFace::new(2, 3, 0)];
+        let faces = vec![
+            TriangleFace::new_with_identical_vertex_and_normal_index(0, 1, 2),
+            TriangleFace::new_with_identical_vertex_and_normal_index(2, 3, 0),
+        ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
@@ -497,8 +499,8 @@ mod tests {
         ];
 
         let faces = vec![
-            TriangleFace::new_separate(0, 1, 2, 1, 2, 3),
-            TriangleFace::new_separate(3, 4, 0, 3, 4, 0),
+            TriangleFace::new(0, 1, 2, 1, 2, 3),
+            TriangleFace::new(3, 4, 0, 3, 4, 0),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -519,7 +521,10 @@ mod tests {
             Vector3::new(-1.0, 1.0, 1.0),
         ];
 
-        let faces = vec![TriangleFace::new(1, 0, 2), TriangleFace::new(3, 1, 2)];
+        let faces = vec![
+            TriangleFace::new_with_identical_vertex_and_normal_index(1, 0, 2),
+            TriangleFace::new_with_identical_vertex_and_normal_index(3, 1, 2),
+        ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
@@ -539,7 +544,10 @@ mod tests {
             Vector3::new(1.0, 1.0, 1.0),   //2
         ];
 
-        let faces = vec![TriangleFace::new(2, 0, 3), TriangleFace::new(2, 3, 1)];
+        let faces = vec![
+            TriangleFace::new_with_identical_vertex_and_normal_index(2, 0, 3),
+            TriangleFace::new_with_identical_vertex_and_normal_index(2, 3, 1),
+        ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
@@ -775,23 +783,23 @@ mod tests {
 
         let faces = vec![
             // back
-            TriangleFace::new(2, 1, 0),
-            TriangleFace::new(2, 3, 0),
+            TriangleFace::new_with_identical_vertex_and_normal_index(2, 1, 0),
+            TriangleFace::new_with_identical_vertex_and_normal_index(2, 3, 0),
             // top
-            TriangleFace::new(2, 1, 5),
-            TriangleFace::new(2, 5, 6),
+            TriangleFace::new_with_identical_vertex_and_normal_index(2, 1, 5),
+            TriangleFace::new_with_identical_vertex_and_normal_index(2, 5, 6),
             // right
-            TriangleFace::new(2, 6, 7),
-            TriangleFace::new(7, 3, 2),
+            TriangleFace::new_with_identical_vertex_and_normal_index(2, 6, 7),
+            TriangleFace::new_with_identical_vertex_and_normal_index(7, 3, 2),
             // bottom
-            TriangleFace::new(3, 7, 4),
-            TriangleFace::new(4, 0, 3),
+            TriangleFace::new_with_identical_vertex_and_normal_index(3, 7, 4),
+            TriangleFace::new_with_identical_vertex_and_normal_index(4, 0, 3),
             // front
-            TriangleFace::new(6, 4, 7),
-            TriangleFace::new(4, 6, 5),
+            TriangleFace::new_with_identical_vertex_and_normal_index(6, 4, 7),
+            TriangleFace::new_with_identical_vertex_and_normal_index(4, 6, 5),
             // left
-            TriangleFace::new(0, 4, 5),
-            TriangleFace::new(5, 1, 0),
+            TriangleFace::new_with_identical_vertex_and_normal_index(0, 4, 5),
+            TriangleFace::new_with_identical_vertex_and_normal_index(5, 1, 0),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)

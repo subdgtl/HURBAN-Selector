@@ -1041,7 +1041,7 @@ mod tests {
 
         #[rustfmt::skip]
         let faces = vec![
-            TriangleFace::new(0, 1, 2)
+            TriangleFace::new_with_identical_vertex_and_normal_index(0, 1, 2)
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
@@ -1062,7 +1062,7 @@ mod tests {
 
         #[rustfmt::skip]
         let faces = vec![
-            TriangleFace::new_separate(0, 1, 2, 0, 0, 0)
+            TriangleFace::new(0, 1, 2, 0, 0, 0)
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, positions, normals)
