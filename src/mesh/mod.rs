@@ -435,10 +435,6 @@ pub struct TriangleFace {
 }
 
 impl TriangleFace {
-    pub fn new_with_identical_vertex_and_normal_index(i1: u32, i2: u32, i3: u32) -> TriangleFace {
-        TriangleFace::new(i1, i2, i3, i1, i2, i3)
-    }
-
     pub fn new(vi1: u32, vi2: u32, vi3: u32, ni1: u32, ni2: u32, ni3: u32) -> TriangleFace {
         assert!(
             vi1 != vi2 && vi1 != vi3 && vi2 != vi3,
@@ -461,6 +457,10 @@ impl TriangleFace {
                 normals: (ni3, ni1, ni2),
             }
         }
+    }
+
+    pub fn from_same_vertex_and_normal_index(i1: u32, i2: u32, i3: u32) -> TriangleFace {
+        TriangleFace::new(i1, i2, i3, i1, i2, i3)
     }
 
     /// Generates 3 oriented edges from the respective triangular face.
@@ -521,7 +521,7 @@ impl TriangleFace {
 
 impl From<(u32, u32, u32)> for TriangleFace {
     fn from((i1, i2, i3): (u32, u32, u32)) -> TriangleFace {
-        TriangleFace::new_with_identical_vertex_and_normal_index(i1, i2, i3)
+        TriangleFace::from_same_vertex_and_normal_index(i1, i2, i3)
     }
 }
 
@@ -803,8 +803,8 @@ mod tests {
         // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         let faces = vec![
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 1, 2),
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 2, 3),
+            TriangleFace::from_same_vertex_and_normal_index(0, 1, 2),
+            TriangleFace::from_same_vertex_and_normal_index(0, 2, 3),
         ];
 
         (faces, vertices, normals)
@@ -933,8 +933,8 @@ mod tests {
         // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
         let faces = vec![
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 1, 2),
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 3, 4),
+            TriangleFace::from_same_vertex_and_normal_index(0, 1, 2),
+            TriangleFace::from_same_vertex_and_normal_index(2, 3, 4),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
@@ -1038,7 +1038,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_to_oriented_edges() {
-        let face = TriangleFace::new_with_identical_vertex_and_normal_index(0, 1, 2);
+        let face = TriangleFace::from_same_vertex_and_normal_index(0, 1, 2);
 
         let oriented_edges_correct: [OrientedEdge; 3] = [
             OrientedEdge::new(0, 1),
@@ -1055,7 +1055,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_to_unoriented_edges() {
-        let face = TriangleFace::new_with_identical_vertex_and_normal_index(0, 1, 2);
+        let face = TriangleFace::from_same_vertex_and_normal_index(0, 1, 2);
 
         let unoriented_edges_correct: [UnorientedEdge; 3] = [
             UnorientedEdge(OrientedEdge::new(0, 1)),
@@ -1073,19 +1073,19 @@ mod tests {
     #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_with_invalid_vertex_indices_0_1_should_panic() {
-        TriangleFace::new_with_identical_vertex_and_normal_index(0, 0, 2);
+        TriangleFace::from_same_vertex_and_normal_index(0, 0, 2);
     }
 
     #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_with_invalid_vertex_indices_1_2_should_panic() {
-        TriangleFace::new_with_identical_vertex_and_normal_index(0, 2, 2);
+        TriangleFace::from_same_vertex_and_normal_index(0, 2, 2);
     }
 
     #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_with_invalid_vertex_indices_0_2_should_panic() {
-        TriangleFace::new_with_identical_vertex_and_normal_index(0, 2, 0);
+        TriangleFace::from_same_vertex_and_normal_index(0, 2, 0);
     }
 
     #[test]
@@ -1307,21 +1307,21 @@ mod tests {
 
     #[test]
     fn test_triangle_face_new_lowest_first() {
-        let face = TriangleFace::new_with_identical_vertex_and_normal_index(0, 1, 2);
+        let face = TriangleFace::from_same_vertex_and_normal_index(0, 1, 2);
         assert_eq!(face.vertices, (0, 1, 2));
         assert_eq!(face.normals, (0, 1, 2));
     }
 
     #[test]
     fn test_triangle_face_new_lowest_second() {
-        let face = TriangleFace::new_with_identical_vertex_and_normal_index(2, 0, 1);
+        let face = TriangleFace::from_same_vertex_and_normal_index(2, 0, 1);
         assert_eq!(face.vertices, (0, 1, 2));
         assert_eq!(face.normals, (0, 1, 2));
     }
 
     #[test]
     fn test_triangle_face_new_lowest_third() {
-        let face = TriangleFace::new_with_identical_vertex_and_normal_index(1, 2, 0);
+        let face = TriangleFace::from_same_vertex_and_normal_index(1, 2, 0);
         assert_eq!(face.vertices, (0, 1, 2));
         assert_eq!(face.normals, (0, 1, 2));
     }

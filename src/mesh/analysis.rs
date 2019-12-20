@@ -474,8 +474,8 @@ mod tests {
         ];
 
         let faces = vec![
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 1, 2),
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 3, 0),
+            TriangleFace::from_same_vertex_and_normal_index(0, 1, 2),
+            TriangleFace::from_same_vertex_and_normal_index(2, 3, 0),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -522,8 +522,8 @@ mod tests {
         ];
 
         let faces = vec![
-            TriangleFace::new_with_identical_vertex_and_normal_index(1, 0, 2),
-            TriangleFace::new_with_identical_vertex_and_normal_index(3, 1, 2),
+            TriangleFace::from_same_vertex_and_normal_index(1, 0, 2),
+            TriangleFace::from_same_vertex_and_normal_index(3, 1, 2),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -545,8 +545,8 @@ mod tests {
         ];
 
         let faces = vec![
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 0, 3),
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 3, 1),
+            TriangleFace::from_same_vertex_and_normal_index(2, 0, 3),
+            TriangleFace::from_same_vertex_and_normal_index(2, 3, 1),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -783,23 +783,23 @@ mod tests {
 
         let faces = vec![
             // back
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 1, 0),
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 3, 0),
+            TriangleFace::from_same_vertex_and_normal_index(2, 1, 0),
+            TriangleFace::from_same_vertex_and_normal_index(2, 3, 0),
             // top
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 1, 5),
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 5, 6),
+            TriangleFace::from_same_vertex_and_normal_index(2, 1, 5),
+            TriangleFace::from_same_vertex_and_normal_index(2, 5, 6),
             // right
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 6, 7),
-            TriangleFace::new_with_identical_vertex_and_normal_index(7, 3, 2),
+            TriangleFace::from_same_vertex_and_normal_index(2, 6, 7),
+            TriangleFace::from_same_vertex_and_normal_index(7, 3, 2),
             // bottom
-            TriangleFace::new_with_identical_vertex_and_normal_index(3, 7, 4),
-            TriangleFace::new_with_identical_vertex_and_normal_index(4, 0, 3),
+            TriangleFace::from_same_vertex_and_normal_index(3, 7, 4),
+            TriangleFace::from_same_vertex_and_normal_index(4, 0, 3),
             // front
-            TriangleFace::new_with_identical_vertex_and_normal_index(6, 4, 7),
-            TriangleFace::new_with_identical_vertex_and_normal_index(4, 6, 5),
+            TriangleFace::from_same_vertex_and_normal_index(6, 4, 7),
+            TriangleFace::from_same_vertex_and_normal_index(4, 6, 5),
             // left
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 4, 5),
-            TriangleFace::new_with_identical_vertex_and_normal_index(5, 1, 0),
+            TriangleFace::from_same_vertex_and_normal_index(0, 4, 5),
+            TriangleFace::from_same_vertex_and_normal_index(5, 1, 0),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)

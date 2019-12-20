@@ -214,7 +214,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
                 && new_vertex_indices.1 != new_vertex_indices.2
             {
                 Some(Face::Triangle(
-                    TriangleFace::new_with_identical_vertex_and_normal_index(
+                    TriangleFace::from_same_vertex_and_normal_index(
                         new_vertex_indices.0,
                         new_vertex_indices.1,
                         new_vertex_indices.2,
@@ -590,23 +590,23 @@ mod tests {
 
         let faces = vec![
             // back
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 1, 2),
-            TriangleFace::new_with_identical_vertex_and_normal_index(2, 3, 0),
+            TriangleFace::from_same_vertex_and_normal_index(0, 1, 2),
+            TriangleFace::from_same_vertex_and_normal_index(2, 3, 0),
             // front
-            TriangleFace::new_with_identical_vertex_and_normal_index(4, 5, 6),
-            TriangleFace::new_with_identical_vertex_and_normal_index(6, 7, 4),
+            TriangleFace::from_same_vertex_and_normal_index(4, 5, 6),
+            TriangleFace::from_same_vertex_and_normal_index(6, 7, 4),
             // top
-            TriangleFace::new_with_identical_vertex_and_normal_index(8, 9, 10),
-            TriangleFace::new_with_identical_vertex_and_normal_index(10, 11, 8),
+            TriangleFace::from_same_vertex_and_normal_index(8, 9, 10),
+            TriangleFace::from_same_vertex_and_normal_index(10, 11, 8),
             // bottom
-            TriangleFace::new_with_identical_vertex_and_normal_index(12, 13, 14),
-            TriangleFace::new_with_identical_vertex_and_normal_index(14, 15, 12),
+            TriangleFace::from_same_vertex_and_normal_index(12, 13, 14),
+            TriangleFace::from_same_vertex_and_normal_index(14, 15, 12),
             // right
-            TriangleFace::new_with_identical_vertex_and_normal_index(16, 17, 18),
-            TriangleFace::new_with_identical_vertex_and_normal_index(18, 19, 16),
+            TriangleFace::from_same_vertex_and_normal_index(16, 17, 18),
+            TriangleFace::from_same_vertex_and_normal_index(18, 19, 16),
             // left
-            TriangleFace::new_with_identical_vertex_and_normal_index(20, 21, 22),
-            TriangleFace::new_with_identical_vertex_and_normal_index(22, 23, 20),
+            TriangleFace::from_same_vertex_and_normal_index(20, 21, 22),
+            TriangleFace::from_same_vertex_and_normal_index(22, 23, 20),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
@@ -636,18 +636,18 @@ mod tests {
         ];
 
         let faces = vec![
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 4, 2),
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 3, 4),
-            TriangleFace::new_with_identical_vertex_and_normal_index(5, 7, 6),
-            TriangleFace::new_with_identical_vertex_and_normal_index(1, 5, 6),
-            TriangleFace::new_with_identical_vertex_and_normal_index(1, 6, 2),
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 2, 6),
-            TriangleFace::new_with_identical_vertex_and_normal_index(3, 7, 4),
-            TriangleFace::new_with_identical_vertex_and_normal_index(4, 7, 5),
-            TriangleFace::new_with_identical_vertex_and_normal_index(0, 6, 3),
-            TriangleFace::new_with_identical_vertex_and_normal_index(3, 6, 7),
-            TriangleFace::new_with_identical_vertex_and_normal_index(1, 4, 5),
-            TriangleFace::new_with_identical_vertex_and_normal_index(1, 2, 4),
+            TriangleFace::from_same_vertex_and_normal_index(0, 4, 2),
+            TriangleFace::from_same_vertex_and_normal_index(0, 3, 4),
+            TriangleFace::from_same_vertex_and_normal_index(5, 7, 6),
+            TriangleFace::from_same_vertex_and_normal_index(1, 5, 6),
+            TriangleFace::from_same_vertex_and_normal_index(1, 6, 2),
+            TriangleFace::from_same_vertex_and_normal_index(0, 2, 6),
+            TriangleFace::from_same_vertex_and_normal_index(3, 7, 4),
+            TriangleFace::from_same_vertex_and_normal_index(4, 7, 5),
+            TriangleFace::from_same_vertex_and_normal_index(0, 6, 3),
+            TriangleFace::from_same_vertex_and_normal_index(3, 6, 7),
+            TriangleFace::from_same_vertex_and_normal_index(1, 4, 5),
+            TriangleFace::from_same_vertex_and_normal_index(1, 2, 4),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals)
