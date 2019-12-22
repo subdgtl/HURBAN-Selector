@@ -110,11 +110,11 @@ pub fn pull_point_to_mesh(
     let mut pulled_points: Vec<PulledPointWithDistance> = Vec::new();
     // Pull to faces
     for (face_vertices, face_normal) in all_mesh_faces_with_normals {
-        // If the point already lays in the face, it means it's already puled to the mesh.
+        // If the point already lies in the face, it means it's already puled to the mesh.
         if is_point_in_triangle(point, face_vertices.0, face_vertices.1, face_vertices.2) {
             return pulled_identity;
         }
-        // If triangle vertices are colinear, it's enough to pull to
+        // If triangle vertices are collinear, it's enough to pull to
         // triangle edges later on.
         if !geometry::are_points_collinear(face_vertices.0, face_vertices.1, face_vertices.2) {
             if let Some(intersection_point) = ray_intersects_triangle(
@@ -136,7 +136,7 @@ pub fn pull_point_to_mesh(
             &vertices[cast_usize(u_e.0.vertices.0)],
             &vertices[cast_usize(u_e.0.vertices.1)],
         );
-        // If the point already lays in the edge, it means it's already puled to the mesh.
+        // If the point already lies in the edge, it means it's already puled to the mesh.
         if closest_point.clamped == *point {
             return pulled_identity;
         }
@@ -159,7 +159,7 @@ pub fn pull_point_to_mesh(
 /// Checks if a point lies in a triangle.
 ///
 /// #Panics
-/// Panics if triangle is colinear
+/// Panics if triangle is collinear
 ///
 /// https://math.stackexchange.com/questions/4322/check-whether-a-point-is-within-a-3d-triangle
 fn is_point_in_triangle(
@@ -245,8 +245,7 @@ fn is_point_in_triangle(
         horizontal_vertex2.xy(),
         horizontal_point.xy(),
     )
-    .expect("The triangle is degenerate");
-
+    .expect("Failed to calculate barycentric coords");
     barycentric_point.x >= 0.0
         && barycentric_point.x <= 1.0
         && barycentric_point.y >= 0.0

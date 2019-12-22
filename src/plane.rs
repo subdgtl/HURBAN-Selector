@@ -76,6 +76,10 @@ impl Plane {
         Plane::new(origin, &x_vector, &y_vector)
     }
 
+    pub fn from_origin_and_plane(origin: &Point3<f32>, source_plane: &Plane) -> Plane {
+        Plane::new(origin, &source_plane.x_vector(), &source_plane.y_vector())
+    }
+
     /// Fit a plane to a collection of points. Fast, and accurate to within a few
     /// degrees. Returns None if the points do not span a plane.
     ///
