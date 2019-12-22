@@ -69,14 +69,7 @@ impl Mesh {
                     .enumerate()
                     .map(|(i, (i1, i2, i3))| {
                         let normal_index = cast_u32(i);
-                        TriangleFace::new_separate(
-                            i1,
-                            i2,
-                            i3,
-                            normal_index,
-                            normal_index,
-                            normal_index,
-                        )
+                        TriangleFace::new(i1, i2, i3, normal_index, normal_index, normal_index)
                     })
                     .map(Face::from)
                     .collect();
@@ -443,37 +436,7 @@ pub struct TriangleFace {
 }
 
 impl TriangleFace {
-    pub fn new(i1: u32, i2: u32, i3: u32) -> TriangleFace {
-        assert!(
-            i1 != i2 && i1 != i3 && i2 != i3,
-            "One or more face edges consists of the same vertex"
-        );
-        if i1 < i2 && i1 < i3 {
-            TriangleFace {
-                vertices: (i1, i2, i3),
-                normals: (i1, i2, i3),
-            }
-        } else if i2 < i1 && i2 < i3 {
-            TriangleFace {
-                vertices: (i2, i3, i1),
-                normals: (i2, i3, i1),
-            }
-        } else {
-            TriangleFace {
-                vertices: (i3, i1, i2),
-                normals: (i3, i1, i2),
-            }
-        }
-    }
-
-    pub fn new_separate(
-        vi1: u32,
-        vi2: u32,
-        vi3: u32,
-        ni1: u32,
-        ni2: u32,
-        ni3: u32,
-    ) -> TriangleFace {
+    pub fn new(vi1: u32, vi2: u32, vi3: u32, ni1: u32, ni2: u32, ni3: u32) -> TriangleFace {
         assert!(
             vi1 != vi2 && vi1 != vi3 && vi2 != vi3,
             "One or more face edges consists of the same vertex"
@@ -495,6 +458,10 @@ impl TriangleFace {
                 normals: (ni3, ni1, ni2),
             }
         }
+    }
+
+    pub fn from_same_vertex_and_normal_index(i1: u32, i2: u32, i3: u32) -> TriangleFace {
+        TriangleFace::new(i1, i2, i3, i1, i2, i3)
     }
 
     /// Generates 3 oriented edges from the respective triangular face.
@@ -536,7 +503,7 @@ impl TriangleFace {
 
     /// Returns the same face with reverted vertex and normal winding.
     pub fn to_reverted(&self) -> TriangleFace {
-        TriangleFace::new_separate(
+        TriangleFace::new(
             self.vertices.2,
             self.vertices.1,
             self.vertices.0,
@@ -555,7 +522,7 @@ impl TriangleFace {
 
 impl From<(u32, u32, u32)> for TriangleFace {
     fn from((i1, i2, i3): (u32, u32, u32)) -> TriangleFace {
-        TriangleFace::new(i1, i2, i3)
+        TriangleFace::from_same_vertex_and_normal_index(i1, i2, i3)
     }
 }
 
@@ -777,7 +744,7 @@ fn remove_orphan_vertices_and_normals(
                         old_new_normal_map[old_normal_index_2]
                     };
 
-                faces_renumbered.push(Face::Triangle(TriangleFace::new_separate(
+                faces_renumbered.push(Face::Triangle(TriangleFace::new(
                     cast_u32(new_vertex_index_0),
                     cast_u32(new_vertex_index_1),
                     cast_u32(new_vertex_index_2),
@@ -836,7 +803,10 @@ mod tests {
         // When comparing TriangleFaces or Faces from Mesh, make sure the
         // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
-        let faces = vec![TriangleFace::new(0, 1, 2), TriangleFace::new(0, 2, 3)];
+        let faces = vec![
+            TriangleFace::from_same_vertex_and_normal_index(0, 1, 2),
+            TriangleFace::from_same_vertex_and_normal_index(0, 2, 3),
+        ];
 
         (faces, vertices, normals)
     }
@@ -963,7 +933,10 @@ mod tests {
         // When comparing TriangleFaces or Faces from Mesh, make sure the
         // manually defined faces start their winding from the lowest vertex
         // index. See TriangleFace constructors for more info.
-        let faces = vec![TriangleFace::new(0, 1, 2), TriangleFace::new(2, 3, 4)];
+        let faces = vec![
+            TriangleFace::from_same_vertex_and_normal_index(0, 1, 2),
+            TriangleFace::from_same_vertex_and_normal_index(2, 3, 4),
+        ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
     }
@@ -1066,7 +1039,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_to_oriented_edges() {
-        let face = TriangleFace::new(0, 1, 2);
+        let face = TriangleFace::from_same_vertex_and_normal_index(0, 1, 2);
 
         let oriented_edges_correct: [OrientedEdge; 3] = [
             OrientedEdge::new(0, 1),
@@ -1083,7 +1056,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_to_unoriented_edges() {
-        let face = TriangleFace::new(0, 1, 2);
+        let face = TriangleFace::from_same_vertex_and_normal_index(0, 1, 2);
 
         let unoriented_edges_correct: [UnorientedEdge; 3] = [
             UnorientedEdge(OrientedEdge::new(0, 1)),
@@ -1101,37 +1074,37 @@ mod tests {
     #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_with_invalid_vertex_indices_0_1_should_panic() {
-        TriangleFace::new(0, 0, 2);
+        TriangleFace::from_same_vertex_and_normal_index(0, 0, 2);
     }
 
     #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_with_invalid_vertex_indices_1_2_should_panic() {
-        TriangleFace::new(0, 2, 2);
+        TriangleFace::from_same_vertex_and_normal_index(0, 2, 2);
     }
 
     #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_with_invalid_vertex_indices_0_2_should_panic() {
-        TriangleFace::new(0, 2, 0);
+        TriangleFace::from_same_vertex_and_normal_index(0, 2, 0);
     }
 
     #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_separate_with_invalid_vertex_indices_0_1_should_panic() {
-        TriangleFace::new_separate(0, 0, 2, 0, 0, 0);
+        TriangleFace::new(0, 0, 2, 0, 0, 0);
     }
 
     #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_separate_with_invalid_vertex_indices_1_2_should_panic() {
-        TriangleFace::new_separate(0, 2, 2, 0, 0, 0);
+        TriangleFace::new(0, 2, 2, 0, 0, 0);
     }
 
     #[test]
     #[should_panic(expected = "One or more face edges consists of the same vertex")]
     fn test_triangle_face_new_separate_with_invalid_vertex_indices_0_2_should_panic() {
-        TriangleFace::new_separate(0, 2, 0, 0, 0, 0);
+        TriangleFace::new(0, 2, 0, 0, 0, 0);
     }
 
     #[test]
@@ -1258,7 +1231,7 @@ mod tests {
         let faces_renumbered_to_match_extend_data: Vec<_> = faces
             .iter()
             .map(|f| {
-                TriangleFace::new_separate(
+                TriangleFace::new(
                     f.vertices.0 + 1,
                     f.vertices.1 + 1,
                     f.vertices.2 + 1,
@@ -1313,7 +1286,7 @@ mod tests {
         let faces_renumbered_to_match_extend_vertices_and_normals: Vec<_> = faces
             .iter()
             .map(|f| {
-                TriangleFace::new_separate(
+                TriangleFace::new(
                     f.vertices.0 + 1,
                     f.vertices.1 + 1,
                     f.vertices.2 + 1,
@@ -1335,50 +1308,50 @@ mod tests {
 
     #[test]
     fn test_triangle_face_new_lowest_first() {
-        let face = TriangleFace::new(0, 1, 2);
+        let face = TriangleFace::from_same_vertex_and_normal_index(0, 1, 2);
         assert_eq!(face.vertices, (0, 1, 2));
         assert_eq!(face.normals, (0, 1, 2));
     }
 
     #[test]
     fn test_triangle_face_new_lowest_second() {
-        let face = TriangleFace::new(2, 0, 1);
+        let face = TriangleFace::from_same_vertex_and_normal_index(2, 0, 1);
         assert_eq!(face.vertices, (0, 1, 2));
         assert_eq!(face.normals, (0, 1, 2));
     }
 
     #[test]
     fn test_triangle_face_new_lowest_third() {
-        let face = TriangleFace::new(1, 2, 0);
+        let face = TriangleFace::from_same_vertex_and_normal_index(1, 2, 0);
         assert_eq!(face.vertices, (0, 1, 2));
         assert_eq!(face.normals, (0, 1, 2));
     }
 
     #[test]
     fn test_triangle_face_new_separate_lowest_first() {
-        let face = TriangleFace::new_separate(0, 1, 2, 3, 4, 5);
+        let face = TriangleFace::new(0, 1, 2, 3, 4, 5);
         assert_eq!(face.vertices, (0, 1, 2));
         assert_eq!(face.normals, (3, 4, 5));
     }
 
     #[test]
     fn test_triangle_face_new_separate_lowest_second() {
-        let face = TriangleFace::new_separate(2, 0, 1, 5, 3, 4);
+        let face = TriangleFace::new(2, 0, 1, 5, 3, 4);
         assert_eq!(face.vertices, (0, 1, 2));
         assert_eq!(face.normals, (3, 4, 5));
     }
 
     #[test]
     fn test_triangle_face_new_separate_lowest_third() {
-        let face = TriangleFace::new_separate(1, 2, 0, 4, 5, 3);
+        let face = TriangleFace::new(1, 2, 0, 4, 5, 3);
         assert_eq!(face.vertices, (0, 1, 2));
         assert_eq!(face.normals, (3, 4, 5));
     }
 
     #[test]
     fn test_triangle_face_to_reverted_comparison_to_reverted() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
-        let face_reverted_correct = TriangleFace::new_separate(3, 2, 1, 6, 5, 4);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
+        let face_reverted_correct = TriangleFace::new(3, 2, 1, 6, 5, 4);
 
         let face_reverted_calculated = face.to_reverted();
         assert_eq!(face_reverted_correct, face_reverted_calculated);
@@ -1386,7 +1359,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_to_reverted_comparison_to_same() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
 
         let face_reverted_calculated = face.to_reverted();
         assert_ne!(face, face_reverted_calculated);
@@ -1394,8 +1367,8 @@ mod tests {
 
     #[test]
     fn test_triangle_face_to_reverted_comparison_to_reverted_and_shifted() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
-        let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
+        let face_reverted_correct_shifted = TriangleFace::new(2, 1, 3, 5, 4, 6);
 
         let face_reverted_calculated = face.to_reverted();
         assert_eq!(face_reverted_correct_shifted, face_reverted_calculated);
@@ -1403,22 +1376,22 @@ mod tests {
 
     #[test]
     fn test_triangle_face_is_reverted_comparison_to_reverted_and_shifted() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
-        let face_reverted_correct_shifted = TriangleFace::new_separate(2, 1, 3, 5, 4, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
+        let face_reverted_correct_shifted = TriangleFace::new(2, 1, 3, 5, 4, 6);
 
         assert!(face_reverted_correct_shifted.is_reverted(&face));
     }
 
     #[test]
     fn test_triangle_face_is_reverted_comparison_to_self() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
 
         assert!(!face.is_reverted(&face));
     }
 
     #[test]
     fn test_triangle_face_contains_oriented_edge_returns_true_because_contains_all() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
         let oriented_edge_1 = OrientedEdge::new(1, 2);
         let oriented_edge_2 = OrientedEdge::new(2, 3);
         let oriented_edge_3 = OrientedEdge::new(3, 1);
@@ -1430,7 +1403,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_contains_oriented_edge_returns_false_because_contains_all_reverted() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
         let oriented_edge_1 = OrientedEdge::new(2, 1);
         let oriented_edge_2 = OrientedEdge::new(3, 2);
         let oriented_edge_3 = OrientedEdge::new(1, 3);
@@ -1442,7 +1415,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_contains_oriented_edge_returns_false_because_different() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
         let oriented_edge = OrientedEdge::new(4, 5);
 
         assert!(!face.contains_oriented_edge(oriented_edge));
@@ -1450,7 +1423,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_contains_unoriented_edge_returns_true_because_contains_all() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
         let unoriented_edge_1 = UnorientedEdge(OrientedEdge::new(1, 2));
         let unoriented_edge_2 = UnorientedEdge(OrientedEdge::new(2, 3));
         let unoriented_edge_3 = UnorientedEdge(OrientedEdge::new(3, 1));
@@ -1462,7 +1435,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_contains_unoriented_edge_returns_true_because_contains_all_reverted() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
         let unoriented_edge_1 = UnorientedEdge(OrientedEdge::new(2, 1));
         let unoriented_edge_2 = UnorientedEdge(OrientedEdge::new(3, 2));
         let unoriented_edge_3 = UnorientedEdge(OrientedEdge::new(1, 3));
@@ -1474,7 +1447,7 @@ mod tests {
 
     #[test]
     fn test_triangle_face_contains_unoriented_edge_returns_false_because_different() {
-        let face = TriangleFace::new_separate(1, 2, 3, 4, 5, 6);
+        let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
         let unoriented_edge = UnorientedEdge(OrientedEdge::new(4, 5));
 
         assert!(!face.contains_unoriented_edge(unoriented_edge));
