@@ -445,6 +445,18 @@ impl VoxelCloud {
             (relative_coords.z + self.block_start.z) as f32 * self.voxel_dimensions.z,
         )
     }
+
+    /// Converts absolute voxel coordinates into relative voxel coordinates
+    #[allow(dead_code)]
+    fn absolute_to_relative_voxel_coords(&self, absolute_coords: &Point3<i32>) -> Point3<i32> {
+        absolute_coords - self.block_start.coords
+    }
+
+    /// Converts absolute voxel coordinates into relative voxel coordinates
+    #[allow(dead_code)]
+    fn relative_to_absolute_voxel_coords(&self, relative_coords: &Point3<i32>) -> Point3<i32> {
+        relative_coords + self.block_start.coords
+    }
 }
 
 #[cfg(test)]
