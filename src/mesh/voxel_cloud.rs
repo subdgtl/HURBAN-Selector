@@ -368,6 +368,194 @@ impl VoxelCloud {
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
+    /// Resize the voxel cloud block to match new block start and block dimensions.
+    ///
+    /// This clips the outstanding parts of the original voxel cloud.
+    #[allow(dead_code)]
+    pub fn resize_from_start_and_dimensions(
+        &self,
+        resized_block_start: &Point3<i32>,
+        resized_block_dimensions: &Vector3<u32>,
+    ) -> Self {
+        let mut resized_voxel_cloud = VoxelCloud::new(
+            resized_block_start,
+            resized_block_dimensions,
+            &self.voxel_dimensions,
+        );
+        let block_end = self.block_end();
+        let resized_block_end = resized_voxel_cloud.block_end();
+        let min_point = Point3::new(
+            self.block_start.x.max(resized_block_start.x),
+            self.block_start.y.max(resized_block_start.y),
+            self.block_start.z.max(resized_block_start.z),
+        );
+        let max_point = Point3::new(
+            block_end.x.min(resized_block_end.x),
+            block_end.y.min(resized_block_end.y),
+            block_end.z.min(resized_block_end.z),
+        );
+
+        for abs_z in min_point.z..max_point.z {
+            for abs_y in min_point.y..max_point.y {
+                for abs_x in min_point.x..max_point.x {
+                    let abs_coords = Point3::new(abs_x, abs_y, abs_z);
+                    if let Some(true) = self.voxel_at_absolute_coords(&abs_coords) {
+                        resized_voxel_cloud.set_voxel_at_absolute_coords(&abs_coords, true);
+                    }
+                }
+            }
+        }
+        resized_voxel_cloud
+    }
+
+    /// Resize the voxel cloud block by the specified offset. The offset is
+    /// positive in the direction outwards from the current block boundaries.
+    ///
+    /// This clips the outstanding parts of the original voxel cloud.
+    #[allow(dead_code)]
+    pub fn resize_from_offsets(
+        &self,
+        top_offset: i32,
+        right_offset: i32,
+        bottom_offset: i32,
+        left_offset: i32,
+        front_offset: i32,
+        rear_offset: i32,
+    ) -> Self {
+        let x_dimension = cast_i32(self.block_dimensions.x) + right_offset;
+        let y_dimension = cast_i32(self.block_dimensions.y) + rear_offset;
+        let z_dimension = cast_i32(self.block_dimensions.z) + top_offset;
+        assert!(
+            x_dimension > 0 && y_dimension > 0 && z_dimension > 0,
+            "Block dimensions can't be less than 1"
+        );
+
+        let resized_block_dimensions = Vector3::new(
+            cast_u32(x_dimension),
+            cast_u32(y_dimension),
+            cast_u32(z_dimension),
+        );
+
+        let start_offset = Vector3::new(left_offset, front_offset, bottom_offset);
+        let resized_block_start = self.block_start - start_offset;
+        self.resize_from_start_and_dimensions(&resized_block_start, &resized_block_dimensions)
+    }
+
+    /// Resize the voxel cloud block to exactly fit the volumetric geometry.
+    /// Returns None for empty the voxel cloud.
+    #[allow(dead_code)]
+    pub fn shrink_to_fit(&self) -> Option<Self> {
+        // Scan left to right to find the first voxel
+        if let Some(left_offset) = (0..self.block_dimensions.x).find(|x| {
+            (0..self.block_dimensions.y).any(|y| {
+                (0..self.block_dimensions.z).any(|z| {
+                    match self.voxel_at_relative_coords(&Point3::new(
+                        cast_i32(*x),
+                        cast_i32(y),
+                        cast_i32(z),
+                    )) {
+                        Some(true) => true,
+                        _ => false,
+                    }
+                })
+            })
+        }) {
+            // Scan right to left to find the first voxel
+            if let Some(right_offset) = (self.block_dimensions.x..0).find(|x| {
+                (0..self.block_dimensions.y).any(|y| {
+                    (0..self.block_dimensions.z).any(|z| {
+                        match self.voxel_at_relative_coords(&Point3::new(
+                            cast_i32(*x),
+                            cast_i32(y),
+                            cast_i32(z),
+                        )) {
+                            Some(true) => true,
+                            _ => false,
+                        }
+                    })
+                })
+            }) {
+                // Scan front to back to find the first voxel
+                if let Some(front_offset) = (0..self.block_dimensions.y).find(|y| {
+                    (0..self.block_dimensions.x).any(|x| {
+                        (0..self.block_dimensions.z).any(|z| {
+                            match self.voxel_at_relative_coords(&Point3::new(
+                                cast_i32(x),
+                                cast_i32(*y),
+                                cast_i32(z),
+                            )) {
+                                Some(true) => true,
+                                _ => false,
+                            }
+                        })
+                    })
+                }) {
+                    // Scan back to front to find the first voxel
+                    if let Some(rear_offset) = (self.block_dimensions.y..0).find(|y| {
+                        (0..self.block_dimensions.x).any(|x| {
+                            (0..self.block_dimensions.z).any(|z| {
+                                match self.voxel_at_relative_coords(&Point3::new(
+                                    cast_i32(x),
+                                    cast_i32(*y),
+                                    cast_i32(z),
+                                )) {
+                                    Some(true) => true,
+                                    _ => false,
+                                }
+                            })
+                        })
+                    }) {
+                        // Scan bottom to top to find the first voxel
+                        if let Some(bottom_offset) = (0..self.block_dimensions.z).find(|z| {
+                            (0..self.block_dimensions.x).any(|x| {
+                                (0..self.block_dimensions.y).any(|y| {
+                                    match self.voxel_at_relative_coords(&Point3::new(
+                                        cast_i32(x),
+                                        cast_i32(y),
+                                        cast_i32(*z),
+                                    )) {
+                                        Some(true) => true,
+                                        _ => false,
+                                    }
+                                })
+                            })
+                        }) {
+                            // Scan top to bottom to find the first voxel
+                            if let Some(top_offset) = (self.block_dimensions.z..0).find(|z| {
+                                (0..self.block_dimensions.x).any(|x| {
+                                    (0..self.block_dimensions.y).any(|y| {
+                                        match self.voxel_at_relative_coords(&Point3::new(
+                                            cast_i32(x),
+                                            cast_i32(y),
+                                            cast_i32(*z),
+                                        )) {
+                                            Some(true) => true,
+                                            _ => false,
+                                        }
+                                    })
+                                })
+                            }) {
+                                // The offset for resizing is positive outwards.
+                                // Here we shrink inwards, hence the negative
+                                // values.
+                                return Some(self.resize_from_offsets(
+                                    -cast_i32(top_offset),
+                                    -cast_i32(right_offset),
+                                    -cast_i32(bottom_offset),
+                                    -cast_i32(left_offset),
+                                    -cast_i32(front_offset),
+                                    -cast_i32(rear_offset),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // If no voxel found in the cloud, return None
+        None
+    }
+
     /// Computes an index to the linear representation of the voxel block from
     /// voxel coordinates relative to the voxel space block start.
     ///
@@ -456,6 +644,16 @@ impl VoxelCloud {
     #[allow(dead_code)]
     fn relative_to_absolute_voxel_coords(&self, relative_coords: &Point3<i32>) -> Point3<i32> {
         relative_coords + self.block_start.coords
+    }
+
+    /// Calculates the absolute coordinates of the block end
+    #[allow(dead_code)]
+    fn block_end(&self) -> Point3<i32> {
+        Point3::new(
+            self.block_start.x + cast_i32(self.block_dimensions.x),
+            self.block_start.y + cast_i32(self.block_dimensions.y),
+            self.block_start.z + cast_i32(self.block_dimensions.z),
+        )
     }
 }
 
