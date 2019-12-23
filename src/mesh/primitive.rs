@@ -25,8 +25,8 @@ pub fn create_mesh_plane(plane: Plane, scale: Vector2<f32>) -> Mesh {
     let vertex_normals = vec![plane.normal()];
 
     let faces = vec![
-        TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
-        TriangleFace::new_separate(2, 3, 0, 0, 0, 0),
+        TriangleFace::new(0, 1, 2, 0, 0, 0),
+        TriangleFace::new(2, 3, 0, 0, 0, 0),
     ];
 
     Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
@@ -71,23 +71,23 @@ pub fn create_box(center: Point3<f32>, rotate: Rotation3<f32>, scale: Vector3<f3
 
     let faces = vec![
         // back
-        TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
-        TriangleFace::new_separate(2, 3, 0, 0, 0, 0),
+        TriangleFace::new(0, 1, 2, 0, 0, 0),
+        TriangleFace::new(2, 3, 0, 0, 0, 0),
         // front
-        TriangleFace::new_separate(4, 5, 6, 1, 1, 1),
-        TriangleFace::new_separate(6, 7, 4, 1, 1, 1),
+        TriangleFace::new(4, 5, 6, 1, 1, 1),
+        TriangleFace::new(6, 7, 4, 1, 1, 1),
         // top
-        TriangleFace::new_separate(7, 6, 1, 2, 2, 2),
-        TriangleFace::new_separate(2, 1, 6, 2, 2, 2),
+        TriangleFace::new(7, 6, 1, 2, 2, 2),
+        TriangleFace::new(2, 1, 6, 2, 2, 2),
         // bottom
-        TriangleFace::new_separate(5, 0, 3, 3, 3, 3),
-        TriangleFace::new_separate(0, 5, 4, 3, 3, 3),
+        TriangleFace::new(5, 0, 3, 3, 3, 3),
+        TriangleFace::new(0, 5, 4, 3, 3, 3),
         // right
-        TriangleFace::new_separate(6, 3, 2, 4, 4, 4),
-        TriangleFace::new_separate(3, 6, 5, 4, 4, 4),
+        TriangleFace::new(6, 3, 2, 4, 4, 4),
+        TriangleFace::new(3, 6, 5, 4, 4, 4),
         // left
-        TriangleFace::new_separate(4, 7, 0, 5, 5, 5),
-        TriangleFace::new_separate(1, 0, 7, 5, 5, 5),
+        TriangleFace::new(4, 7, 0, 5, 5, 5),
+        TriangleFace::new(1, 0, 7, 5, 5, 5),
     ];
 
     Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)

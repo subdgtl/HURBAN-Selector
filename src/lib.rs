@@ -331,6 +331,8 @@ pub fn init_and_run(options: Options) -> ! {
                 // Camera matrices have to be uploaded when either window
                 // resizes or the camera moves. We do it every frame for
                 // simplicity.
+                // FIXME: @Optimization Update camera matrices within
+                // the same command encoder.
                 renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
                 let mut render_pass = renderer.begin_render_pass();
 

@@ -297,7 +297,7 @@ mod tests {
             vec![Model {
                 name: tobj_model.name,
                 mesh: Mesh::from_triangle_faces_with_vertices_and_normals(
-                    vec![TriangleFace::new(0, 1, 2)],
+                    vec![TriangleFace::from_same_vertex_and_normal_index(0, 1, 2)],
                     vec![
                         Point3::new(6.0, 5.0, 4.0),
                         Point3::new(3.0, 2.0, 1.0),
@@ -334,7 +334,7 @@ mod tests {
                 Model {
                     name: tobj_model_1.name,
                     mesh: Mesh::from_triangle_faces_with_vertices_and_normals(
-                        vec![TriangleFace::new(0, 1, 2)],
+                        vec![TriangleFace::from_same_vertex_and_normal_index(0, 1, 2)],
                         vec![
                             Point3::new(6.0, 5.0, 4.0),
                             Point3::new(3.0, 2.0, 1.0),
@@ -350,7 +350,7 @@ mod tests {
                 Model {
                     name: tobj_model_2.name,
                     mesh: Mesh::from_triangle_faces_with_vertices_and_normals(
-                        vec![TriangleFace::new(0, 1, 2)],
+                        vec![TriangleFace::from_same_vertex_and_normal_index(0, 1, 2)],
                         vec![
                             Point3::new(16.0, 15.0, 14.0),
                             Point3::new(13.0, 12.0, 11.0),
@@ -610,7 +610,7 @@ mod tests {
             static ref MODELS: Vec<Model> = vec![Model {
                 name: "test".to_string(),
                 mesh: Mesh::from_triangle_faces_with_vertices_and_normals(
-                    vec![TriangleFace::new(0, 1, 2)],
+                    vec![TriangleFace::from_same_vertex_and_normal_index(0, 1, 2)],
                     vec![
                         Point3::new(6.0, 5.0, 4.0),
                         Point3::new(3.0, 2.0, 1.0),
