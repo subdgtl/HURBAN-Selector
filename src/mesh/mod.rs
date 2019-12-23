@@ -146,7 +146,7 @@ impl Mesh {
             NormalStrategy::Smooth => {
                 let faces_collection_smooth: Vec<_> = faces
                     .into_iter()
-                    .map(|(i1, i2, i3)| TriangleFace::new(i1, i2, i3))
+                    .map(|(i1, i2, i3)| TriangleFace::from_same_vertex_and_normal_index(i1, i2, i3))
                     .map(Face::from)
                     .collect();
 
