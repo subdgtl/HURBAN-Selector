@@ -790,13 +790,13 @@ mod tests {
             Point3::origin(),
             Rotation3::identity(),
             Vector3::new(1.0, 1.0, 1.0),
-            3,
-            3,
+            10,
+            10,
             NormalStrategy::Sharp,
         );
         let sphere_faces_one_flipped = sphere.faces().iter().enumerate().map(|(i, f)| match f {
             Face::Triangle(t) => {
-                if i == 1 {
+                if i == 5 {
                     t.to_reverted()
                 } else {
                     *t
@@ -816,20 +816,13 @@ mod tests {
         let sphere_with_synced_winding =
             synchronize_mesh_winding(&sphere_with_faces_one_flipped, &f2f);
 
-        println!("original {}", &sphere);
-        println!(
-            "sphere_with_faces_one_flipped {}",
-            &sphere_with_faces_one_flipped
-        );
-        println!("sphere_with_synced_winding {}", &sphere_with_synced_winding);
-
         // Can't use Eq here, because the algorithm can produce faces
         // in a different order than in the original
         assert!(!analysis::are_similar(
             &sphere,
             &sphere_with_faces_one_flipped,
         ));
-        assert!(analysis::are_similar(&sphere, &sphere_with_synced_winding));
+        assert!(analysis::are_similar(&sphere, &sphere_with_synced_winding,));
     }
 
     #[test]

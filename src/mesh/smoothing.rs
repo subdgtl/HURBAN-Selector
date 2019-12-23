@@ -715,7 +715,7 @@ mod tests {
         let test_mesh_correct = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces_correct.clone(),
             vertices_correct.clone(),
-            NormalStrategy::Smooth,
+            NormalStrategy::Sharp,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let (relaxed_mesh, _, _) = laplacian_smoothing(
@@ -836,7 +836,7 @@ mod tests {
         let v2f = topology::compute_vertex_to_face_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
 
-        let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f, NormalStrategy::Smooth)
+        let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f, NormalStrategy::Sharp)
             .expect("The mesh doesn't meet the loop subdivision prerequisites");
 
         insta::assert_json_snapshot!(
@@ -856,7 +856,7 @@ mod tests {
         let v2f = topology::compute_vertex_to_face_topology(&mesh);
         let f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
 
-        let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f, NormalStrategy::Smooth)
+        let subdivided_mesh = loop_subdivision(&mesh, &v2v, &f2f, NormalStrategy::Sharp)
             .expect("The mesh doesn't meet the loop subdivision prerequisites");
 
         insta::assert_json_snapshot!(
