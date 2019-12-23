@@ -540,7 +540,7 @@ mod tests {
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
-            NormalStrategy::Sharp,
+            NormalStrategy::Smooth,
         );
 
         let vertex_to_vertex_topology = topology::compute_vertex_to_vertex_topology(&mesh);
@@ -593,7 +593,7 @@ mod tests {
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
         let (relaxed_mesh, _, _) =
-            laplacian_smoothing(&mesh, &v2v, 0, &[], false, NormalStrategy::Smooth);
+            laplacian_smoothing(&mesh, &v2v, 0, &[], false, NormalStrategy::Sharp);
         assert_eq!(mesh, relaxed_mesh);
     }
 
@@ -603,12 +603,12 @@ mod tests {
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
             vertices,
-            NormalStrategy::Smooth,
+            NormalStrategy::Sharp,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
         let (relaxed_mesh, _, _) =
-            laplacian_smoothing(&mesh, &v2v, 1, &[], false, NormalStrategy::Smooth);
+            laplacian_smoothing(&mesh, &v2v, 1, &[], false, NormalStrategy::Sharp);
         insta::assert_json_snapshot!(
             "triple_torus_after_1_iteration_of_laplacian_smoothing",
             &relaxed_mesh
@@ -621,12 +621,12 @@ mod tests {
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
             vertices,
-            NormalStrategy::Smooth,
+            NormalStrategy::Sharp,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
         let (relaxed_mesh, _, _) =
-            laplacian_smoothing(&mesh, &v2v, 2, &[], false, NormalStrategy::Smooth);
+            laplacian_smoothing(&mesh, &v2v, 2, &[], false, NormalStrategy::Sharp);
         insta::assert_json_snapshot!(
             "triple_torus_after_2_iteration2_of_laplacian_smoothing",
             &relaxed_mesh
@@ -639,12 +639,12 @@ mod tests {
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
             vertices,
-            NormalStrategy::Smooth,
+            NormalStrategy::Sharp,
         );
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
 
         let (relaxed_mesh, _, _) =
-            laplacian_smoothing(&mesh, &v2v, 3, &[], false, NormalStrategy::Smooth);
+            laplacian_smoothing(&mesh, &v2v, 3, &[], false, NormalStrategy::Sharp);
         insta::assert_json_snapshot!(
             "triple_torus_after_3_iterations_of_laplacian_smoothing",
             &relaxed_mesh
@@ -657,7 +657,7 @@ mod tests {
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces.clone(),
             vertices.clone(),
-            NormalStrategy::Smooth,
+            NormalStrategy::Sharp,
         );
 
         let fixed_vertex_indices: Vec<u32> = vec![0, 1, 7, 8, 6];
@@ -666,7 +666,7 @@ mod tests {
         let test_mesh_correct = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces_correct.clone(),
             vertices_correct.clone(),
-            NormalStrategy::Smooth,
+            NormalStrategy::Sharp,
         );
 
         let v2v = topology::compute_vertex_to_vertex_topology(&mesh);
@@ -676,7 +676,7 @@ mod tests {
             50,
             &fixed_vertex_indices,
             false,
-            NormalStrategy::Smooth,
+            NormalStrategy::Sharp,
         );
 
         let relaxed_mesh_faces = relaxed_mesh.faces();
@@ -724,7 +724,7 @@ mod tests {
             50,
             &fixed_vertex_indices,
             false,
-            NormalStrategy::Smooth,
+            NormalStrategy::Sharp,
         );
 
         // The faces should be made of the same vertex indices (and they should
@@ -787,7 +787,7 @@ mod tests {
             255,
             &fixed_vertex_indices,
             true,
-            NormalStrategy::Smooth,
+            NormalStrategy::Sharp,
         );
 
         // The faces should be made of the same vertex indices (and they should
