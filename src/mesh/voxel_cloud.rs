@@ -580,6 +580,28 @@ impl VoxelCloud {
         }
     }
 
+    /// Computes a voxel position relative to the block start (relative
+    /// coordinate) from an index to the linear representation of the voxel
+    /// block.
+    ///
+    /// Returns None if out of bounds.
+    fn one_dimensional_to_relative_three_dimensional_coordinate(
+        &self,
+        one_dimensional: usize,
+    ) -> Option<Point3<i32>> {
+        if one_dimensional < self.voxel_map.len() {
+            let one_dimensional_i32 = cast_i32(one_dimensional);
+            let horizontal_area_i32 = cast_i32(self.block_dimensions.x * self.block_dimensions.y);
+            let x_dimension_i32 = cast_i32(self.block_dimensions.x);
+            let z = one_dimensional_i32 / horizontal_area_i32;
+            let y = (one_dimensional_i32 - z * horizontal_area_i32) / x_dimension_i32;
+            let x = one_dimensional_i32 % x_dimension_i32;
+            Some(Point3::new(x, y, z))
+        } else {
+            None
+        }
+    }
+
     /// Gets the index to the voxel map from absolute voxel coordinates
     /// (relative to the voxel space origin).
     ///
@@ -590,6 +612,19 @@ impl VoxelCloud {
     ) -> Option<usize> {
         let relative_coords = absolute_coords - self.block_start.coords;
         self.relative_three_dimensional_coordinate_to_one_dimensional(&relative_coords)
+    }
+
+    /// Computes a voxel position relative to the model space origin (absolute
+    /// coordinate) from an index to the linear representation of the voxel
+    /// block.
+    ///
+    /// Returns None if out of bounds.
+    fn one_dimensional_to_absolute_three_dimensional_coordinate(
+        &self,
+        one_dimensional: usize,
+    ) -> Option<Point3<i32>> {
+        self.one_dimensional_to_relative_three_dimensional_coordinate(one_dimensional)
+            .map(|relative| relative + self.block_start.coords)
     }
 
     /// Calculates the voxel-space coordinates of a voxel containing the input
