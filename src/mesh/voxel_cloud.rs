@@ -150,49 +150,67 @@ impl VoxelCloud {
 
     /// For each existing voxel turn on all neighbor voxels to grow (offset) the
     /// volumes stored in the voxel cloud.
-    pub fn grow_volume(&self) -> Self {
-        // If the voxels in the existing voxel cloud reach the boundaries of the
-        // block, it's needed to grow the block by 1 in each direction.
-        let new_block_start = self.block_start - Vector3::new(-1, -1, -1);
-
-        let new_block_dimensions = self.block_dimensions + Vector3::new(2, 2, 2);
-        let mut voxel_cloud = VoxelCloud::new(
-            &new_block_start,
-            &new_block_dimensions,
-            &self.voxel_dimensions,
-        );
-
+    ///
+    /// FIXME: This is not the most efficient way of doing this, but this
+    /// function will become obsolete with Distance field.
+    pub fn grow_volume(&mut self) {
         let neighbor_offsets = [
-            Vector3::new(1, 1, 1), //self
-            Vector3::new(0, 1, 1), //neighbors
-            Vector3::new(2, 1, 1),
-            Vector3::new(1, 0, 1),
-            Vector3::new(1, 2, 1),
-            Vector3::new(1, 1, 0),
-            Vector3::new(1, 1, 2),
+            Vector3::new(0, 0, 0),  //self
+            Vector3::new(-1, 0, 0), //neighbors
+            Vector3::new(1, 0, 0),
+            Vector3::new(0, -1, 0),
+            Vector3::new(0, 1, 0),
+            Vector3::new(0, 0, -1),
+            Vector3::new(0, 0, 1),
         ];
 
-        // Iterate through the existing voxel cloud.
-        for i in 0..self.voxel_map.len() {
-            // If the current voxel is on
-            if self.voxel_map[i] {
-                let voxel_coords = one_dimensional_to_relative_three_dimensional_coordinate(
-                    i,
-                    &self.block_dimensions,
-                    self.voxel_map.len(),
-                )
-                .expect("Out of bounds");
-                // set it to be on also in the new voxel cloud
-                // (everything is shifted by 1, 1, 1 because the start
-                // is shifted -1, -1, -1) as well as all its neighbors
-                for neighbor_offset in &neighbor_offsets {
-                    voxel_cloud
-                        .set_voxel_at_relative_coords(&(voxel_coords + neighbor_offset), true);
+        // If the voxels in the existing voxel cloud reach the boundaries of the
+        // block, it's needed to grow the block by 1 in each direction.
+        let grown_block_start = self.block_start - Vector3::new(1, 1, 1);
+        let grown_block_dimensions = self.block_dimensions + Vector3::new(2, 2, 2);
+
+        let original_voxel_map = self.voxel_map.clone();
+        let original_block_start = self.block_start.clone();
+        let original_block_dimensions = self.block_dimensions.clone();
+
+        self.block_start = grown_block_start;
+        self.block_dimensions = grown_block_dimensions;
+
+        let grown_voxel_map_len = cast_usize(
+            grown_block_dimensions.x * grown_block_dimensions.y * grown_block_dimensions.z,
+        );
+
+        // The original voxel map is shorter, therefore wipe it before resizing.
+        for v in self.voxel_map.iter_mut() {
+            *v = false;
+        }
+        self.voxel_map.resize(grown_voxel_map_len, false);
+
+        for grown_index in 0..self.voxel_map.len() {
+            let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
+                grown_index,
+                &grown_block_start,
+                &grown_block_dimensions,
+                grown_voxel_map_len,
+            )
+            .expect("Index out of bounds");
+
+            if let Some(original_index) = absolute_three_dimensional_coordinate_to_one_dimensional(
+                &absolute_coords,
+                &original_block_start,
+                &original_block_dimensions,
+            ) {
+                if original_voxel_map[original_index] {
+                    // set self an also its neighbors to be on
+                    for neighbor_offset in &neighbor_offsets {
+                        self.set_voxel_at_absolute_coords(
+                            &(absolute_coords + neighbor_offset),
+                            true,
+                        );
+                    }
                 }
             }
         }
-
-        voxel_cloud
     }
 
     /// Gets the state of a voxel defined in voxel coordinates relative to the
@@ -226,6 +244,7 @@ impl VoxelCloud {
 
     /// Sets the state of a voxel defined in voxel coordinates relative to the
     /// voxel block start.
+    #[allow(dead_code)]
     pub fn set_voxel_at_relative_coords(&mut self, relative_coords: &Point3<i32>, state: bool) {
         let index = relative_three_dimensional_coordinate_to_one_dimensional(
             relative_coords,
@@ -252,6 +271,98 @@ impl VoxelCloud {
     pub fn set_voxel_at_cartesian_coords(&mut self, point: &Point3<f32>, state: bool) {
         let voxel_coords = cartesian_to_absolute_voxel_coords(point, &self.voxel_dimensions);
         self.set_voxel_at_absolute_coords(&voxel_coords, state);
+    }
+
+    /// Resize the voxel cloud block to match new block start and block dimensions.
+    ///
+    /// This clips the outstanding parts of the original voxel cloud.
+    #[allow(dead_code)]
+    pub fn resize(
+        &mut self,
+        resized_block_start: &Point3<i32>,
+        resized_block_dimensions: &Vector3<u32>,
+    ) {
+        let original_voxel_map = self.voxel_map.clone();
+        let original_block_start = self.block_start.clone();
+        let original_block_dimensions = self.block_dimensions.clone();
+
+        self.block_start = *resized_block_start;
+        self.block_dimensions = *resized_block_dimensions;
+
+        let resized_voxel_map_len = cast_usize(
+            resized_block_dimensions.x * resized_block_dimensions.y * resized_block_dimensions.z,
+        );
+
+        self.voxel_map.resize(resized_voxel_map_len, false);
+
+        for resized_index in 0..self.voxel_map.len() {
+            let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
+                resized_index,
+                resized_block_start,
+                resized_block_dimensions,
+                resized_voxel_map_len,
+            )
+            .expect("Index out of bounds");
+
+            self.voxel_map[resized_index] =
+                match absolute_three_dimensional_coordinate_to_one_dimensional(
+                    &absolute_coords,
+                    &original_block_start,
+                    &original_block_dimensions,
+                ) {
+                    Some(original_index) => original_voxel_map[original_index],
+                    _ => false,
+                }
+        }
+    }
+
+    /// Resize the voxel cloud block to exactly fit the volumetric geometry.
+    /// Returns None for empty the voxel cloud.
+    #[allow(dead_code)]
+    pub fn shrink_to_fit(&mut self) {
+        let mut min: Vector3<i32> = Vector3::new(i32::MAX, i32::MAX, i32::MAX);
+        let mut max: Vector3<i32> = Vector3::new(i32::MIN, i32::MIN, i32::MIN);
+        for i in 0..self.voxel_map.len() {
+            if self.voxel_map[i] {
+                let relative_coords = one_dimensional_to_relative_three_dimensional_coordinate(
+                    i,
+                    &self.block_dimensions,
+                    self.voxel_map.len(),
+                )
+                .expect("Out of bounds");
+                if relative_coords.x < min.x {
+                    min.x = relative_coords.x;
+                }
+                if relative_coords.x > max.x {
+                    max.x = relative_coords.x;
+                }
+                if relative_coords.y < min.y {
+                    min.y = relative_coords.y;
+                }
+                if relative_coords.y > max.y {
+                    max.y = relative_coords.y;
+                }
+                if relative_coords.z < min.z {
+                    min.z = relative_coords.z;
+                }
+                if relative_coords.z > max.z {
+                    max.z = relative_coords.z;
+                }
+            }
+        }
+        // It's enough to check one of the values because if anything is found,
+        // all the values would change.
+        if min.x == i32::MAX {
+            let block_start = self.block_start;
+            self.resize(&block_start, &Vector3::zeros());
+        } else {
+            let block_dimensions = Vector3::new(
+                clamp_cast_i32_to_u32(max.x - min.x),
+                clamp_cast_i32_to_u32(max.y - min.y),
+                clamp_cast_i32_to_u32(max.z - min.z),
+            );
+            self.resize(&(self.block_start + min), &block_dimensions);
+        }
     }
 
     /// Calculates a simple triangulated welded mesh from the current state of
@@ -350,11 +461,11 @@ impl VoxelCloud {
         ];
 
         // Iterate through the voxel cloud
-        for i in 0..self.voxel_map.len() {
+        for (one_dimensional_coord, voxel) in self.voxel_map.iter().enumerate() {
             // If the current voxel is on
-            if self.voxel_map[i] {
+            if *voxel {
                 let voxel_coords = one_dimensional_to_relative_three_dimensional_coordinate(
-                    i,
+                    one_dimensional_coord,
                     &self.block_dimensions,
                     self.voxel_map.len(),
                 )
@@ -403,94 +514,6 @@ impl VoxelCloud {
             .min(self.voxel_dimensions.y.min(self.voxel_dimensions.z));
         // and weld naked edges
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
-    }
-
-    /// Resize the voxel cloud block to match new block start and block dimensions.
-    ///
-    /// This clips the outstanding parts of the original voxel cloud.
-    #[allow(dead_code)]
-    pub fn resize(
-        &self,
-        resized_block_start: &Point3<i32>,
-        resized_block_dimensions: &Vector3<u32>,
-    ) -> Self {
-        let mut resized_voxel_cloud = VoxelCloud::new(
-            resized_block_start,
-            resized_block_dimensions,
-            &self.voxel_dimensions,
-        );
-        let block_end = calculate_block_end(&self.block_start, &self.block_dimensions);
-        let resized_block_end = calculate_block_end(resized_block_start, resized_block_dimensions);
-        let min_point = Point3::new(
-            self.block_start.x.max(resized_block_start.x),
-            self.block_start.y.max(resized_block_start.y),
-            self.block_start.z.max(resized_block_start.z),
-        );
-        let max_point = Point3::new(
-            block_end.x.min(resized_block_end.x),
-            block_end.y.min(resized_block_end.y),
-            block_end.z.min(resized_block_end.z),
-        );
-
-        for abs_z in min_point.z..max_point.z {
-            for abs_y in min_point.y..max_point.y {
-                for abs_x in min_point.x..max_point.x {
-                    let abs_coords = Point3::new(abs_x, abs_y, abs_z);
-                    if let Some(true) = self.voxel_at_absolute_coords(&abs_coords) {
-                        resized_voxel_cloud.set_voxel_at_absolute_coords(&abs_coords, true);
-                    }
-                }
-            }
-        }
-        resized_voxel_cloud
-    }
-
-    /// Resize the voxel cloud block to exactly fit the volumetric geometry.
-    /// Returns None for empty the voxel cloud.
-    #[allow(dead_code)]
-    pub fn shrink_to_fit(&self) -> Self {
-        let mut min: Vector3<i32> = Vector3::new(i32::MAX, i32::MAX, i32::MAX);
-        let mut max: Vector3<i32> = Vector3::new(i32::MIN, i32::MIN, i32::MIN);
-        for i in 0..self.voxel_map.len() {
-            if self.voxel_map[i] {
-                let relative_coords = one_dimensional_to_relative_three_dimensional_coordinate(
-                    i,
-                    &self.block_dimensions,
-                    self.voxel_map.len(),
-                )
-                .expect("Out of bounds");
-                if relative_coords.x < min.x {
-                    min.x = relative_coords.x;
-                }
-                if relative_coords.x > max.x {
-                    max.x = relative_coords.x;
-                }
-                if relative_coords.y < min.y {
-                    min.y = relative_coords.y;
-                }
-                if relative_coords.y > max.y {
-                    max.y = relative_coords.y;
-                }
-                if relative_coords.z < min.z {
-                    min.z = relative_coords.z;
-                }
-                if relative_coords.z > max.z {
-                    max.z = relative_coords.z;
-                }
-            }
-        }
-        // It's enough to check one of the values because if anything is found,
-        // all the values would change.
-        if min.x == i32::MAX {
-            self.resize(&self.block_start, &Vector3::zeros())
-        } else {
-            let block_dimensions = Vector3::new(
-                clamp_cast_i32_to_u32(max.x - min.x),
-                clamp_cast_i32_to_u32(max.y - min.y),
-                clamp_cast_i32_to_u32(max.z - min.z),
-            );
-            self.resize(&(self.block_start + min), &block_dimensions)
-        }
     }
 }
 
