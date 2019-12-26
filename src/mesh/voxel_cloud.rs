@@ -1,9 +1,9 @@
-use std::f32;
 use std::iter;
+use std::{f32, i32};
 
 use nalgebra::{Point3, Vector2, Vector3};
 
-use crate::convert::{cast_i32, cast_u32, cast_usize};
+use crate::convert::{cast_i32, cast_u32, cast_usize, clamp_cast_i32_to_u32};
 use crate::geometry;
 use crate::mesh::analysis::BoundingBox;
 use crate::plane::Plane;
@@ -40,10 +40,6 @@ impl VoxelCloud {
         voxel_dimensions: &Vector3<f32>,
     ) -> Self {
         assert!(
-            block_dimensions.x > 0 && block_dimensions.y > 0 && block_dimensions.z > 0,
-            "One or more block dimensions are 0"
-        );
-        assert!(
             voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
             "One or more voxel dimensions are 0.0"
         );
@@ -58,6 +54,10 @@ impl VoxelCloud {
 
     /// Calculate a voxel cloud from an existing mesh.
     pub fn from_mesh(mesh: &Mesh, voxel_dimensions: &Vector3<f32>) -> Self {
+        assert!(
+            voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
+            "One or more voxel dimensions are 0.0"
+        );
         // Determine the needed block of voxel space.
         let b_box = BoundingBox::from_meshes(iter::once(mesh));
 
@@ -128,9 +128,29 @@ impl VoxelCloud {
         voxel_cloud
     }
 
+    #[allow(dead_code)]
+    pub fn block_start(&self) -> &Point3<i32> {
+        &self.block_start
+    }
+
+    #[allow(dead_code)]
+    pub fn block_dimensions(&self) -> &Vector3<u32> {
+        &self.block_dimensions
+    }
+
+    #[allow(dead_code)]
+    pub fn voxel_dimensions(&self) -> &Vector3<f32> {
+        &self.voxel_dimensions
+    }
+
+    #[allow(dead_code)]
+    pub fn voxel_map_len(&self) -> usize {
+        self.voxel_map.len()
+    }
+
     /// For each existing voxel turn on all neighbor voxels to grow (offset) the
     /// volumes stored in the voxel cloud.
-    pub fn grow(&self) -> Self {
+    pub fn grow_volume(&self) -> Self {
         // If the voxels in the existing voxel cloud reach the boundaries of the
         // block, it's needed to grow the block by 1 in each direction.
         let new_block_start = self.block_start - Vector3::new(-1, -1, -1);
@@ -142,36 +162,32 @@ impl VoxelCloud {
             &self.voxel_dimensions,
         );
 
-        // Iterate through the existing voxel cloud.
-        for z in 0..self.block_dimensions.z {
-            for y in 0..self.block_dimensions.y {
-                for x in 0..self.block_dimensions.x {
-                    let voxel_coords = Point3::new(cast_i32(x), cast_i32(y), cast_i32(z));
-                    let voxel_state = self
-                        .voxel_at_relative_coords(&voxel_coords)
-                        .expect("Voxel out of bounds.");
-                    // if the voxel is on
-                    if voxel_state {
-                        // set it to be on also in the new voxel cloud
-                        // (everything is shifted by 1, 1, 1 because the start
-                        // is shifted -1, -1, -1) as well as all its neighbors
-                        let neighbor_offsets = [
-                            Vector3::new(1, 1, 1), //self
-                            Vector3::new(0, 1, 1), //neighbors
-                            Vector3::new(2, 1, 1),
-                            Vector3::new(1, 0, 1),
-                            Vector3::new(1, 2, 1),
-                            Vector3::new(1, 1, 0),
-                            Vector3::new(1, 1, 2),
-                        ];
+        let neighbor_offsets = [
+            Vector3::new(1, 1, 1), //self
+            Vector3::new(0, 1, 1), //neighbors
+            Vector3::new(2, 1, 1),
+            Vector3::new(1, 0, 1),
+            Vector3::new(1, 2, 1),
+            Vector3::new(1, 1, 0),
+            Vector3::new(1, 1, 2),
+        ];
 
-                        for neighbor_offset in &neighbor_offsets {
-                            voxel_cloud.set_voxel_at_relative_coords(
-                                &(voxel_coords + neighbor_offset),
-                                true,
-                            );
-                        }
-                    }
+        // Iterate through the existing voxel cloud.
+        for i in 0..self.voxel_map.len() {
+            // If the current voxel is on
+            if self.voxel_map[i] {
+                let voxel_coords = one_dimensional_to_relative_three_dimensional_coordinate(
+                    i,
+                    &self.block_dimensions,
+                    self.voxel_map.len(),
+                )
+                .expect("Out of bounds");
+                // set it to be on also in the new voxel cloud
+                // (everything is shifted by 1, 1, 1 because the start
+                // is shifted -1, -1, -1) as well as all its neighbors
+                for neighbor_offset in &neighbor_offsets {
+                    voxel_cloud
+                        .set_voxel_at_relative_coords(&(voxel_coords + neighbor_offset), true);
                 }
             }
         }
@@ -182,47 +198,59 @@ impl VoxelCloud {
     /// Gets the state of a voxel defined in voxel coordinates relative to the
     /// voxel block start.
     pub fn voxel_at_relative_coords(&self, relative_coords: &Point3<i32>) -> Option<bool> {
-        self.relative_three_dimensional_coordinate_to_one_dimensional(relative_coords)
-            .map(|index| self.voxel_map[index])
+        relative_three_dimensional_coordinate_to_one_dimensional(
+            relative_coords,
+            &self.block_dimensions,
+        )
+        .map(|index| self.voxel_map[index])
     }
 
     /// Gets the state of a voxel defined in absolute voxel coordinates
     /// (relative to the voxel space origin).
     pub fn voxel_at_absolute_coords(&self, absolute_coords: &Point3<i32>) -> Option<bool> {
-        self.absolute_three_dimensional_coordinate_to_one_dimensional(absolute_coords)
-            .map(|index| self.voxel_map[index])
+        absolute_three_dimensional_coordinate_to_one_dimensional(
+            absolute_coords,
+            &self.block_start,
+            &self.block_dimensions,
+        )
+        .map(|index| self.voxel_map[index])
     }
 
     /// Gets the state of a voxel containing the input point defined in model
     /// space coordinates.
     #[allow(dead_code)]
     pub fn voxel_at_cartesian_coords(&self, point: &Point3<f32>) -> Option<bool> {
-        let voxel_coords = self.cartesian_to_absolute_voxel_coords(point);
+        let voxel_coords = cartesian_to_absolute_voxel_coords(point, &self.voxel_dimensions);
         self.voxel_at_absolute_coords(&voxel_coords)
     }
 
     /// Sets the state of a voxel defined in voxel coordinates relative to the
     /// voxel block start.
     pub fn set_voxel_at_relative_coords(&mut self, relative_coords: &Point3<i32>, state: bool) {
-        let index = self
-            .relative_three_dimensional_coordinate_to_one_dimensional(relative_coords)
-            .expect("Coordinates out of bounds");
+        let index = relative_three_dimensional_coordinate_to_one_dimensional(
+            relative_coords,
+            &self.block_dimensions,
+        )
+        .expect("Coordinates out of bounds");
         self.voxel_map[cast_usize(index)] = state;
     }
 
     /// Sets the state of a voxel defined in absolute voxel coordinates
     /// (relative to the voxel space origin).
     pub fn set_voxel_at_absolute_coords(&mut self, absolute_coords: &Point3<i32>, state: bool) {
-        let index = self
-            .absolute_three_dimensional_coordinate_to_one_dimensional(absolute_coords)
-            .expect("Coordinates out of bounds");
+        let index = absolute_three_dimensional_coordinate_to_one_dimensional(
+            absolute_coords,
+            &self.block_start,
+            &self.block_dimensions,
+        )
+        .expect("Coordinates out of bounds");
         self.voxel_map[cast_usize(index)] = state;
     }
 
     /// Sets the state of a voxel containing the input point defined in model
     /// space coordinates.
     pub fn set_voxel_at_cartesian_coords(&mut self, point: &Point3<f32>, state: bool) {
-        let voxel_coords = self.cartesian_to_absolute_voxel_coords(point);
+        let voxel_coords = cartesian_to_absolute_voxel_coords(point, &self.voxel_dimensions);
         self.set_voxel_at_absolute_coords(&voxel_coords, state);
     }
 
@@ -233,6 +261,13 @@ impl VoxelCloud {
     /// There is also a high risk of generating a non-manifold mesh if some
     /// voxels touch only diagonally.
     pub fn to_mesh(&self) -> Option<Mesh> {
+        if self.block_dimensions.x == 0
+            || self.block_dimensions.y == 0
+            || self.block_dimensions.z == 0
+        {
+            return None;
+        }
+
         // A collection of rectangular meshes (two triangles) defining an outer
         // envelope of volumes stored in the voxel cloud
         let mut plane_meshes: Vec<Mesh> = Vec::new();
@@ -315,44 +350,46 @@ impl VoxelCloud {
         ];
 
         // Iterate through the voxel cloud
-        for z in 0..self.block_dimensions.z {
-            for y in 0..self.block_dimensions.y {
-                for x in 0..self.block_dimensions.x {
-                    // If the current voxel is on
-                    let voxel_coords = Point3::new(cast_i32(x), cast_i32(y), cast_i32(z));
-                    let voxel_state = self
-                        .voxel_at_relative_coords(&voxel_coords)
-                        .expect("Voxel out of bounds");
-                    if voxel_state {
-                        // calculate the position of its center in model space coordinates
-                        let voxel_center = self.relative_voxel_to_cartesian_coords(&voxel_coords);
-                        // and check if there is any voxel around it
-                        for helper in &neighbor_helpers {
-                            match self.voxel_at_relative_coords(
-                                &(voxel_coords + helper.direction_to_neighbor),
-                            ) {
-                                // if there isn't or if the current voxel is on the
-                                // boundary of the voxel space block
-                                Some(false) | None => {
-                                    // add a horizontal rectangle
-                                    plane_meshes.push(primitive::create_mesh_plane(
-                                        Plane::from_origin_and_plane(
-                                            // above the voxel center half way the height of the voxel
-                                            &(voxel_center + helper.direction_to_wall),
-                                            // align it properly
-                                            &helper.plane,
-                                        ),
-                                        // and set its size to match the
-                                        // dimensions of the top side of a voxel
-                                        helper.voxel_dimensions,
-                                    ));
-                                }
-                                // if there is a neighbor above the current voxel,
-                                // it means no boundary side of the voxel box should
-                                // be materialized
-                                _ => {}
-                            }
+        for i in 0..self.voxel_map.len() {
+            // If the current voxel is on
+            if self.voxel_map[i] {
+                let voxel_coords = one_dimensional_to_relative_three_dimensional_coordinate(
+                    i,
+                    &self.block_dimensions,
+                    self.voxel_map.len(),
+                )
+                .expect("Out of bounds");
+                // calculate the position of its center in model space coordinates
+                let voxel_center = relative_voxel_to_cartesian_coords(
+                    &voxel_coords,
+                    &self.block_start,
+                    &self.voxel_dimensions,
+                );
+                // and check if there is any voxel around it
+                for helper in &neighbor_helpers {
+                    match self
+                        .voxel_at_relative_coords(&(voxel_coords + helper.direction_to_neighbor))
+                    {
+                        // if there isn't or if the current voxel is on the
+                        // boundary of the voxel space block
+                        Some(false) | None => {
+                            // add a horizontal rectangle
+                            plane_meshes.push(primitive::create_mesh_plane(
+                                Plane::from_origin_and_plane(
+                                    // above the voxel center half way the height of the voxel
+                                    &(voxel_center + helper.direction_to_wall),
+                                    // align it properly
+                                    &helper.plane,
+                                ),
+                                // and set its size to match the
+                                // dimensions of the top side of a voxel
+                                helper.voxel_dimensions,
+                            ));
                         }
+                        // if there is a neighbor above the current voxel,
+                        // it means no boundary side of the voxel box should
+                        // be materialized
+                        _ => {}
                     }
                 }
             }
@@ -372,7 +409,7 @@ impl VoxelCloud {
     ///
     /// This clips the outstanding parts of the original voxel cloud.
     #[allow(dead_code)]
-    pub fn resize_from_start_and_dimensions(
+    pub fn resize(
         &self,
         resized_block_start: &Point3<i32>,
         resized_block_dimensions: &Vector3<u32>,
@@ -382,8 +419,8 @@ impl VoxelCloud {
             resized_block_dimensions,
             &self.voxel_dimensions,
         );
-        let block_end = self.block_end();
-        let resized_block_end = resized_voxel_cloud.block_end();
+        let block_end = calculate_block_end(&self.block_start, &self.block_dimensions);
+        let resized_block_end = calculate_block_end(resized_block_start, resized_block_dimensions);
         let min_point = Point3::new(
             self.block_start.x.max(resized_block_start.x),
             self.block_start.y.max(resized_block_start.y),
@@ -408,288 +445,215 @@ impl VoxelCloud {
         resized_voxel_cloud
     }
 
-    /// Resize the voxel cloud block by the specified offset. The offset is
-    /// positive in the direction outwards from the current block boundaries.
-    ///
-    /// This clips the outstanding parts of the original voxel cloud.
-    #[allow(dead_code)]
-    pub fn resize_from_offsets(
-        &self,
-        top_offset: i32,
-        right_offset: i32,
-        bottom_offset: i32,
-        left_offset: i32,
-        front_offset: i32,
-        rear_offset: i32,
-    ) -> Self {
-        let x_dimension = cast_i32(self.block_dimensions.x) + right_offset;
-        let y_dimension = cast_i32(self.block_dimensions.y) + rear_offset;
-        let z_dimension = cast_i32(self.block_dimensions.z) + top_offset;
-        assert!(
-            x_dimension > 0 && y_dimension > 0 && z_dimension > 0,
-            "Block dimensions can't be less than 1"
-        );
-
-        let resized_block_dimensions = Vector3::new(
-            cast_u32(x_dimension),
-            cast_u32(y_dimension),
-            cast_u32(z_dimension),
-        );
-
-        let start_offset = Vector3::new(left_offset, front_offset, bottom_offset);
-        let resized_block_start = self.block_start - start_offset;
-        self.resize_from_start_and_dimensions(&resized_block_start, &resized_block_dimensions)
-    }
-
     /// Resize the voxel cloud block to exactly fit the volumetric geometry.
     /// Returns None for empty the voxel cloud.
     #[allow(dead_code)]
-    pub fn shrink_to_fit(&self) -> Option<Self> {
-        // Scan left to right to find the first voxel
-        if let Some(left_offset) = (0..self.block_dimensions.x).find(|x| {
-            (0..self.block_dimensions.y).any(|y| {
-                (0..self.block_dimensions.z).any(|z| {
-                    match self.voxel_at_relative_coords(&Point3::new(
-                        cast_i32(*x),
-                        cast_i32(y),
-                        cast_i32(z),
-                    )) {
-                        Some(true) => true,
-                        _ => false,
-                    }
-                })
-            })
-        }) {
-            // Scan right to left to find the first voxel
-            if let Some(right_offset) = (self.block_dimensions.x..0).find(|x| {
-                (0..self.block_dimensions.y).any(|y| {
-                    (0..self.block_dimensions.z).any(|z| {
-                        match self.voxel_at_relative_coords(&Point3::new(
-                            cast_i32(*x),
-                            cast_i32(y),
-                            cast_i32(z),
-                        )) {
-                            Some(true) => true,
-                            _ => false,
-                        }
-                    })
-                })
-            }) {
-                // Scan front to back to find the first voxel
-                if let Some(front_offset) = (0..self.block_dimensions.y).find(|y| {
-                    (0..self.block_dimensions.x).any(|x| {
-                        (0..self.block_dimensions.z).any(|z| {
-                            match self.voxel_at_relative_coords(&Point3::new(
-                                cast_i32(x),
-                                cast_i32(*y),
-                                cast_i32(z),
-                            )) {
-                                Some(true) => true,
-                                _ => false,
-                            }
-                        })
-                    })
-                }) {
-                    // Scan back to front to find the first voxel
-                    if let Some(rear_offset) = (self.block_dimensions.y..0).find(|y| {
-                        (0..self.block_dimensions.x).any(|x| {
-                            (0..self.block_dimensions.z).any(|z| {
-                                match self.voxel_at_relative_coords(&Point3::new(
-                                    cast_i32(x),
-                                    cast_i32(*y),
-                                    cast_i32(z),
-                                )) {
-                                    Some(true) => true,
-                                    _ => false,
-                                }
-                            })
-                        })
-                    }) {
-                        // Scan bottom to top to find the first voxel
-                        if let Some(bottom_offset) = (0..self.block_dimensions.z).find(|z| {
-                            (0..self.block_dimensions.x).any(|x| {
-                                (0..self.block_dimensions.y).any(|y| {
-                                    match self.voxel_at_relative_coords(&Point3::new(
-                                        cast_i32(x),
-                                        cast_i32(y),
-                                        cast_i32(*z),
-                                    )) {
-                                        Some(true) => true,
-                                        _ => false,
-                                    }
-                                })
-                            })
-                        }) {
-                            // Scan top to bottom to find the first voxel
-                            if let Some(top_offset) = (self.block_dimensions.z..0).find(|z| {
-                                (0..self.block_dimensions.x).any(|x| {
-                                    (0..self.block_dimensions.y).any(|y| {
-                                        match self.voxel_at_relative_coords(&Point3::new(
-                                            cast_i32(x),
-                                            cast_i32(y),
-                                            cast_i32(*z),
-                                        )) {
-                                            Some(true) => true,
-                                            _ => false,
-                                        }
-                                    })
-                                })
-                            }) {
-                                // The offset for resizing is positive outwards.
-                                // Here we shrink inwards, hence the negative
-                                // values.
-                                return Some(self.resize_from_offsets(
-                                    -cast_i32(top_offset),
-                                    -cast_i32(right_offset),
-                                    -cast_i32(bottom_offset),
-                                    -cast_i32(left_offset),
-                                    -cast_i32(front_offset),
-                                    -cast_i32(rear_offset),
-                                ));
-                            }
-                        }
-                    }
+    pub fn shrink_to_fit(&self) -> Self {
+        let mut min: Vector3<i32> = Vector3::new(i32::MAX, i32::MAX, i32::MAX);
+        let mut max: Vector3<i32> = Vector3::new(i32::MIN, i32::MIN, i32::MIN);
+        for i in 0..self.voxel_map.len() {
+            if self.voxel_map[i] {
+                let relative_coords = one_dimensional_to_relative_three_dimensional_coordinate(
+                    i,
+                    &self.block_dimensions,
+                    self.voxel_map.len(),
+                )
+                .expect("Out of bounds");
+                if relative_coords.x < min.x {
+                    min.x = relative_coords.x;
+                }
+                if relative_coords.x > max.x {
+                    max.x = relative_coords.x;
+                }
+                if relative_coords.y < min.y {
+                    min.y = relative_coords.y;
+                }
+                if relative_coords.y > max.y {
+                    max.y = relative_coords.y;
+                }
+                if relative_coords.z < min.z {
+                    min.z = relative_coords.z;
+                }
+                if relative_coords.z > max.z {
+                    max.z = relative_coords.z;
                 }
             }
         }
-        // If no voxel found in the cloud, return None
+        // It's enough to check one of the values because if anything is found,
+        // all the values would change.
+        if min.x == i32::MAX {
+            self.resize(&self.block_start, &Vector3::zeros())
+        } else {
+            let block_dimensions = Vector3::new(
+                clamp_cast_i32_to_u32(max.x - min.x),
+                clamp_cast_i32_to_u32(max.y - min.y),
+                clamp_cast_i32_to_u32(max.z - min.z),
+            );
+            self.resize(&(self.block_start + min), &block_dimensions)
+        }
+    }
+}
+
+/// Computes an index to the linear representation of the voxel block from
+/// voxel coordinates relative to the voxel space block start.
+///
+/// Returns None if out of bounds.
+fn relative_three_dimensional_coordinate_to_one_dimensional(
+    relative_coords: &Point3<i32>,
+    block_dimensions: &Vector3<u32>,
+) -> Option<usize> {
+    if relative_coords
+        .iter()
+        .enumerate()
+        .all(|(i, coord)| *coord >= 0 && *coord < cast_i32(block_dimensions[i]))
+    {
+        let index = relative_coords.z * cast_i32(block_dimensions.x) * cast_i32(block_dimensions.y)
+            + relative_coords.y * cast_i32(block_dimensions.x)
+            + relative_coords.x;
+        Some(cast_usize(index))
+    } else {
         None
     }
+}
 
-    /// Computes an index to the linear representation of the voxel block from
-    /// voxel coordinates relative to the voxel space block start.
-    ///
-    /// Returns None if out of bounds.
-    fn relative_three_dimensional_coordinate_to_one_dimensional(
-        &self,
-        relative_coords: &Point3<i32>,
-    ) -> Option<usize> {
-        if relative_coords
-            .iter()
-            .enumerate()
-            .all(|(i, coord)| *coord >= 0 && *coord < cast_i32(self.block_dimensions[i]))
-        {
-            let index = relative_coords.z
-                * cast_i32(self.block_dimensions.x)
-                * cast_i32(self.block_dimensions.y)
-                + relative_coords.y * cast_i32(self.block_dimensions.x)
-                + relative_coords.x;
-            Some(cast_usize(index))
-        } else {
-            None
-        }
+/// Computes a voxel position relative to the block start (relative
+/// coordinate) from an index to the linear representation of the voxel
+/// block.
+///
+/// Returns None if out of bounds.
+fn one_dimensional_to_relative_three_dimensional_coordinate(
+    one_dimensional: usize,
+    block_dimensions: &Vector3<u32>,
+    voxel_map_len: usize,
+) -> Option<Point3<i32>> {
+    if one_dimensional < voxel_map_len {
+        let one_dimensional_i32 = cast_i32(one_dimensional);
+        let horizontal_area_i32 = cast_i32(block_dimensions.x * block_dimensions.y);
+        let x_dimension_i32 = cast_i32(block_dimensions.x);
+        let z = one_dimensional_i32 / horizontal_area_i32;
+        let y = (one_dimensional_i32 % horizontal_area_i32) / x_dimension_i32;
+        let x = one_dimensional_i32 % x_dimension_i32;
+        Some(Point3::new(x, y, z))
+    } else {
+        None
     }
+}
 
-    /// Computes a voxel position relative to the block start (relative
-    /// coordinate) from an index to the linear representation of the voxel
-    /// block.
-    ///
-    /// Returns None if out of bounds.
-    fn one_dimensional_to_relative_three_dimensional_coordinate(
-        &self,
-        one_dimensional: usize,
-    ) -> Option<Point3<i32>> {
-        if one_dimensional < self.voxel_map.len() {
-            let one_dimensional_i32 = cast_i32(one_dimensional);
-            let horizontal_area_i32 = cast_i32(self.block_dimensions.x * self.block_dimensions.y);
-            let x_dimension_i32 = cast_i32(self.block_dimensions.x);
-            let z = one_dimensional_i32 / horizontal_area_i32;
-            let y = (one_dimensional_i32 - z * horizontal_area_i32) / x_dimension_i32;
-            let x = one_dimensional_i32 % x_dimension_i32;
-            Some(Point3::new(x, y, z))
-        } else {
-            None
-        }
-    }
+/// Gets the index to the voxel map from absolute voxel coordinates
+/// (relative to the voxel space origin).
+///
+/// Returns None if out of bounds.
+fn absolute_three_dimensional_coordinate_to_one_dimensional(
+    absolute_coords: &Point3<i32>,
+    block_start: &Point3<i32>,
+    block_dimensions: &Vector3<u32>,
+) -> Option<usize> {
+    let relative_coords = absolute_coords - block_start.coords;
+    relative_three_dimensional_coordinate_to_one_dimensional(&relative_coords, block_dimensions)
+}
 
-    /// Gets the index to the voxel map from absolute voxel coordinates
-    /// (relative to the voxel space origin).
-    ///
-    /// Returns None if out of bounds.
-    fn absolute_three_dimensional_coordinate_to_one_dimensional(
-        &self,
-        absolute_coords: &Point3<i32>,
-    ) -> Option<usize> {
-        let relative_coords = absolute_coords - self.block_start.coords;
-        self.relative_three_dimensional_coordinate_to_one_dimensional(&relative_coords)
-    }
+/// Computes a voxel position relative to the model space origin (absolute
+/// coordinate) from an index to the linear representation of the voxel
+/// block.
+///
+/// Returns None if out of bounds.
+#[allow(dead_code)]
+fn one_dimensional_to_absolute_three_dimensional_coordinate(
+    one_dimensional: usize,
+    block_start: &Point3<i32>,
+    block_dimensions: &Vector3<u32>,
+    voxel_map_len: usize,
+) -> Option<Point3<i32>> {
+    one_dimensional_to_relative_three_dimensional_coordinate(
+        one_dimensional,
+        block_dimensions,
+        voxel_map_len,
+    )
+    .map(|relative| relative + block_start.coords)
+}
 
-    /// Computes a voxel position relative to the model space origin (absolute
-    /// coordinate) from an index to the linear representation of the voxel
-    /// block.
-    ///
-    /// Returns None if out of bounds.
-    fn one_dimensional_to_absolute_three_dimensional_coordinate(
-        &self,
-        one_dimensional: usize,
-    ) -> Option<Point3<i32>> {
-        self.one_dimensional_to_relative_three_dimensional_coordinate(one_dimensional)
-            .map(|relative| relative + self.block_start.coords)
-    }
+/// Calculates the voxel-space coordinates of a voxel containing the input
+/// point.
+fn cartesian_to_absolute_voxel_coords(
+    point: &Point3<f32>,
+    voxel_dimensions: &Vector3<f32>,
+) -> Point3<i32> {
+    Point3::new(
+        (point.x / voxel_dimensions.x).round() as i32,
+        (point.y / voxel_dimensions.y).round() as i32,
+        (point.z / voxel_dimensions.z).round() as i32,
+    )
+}
 
-    /// Calculates the voxel-space coordinates of a voxel containing the input
-    /// point.
-    fn cartesian_to_absolute_voxel_coords(&self, point: &Point3<f32>) -> Point3<i32> {
-        Point3::new(
-            (point.x / self.voxel_dimensions.x).round() as i32,
-            (point.y / self.voxel_dimensions.y).round() as i32,
-            (point.z / self.voxel_dimensions.z).round() as i32,
-        )
-    }
+/// Calculates the voxel-space coordinates of a voxel containing the input
+/// point.
+#[allow(dead_code)]
+fn cartesian_to_relative_voxel_coords(
+    point: &Point3<f32>,
+    block_start: &Point3<i32>,
+    voxel_dimensions: Vector3<f32>,
+) -> Point3<i32> {
+    Point3::new(
+        (point.x / voxel_dimensions.x).round() as i32 - block_start.x,
+        (point.y / voxel_dimensions.y).round() as i32 - block_start.y,
+        (point.z / voxel_dimensions.z).round() as i32 - block_start.z,
+    )
+}
 
-    /// Calculates the voxel-space coordinates of a voxel containing the input
-    /// point.
-    #[allow(dead_code)]
-    fn cartesian_to_relative_voxel_coords(&self, point: &Point3<f32>) -> Point3<i32> {
-        Point3::new(
-            (point.x / self.voxel_dimensions.x).round() as i32 - self.block_start.x,
-            (point.y / self.voxel_dimensions.y).round() as i32 - self.block_start.y,
-            (point.z / self.voxel_dimensions.z).round() as i32 - self.block_start.z,
-        )
-    }
+/// Calculates the center of a voxel in model-space coordinates from
+/// absolute voxel coordinates (relative to the voxel space origin).
+#[allow(dead_code)]
+fn absolute_voxel_to_cartesian_coords(
+    absolute_coords: &Point3<i32>,
+    voxel_dimensions: Vector3<f32>,
+) -> Point3<f32> {
+    Point3::new(
+        absolute_coords.x as f32 * voxel_dimensions.x,
+        absolute_coords.y as f32 * voxel_dimensions.y,
+        absolute_coords.z as f32 * voxel_dimensions.z,
+    )
+}
 
-    /// Calculates the center of a voxel in model-space coordinates from
-    /// absolute voxel coordinates (relative to the voxel space origin).
-    #[allow(dead_code)]
-    fn absolute_voxel_to_cartesian_coords(&self, absolute_coords: &Point3<i32>) -> Point3<f32> {
-        Point3::new(
-            absolute_coords.x as f32 * self.voxel_dimensions.x,
-            absolute_coords.y as f32 * self.voxel_dimensions.y,
-            absolute_coords.z as f32 * self.voxel_dimensions.z,
-        )
-    }
+/// Calculates the center of a voxel in model-space coordinates from voxel
+/// coordinates relative to the voxel block start.
+fn relative_voxel_to_cartesian_coords(
+    relative_coords: &Point3<i32>,
+    block_start: &Point3<i32>,
+    voxel_dimensions: &Vector3<f32>,
+) -> Point3<f32> {
+    Point3::new(
+        (relative_coords.x + block_start.x) as f32 * voxel_dimensions.x,
+        (relative_coords.y + block_start.y) as f32 * voxel_dimensions.y,
+        (relative_coords.z + block_start.z) as f32 * voxel_dimensions.z,
+    )
+}
 
-    /// Calculates the center of a voxel in model-space coordinates from voxel
-    /// coordinates relative to the voxel block start.
-    fn relative_voxel_to_cartesian_coords(&self, relative_coords: &Point3<i32>) -> Point3<f32> {
-        Point3::new(
-            (relative_coords.x + self.block_start.x) as f32 * self.voxel_dimensions.x,
-            (relative_coords.y + self.block_start.y) as f32 * self.voxel_dimensions.y,
-            (relative_coords.z + self.block_start.z) as f32 * self.voxel_dimensions.z,
-        )
-    }
+/// Converts relative voxel coordinates into relative voxel coordinates
+#[allow(dead_code)]
+fn absolute_to_relative_voxel_coords(
+    absolute_coords: &Point3<i32>,
+    block_start: &Point3<i32>,
+) -> Point3<i32> {
+    absolute_coords - block_start.coords
+}
 
-    /// Converts absolute voxel coordinates into relative voxel coordinates
-    #[allow(dead_code)]
-    fn absolute_to_relative_voxel_coords(&self, absolute_coords: &Point3<i32>) -> Point3<i32> {
-        absolute_coords - self.block_start.coords
-    }
+/// Converts absolute voxel coordinates into relative voxel coordinates
+#[allow(dead_code)]
+fn relative_to_absolute_voxel_coords(
+    relative_coords: &Point3<i32>,
+    block_start: &Point3<i32>,
+) -> Point3<i32> {
+    relative_coords + block_start.coords
+}
 
-    /// Converts absolute voxel coordinates into relative voxel coordinates
-    #[allow(dead_code)]
-    fn relative_to_absolute_voxel_coords(&self, relative_coords: &Point3<i32>) -> Point3<i32> {
-        relative_coords + self.block_start.coords
-    }
-
-    /// Calculates the absolute coordinates of the block end
-    #[allow(dead_code)]
-    fn block_end(&self) -> Point3<i32> {
-        Point3::new(
-            self.block_start.x + cast_i32(self.block_dimensions.x),
-            self.block_start.y + cast_i32(self.block_dimensions.y),
-            self.block_start.z + cast_i32(self.block_dimensions.z),
-        )
-    }
+/// Calculates the absolute coordinates of the block end
+#[allow(dead_code)]
+fn calculate_block_end(block_start: &Point3<i32>, block_dimensions: &Vector3<u32>) -> Point3<i32> {
+    Point3::new(
+        block_start.x + cast_i32(block_dimensions.x),
+        block_start.y + cast_i32(block_dimensions.y),
+        block_start.z + cast_i32(block_dimensions.z),
+    )
 }
 
 #[cfg(test)]
@@ -764,5 +728,34 @@ mod tests {
         let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5));
 
         insta::assert_json_snapshot!("sphere_after_voxelization", &voxel_cloud);
+    }
+
+    #[test]
+    fn test_voxel_cloud_three_dimensional_to_one_dimensional_and_back_relative() {
+        let voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(3, 4, 5),
+            &Vector3::new(1.5, 2.5, 3.5),
+        );
+        for z in 0..voxel_cloud.block_dimensions.z {
+            for y in 0..voxel_cloud.block_dimensions.y {
+                for x in 0..voxel_cloud.block_dimensions.x {
+                    let relative_position = Point3::new(cast_i32(x), cast_i32(y), cast_i32(z));
+                    let one_dimensional = relative_three_dimensional_coordinate_to_one_dimensional(
+                        &relative_position,
+                        voxel_cloud.block_dimensions(),
+                    )
+                    .unwrap();
+                    let three_dimensional =
+                        one_dimensional_to_relative_three_dimensional_coordinate(
+                            one_dimensional,
+                            voxel_cloud.block_dimensions(),
+                            voxel_cloud.voxel_map_len(),
+                        )
+                        .unwrap();
+                    assert_eq!(relative_position, three_dimensional);
+                }
+            }
+        }
     }
 }
