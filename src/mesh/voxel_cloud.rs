@@ -170,8 +170,8 @@ impl VoxelCloud {
         let grown_block_dimensions = self.block_dimensions + Vector3::new(2, 2, 2);
 
         let original_voxel_map = self.voxel_map.clone();
-        let original_block_start = self.block_start.clone();
-        let original_block_dimensions = self.block_dimensions.clone();
+        let original_block_start = self.block_start;
+        let original_block_dimensions = self.block_dimensions;
 
         self.block_start = grown_block_start;
         self.block_dimensions = grown_block_dimensions;
@@ -283,8 +283,8 @@ impl VoxelCloud {
         resized_block_dimensions: &Vector3<u32>,
     ) {
         let original_voxel_map = self.voxel_map.clone();
-        let original_block_start = self.block_start.clone();
-        let original_block_dimensions = self.block_dimensions.clone();
+        let original_block_start = self.block_start;
+        let original_block_dimensions = self.block_dimensions;
 
         self.block_start = *resized_block_start;
         self.block_dimensions = *resized_block_dimensions;
