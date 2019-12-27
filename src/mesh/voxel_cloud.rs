@@ -191,7 +191,6 @@ impl VoxelCloud {
                 grown_index,
                 &grown_block_start,
                 &grown_block_dimensions,
-                grown_voxel_map_len,
             )
             .expect("Index out of bounds");
 
@@ -225,6 +224,7 @@ impl VoxelCloud {
 
     /// Gets the state of a voxel defined in absolute voxel coordinates
     /// (relative to the voxel space origin).
+    #[allow(dead_code)]
     pub fn voxel_at_absolute_coords(&self, absolute_coords: &Point3<i32>) -> Option<bool> {
         absolute_three_dimensional_coordinate_to_one_dimensional(
             absolute_coords,
@@ -300,7 +300,6 @@ impl VoxelCloud {
                 resized_index,
                 resized_block_start,
                 resized_block_dimensions,
-                resized_voxel_map_len,
             )
             .expect("Index out of bounds");
 
@@ -327,7 +326,6 @@ impl VoxelCloud {
                 let relative_coords = one_dimensional_to_relative_three_dimensional_coordinate(
                     i,
                     &self.block_dimensions,
-                    self.voxel_map.len(),
                 )
                 .expect("Out of bounds");
                 if relative_coords.x < min.x {
@@ -467,7 +465,6 @@ impl VoxelCloud {
                 let voxel_coords = one_dimensional_to_relative_three_dimensional_coordinate(
                     one_dimensional_coord,
                     &self.block_dimensions,
-                    self.voxel_map.len(),
                 )
                 .expect("Out of bounds");
                 // calculate the position of its center in model space coordinates
@@ -547,8 +544,8 @@ fn relative_three_dimensional_coordinate_to_one_dimensional(
 fn one_dimensional_to_relative_three_dimensional_coordinate(
     one_dimensional: usize,
     block_dimensions: &Vector3<u32>,
-    voxel_map_len: usize,
 ) -> Option<Point3<i32>> {
+    let voxel_map_len = cast_usize(block_dimensions.x * block_dimensions.y * block_dimensions.z);
     if one_dimensional < voxel_map_len {
         let one_dimensional_i32 = cast_i32(one_dimensional);
         let horizontal_area_i32 = cast_i32(block_dimensions.x * block_dimensions.y);
@@ -580,19 +577,13 @@ fn absolute_three_dimensional_coordinate_to_one_dimensional(
 /// block.
 ///
 /// Returns None if out of bounds.
-#[allow(dead_code)]
 fn one_dimensional_to_absolute_three_dimensional_coordinate(
     one_dimensional: usize,
     block_start: &Point3<i32>,
     block_dimensions: &Vector3<u32>,
-    voxel_map_len: usize,
 ) -> Option<Point3<i32>> {
-    one_dimensional_to_relative_three_dimensional_coordinate(
-        one_dimensional,
-        block_dimensions,
-        voxel_map_len,
-    )
-    .map(|relative| relative + block_start.coords)
+    one_dimensional_to_relative_three_dimensional_coordinate(one_dimensional, block_dimensions)
+        .map(|relative| relative + block_start.coords)
 }
 
 /// Calculates the voxel-space coordinates of a voxel containing the input
@@ -601,6 +592,12 @@ fn cartesian_to_absolute_voxel_coords(
     point: &Point3<f32>,
     voxel_dimensions: &Vector3<f32>,
 ) -> Point3<i32> {
+    assert!(
+        !approx::relative_eq!(voxel_dimensions.x, 0.0)
+            && !approx::relative_eq!(voxel_dimensions.y, 0.0)
+            && !approx::relative_eq!(voxel_dimensions.z, 0.0),
+        "Voxel dimensions can't be 0.0"
+    );
     Point3::new(
         (point.x / voxel_dimensions.x).round() as i32,
         (point.y / voxel_dimensions.y).round() as i32,
@@ -616,6 +613,12 @@ fn cartesian_to_relative_voxel_coords(
     block_start: &Point3<i32>,
     voxel_dimensions: Vector3<f32>,
 ) -> Point3<i32> {
+    assert!(
+        !approx::relative_eq!(voxel_dimensions.x, 0.0)
+            && !approx::relative_eq!(voxel_dimensions.y, 0.0)
+            && !approx::relative_eq!(voxel_dimensions.z, 0.0),
+        "Voxel dimensions can't be 0.0"
+    );
     Point3::new(
         (point.x / voxel_dimensions.x).round() as i32 - block_start.x,
         (point.y / voxel_dimensions.y).round() as i32 - block_start.y,
@@ -630,6 +633,12 @@ fn absolute_voxel_to_cartesian_coords(
     absolute_coords: &Point3<i32>,
     voxel_dimensions: Vector3<f32>,
 ) -> Point3<f32> {
+    assert!(
+        !approx::relative_eq!(voxel_dimensions.x, 0.0)
+            && !approx::relative_eq!(voxel_dimensions.y, 0.0)
+            && !approx::relative_eq!(voxel_dimensions.z, 0.0),
+        "Voxel dimensions can't be 0.0"
+    );
     Point3::new(
         absolute_coords.x as f32 * voxel_dimensions.x,
         absolute_coords.y as f32 * voxel_dimensions.y,
@@ -644,6 +653,12 @@ fn relative_voxel_to_cartesian_coords(
     block_start: &Point3<i32>,
     voxel_dimensions: &Vector3<f32>,
 ) -> Point3<f32> {
+    assert!(
+        !approx::relative_eq!(voxel_dimensions.x, 0.0)
+            && !approx::relative_eq!(voxel_dimensions.y, 0.0)
+            && !approx::relative_eq!(voxel_dimensions.z, 0.0),
+        "Voxel dimensions can't be 0.0"
+    );
     Point3::new(
         (relative_coords.x + block_start.x) as f32 * voxel_dimensions.x,
         (relative_coords.y + block_start.y) as f32 * voxel_dimensions.y,
@@ -773,7 +788,6 @@ mod tests {
                         one_dimensional_to_relative_three_dimensional_coordinate(
                             one_dimensional,
                             voxel_cloud.block_dimensions(),
-                            voxel_cloud.voxel_map_len(),
                         )
                         .unwrap();
                     assert_eq!(relative_position, three_dimensional);
