@@ -282,36 +282,42 @@ impl VoxelCloud {
         resized_block_start: &Point3<i32>,
         resized_block_dimensions: &Vector3<u32>,
     ) {
-        let original_voxel_map = self.voxel_map.clone();
-        let original_block_start = self.block_start;
-        let original_block_dimensions = self.block_dimensions;
+        if resized_block_start != &self.block_start
+            || resized_block_dimensions != &self.block_dimensions
+        {
+            let original_voxel_map = self.voxel_map.clone();
+            let original_block_start = self.block_start;
+            let original_block_dimensions = self.block_dimensions;
 
-        self.block_start = *resized_block_start;
-        self.block_dimensions = *resized_block_dimensions;
+            self.block_start = *resized_block_start;
+            self.block_dimensions = *resized_block_dimensions;
 
-        let resized_voxel_map_len = cast_usize(
-            resized_block_dimensions.x * resized_block_dimensions.y * resized_block_dimensions.z,
-        );
+            let resized_voxel_map_len = cast_usize(
+                resized_block_dimensions.x
+                    * resized_block_dimensions.y
+                    * resized_block_dimensions.z,
+            );
 
-        self.voxel_map.resize(resized_voxel_map_len, false);
+            self.voxel_map.resize(resized_voxel_map_len, false);
 
-        for resized_index in 0..self.voxel_map.len() {
-            let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
-                resized_index,
-                resized_block_start,
-                resized_block_dimensions,
-            )
-            .expect("Index out of bounds");
+            for resized_index in 0..self.voxel_map.len() {
+                let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
+                    resized_index,
+                    resized_block_start,
+                    resized_block_dimensions,
+                )
+                .expect("Index out of bounds");
 
-            self.voxel_map[resized_index] =
-                match absolute_three_dimensional_coordinate_to_one_dimensional(
-                    &absolute_coords,
-                    &original_block_start,
-                    &original_block_dimensions,
-                ) {
-                    Some(original_index) => original_voxel_map[original_index],
-                    _ => false,
-                }
+                self.voxel_map[resized_index] =
+                    match absolute_three_dimensional_coordinate_to_one_dimensional(
+                        &absolute_coords,
+                        &original_block_start,
+                        &original_block_dimensions,
+                    ) {
+                        Some(original_index) => original_voxel_map[original_index],
+                        _ => false,
+                    }
+            }
         }
     }
 
