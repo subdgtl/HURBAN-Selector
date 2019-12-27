@@ -522,19 +522,25 @@ mod tests {
     }
 
     #[test]
-    fn test_voxel_cloud_single_voxel() {
+    fn test_voxel_cloud_get_set_for_single_voxel() {
         let mut voxel_cloud = VoxelCloud::new(
             &Point3::origin(),
             &Vector3::new(1, 1, 1),
             &Vector3::new(1.0, 1.0, 1.0),
         );
+        let before = voxel_cloud
+            .voxel_at_relative_coords(&Point3::new(0, 0, 0))
+            .unwrap();
         voxel_cloud.set_voxel_at_relative_coords(&Point3::new(0, 0, 0), true);
-
-        insta::assert_json_snapshot!("single_voxel", &voxel_cloud);
+        let after = voxel_cloud
+            .voxel_at_relative_coords(&Point3::new(0, 0, 0))
+            .unwrap();
+        assert!(!before);
+        assert!(after);
     }
 
     #[test]
-    fn test_voxel_cloud_single_voxel_to_mesh() {
+    fn test_voxel_cloud_single_voxel_to_mesh_produces_synchronized_mesh() {
         let mut voxel_cloud = VoxelCloud::new(
             &Point3::origin(),
             &Vector3::new(1, 1, 1),
@@ -542,7 +548,7 @@ mod tests {
         );
         voxel_cloud.set_voxel_at_relative_coords(&Point3::new(0, 0, 0), true);
 
-        let voxel_mesh = voxel_cloud.to_mesh().expect("Should be a mesh");
+        let voxel_mesh = voxel_cloud.to_mesh().unwrap();
 
         let v2f = topology::compute_vertex_to_face_topology(&voxel_mesh);
         let f2f = topology::compute_face_to_face_topology(&voxel_mesh, &v2f);
