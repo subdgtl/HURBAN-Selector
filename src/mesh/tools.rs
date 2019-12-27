@@ -33,7 +33,6 @@ use super::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 /// # Warning
 /// The results might be unpredictable for non-manifold meshes and moebius-like
 /// topologies.
-///
 pub fn synchronize_mesh_winding(
     mesh: &Mesh,
     face_to_face_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
@@ -371,7 +370,7 @@ where
 mod tests {
     use nalgebra::{Rotation3, Vector2};
 
-    use crate::mesh::{analysis, primitive};
+    use crate::mesh::{analysis, primitive, NormalStrategy};
     use crate::plane::Plane;
 
     use super::*;
@@ -771,6 +770,7 @@ mod tests {
             Vector3::new(1.0, 1.0, 1.0),
             10,
             10,
+            NormalStrategy::Sharp,
         );
         let sphere_faces_one_flipped = sphere.faces().iter().enumerate().map(|(i, f)| match f {
             Face::Triangle(t) => {

@@ -8,7 +8,7 @@ use crate::interpreter::{
     Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty,
     UintParamRefinement, Value,
 };
-use crate::mesh::primitive;
+use crate::mesh::{primitive, NormalStrategy};
 
 #[derive(Debug, PartialEq)]
 pub enum FuncCreateUvSphereError {
@@ -155,6 +155,7 @@ impl Func for FuncCreateUvSphere {
             Vector3::from(scale),
             n_parallels,
             n_meridians,
+            NormalStrategy::Smooth,
         );
         Ok(Value::Mesh(Arc::new(value)))
     }

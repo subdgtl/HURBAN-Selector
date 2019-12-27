@@ -374,24 +374,24 @@ pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
 
     impl PartialEq for UnpackedFace {
         fn eq(&self, other: &Self) -> bool {
-            (self.vertices.0 == other.vertices.0
-                && self.vertices.1 == other.vertices.1
-                && self.vertices.2 == other.vertices.2
-                && self.normals.0 == other.normals.0
-                && self.normals.1 == other.normals.1
-                && self.normals.2 == other.normals.2)
-                || (self.vertices.0 == other.vertices.1
-                    && self.vertices.1 == other.vertices.2
-                    && self.vertices.2 == other.vertices.0
-                    && self.normals.0 == other.normals.1
-                    && self.normals.1 == other.normals.2
-                    && self.normals.2 == other.normals.0)
-                || (self.vertices.0 == other.vertices.2
-                    && self.vertices.1 == other.vertices.0
-                    && self.vertices.2 == other.vertices.1
-                    && self.normals.0 == other.normals.2
-                    && self.normals.1 == other.normals.0
-                    && self.normals.2 == other.normals.1)
+            (approx::relative_eq!(self.vertices.0, other.vertices.0)
+                && approx::relative_eq!(self.vertices.1, other.vertices.1)
+                && approx::relative_eq!(self.vertices.2, other.vertices.2)
+                && approx::relative_eq!(self.normals.0, other.normals.0)
+                && approx::relative_eq!(self.normals.1, other.normals.1)
+                && approx::relative_eq!(self.normals.2, other.normals.2))
+                || (approx::relative_eq!(self.vertices.0, other.vertices.1)
+                    && approx::relative_eq!(self.vertices.1, other.vertices.2)
+                    && approx::relative_eq!(self.vertices.2, other.vertices.0)
+                    && approx::relative_eq!(self.normals.0, other.normals.1)
+                    && approx::relative_eq!(self.normals.1, other.normals.2)
+                    && approx::relative_eq!(self.normals.2, other.normals.0))
+                || (approx::relative_eq!(self.vertices.0, other.vertices.2)
+                    && approx::relative_eq!(self.vertices.1, other.vertices.0)
+                    && approx::relative_eq!(self.vertices.2, other.vertices.1)
+                    && approx::relative_eq!(self.normals.0, other.normals.2)
+                    && approx::relative_eq!(self.normals.1, other.normals.0)
+                    && approx::relative_eq!(self.normals.2, other.normals.1))
         }
     }
 

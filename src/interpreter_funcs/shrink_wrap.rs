@@ -8,7 +8,7 @@ use crate::interpreter::{
     Value,
 };
 use crate::mesh::analysis::BoundingBox;
-use crate::mesh::{analysis, primitive};
+use crate::mesh::{analysis, primitive, NormalStrategy};
 
 pub struct FuncShrinkWrap;
 
@@ -62,6 +62,7 @@ impl Func for FuncShrinkWrap {
             ),
             sphere_density,
             sphere_density,
+            NormalStrategy::Sharp,
         );
 
         for vertex in value.vertices_mut() {

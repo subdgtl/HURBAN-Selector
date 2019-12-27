@@ -1,6 +1,6 @@
 ---
-source: src/mesh_smoothing.rs
-expression: "&subdivided_geometry"
+source: src/mesh/smoothing.rs
+expression: "&subdivided_mesh"
 ---
 {
   "faces": [
