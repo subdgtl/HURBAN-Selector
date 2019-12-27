@@ -77,7 +77,7 @@ pub fn laplacian_smoothing(
 
     (
         Mesh::from_faces_with_vertices_and_computed_normals(
-            mesh.faces().to_vec(),
+            mesh.faces().iter().copied(),
             vertices,
             normal_strategy,
         ),
@@ -575,9 +575,12 @@ mod tests {
         assert_eq!(relaxed_mesh_0.vertices().len(), mesh.vertices().len());
         assert_eq!(relaxed_mesh_1.vertices().len(), mesh.vertices().len());
         assert_eq!(relaxed_mesh_10.vertices().len(), mesh.vertices().len());
-        // In this specific case nothing changes, therefore the smoothened mesh
-        // should be equal to the original mesh.
+        // In this specific case (zero smoothing iterations) nothing changes,
+        // therefore the smoothened mesh should be equal to the original mesh.
         assert_eq!(relaxed_mesh_0.normals().len(), mesh.normals().len());
+        // In all other cases the laplacian smoothing generates exactly one
+        // normal for each vertex, therefore the normal count should be equal to
+        // the vertex count.
         assert_eq!(relaxed_mesh_1.normals().len(), mesh.vertices().len());
         assert_eq!(relaxed_mesh_10.normals().len(), mesh.vertices().len());
     }
