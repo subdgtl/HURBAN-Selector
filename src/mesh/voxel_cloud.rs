@@ -327,8 +327,8 @@ impl VoxelCloud {
     pub fn shrink_to_fit(&mut self) {
         let mut min: Vector3<i32> = Vector3::new(i32::MAX, i32::MAX, i32::MAX);
         let mut max: Vector3<i32> = Vector3::new(i32::MIN, i32::MIN, i32::MIN);
-        for i in 0..self.voxel_map.len() {
-            if self.voxel_map[i] {
+        for (i, v) in self.voxel_map.iter().enumerate() {
+            if *v {
                 let relative_coords = one_dimensional_to_relative_three_dimensional_coordinate(
                     i,
                     &self.block_dimensions,
