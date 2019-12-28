@@ -8,6 +8,7 @@ use self::create_plane::FuncCreatePlane;
 use self::create_uv_sphere::FuncCreateUvSphere;
 use self::disjoint_mesh::FuncDisjointMesh;
 use self::extract::FuncExtract;
+use self::extract_largest::FuncExtractLargest;
 use self::import_obj_mesh::FuncImportObjMesh;
 use self::join_group::FuncJoinGroup;
 use self::join_meshes::FuncJoinMeshes;
@@ -25,6 +26,7 @@ mod create_plane;
 mod create_uv_sphere;
 mod disjoint_mesh;
 mod extract;
+mod extract_largest;
 mod import_obj_mesh;
 mod join_group;
 mod join_meshes;
@@ -45,6 +47,7 @@ mod weld;
 // Manipulation funcs
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0);
 pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(1);
+pub const FUNC_ID_EXTRACT_LARGEST: FuncIdent = FuncIdent(2);
 
 // Create funcs
 pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(1000);
@@ -80,6 +83,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     // Manipulation funcs
     funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncTransform));
     funcs.insert(FUNC_ID_EXTRACT, Box::new(FuncExtract));
+    funcs.insert(FUNC_ID_EXTRACT_LARGEST, Box::new(FuncExtractLargest));
 
     // Create funcs
     funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncCreateUvSphere));
