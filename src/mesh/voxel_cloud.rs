@@ -514,6 +514,7 @@ mod tests {
             Vector3::new(1.0, 1.0, 1.0),
             10,
             10,
+            NormalStrategy::Sharp,
         );
 
         let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5));
