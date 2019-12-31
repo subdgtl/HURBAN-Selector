@@ -53,21 +53,15 @@ impl Func for FuncExtractLargest {
             return Err(FuncError::new(FuncExtractLargestError::Empty));
         }
 
-        let mut largest_face_count = 0;
-        let mut mesh = mesh_array
-            .get_refcounted(0)
-            .expect("Array must not be empty");
+        let mut mesh_iter = mesh_array.iter_refcounted();
+        let mut mesh = mesh_iter.next().expect("Array must not be empty");
+        let mut largest_face_count = mesh.faces().len();
 
-        if mesh_array.len() > 1 {
-            for current_index in 1..mesh_array.len() {
-                let current_mesh = mesh_array
-                    .get_refcounted(current_index)
-                    .expect("Array must not be empty");
-                let current_face_count = current_mesh.faces().len();
-                if current_face_count > largest_face_count {
-                    largest_face_count = current_face_count;
-                    mesh = current_mesh;
-                }
+        while let Some(current_mesh) = mesh_iter.next() {
+            let current_face_count = current_mesh.faces().len();
+            if current_face_count > largest_face_count {
+                largest_face_count = current_face_count;
+                mesh = current_mesh;
             }
         }
 
