@@ -129,30 +129,25 @@ impl VoxelCloud {
     }
 
     #[allow(dead_code)]
-    pub fn block_start(&self) -> &Point3<i32> {
-        &self.block_start
+    pub fn block_start(&self) -> Point3<i32> {
+        self.block_start
     }
 
     #[allow(dead_code)]
-    pub fn block_dimensions(&self) -> &Vector3<u32> {
-        &self.block_dimensions
+    pub fn block_dimensions(&self) -> Vector3<u32> {
+        self.block_dimensions
     }
 
     #[allow(dead_code)]
-    pub fn voxel_dimensions(&self) -> &Vector3<f32> {
-        &self.voxel_dimensions
-    }
-
-    #[allow(dead_code)]
-    pub fn voxel_map_len(&self) -> usize {
-        self.voxel_map.len()
+    pub fn voxel_dimensions(&self) -> Vector3<f32> {
+        self.voxel_dimensions
     }
 
     /// For each existing voxel turn on all neighbor voxels to grow (offset) the
     /// volumes stored in the voxel cloud.
-    ///
-    /// FIXME: This is not the most efficient way of doing this, but this
-    /// function will become obsolete with Distance field.
+
+    // FIXME: This is not the most efficient way of doing this, but this
+    // function will become obsolete with Distance field.
     pub fn grow_volume(&mut self) {
         let neighbor_offsets = [
             Vector3::new(0, 0, 0),  //self
@@ -276,7 +271,6 @@ impl VoxelCloud {
     /// Resize the voxel cloud block to match new block start and block dimensions.
     ///
     /// This clips the outstanding parts of the original voxel cloud.
-    #[allow(dead_code)]
     pub fn resize(
         &mut self,
         resized_block_start: &Point3<i32>,
@@ -321,12 +315,14 @@ impl VoxelCloud {
         }
     }
 
-    /// Resize the voxel cloud block to exactly fit the volumetric geometry.
-    /// Returns None for empty the voxel cloud.
+    /// Resize the existing voxel cloud block to exactly fit the volumetric
+    /// geometry. This mutates the existing voxel cloud.
     #[allow(dead_code)]
     pub fn shrink_to_fit(&mut self) {
-        let mut min: Vector3<i32> = Vector3::new(i32::MAX, i32::MAX, i32::MAX);
-        let mut max: Vector3<i32> = Vector3::new(i32::MIN, i32::MIN, i32::MIN);
+        let mut min: Vector3<i32> =
+            Vector3::new(i32::max_value(), i32::max_value(), i32::max_value());
+        let mut max: Vector3<i32> =
+            Vector3::new(i32::min_value(), i32::min_value(), i32::min_value());
         for (i, v) in self.voxel_map.iter().enumerate() {
             if *v {
                 let relative_coords = one_dimensional_to_relative_three_dimensional_coordinate(
@@ -356,7 +352,32 @@ impl VoxelCloud {
         }
         // It's enough to check one of the values because if anything is found,
         // all the values would change.
-        if min.x == i32::MAX {
+        if min.x == i32::max_value() {
+            assert_eq!(
+                min.y,
+                i32::max_value(),
+                "Voxel cloud emptiness check failed"
+            );
+            assert_eq!(
+                min.z,
+                i32::max_value(),
+                "Voxel cloud emptiness check failed"
+            );
+            assert_eq!(
+                max.x,
+                i32::min_value(),
+                "Voxel cloud emptiness check failed"
+            );
+            assert_eq!(
+                max.y,
+                i32::min_value(),
+                "Voxel cloud emptiness check failed"
+            );
+            assert_eq!(
+                max.z,
+                i32::min_value(),
+                "Voxel cloud emptiness check failed"
+            );
             let block_start = self.block_start;
             self.resize(&block_start, &Vector3::zeros());
         } else {
@@ -612,7 +633,7 @@ fn cartesian_to_absolute_voxel_coords(
 }
 
 /// Calculates the voxel-space coordinates of a voxel containing the input
-/// point.
+/// point
 #[allow(dead_code)]
 fn cartesian_to_relative_voxel_coords(
     point: &Point3<f32>,
@@ -633,7 +654,7 @@ fn cartesian_to_relative_voxel_coords(
 }
 
 /// Calculates the center of a voxel in model-space coordinates from
-/// absolute voxel coordinates (relative to the voxel space origin).
+/// absolute voxel coordinates (relative to the voxel space origin)
 #[allow(dead_code)]
 fn absolute_voxel_to_cartesian_coords(
     absolute_coords: &Point3<i32>,
@@ -669,34 +690,6 @@ fn relative_voxel_to_cartesian_coords(
         (relative_coords.x + block_start.x) as f32 * voxel_dimensions.x,
         (relative_coords.y + block_start.y) as f32 * voxel_dimensions.y,
         (relative_coords.z + block_start.z) as f32 * voxel_dimensions.z,
-    )
-}
-
-/// Converts relative voxel coordinates into relative voxel coordinates
-#[allow(dead_code)]
-fn absolute_to_relative_voxel_coords(
-    absolute_coords: &Point3<i32>,
-    block_start: &Point3<i32>,
-) -> Point3<i32> {
-    absolute_coords - block_start.coords
-}
-
-/// Converts absolute voxel coordinates into relative voxel coordinates
-#[allow(dead_code)]
-fn relative_to_absolute_voxel_coords(
-    relative_coords: &Point3<i32>,
-    block_start: &Point3<i32>,
-) -> Point3<i32> {
-    relative_coords + block_start.coords
-}
-
-/// Calculates the absolute coordinates of the block end
-#[allow(dead_code)]
-fn calculate_block_end(block_start: &Point3<i32>, block_dimensions: &Vector3<u32>) -> Point3<i32> {
-    Point3::new(
-        block_start.x + cast_i32(block_dimensions.x),
-        block_start.y + cast_i32(block_dimensions.y),
-        block_start.z + cast_i32(block_dimensions.z),
     )
 }
 
@@ -787,13 +780,13 @@ mod tests {
                     let relative_position = Point3::new(cast_i32(x), cast_i32(y), cast_i32(z));
                     let one_dimensional = relative_three_dimensional_coordinate_to_one_dimensional(
                         &relative_position,
-                        voxel_cloud.block_dimensions(),
+                        &voxel_cloud.block_dimensions(),
                     )
                     .unwrap();
                     let three_dimensional =
                         one_dimensional_to_relative_three_dimensional_coordinate(
                             one_dimensional,
-                            voxel_cloud.block_dimensions(),
+                            &voxel_cloud.block_dimensions(),
                         )
                         .unwrap();
                     assert_eq!(relative_position, three_dimensional);
