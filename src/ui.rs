@@ -1,11 +1,11 @@
+use std::cell::RefCell;
 use std::f32;
 use std::sync::Arc;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
 use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
-use crate::interpreter::ast;
-use crate::interpreter::{ParamRefinement, Ty};
+use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
@@ -33,6 +33,14 @@ struct Colors {
     combo_box_selected_item: [f32; 4],
     combo_box_selected_item_hovered: [f32; 4],
     combo_box_selected_item_active: [f32; 4],
+    log_message_info: [f32; 4],
+    log_message_warn: [f32; 4],
+    log_message_error: [f32; 4],
+}
+
+#[derive(Debug, Default)]
+struct ConsoleState {
+    message_count: usize,
 }
 
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
@@ -42,6 +50,12 @@ pub struct Ui {
     imgui_winit_platform: WinitPlatform,
     font_ids: FontIds,
     colors: Colors,
+    console_state: RefCell<Vec<ConsoleState>>,
+
+    /// A preallocated string buffer used for imgui strings in the
+    /// UI. Every user of this buffer has the responsibility to clear
+    /// it afterwards.
+    global_imstring_buffer: RefCell<imgui::ImString>,
 }
 
 impl Ui {
@@ -57,6 +71,9 @@ impl Ui {
             combo_box_selected_item: style[imgui::StyleColor::Header],
             combo_box_selected_item_hovered: style[imgui::StyleColor::HeaderHovered],
             combo_box_selected_item_active: style[imgui::StyleColor::HeaderActive],
+            log_message_info: [0.70, 0.70, 0.70, 1.0],
+            log_message_warn: [0.80, 0.80, 0.05, 1.0],
+            log_message_error: [1.0, 0.15, 0.05, 1.0],
         };
 
         style.window_padding = [4.0, 4.0];
@@ -133,9 +150,12 @@ impl Ui {
             colors.special_button = light_transparent;
             colors.special_button_hovered = blue_transparent;
             colors.special_button_active = blue_transparent;
+
             colors.combo_box_selected_item = light;
             colors.combo_box_selected_item_hovered = orange_light;
             colors.combo_box_selected_item_active = orange_dark;
+
+            colors.log_message_warn = [0.90, 0.75, 0.05, 1.0];
         }
 
         imgui_context.set_ini_filename(None);
@@ -172,6 +192,8 @@ impl Ui {
                 bold: bold_font_id,
             },
             colors,
+            console_state: RefCell::new(Vec::new()),
+            global_imstring_buffer: RefCell::new(imgui::ImString::with_capacity(1024)),
         }
     }
 
@@ -198,6 +220,8 @@ impl Ui {
             imgui_ui: self.imgui_context.frame(),
             font_ids: &self.font_ids,
             colors: &self.colors,
+            console_state: &self.console_state,
+            global_imstring_buffer: &self.global_imstring_buffer,
         }
     }
 
@@ -213,6 +237,8 @@ pub struct UiFrame<'a> {
     imgui_ui: imgui::Ui<'a>,
     font_ids: &'a FontIds,
     colors: &'a Colors,
+    console_state: &'a RefCell<Vec<ConsoleState>>,
+    global_imstring_buffer: &'a RefCell<imgui::ImString>,
 }
 
 impl<'a> UiFrame<'a> {
@@ -280,6 +306,10 @@ impl<'a> UiFrame<'a> {
 
     pub fn draw_pipeline_window(&self, session: &mut Session) {
         let ui = &self.imgui_ui;
+        self.console_state
+            .borrow_mut()
+            .resize_with(session.stmts().len(), Default::default);
+
         let function_table = session.function_table();
 
         const PIPELINE_WINDOW_WIDTH: f32 = 400.0;
@@ -292,9 +322,6 @@ impl<'a> UiFrame<'a> {
 
         let interpreter_busy = session.interpreter_busy();
         let mut change = None;
-
-        // FIXME: @Optimization Try to not allocate this every frame.
-        let mut imstring_buffer = imgui::ImString::with_capacity(256);
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Pipeline"))
@@ -450,6 +477,9 @@ impl<'a> UiFrame<'a> {
                                             }
                                         }
                                         ParamRefinement::String(param_refinement_string) => {
+                                            let mut imstring_buffer = self.global_imstring_buffer
+                                                .borrow_mut();
+
                                             let string_lit = arg.unwrap_literal().unwrap_string();
                                             imstring_buffer.push_str(string_lit);
 
@@ -520,21 +550,32 @@ impl<'a> UiFrame<'a> {
                                     }
                                 }
 
-                                let token = ui.push_style_color(
-                                    imgui::StyleColor::Text,
-                                    ui.style_color(imgui::StyleColor::TextDisabled),
-                                );
+                                let console_id = imgui::im_str!("##console{}", stmt_index);
+                                if let Some(window_token) = imgui::ChildWindow::new(&console_id)
+                                    .size([0.0, 80.0])
+                                    .scrollable(true)
+                                    .scroll_bar(true)
+                                    .always_vertical_scrollbar(true)
+                                    .begin(ui)
+                                {
+                                    let log_messages = session.log_messages_at_stmt(stmt_index);
+                                    for log_message in log_messages {
+                                        ui.text_colored(match log_message.level {
+                                            LogMessageLevel::Info => self.colors.log_message_info,
+                                            LogMessageLevel::Warn => self.colors.log_message_warn,
+                                            LogMessageLevel::Error => self.colors.log_message_error,
+                                        }, &log_message.message);
+                                    }
 
-                                imgui::InputTextMultiline::new(
-                                    ui,
-                                    &imgui::im_str!("##console{}", stmt_index),
-                                    &mut imgui::ImString::new("This console will contain debug information"),
-                                    [0.0, 60.0],
-                                )
-                                    .read_only(true)
-                                    .build();
+                                    let message_count = log_messages.len();
+                                    let mut console_state = self.console_state.borrow_mut();
+                                    if console_state[stmt_index].message_count < message_count {
+                                        ui.set_scroll_here_y();
+                                        console_state[stmt_index].message_count = message_count;
+                                    }
 
-                                token.pop(ui);
+                                    window_token.end(ui);
+                                }
 
                                 if let Some((color_token, style_token)) = operation_arg_style_tokens {
                                     color_token.pop(ui);

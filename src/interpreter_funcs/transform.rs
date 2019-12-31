@@ -3,8 +3,8 @@ use std::sync::Arc;
 use nalgebra::{Matrix4, Rotation, Vector3};
 
 use crate::interpreter::{
-    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty,
-    Value,
+    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, Value,
 };
 use crate::mesh::Mesh;
 
@@ -81,7 +81,11 @@ impl Func for FuncTransform {
         Ty::Mesh
     }
 
-    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        args: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
         let translate = Vector3::from(args[1].unwrap_float3());

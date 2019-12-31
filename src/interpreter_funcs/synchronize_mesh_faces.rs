@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
+    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::{analysis, tools, topology};
 
@@ -31,7 +31,11 @@ impl Func for FuncSynchronizeMeshFaces {
         Ty::Mesh
     }
 
-    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        args: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_refcounted_mesh();
 
         let oriented_edges: Vec<_> = mesh.oriented_edges_iter().collect();
