@@ -283,8 +283,8 @@ impl VoxelCloud {
                 //left
                 plane: Plane::new(
                     &Point3::origin(),
-                    &Vector3::new(0.0, 1.0, 0.0),
-                    &Vector3::new(0.0, 0.0, -1.0),
+                    &Vector3::new(0.0, -1.0, 0.0),
+                    &Vector3::new(0.0, 0.0, 1.0),
                 ),
                 direction_to_wall: Vector3::new(-self.voxel_dimensions.x / 2.0, 0.0, 0.0),
                 direction_to_neighbor: Vector3::new(-1, 0, 0),
@@ -297,19 +297,19 @@ impl VoxelCloud {
                     &Vector3::new(1.0, 0.0, 0.0),
                     &Vector3::new(0.0, 0.0, 1.0),
                 ),
-                direction_to_wall: Vector3::new(0.0, self.voxel_dimensions.y / 2.0, 0.0),
-                direction_to_neighbor: Vector3::new(0, 1, 0),
+                direction_to_wall: Vector3::new(0.0, -self.voxel_dimensions.y / 2.0, 0.0),
+                direction_to_neighbor: Vector3::new(0, -1, 0),
                 voxel_dimensions: Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.z),
             },
             VoxelMeshHelper {
                 //rear
                 plane: Plane::new(
                     &Point3::origin(),
-                    &Vector3::new(1.0, 0.0, 0.0),
-                    &Vector3::new(0.0, 0.0, -1.0),
+                    &Vector3::new(-1.0, 0.0, 0.0),
+                    &Vector3::new(0.0, 0.0, 1.0),
                 ),
-                direction_to_wall: Vector3::new(0.0, -self.voxel_dimensions.y / 2.0, 0.0),
-                direction_to_neighbor: Vector3::new(0, -1, 0),
+                direction_to_wall: Vector3::new(0.0, self.voxel_dimensions.y / 2.0, 0.0),
+                direction_to_neighbor: Vector3::new(0, 1, 0),
                 voxel_dimensions: Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.z),
             },
         ];
@@ -451,7 +451,7 @@ impl VoxelCloud {
 mod tests {
     use nalgebra::Rotation3;
 
-    use crate::mesh::NormalStrategy;
+    use crate::mesh::{analysis, topology, NormalStrategy};
 
     use super::*;
 
@@ -520,5 +520,41 @@ mod tests {
         let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5));
 
         insta::assert_json_snapshot!("sphere_after_voxelization", &voxel_cloud);
+    }
+
+    #[test]
+    fn test_voxel_cloud_get_set_for_single_voxel() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(1, 1, 1),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let before = voxel_cloud
+            .voxel_at_relative_coords(&Point3::new(0, 0, 0))
+            .unwrap();
+        voxel_cloud.set_voxel_at_relative_coords(&Point3::new(0, 0, 0), true);
+        let after = voxel_cloud
+            .voxel_at_relative_coords(&Point3::new(0, 0, 0))
+            .unwrap();
+        assert!(!before);
+        assert!(after);
+    }
+
+    #[test]
+    fn test_voxel_cloud_single_voxel_to_mesh_produces_synchronized_mesh() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(1, 1, 1),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        voxel_cloud.set_voxel_at_relative_coords(&Point3::new(0, 0, 0), true);
+
+        let voxel_mesh = voxel_cloud.to_mesh().unwrap();
+
+        let v2f = topology::compute_vertex_to_face_topology(&voxel_mesh);
+        let f2f = topology::compute_face_to_face_topology(&voxel_mesh, &v2f);
+        let voxel_mesh_synced = tools::synchronize_mesh_winding(&voxel_mesh, &f2f);
+
+        assert!(analysis::are_similar(&voxel_mesh, &voxel_mesh_synced));
     }
 }
