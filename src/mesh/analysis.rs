@@ -434,6 +434,38 @@ pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
             .all(|f| unpacked_faces1.clone().any(|g| f == g))
 }
 
+/// Check if the two bounding boxes intersect / share any portion of space
+
+// https://math.stackexchange.com/questions/2651710/simplest-way-to-determine-if-two-3d-boxes-intersect
+#[allow(dead_code)]
+pub fn do_bounding_boxes_intersect(b1: &BoundingBox, b2: &BoundingBox) -> bool {
+    let b1_min_x = b1.minimum_point.x.min(b1.maximum_point.x);
+    let b1_min_y = b1.minimum_point.y.min(b1.maximum_point.y);
+    let b1_min_z = b1.minimum_point.z.min(b1.maximum_point.z);
+    let b1_max_x = b1.minimum_point.x.max(b1.maximum_point.x);
+    let b1_max_y = b1.minimum_point.y.max(b1.maximum_point.y);
+    let b1_max_z = b1.minimum_point.z.max(b1.maximum_point.z);
+    let b2_min_x = b2.minimum_point.x.min(b2.maximum_point.x);
+    let b2_min_y = b2.minimum_point.y.min(b2.maximum_point.y);
+    let b2_min_z = b2.minimum_point.z.min(b2.maximum_point.z);
+    let b2_max_x = b2.minimum_point.x.max(b2.maximum_point.x);
+    let b2_max_y = b2.minimum_point.y.max(b2.maximum_point.y);
+    let b2_max_z = b2.minimum_point.z.max(b2.maximum_point.z);
+
+    ((b1_min_x <= b2_min_x && b2_min_x <= b1_max_x)
+        || (b1_min_x <= b2_max_x && b2_max_x <= b1_max_x)
+        || (b2_min_x <= b1_min_x && b1_min_x <= b2_max_x)
+        || (b2_min_x <= b1_max_x && b1_max_x <= b2_max_x))
+        && ((b1_min_y <= b2_min_y && b2_min_y <= b1_max_y)
+            || (b1_min_y <= b2_max_y && b2_max_y <= b1_max_y)
+            || (b2_min_y <= b1_min_y && b1_min_y <= b2_max_y)
+            || (b2_min_y <= b1_max_y && b1_max_y <= b2_max_y))
+        && ((b1_min_z <= b2_min_z && b2_min_z <= b1_max_z)
+            || (b1_min_z <= b2_max_z && b2_max_z <= b1_max_z)
+            || (b2_min_z <= b1_min_z && b1_min_z <= b2_max_z)
+            || (b2_min_z <= b1_max_z && b1_max_z <= b2_max_z))
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::Rotation3;
