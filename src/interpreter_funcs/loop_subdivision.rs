@@ -7,7 +7,7 @@ use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
     Value,
 };
-use crate::mesh::{smoothing, topology};
+use crate::mesh::{smoothing, topology, NormalStrategy};
 
 #[derive(Debug, PartialEq)]
 pub enum FuncLoopSubdivisionError {
@@ -79,12 +79,19 @@ impl Func for FuncLoopSubdivision {
         let mut v2v = topology::compute_vertex_to_vertex_topology(&mesh);
         let mut v2f = topology::compute_vertex_to_face_topology(&mesh);
         let mut f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
-        if let Some(mut current_mesh) = smoothing::loop_subdivision(&mesh, &v2v, &f2f) {
+        if let Some(mut current_mesh) =
+            smoothing::loop_subdivision(&mesh, &v2v, &f2f, NormalStrategy::Smooth)
+        {
             for _ in 1..iterations {
                 v2v = topology::compute_vertex_to_vertex_topology(&current_mesh);
                 v2f = topology::compute_vertex_to_face_topology(&current_mesh);
                 f2f = topology::compute_face_to_face_topology(&current_mesh, &v2f);
-                current_mesh = match smoothing::loop_subdivision(&current_mesh, &v2v, &f2f) {
+                current_mesh = match smoothing::loop_subdivision(
+                    &current_mesh,
+                    &v2v,
+                    &f2f,
+                    NormalStrategy::Smooth,
+                ) {
                     Some(m) => m,
                     None => return Err(FuncError::new(FuncLoopSubdivisionError::InvalidMesh)),
                 }

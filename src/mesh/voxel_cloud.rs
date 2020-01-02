@@ -271,6 +271,18 @@ impl VoxelCloud {
     /// Resize the voxel cloud block to match new block start and block dimensions.
     ///
     /// This clips the outstanding parts of the original voxel cloud.
+
+    // FIXME: Add tests
+    // resize from zero to nonzero dimensions
+    //  - should initially be all false
+    //  - should have correct block dimensions and underlying voxel count
+    // resize from nonzero to zero dimensions
+    //  - should have correct block dimensions and underlying voxel count
+    // resize from between two nonzero dimensions
+    //  - should have correct block dimensions and underlying voxel count
+    //  - newly grown area should contain false voxels (if applicable)
+    //  - old voxels should still be present (if applicable)
+    //  - outstanding voxels should be clipped (if applicable)
     pub fn resize(
         &mut self,
         resized_block_start: &Point3<i32>,
@@ -317,6 +329,10 @@ impl VoxelCloud {
 
     /// Resize the existing voxel cloud block to exactly fit the volumetric
     /// geometry. This mutates the existing voxel cloud.
+
+    // FIXME: Add tests
+    // shrink_to_fit with non-empty data should shrink to the data
+    // shrink_to_fit with empty data should shrink to empty dimensions
     #[allow(dead_code)]
     pub fn shrink_to_fit(&mut self) {
         let mut min: Vector3<i32> =
@@ -454,8 +470,8 @@ impl VoxelCloud {
                 //left
                 plane: Plane::new(
                     &Point3::origin(),
-                    &Vector3::new(0.0, 1.0, 0.0),
-                    &Vector3::new(0.0, 0.0, -1.0),
+                    &Vector3::new(0.0, -1.0, 0.0),
+                    &Vector3::new(0.0, 0.0, 1.0),
                 ),
                 direction_to_wall: Vector3::new(-self.voxel_dimensions.x / 2.0, 0.0, 0.0),
                 direction_to_neighbor: Vector3::new(-1, 0, 0),
@@ -468,19 +484,19 @@ impl VoxelCloud {
                     &Vector3::new(1.0, 0.0, 0.0),
                     &Vector3::new(0.0, 0.0, 1.0),
                 ),
-                direction_to_wall: Vector3::new(0.0, self.voxel_dimensions.y / 2.0, 0.0),
-                direction_to_neighbor: Vector3::new(0, 1, 0),
+                direction_to_wall: Vector3::new(0.0, -self.voxel_dimensions.y / 2.0, 0.0),
+                direction_to_neighbor: Vector3::new(0, -1, 0),
                 voxel_dimensions: Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.z),
             },
             VoxelMeshHelper {
                 //rear
                 plane: Plane::new(
                     &Point3::origin(),
-                    &Vector3::new(1.0, 0.0, 0.0),
-                    &Vector3::new(0.0, 0.0, -1.0),
+                    &Vector3::new(-1.0, 0.0, 0.0),
+                    &Vector3::new(0.0, 0.0, 1.0),
                 ),
-                direction_to_wall: Vector3::new(0.0, -self.voxel_dimensions.y / 2.0, 0.0),
-                direction_to_neighbor: Vector3::new(0, -1, 0),
+                direction_to_wall: Vector3::new(0.0, self.voxel_dimensions.y / 2.0, 0.0),
+                direction_to_neighbor: Vector3::new(0, 1, 0),
                 voxel_dimensions: Vector2::new(self.voxel_dimensions.x, self.voxel_dimensions.z),
             },
         ];
@@ -697,7 +713,7 @@ fn relative_voxel_to_cartesian_coords(
 mod tests {
     use nalgebra::Rotation3;
 
-    use crate::mesh::NormalStrategy;
+    use crate::mesh::{analysis, topology, NormalStrategy};
 
     use super::*;
 
@@ -760,6 +776,7 @@ mod tests {
             Vector3::new(1.0, 1.0, 1.0),
             10,
             10,
+            NormalStrategy::Sharp,
         );
 
         let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5));
@@ -793,5 +810,41 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_voxel_cloud_get_set_for_single_voxel() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(1, 1, 1),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let before = voxel_cloud
+            .voxel_at_relative_coords(&Point3::new(0, 0, 0))
+            .unwrap();
+        voxel_cloud.set_voxel_at_relative_coords(&Point3::new(0, 0, 0), true);
+        let after = voxel_cloud
+            .voxel_at_relative_coords(&Point3::new(0, 0, 0))
+            .unwrap();
+        assert!(!before);
+        assert!(after);
+    }
+
+    #[test]
+    fn test_voxel_cloud_single_voxel_to_mesh_produces_synchronized_mesh() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(1, 1, 1),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        voxel_cloud.set_voxel_at_relative_coords(&Point3::new(0, 0, 0), true);
+
+        let voxel_mesh = voxel_cloud.to_mesh().unwrap();
+
+        let v2f = topology::compute_vertex_to_face_topology(&voxel_mesh);
+        let f2f = topology::compute_face_to_face_topology(&voxel_mesh, &v2f);
+        let voxel_mesh_synced = tools::synchronize_mesh_winding(&voxel_mesh, &f2f);
+
+        assert!(analysis::are_similar(&voxel_mesh, &voxel_mesh_synced));
     }
 }

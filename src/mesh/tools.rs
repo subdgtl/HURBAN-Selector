@@ -33,7 +33,6 @@ use super::{topology, Face, Mesh, OrientedEdge, TriangleFace, UnorientedEdge};
 /// # Warning
 /// The results might be unpredictable for non-manifold meshes and moebius-like
 /// topologies.
-///
 pub fn synchronize_mesh_winding(
     mesh: &Mesh,
     face_to_face_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
@@ -213,18 +212,20 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
                 && new_vertex_indices.0 != new_vertex_indices.2
                 && new_vertex_indices.1 != new_vertex_indices.2
             {
-                Some(Face::Triangle(TriangleFace::new(
-                    new_vertex_indices.0,
-                    new_vertex_indices.1,
-                    new_vertex_indices.2,
-                )))
+                Some(Face::Triangle(
+                    TriangleFace::from_same_vertex_and_normal_index(
+                        new_vertex_indices.0,
+                        new_vertex_indices.1,
+                        new_vertex_indices.2,
+                    ),
+                ))
             } else {
                 None
             }
         }
     });
 
-    // key = old vertex index
+    // index = old vertex index
     // value = indices of all old normals being referenced by faces together
     // with the vertex
     //
@@ -233,7 +234,8 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
     // which normals should be averaged to be matched with the new vertices.
     // Therefore it's important to collect all the normals associated with the
     // original vertices in clusters and averaging those.
-    let mut old_vertex_normals_index_map: HashMap<u32, SmallVec<[u32; 8]>> = HashMap::new();
+    let mut old_vertex_normals_index_map: Vec<SmallVec<[u32; 8]>> =
+        vec![SmallVec::new(); mesh.vertices().len()];
     for face in mesh.faces() {
         match face {
             Face::Triangle(f) => {
@@ -243,12 +245,9 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
                     (f.vertices.2, f.normals.2),
                 ];
                 for (vertex_index, normal_index) in &vertex_indices {
-                    let associated_normals = old_vertex_normals_index_map
-                        .entry(*vertex_index)
-                        .or_insert_with(SmallVec::new);
-                    if !associated_normals.contains(&normal_index) {
-                        associated_normals.push(*normal_index);
-                    }
+                    let associated_normals =
+                        &mut old_vertex_normals_index_map[cast_usize(*vertex_index)];
+                    associated_normals.push(*normal_index);
                 }
             }
         }
@@ -257,7 +256,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
     // Associate old normals to the new averaged vertices
     let mut new_vertex_old_normals_index_map: Vec<SmallVec<[u32; 8]>> =
         vec![SmallVec::new(); new_vertices.len()];
-    for (old_vertex_index, old_normals_indices) in old_vertex_normals_index_map {
+    for (old_vertex_index, old_normals_indices) in old_vertex_normals_index_map.iter().enumerate() {
         let new_vertex_index = old_new_vertex_map[cast_usize(old_vertex_index)];
         new_vertex_old_normals_index_map[cast_usize(new_vertex_index)]
             .extend_from_slice(&old_normals_indices);
@@ -270,9 +269,8 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
             old_normals_indices
                 .iter()
                 .fold(Vector3::zeros(), |avg, o_n_i| {
-                    avg + mesh.normals()[cast_usize(*o_n_i)]
+                    avg + mesh.normals()[cast_usize(*o_n_i)] / old_normals_indices.len() as f32
                 })
-                / old_normals_indices.len() as f32
         })
         .collect();
 
@@ -352,7 +350,7 @@ where
         } else {
             for face in mesh.faces() {
                 match face {
-                    Face::Triangle(f) => faces.push(Face::Triangle(TriangleFace::new_separate(
+                    Face::Triangle(f) => faces.push(Face::Triangle(TriangleFace::new(
                         f.vertices.0 + vertex_offset_u32,
                         f.vertices.1 + vertex_offset_u32,
                         f.vertices.2 + vertex_offset_u32,
@@ -372,22 +370,10 @@ where
 mod tests {
     use nalgebra::{Rotation3, Vector2};
 
-    use crate::mesh::{analysis, primitive};
+    use crate::mesh::{analysis, primitive, NormalStrategy};
     use crate::plane::Plane;
 
     use super::*;
-
-    fn v(x: f32, y: f32, z: f32, translation: [f32; 3], scale: f32) -> Point3<f32> {
-        Point3::new(
-            scale * x + translation[0],
-            scale * y + translation[1],
-            scale * z + translation[2],
-        )
-    }
-
-    fn n(x: f32, y: f32, z: f32) -> Vector3<f32> {
-        Vector3::new(x, y, z)
-    }
 
     fn welded_tessellated_triangle_mesh() -> Mesh {
         let vertices = vec![
@@ -400,19 +386,19 @@ mod tests {
         ];
 
         let vertex_normals = vec![
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
         ];
 
         let faces = vec![
-            TriangleFace::new_separate(0, 1, 3, 0, 1, 3),
-            TriangleFace::new_separate(1, 4, 3, 1, 4, 3),
-            TriangleFace::new_separate(1, 2, 4, 1, 2, 4),
-            TriangleFace::new_separate(3, 4, 5, 3, 4, 5),
+            TriangleFace::new(0, 1, 3, 0, 1, 3),
+            TriangleFace::new(1, 4, 3, 1, 4, 3),
+            TriangleFace::new(1, 2, 4, 1, 2, 4),
+            TriangleFace::new(3, 4, 5, 3, 4, 5),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -434,13 +420,13 @@ mod tests {
             Point3::new(0.0, 2.0, 0.0),   //5, 11
         ];
 
-        let vertex_normals = vec![n(0.0, 0.0, 1.0)];
+        let vertex_normals = vec![Vector3::new(0.0, 0.0, 1.0)];
 
         let faces = vec![
-            TriangleFace::new_separate(0, 1, 2, 0, 0, 0),
-            TriangleFace::new_separate(3, 4, 5, 0, 0, 0),
-            TriangleFace::new_separate(6, 7, 8, 0, 0, 0),
-            TriangleFace::new_separate(9, 10, 11, 0, 0, 0),
+            TriangleFace::new(0, 1, 2, 0, 0, 0),
+            TriangleFace::new(3, 4, 5, 0, 0, 0),
+            TriangleFace::new(6, 7, 8, 0, 0, 0),
+            TriangleFace::new(9, 10, 11, 0, 0, 0),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -456,13 +442,13 @@ mod tests {
             Point3::new(0.0, 2.0, 0.0),
         ];
 
-        let vertex_normals = vec![n(0.0, 0.0, 1.0)];
+        let vertex_normals = vec![Vector3::new(0.0, 0.0, 1.0)];
 
         let faces = vec![
-            TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
-            TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
-            TriangleFace::new_separate(1, 4, 2, 0, 0, 0),
-            TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
+            TriangleFace::new(0, 3, 1, 0, 0, 0),
+            TriangleFace::new(1, 3, 4, 0, 0, 0),
+            TriangleFace::new(1, 4, 2, 0, 0, 0),
+            TriangleFace::new(3, 5, 4, 0, 0, 0),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -481,14 +467,14 @@ mod tests {
             Point3::new(0.0, 2.0, 1.0),
         ];
 
-        let vertex_normals = vec![n(0.0, 0.0, 1.0), n(0.0, 0.0, 1.0)];
+        let vertex_normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, 1.0)];
 
         let faces = vec![
-            TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
-            TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
-            TriangleFace::new_separate(1, 4, 2, 0, 0, 0),
-            TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
-            TriangleFace::new_separate(6, 7, 8, 1, 1, 1),
+            TriangleFace::new(0, 3, 1, 0, 0, 0),
+            TriangleFace::new(1, 3, 4, 0, 0, 0),
+            TriangleFace::new(1, 4, 2, 0, 0, 0),
+            TriangleFace::new(3, 5, 4, 0, 0, 0),
+            TriangleFace::new(6, 7, 8, 1, 1, 1),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -507,14 +493,14 @@ mod tests {
             Point3::new(0.0, 2.0, 1.0),
         ];
 
-        let vertex_normals = vec![n(0.0, 0.0, 1.0), n(0.0, 0.0, 1.0)];
+        let vertex_normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, 1.0)];
 
         let faces = vec![
-            TriangleFace::new_separate(0, 3, 1, 0, 0, 0),
-            TriangleFace::new_separate(1, 3, 4, 0, 0, 0),
-            TriangleFace::new_separate(2, 4, 1, 0, 0, 0), // flipped
-            TriangleFace::new_separate(3, 5, 4, 0, 0, 0),
-            TriangleFace::new_separate(6, 7, 8, 1, 1, 1),
+            TriangleFace::new(0, 3, 1, 0, 0, 0),
+            TriangleFace::new(1, 3, 4, 0, 0, 0),
+            TriangleFace::new(2, 4, 1, 0, 0, 0), // flipped
+            TriangleFace::new(3, 5, 4, 0, 0, 0),
+            TriangleFace::new(6, 7, 8, 1, 1, 1),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
@@ -527,152 +513,143 @@ mod tests {
             Point3::new(0.0, 2.0, 1.0),
         ];
 
-        let vertex_normals = vec![n(0.0, 0.0, 1.0)];
+        let vertex_normals = vec![Vector3::new(0.0, 0.0, 1.0)];
 
-        let faces = vec![TriangleFace::new_separate(0, 1, 2, 0, 0, 0)];
+        let faces = vec![TriangleFace::new(0, 1, 2, 0, 0, 0)];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    pub fn open_box_sharp_mesh(position: [f32; 3], scale: f32) -> Mesh {
+    pub fn open_box_sharp_mesh() -> Mesh {
         let vertex_positions = vec![
             // back
-            v(-1.0, 1.0, -1.0, position, scale), //0
-            v(-1.0, 1.0, 1.0, position, scale),  //1
-            v(1.0, 1.0, 1.0, position, scale),   //2
-            v(1.0, 1.0, -1.0, position, scale),  //3
+            Point3::new(-1.0, 1.0, -1.0), //0
+            Point3::new(-1.0, 1.0, 1.0),  //1
+            Point3::new(1.0, 1.0, 1.0),   //2
+            Point3::new(1.0, 1.0, -1.0),  //3
             // front
-            v(-1.0, -1.0, -1.0, position, scale), //4
-            v(1.0, -1.0, -1.0, position, scale),  //5
-            v(1.0, -1.0, 1.0, position, scale),   //6
-            v(-1.0, -1.0, 1.0, position, scale),  //7
+            Point3::new(-1.0, -1.0, -1.0), //4
+            Point3::new(1.0, -1.0, -1.0),  //5
+            Point3::new(1.0, -1.0, 1.0),   //6
+            Point3::new(-1.0, -1.0, 1.0),  //7
             // top
-            v(-1.0, 1.0, 1.0, position, scale),  //8
-            v(-1.0, -1.0, 1.0, position, scale), //9
-            v(1.0, -1.0, 1.0, position, scale),  //10
-            v(1.0, 1.0, 1.0, position, scale),   //11
+            Point3::new(-1.0, 1.0, 1.0),  //8
+            Point3::new(-1.0, -1.0, 1.0), //9
+            Point3::new(1.0, -1.0, 1.0),  //10
+            Point3::new(1.0, 1.0, 1.0),   //11
             // bottom
-            v(-1.0, 1.0, -1.0, position, scale),  //12
-            v(1.0, 1.0, -1.0, position, scale),   //13
-            v(1.0, -1.0, -1.0, position, scale),  //14
-            v(-1.0, -1.0, -1.0, position, scale), //15
+            Point3::new(-1.0, 1.0, -1.0),  //12
+            Point3::new(1.0, 1.0, -1.0),   //13
+            Point3::new(1.0, -1.0, -1.0),  //14
+            Point3::new(-1.0, -1.0, -1.0), //15
             // right
-            v(1.0, 1.0, -1.0, position, scale),  //16
-            v(1.0, 1.0, 1.0, position, scale),   //17
-            v(1.0, -1.0, 1.0, position, scale),  //18
-            v(1.0, -1.0, -1.0, position, scale), //19
+            Point3::new(1.0, 1.0, -1.0),  //16
+            Point3::new(1.0, 1.0, 1.0),   //17
+            Point3::new(1.0, -1.0, 1.0),  //18
+            Point3::new(1.0, -1.0, -1.0), //19
             // left
-            v(-1.0, 1.0, -1.0, position, scale),  //20
-            v(-1.0, -1.0, -1.0, position, scale), //21
-            v(-1.0, -1.0, 1.0, position, scale),  //22
-            v(-1.0, 1.0, 1.0, position, scale),   //23
+            Point3::new(-1.0, 1.0, -1.0),  //20
+            Point3::new(-1.0, -1.0, -1.0), //21
+            Point3::new(-1.0, -1.0, 1.0),  //22
+            Point3::new(-1.0, 1.0, 1.0),   //23
         ];
 
         let vertex_normals = vec![
             // back
-            n(0.0, 1.0, 0.0),
-            n(0.0, 1.0, 0.0),
-            n(0.0, 1.0, 0.0),
-            n(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
             // front
-            n(0.0, -1.0, 0.0),
-            n(0.0, -1.0, 0.0),
-            n(0.0, -1.0, 0.0),
-            n(0.0, -1.0, 0.0),
+            Vector3::new(0.0, -1.0, 0.0),
+            Vector3::new(0.0, -1.0, 0.0),
+            Vector3::new(0.0, -1.0, 0.0),
+            Vector3::new(0.0, -1.0, 0.0),
             // top
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
-            n(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 0.0, 1.0),
             // bottom
-            n(0.0, 0.0, -1.0),
-            n(0.0, 0.0, -1.0),
-            n(0.0, 0.0, -1.0),
-            n(0.0, 0.0, -1.0),
+            Vector3::new(0.0, 0.0, -1.0),
+            Vector3::new(0.0, 0.0, -1.0),
+            Vector3::new(0.0, 0.0, -1.0),
+            Vector3::new(0.0, 0.0, -1.0),
             // right
-            n(1.0, 0.0, 0.0),
-            n(1.0, 0.0, 0.0),
-            n(1.0, 0.0, 0.0),
-            n(1.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
             // left
-            n(-1.0, 0.0, 0.0),
-            n(-1.0, 0.0, 0.0),
-            n(-1.0, 0.0, 0.0),
-            n(-1.0, 0.0, 0.0),
+            Vector3::new(-1.0, 0.0, 0.0),
+            Vector3::new(-1.0, 0.0, 0.0),
+            Vector3::new(-1.0, 0.0, 0.0),
+            Vector3::new(-1.0, 0.0, 0.0),
         ];
 
         let faces = vec![
             // back
-            TriangleFace::new(0, 1, 2),
-            TriangleFace::new(2, 3, 0),
+            TriangleFace::from_same_vertex_and_normal_index(0, 1, 2),
+            TriangleFace::from_same_vertex_and_normal_index(2, 3, 0),
             // front
-            TriangleFace::new(4, 5, 6),
-            TriangleFace::new(6, 7, 4),
+            TriangleFace::from_same_vertex_and_normal_index(4, 5, 6),
+            TriangleFace::from_same_vertex_and_normal_index(6, 7, 4),
             // top
-            TriangleFace::new(8, 9, 10),
-            TriangleFace::new(10, 11, 8),
+            TriangleFace::from_same_vertex_and_normal_index(8, 9, 10),
+            TriangleFace::from_same_vertex_and_normal_index(10, 11, 8),
             // bottom
-            TriangleFace::new(12, 13, 14),
-            TriangleFace::new(14, 15, 12),
+            TriangleFace::from_same_vertex_and_normal_index(12, 13, 14),
+            TriangleFace::from_same_vertex_and_normal_index(14, 15, 12),
             // right
-            TriangleFace::new(16, 17, 18),
-            TriangleFace::new(18, 19, 16),
+            TriangleFace::from_same_vertex_and_normal_index(16, 17, 18),
+            TriangleFace::from_same_vertex_and_normal_index(18, 19, 16),
             // left
-            TriangleFace::new(20, 21, 22),
-            TriangleFace::new(22, 23, 20),
+            TriangleFace::from_same_vertex_and_normal_index(20, 21, 22),
+            TriangleFace::from_same_vertex_and_normal_index(22, 23, 20),
         ];
 
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
     }
 
-    pub fn welded_box_smooth_mesh(position: [f32; 3], scale: f32) -> Mesh {
-        let vertex_positions = vec![
-            // back
-            v(-1.0, 1.0, -1.0, position, scale),
-            v(-1.0, 1.0, 1.0, position, scale),
-            v(1.0, 1.0, 1.0, position, scale),
-            v(1.0, 1.0, -1.0, position, scale),
-            // front
-            v(-1.0, -1.0, -1.0, position, scale),
-            v(1.0, -1.0, -1.0, position, scale),
-            v(1.0, -1.0, 1.0, position, scale),
-            v(-1.0, -1.0, 1.0, position, scale),
+    pub fn welded_box_smooth_mesh() -> Mesh {
+        let vertices = vec![
+            Point3::new(1.0, 1.0, 1.0),
+            Point3::new(-1.0, -1.0, 1.0),
+            Point3::new(-1.0, 1.0, 1.0),
+            Point3::new(1.0, 1.0, -1.0),
+            Point3::new(-1.0, 1.0, -1.0),
+            Point3::new(-1.0, -1.0, -1.0),
+            Point3::new(1.0, -1.0, 1.0),
+            Point3::new(1.0, -1.0, -1.0),
         ];
 
-        let vertex_normals = vec![
-            n(-1.0 / 3.0, 1.0 / 3.0, -1.0 / 3.0),
-            n(-1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
-            n(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
-            n(1.0 / 3.0, 1.0 / 3.0, -1.0 / 3.0),
-            // front
-            n(-1.0 / 3.0, -1.0 / 3.0, -1.0 / 3.0),
-            n(1.0 / 3.0, -1.0 / 3.0, -1.0 / 3.0),
-            n(1.0 / 3.0, -1.0 / 3.0, 1.0 / 3.0),
-            n(-1.0 / 3.0, -1.0 / 3.0, 1.0 / 3.0),
+        let normals = vec![
+            Vector3::new(0.25, 0.5, 0.25),
+            Vector3::new(-0.5, -0.25, 0.25),
+            Vector3::new(-0.25, 0.25, 0.5),
+            Vector3::new(0.5, 0.25, -0.25),
+            Vector3::new(-0.33333334, 0.33333334, -0.33333334),
+            Vector3::new(-0.25, -0.5, -0.25),
+            Vector3::new(0.33333334, -0.33333334, 0.33333334),
+            Vector3::new(0.25, -0.25, -0.5),
         ];
 
         let faces = vec![
-            // back
-            TriangleFace::new(0, 1, 2),
-            TriangleFace::new(2, 3, 0),
-            // front
-            TriangleFace::new(4, 5, 6),
-            TriangleFace::new(6, 7, 4),
-            // top
-            TriangleFace::new(7, 6, 1),
-            TriangleFace::new(2, 1, 6),
-            // bottom
-            TriangleFace::new(5, 0, 3),
-            TriangleFace::new(0, 5, 4),
-            // right
-            TriangleFace::new(6, 3, 2),
-            TriangleFace::new(3, 6, 5),
-            // left
-            TriangleFace::new(4, 7, 0),
-            TriangleFace::new(1, 0, 7),
+            TriangleFace::from_same_vertex_and_normal_index(0, 4, 2),
+            TriangleFace::from_same_vertex_and_normal_index(0, 3, 4),
+            TriangleFace::from_same_vertex_and_normal_index(5, 7, 6),
+            TriangleFace::from_same_vertex_and_normal_index(1, 5, 6),
+            TriangleFace::from_same_vertex_and_normal_index(1, 6, 2),
+            TriangleFace::from_same_vertex_and_normal_index(0, 2, 6),
+            TriangleFace::from_same_vertex_and_normal_index(3, 7, 4),
+            TriangleFace::from_same_vertex_and_normal_index(4, 7, 5),
+            TriangleFace::from_same_vertex_and_normal_index(0, 6, 3),
+            TriangleFace::from_same_vertex_and_normal_index(3, 6, 7),
+            TriangleFace::from_same_vertex_and_normal_index(1, 4, 5),
+            TriangleFace::from_same_vertex_and_normal_index(1, 2, 4),
         ];
 
-        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
+        Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals)
     }
 
     #[test]
@@ -737,8 +714,8 @@ mod tests {
         let plane_reverted = revert_mesh_faces(&plane_mesh);
 
         let expected_reverted_faces = vec![
-            Face::Triangle(TriangleFace::new_separate(2, 1, 0, 0, 0, 0)),
-            Face::Triangle(TriangleFace::new_separate(0, 3, 2, 0, 0, 0)),
+            Face::Triangle(TriangleFace::new(2, 1, 0, 0, 0, 0)),
+            Face::Triangle(TriangleFace::new(0, 3, 2, 0, 0, 0)),
         ];
 
         assert_eq!(plane_reverted.faces(), expected_reverted_faces.as_slice());
@@ -793,6 +770,7 @@ mod tests {
             Vector3::new(1.0, 1.0, 1.0),
             10,
             10,
+            NormalStrategy::Sharp,
         );
         let sphere_faces_one_flipped = sphere.faces().iter().enumerate().map(|(i, f)| match f {
             Face::Triangle(t) => {
@@ -826,7 +804,7 @@ mod tests {
     }
 
     #[test]
-    fn test_weld_tesselated_triangle() {
+    fn test_weld_tessellated_triangle() {
         let mesh = tessellated_triangle_mesh_for_welding();
         let mesh_after_welding_correct = welded_tessellated_triangle_mesh();
 
@@ -840,8 +818,8 @@ mod tests {
 
     #[test]
     fn test_weld_box_sharp_same_len() {
-        let mesh = open_box_sharp_mesh([0.0, 0.0, 0.0], 1.0);
-        let mesh_after_welding_correct = welded_box_smooth_mesh([0.0, 0.0, 0.0], 1.0);
+        let mesh = open_box_sharp_mesh();
+        let mesh_after_welding_correct = welded_box_smooth_mesh();
 
         let mesh_after_welding = weld(&mesh, 0.1).expect("Welding failed");
 
