@@ -1,5 +1,4 @@
 use std::iter;
-use std::{f32, i32};
 
 use nalgebra::{Point3, Vector2, Vector3};
 
