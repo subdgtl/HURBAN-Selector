@@ -1,5 +1,4 @@
 use std::iter;
-use std::{f32, i32};
 
 use nalgebra::{Point3, Vector2, Vector3};
 
@@ -914,8 +913,8 @@ mod tests {
 
     #[test]
     fn test_voxel_cloud_resize_nonzero_to_larger_nonzero_grown_contains_false_rest_original() {
-        let original_origin = Point3::new(cast_i32(0), cast_i32(0), cast_i32(0));
-        let original_block_dimensions = Vector3::new(cast_u32(1), cast_u32(2), cast_u32(3));
+        let original_origin = Point3::new(0i32, 0i32, 0i32);
+        let original_block_dimensions = Vector3::new(1u32, 10u32, 3u32);
         let original_block_end = Point3::new(
             original_origin.x + cast_i32(original_block_dimensions.x) - 1,
             original_origin.y + cast_i32(original_block_dimensions.y) - 1,
