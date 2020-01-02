@@ -57,7 +57,7 @@ impl Func for FuncExtractLargest {
         let mut mesh = mesh_iter.next().expect("Array must not be empty");
         let mut largest_face_count = mesh.faces().len();
 
-        while let Some(current_mesh) = mesh_iter.next() {
+        for current_mesh in mesh_iter {
             let current_face_count = current_mesh.faces().len();
             if current_face_count > largest_face_count {
                 largest_face_count = current_face_count;
