@@ -88,7 +88,7 @@ impl Func for FuncVoxelize {
 
         let mut voxel_cloud = VoxelCloud::from_mesh(mesh, &Vector3::from(voxel_dimensions));
         for _ in 0..growth_iterations {
-            voxel_cloud = voxel_cloud.grow();
+            voxel_cloud.grow_volume();
         }
 
         match voxel_cloud.to_mesh() {
