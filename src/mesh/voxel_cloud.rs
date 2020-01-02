@@ -270,18 +270,6 @@ impl VoxelCloud {
     /// Resize the voxel cloud block to match new block start and block dimensions.
     ///
     /// This clips the outstanding parts of the original voxel cloud.
-
-    // FIXME: Add tests
-    // resize from zero to nonzero dimensions
-    //  - should initially be all false
-    //  - should have correct block dimensions and underlying voxel count
-    // resize from nonzero to zero dimensions
-    //  - should have correct block dimensions and underlying voxel count
-    // resize from between two nonzero dimensions
-    //  - should have correct block dimensions and underlying voxel count
-    //  - newly grown area should contain false voxels (if applicable)
-    //  - old voxels should still be present (if applicable)
-    //  - outstanding voxels should be clipped (if applicable)
     pub fn resize(
         &mut self,
         resized_block_start: &Point3<i32>,
@@ -328,10 +316,6 @@ impl VoxelCloud {
 
     /// Resize the existing voxel cloud block to exactly fit the volumetric
     /// geometry. This mutates the existing voxel cloud.
-
-    // FIXME: Add tests
-    // shrink_to_fit with non-empty data should shrink to the data
-    // shrink_to_fit with empty data should shrink to empty dimensions
     #[allow(dead_code)]
     pub fn shrink_to_fit(&mut self) {
         let mut min: Vector3<i32> =
@@ -397,9 +381,9 @@ impl VoxelCloud {
             self.resize(&block_start, &Vector3::zeros());
         } else {
             let block_dimensions = Vector3::new(
-                clamp_cast_i32_to_u32(max.x - min.x),
-                clamp_cast_i32_to_u32(max.y - min.y),
-                clamp_cast_i32_to_u32(max.z - min.z),
+                clamp_cast_i32_to_u32(max.x - min.x + 1),
+                clamp_cast_i32_to_u32(max.y - min.y + 1),
+                clamp_cast_i32_to_u32(max.z - min.z + 1),
             );
             self.resize(&(self.block_start + min), &block_dimensions);
         }
@@ -845,5 +829,162 @@ mod tests {
         let voxel_mesh_synced = tools::synchronize_mesh_winding(&voxel_mesh, &f2f);
 
         assert!(analysis::are_similar(&voxel_mesh, &voxel_mesh_synced));
+    }
+
+    #[test]
+    fn test_voxel_cloud_resize_zero_to_nonzero_all_false() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::zeros(),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        voxel_cloud.resize(&Point3::origin(), &Vector3::new(1, 1, 1));
+
+        let voxel = voxel_cloud
+            .voxel_at_relative_coords(&Point3::new(0, 0, 0))
+            .unwrap();
+
+        assert!(!voxel);
+    }
+
+    #[test]
+    fn test_voxel_cloud_resize_zero_to_nonzero_correct_start_and_dimensions() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::zeros(),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let new_origin = Point3::new(1, 2, 3);
+        let new_block_dimensions = Vector3::new(4, 5, 6);
+        voxel_cloud.resize(&new_origin, &new_block_dimensions);
+
+        assert_eq!(voxel_cloud.block_start(), new_origin);
+        assert_eq!(voxel_cloud.block_dimensions(), new_block_dimensions);
+        assert_eq!(voxel_cloud.voxel_map.len(), 4 * 5 * 6);
+    }
+
+    #[test]
+    fn test_voxel_cloud_resize_nonzero_to_zero_correct_start_and_dimensions() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::new(1, 2, 3),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let new_origin = Point3::origin();
+        let new_block_dimensions = Vector3::zeros();
+        voxel_cloud.resize(&new_origin, &new_block_dimensions);
+
+        assert_eq!(voxel_cloud.block_start(), new_origin);
+        assert_eq!(voxel_cloud.block_dimensions(), new_block_dimensions);
+        assert_eq!(voxel_cloud.voxel_map.len(), 0);
+    }
+
+    #[test]
+    fn test_voxel_cloud_resize_nonzero_to_smaller_nonzero_correct_start_and_dimensions() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let new_origin = Point3::new(1, 2, 3);
+        let new_block_dimensions = Vector3::new(1, 2, 3);
+        voxel_cloud.resize(&new_origin, &new_block_dimensions);
+
+        assert_eq!(voxel_cloud.block_start(), new_origin);
+        assert_eq!(voxel_cloud.block_dimensions(), new_block_dimensions);
+        assert_eq!(voxel_cloud.voxel_map.len(), 1 * 2 * 3);
+    }
+
+    #[test]
+    fn test_voxel_cloud_resize_nonzero_to_larger_nonzero_correct_start_and_dimensions() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(1, 2, 3),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let new_origin = Point3::new(1, 2, 3);
+        let new_block_dimensions = Vector3::new(4, 5, 6);
+        voxel_cloud.resize(&new_origin, &new_block_dimensions);
+
+        assert_eq!(voxel_cloud.block_start(), new_origin);
+        assert_eq!(voxel_cloud.block_dimensions(), new_block_dimensions);
+        assert_eq!(voxel_cloud.voxel_map.len(), 4 * 5 * 6);
+    }
+
+    #[test]
+    fn test_voxel_cloud_resize_nonzero_to_larger_nonzero_grown_contains_false_rest_original() {
+        let original_origin = Point3::new(0i32, 0i32, 0i32);
+        let original_block_dimensions = Vector3::new(1u32, 10u32, 3u32);
+        let original_block_end = Point3::new(
+            original_origin.x + cast_i32(original_block_dimensions.x) - 1,
+            original_origin.y + cast_i32(original_block_dimensions.y) - 1,
+            original_origin.z + cast_i32(original_block_dimensions.z) - 1,
+        );
+        let mut voxel_cloud = VoxelCloud::new(
+            &original_origin,
+            &original_block_dimensions,
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+
+        for v in voxel_cloud.voxel_map.iter_mut() {
+            *v = true;
+        }
+
+        let new_origin = Point3::new(-1, 2, 3);
+        let new_block_dimensions = Vector3::new(4, 5, 6);
+        voxel_cloud.resize(&new_origin, &new_block_dimensions);
+
+        for (i, v) in voxel_cloud.voxel_map.iter().enumerate() {
+            let coords = one_dimensional_to_absolute_three_dimensional_coordinate(
+                i,
+                &voxel_cloud.block_start(),
+                &voxel_cloud.block_dimensions(),
+            )
+            .unwrap();
+
+            if coords.x < original_origin.x
+                || coords.y < original_origin.y
+                || coords.z < original_origin.z
+                || coords.x > original_block_end.x
+                || coords.y > original_block_end.y
+                || coords.z > original_block_end.z
+            {
+                assert!(!v);
+            } else {
+                assert!(v);
+            }
+        }
+    }
+
+    #[test]
+    fn test_voxel_cloud_shrink_to_volume() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        voxel_cloud.set_voxel_at_relative_coords(&Point3::new(1, 1, 1), true);
+        voxel_cloud.shrink_to_fit();
+
+        assert_eq!(voxel_cloud.block_start(), Point3::new(1, 1, 1));
+        assert_eq!(voxel_cloud.block_dimensions(), Vector3::new(1, 1, 1));
+        assert_eq!(voxel_cloud.voxel_map.len(), 1);
+        assert!(voxel_cloud
+            .voxel_at_relative_coords(&Point3::new(0, 0, 0))
+            .unwrap());
+    }
+
+    #[test]
+    fn test_voxel_cloud_shrink_to_empty() {
+        let mut voxel_cloud = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        voxel_cloud.shrink_to_fit();
+
+        assert_eq!(voxel_cloud.block_start(), Point3::origin());
+        assert_eq!(voxel_cloud.block_dimensions(), Vector3::new(0, 0, 0));
+        assert_eq!(voxel_cloud.voxel_map.len(), 0);
     }
 }
