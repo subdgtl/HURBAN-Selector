@@ -103,6 +103,38 @@ impl BoundingBox {
     pub fn diagonal_length(&self) -> f32 {
         nalgebra::distance(&self.minimum_point, &self.maximum_point)
     }
+
+    /// Check if the two bounding boxes intersect / share any portion of space
+
+    // https://math.stackexchange.com/questions/2651710/simplest-way-to-determine-if-two-3d-boxes-intersect
+    #[allow(dead_code)]
+    pub fn do_bounding_boxes_intersect(&self, other: &BoundingBox) -> bool {
+        let self_min_x = self.minimum_point.x.min(self.maximum_point.x);
+        let self_min_y = self.minimum_point.y.min(self.maximum_point.y);
+        let self_min_z = self.minimum_point.z.min(self.maximum_point.z);
+        let self_max_x = self.minimum_point.x.max(self.maximum_point.x);
+        let self_max_y = self.minimum_point.y.max(self.maximum_point.y);
+        let self_max_z = self.minimum_point.z.max(self.maximum_point.z);
+        let other_min_x = other.minimum_point.x.min(other.maximum_point.x);
+        let other_min_y = other.minimum_point.y.min(other.maximum_point.y);
+        let other_min_z = other.minimum_point.z.min(other.maximum_point.z);
+        let other_max_x = other.minimum_point.x.max(other.maximum_point.x);
+        let other_max_y = other.minimum_point.y.max(other.maximum_point.y);
+        let other_max_z = other.minimum_point.z.max(other.maximum_point.z);
+
+        ((self_min_x <= other_min_x && other_min_x <= self_max_x)
+            || (self_min_x <= other_max_x && other_max_x <= self_max_x)
+            || (other_min_x <= self_min_x && self_min_x <= other_max_x)
+            || (other_min_x <= self_max_x && self_max_x <= other_max_x))
+            && ((self_min_y <= other_min_y && other_min_y <= self_max_y)
+                || (self_min_y <= other_max_y && other_max_y <= self_max_y)
+                || (other_min_y <= self_min_y && self_min_y <= other_max_y)
+                || (other_min_y <= self_max_y && self_max_y <= other_max_y))
+            && ((self_min_z <= other_min_z && other_min_z <= self_max_z)
+                || (self_min_z <= other_max_z && other_max_z <= self_max_z)
+                || (other_min_z <= self_min_z && self_min_z <= other_max_z)
+                || (other_min_z <= self_max_z && self_max_z <= other_max_z))
+    }
 }
 
 // FIXME: Make more generic: take &[Point] or Iterator<Item=&Point>
@@ -432,38 +464,6 @@ pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
         && unpacked_faces2
             .clone()
             .all(|f| unpacked_faces1.clone().any(|g| f == g))
-}
-
-/// Check if the two bounding boxes intersect / share any portion of space
-
-// https://math.stackexchange.com/questions/2651710/simplest-way-to-determine-if-two-3d-boxes-intersect
-#[allow(dead_code)]
-pub fn do_bounding_boxes_intersect(b1: &BoundingBox, b2: &BoundingBox) -> bool {
-    let b1_min_x = b1.minimum_point.x.min(b1.maximum_point.x);
-    let b1_min_y = b1.minimum_point.y.min(b1.maximum_point.y);
-    let b1_min_z = b1.minimum_point.z.min(b1.maximum_point.z);
-    let b1_max_x = b1.minimum_point.x.max(b1.maximum_point.x);
-    let b1_max_y = b1.minimum_point.y.max(b1.maximum_point.y);
-    let b1_max_z = b1.minimum_point.z.max(b1.maximum_point.z);
-    let b2_min_x = b2.minimum_point.x.min(b2.maximum_point.x);
-    let b2_min_y = b2.minimum_point.y.min(b2.maximum_point.y);
-    let b2_min_z = b2.minimum_point.z.min(b2.maximum_point.z);
-    let b2_max_x = b2.minimum_point.x.max(b2.maximum_point.x);
-    let b2_max_y = b2.minimum_point.y.max(b2.maximum_point.y);
-    let b2_max_z = b2.minimum_point.z.max(b2.maximum_point.z);
-
-    ((b1_min_x <= b2_min_x && b2_min_x <= b1_max_x)
-        || (b1_min_x <= b2_max_x && b2_max_x <= b1_max_x)
-        || (b2_min_x <= b1_min_x && b1_min_x <= b2_max_x)
-        || (b2_min_x <= b1_max_x && b1_max_x <= b2_max_x))
-        && ((b1_min_y <= b2_min_y && b2_min_y <= b1_max_y)
-            || (b1_min_y <= b2_max_y && b2_max_y <= b1_max_y)
-            || (b2_min_y <= b1_min_y && b1_min_y <= b2_max_y)
-            || (b2_min_y <= b1_max_y && b1_max_y <= b2_max_y))
-        && ((b1_min_z <= b2_min_z && b2_min_z <= b1_max_z)
-            || (b1_min_z <= b2_max_z && b2_max_z <= b1_max_z)
-            || (b2_min_z <= b1_min_z && b1_min_z <= b2_max_z)
-            || (b2_min_z <= b1_max_z && b1_max_z <= b2_max_z))
 }
 
 #[cfg(test)]
