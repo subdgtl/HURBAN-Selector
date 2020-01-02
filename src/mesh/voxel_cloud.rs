@@ -997,16 +997,12 @@ mod tests {
     fn test_voxel_cloud_resize_nonzero_to_larger_nonzero_grown_contains_false_rest_original() {
         let original_origin = Point3::new(0i32, 0i32, 0i32);
         let original_block_dimensions = Vector3::new(1u32, 10u32, 3u32);
-        let original_block_end = Point3::new(
-            original_origin.x + cast_i32(original_block_dimensions.x) - 1,
-            original_origin.y + cast_i32(original_block_dimensions.y) - 1,
-            original_origin.z + cast_i32(original_block_dimensions.z) - 1,
-        );
         let mut voxel_cloud = VoxelCloud::new(
             &original_origin,
             &original_block_dimensions,
             &Vector3::new(1.0, 1.0, 1.0),
         );
+        let original_block_end = voxel_cloud.block_end();
 
         for v in voxel_cloud.voxel_map.iter_mut() {
             *v = true;
