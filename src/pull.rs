@@ -62,7 +62,7 @@ pub fn pull_point_to_line(
 
 /// Pulls arbitrary point to the closest point of a plane.
 ///
-/// Cast a ray from the point perpendicular to the plane and calculate their
+/// Cast a ray from the point perpendicular to the plane and compute their
 /// intersection.
 #[allow(dead_code)]
 pub fn pull_point_to_plane(point: &Point3<f32>, plane: &Plane) -> PulledPointWithDistance {
@@ -245,7 +245,7 @@ fn is_point_in_triangle(
         horizontal_vertex2.xy(),
         horizontal_point.xy(),
     )
-    .expect("Failed to calculate barycentric coords");
+    .expect("Failed to compute barycentric coords");
     barycentric_point.x >= 0.0
         && barycentric_point.x <= 1.0
         && barycentric_point.y >= 0.0
@@ -396,15 +396,15 @@ mod tests {
         let point_on_line_clamped_correct = Point3::new(0.0, 0.0, 0.0);
         let point_on_line_unclamped_correct = Point3::new(0.0, 0.0, 0.0);
 
-        let point_on_line_calculated = pull_point_to_line(&test_point, line_start, line_end);
+        let point_on_line_computed = pull_point_to_line(&test_point, line_start, line_end);
 
         assert_eq!(
             point_on_line_clamped_correct,
-            point_on_line_calculated.clamped
+            point_on_line_computed.clamped
         );
         assert_eq!(
             point_on_line_unclamped_correct,
-            point_on_line_calculated.unclamped
+            point_on_line_computed.unclamped
         );
     }
 
@@ -417,15 +417,15 @@ mod tests {
         let point_on_line_clamped_correct = Point3::new(-1.0, 0.0, 0.0);
         let point_on_line_unclamped_correct = Point3::new(-2.0, 0.0, 0.0);
 
-        let point_on_line_calculated = pull_point_to_line(&test_point, line_start, line_end);
+        let point_on_line_computed = pull_point_to_line(&test_point, line_start, line_end);
 
         assert_eq!(
             point_on_line_clamped_correct,
-            point_on_line_calculated.clamped
+            point_on_line_computed.clamped
         );
         assert_eq!(
             point_on_line_unclamped_correct,
-            point_on_line_calculated.unclamped
+            point_on_line_computed.unclamped
         );
     }
 
@@ -438,15 +438,15 @@ mod tests {
         let point_on_line_clamped_correct = Point3::new(1.0, 0.0, 0.0);
         let point_on_line_unclamped_correct = Point3::new(2.0, 0.0, 0.0);
 
-        let point_on_line_calculated = pull_point_to_line(&test_point, line_start, line_end);
+        let point_on_line_computed = pull_point_to_line(&test_point, line_start, line_end);
 
         assert_eq!(
             point_on_line_clamped_correct,
-            point_on_line_calculated.clamped
+            point_on_line_computed.clamped
         );
         assert_eq!(
             point_on_line_unclamped_correct,
-            point_on_line_calculated.unclamped
+            point_on_line_computed.unclamped
         );
     }
 
@@ -459,15 +459,15 @@ mod tests {
         let point_on_line_clamped_correct = Point3::new(0.0, 0.0, 0.0);
         let point_on_line_unclamped_correct = Point3::new(0.0, 0.0, 0.0);
 
-        let point_on_line_calculated = pull_point_to_line(&test_point, line_start, line_end);
+        let point_on_line_computed = pull_point_to_line(&test_point, line_start, line_end);
 
         assert_eq!(
             point_on_line_clamped_correct,
-            point_on_line_calculated.clamped
+            point_on_line_computed.clamped
         );
         assert_eq!(
             point_on_line_unclamped_correct,
-            point_on_line_calculated.unclamped
+            point_on_line_computed.unclamped
         );
     }
 
@@ -477,10 +477,10 @@ mod tests {
         let test_plane =
             Plane::from_origin_and_normal(&Point3::origin(), &Vector3::new(0.0, 0.0, 1.0));
 
-        let point_pulled_to_plane_calculated = pull_point_to_plane(&test_point, &test_plane);
+        let point_pulled_to_plane_computed = pull_point_to_plane(&test_point, &test_plane);
 
-        assert_eq!(point_pulled_to_plane_calculated.point, test_point);
-        assert_eq!(point_pulled_to_plane_calculated.distance, 0.0);
+        assert_eq!(point_pulled_to_plane_computed.point, test_point);
+        assert_eq!(point_pulled_to_plane_computed.distance, 0.0);
     }
 
     #[test]
@@ -489,10 +489,10 @@ mod tests {
         let test_plane =
             Plane::from_origin_and_normal(&Point3::origin(), &Vector3::new(1.0, 0.0, 0.0));
 
-        let point_pulled_to_plane_calculated = pull_point_to_plane(&test_point, &test_plane);
+        let point_pulled_to_plane_computed = pull_point_to_plane(&test_point, &test_plane);
 
-        assert_eq!(point_pulled_to_plane_calculated.point, test_point);
-        assert_eq!(point_pulled_to_plane_calculated.distance, 0.0);
+        assert_eq!(point_pulled_to_plane_computed.point, test_point);
+        assert_eq!(point_pulled_to_plane_computed.distance, 0.0);
     }
 
     #[test]
@@ -501,13 +501,13 @@ mod tests {
         let test_plane =
             Plane::from_origin_and_normal(&Point3::origin(), &Vector3::new(0.0, 0.0, 1.0));
 
-        let point_pulled_to_plane_calculated = pull_point_to_plane(&test_point, &test_plane);
+        let point_pulled_to_plane_computed = pull_point_to_plane(&test_point, &test_plane);
 
         assert_eq!(
-            point_pulled_to_plane_calculated.point,
+            point_pulled_to_plane_computed.point,
             Point3::new(0.0, 0.0, 0.0)
         );
-        assert_eq!(point_pulled_to_plane_calculated.distance, 1.0);
+        assert_eq!(point_pulled_to_plane_computed.distance, 1.0);
     }
 
     #[test]
@@ -517,14 +517,14 @@ mod tests {
 
         let distance_correct = nalgebra::distance(&test_point, &Point3::origin());
 
-        let point_pulled_to_plane_calculated = pull_point_to_plane(&test_point, &test_plane);
+        let point_pulled_to_plane_computed = pull_point_to_plane(&test_point, &test_plane);
 
-        assert!(point_pulled_to_plane_calculated.point.coords.relative_eq(
+        assert!(point_pulled_to_plane_computed.point.coords.relative_eq(
             &Vector3::new(0.0, 0.0, 0.0),
             0.001,
             0.001,
         ));
-        assert_eq!(point_pulled_to_plane_calculated.distance, distance_correct);
+        assert_eq!(point_pulled_to_plane_computed.distance, distance_correct);
     }
 
     #[test]
@@ -538,14 +538,14 @@ mod tests {
         let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
         let point_on_mesh_correct = Point3::new(-1.0, 0.0, 0.0);
-        let pulled_point_on_mesh_calculated =
+        let pulled_point_on_mesh_computed =
             pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
         assert!(approx::relative_eq!(
-            pulled_point_on_mesh_calculated.point,
+            pulled_point_on_mesh_computed.point,
             point_on_mesh_correct,
         ));
-        assert_eq!(0.75, pulled_point_on_mesh_calculated.distance);
+        assert_eq!(0.75, pulled_point_on_mesh_computed.distance);
     }
 
     #[test]
@@ -564,14 +564,14 @@ mod tests {
             Point3::new(0.25, 1.0, 0.25),
             Point3::new(0.25, 0.25, 1.0),
         ];
-        let pulled_point_on_mesh_calculated =
+        let pulled_point_on_mesh_computed =
             pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
         assert!(points_on_mesh_correct
             .iter()
-            .any(|p| *p == pulled_point_on_mesh_calculated.point));
+            .any(|p| *p == pulled_point_on_mesh_computed.point));
 
-        assert_eq!(0.75, pulled_point_on_mesh_calculated.distance);
+        assert_eq!(0.75, pulled_point_on_mesh_computed.distance);
     }
 
     #[test]
@@ -586,13 +586,13 @@ mod tests {
 
         // corner
         let point_on_mesh_correct = Point3::new(1.0, 1.0, 1.0);
-        let pulled_point_on_mesh_calculated =
+        let pulled_point_on_mesh_computed =
             pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
-        assert_eq!(pulled_point_on_mesh_calculated.point, point_on_mesh_correct);
+        assert_eq!(pulled_point_on_mesh_computed.point, point_on_mesh_correct);
         assert_eq!(
-            pulled_point_on_mesh_calculated.distance,
-            nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.point),
+            pulled_point_on_mesh_computed.distance,
+            nalgebra::distance(&test_point, &pulled_point_on_mesh_computed.point),
         );
     }
 
@@ -608,13 +608,13 @@ mod tests {
 
         // on the edge
         let point_on_mesh_correct = Point3::new(1.0, 1.0, 0.25);
-        let pulled_point_on_mesh_calculated =
+        let pulled_point_on_mesh_computed =
             pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
-        assert_eq!(pulled_point_on_mesh_calculated.point, point_on_mesh_correct);
+        assert_eq!(pulled_point_on_mesh_computed.point, point_on_mesh_correct);
         assert_eq!(
-            pulled_point_on_mesh_calculated.distance,
-            nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.point),
+            pulled_point_on_mesh_computed.distance,
+            nalgebra::distance(&test_point, &pulled_point_on_mesh_computed.point),
         );
     }
 
@@ -628,13 +628,13 @@ mod tests {
         let test_point = Point3::new(0.0, 0.0, 1.0);
         let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
-        let pulled_point_on_mesh_calculated =
+        let pulled_point_on_mesh_computed =
             pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
-        assert_eq!(pulled_point_on_mesh_calculated.point, test_point);
+        assert_eq!(pulled_point_on_mesh_computed.point, test_point);
         assert_eq!(
-            pulled_point_on_mesh_calculated.distance,
-            nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.point),
+            pulled_point_on_mesh_computed.distance,
+            nalgebra::distance(&test_point, &pulled_point_on_mesh_computed.point),
         );
     }
 
@@ -648,13 +648,13 @@ mod tests {
         let test_point = Point3::new(1.0, 1.0, 0.0);
         let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
-        let pulled_point_on_mesh_calculated =
+        let pulled_point_on_mesh_computed =
             pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
-        assert_eq!(pulled_point_on_mesh_calculated.point, test_point);
+        assert_eq!(pulled_point_on_mesh_computed.point, test_point);
         assert_eq!(
-            pulled_point_on_mesh_calculated.distance,
-            nalgebra::distance(&test_point, &pulled_point_on_mesh_calculated.point),
+            pulled_point_on_mesh_computed.distance,
+            nalgebra::distance(&test_point, &pulled_point_on_mesh_computed.point),
         );
     }
 
@@ -909,7 +909,7 @@ mod tests {
         let point_on_triangle_correct = Point3::new(0.25, 0.25, 0.0);
         let distance_correct = nalgebra::distance(&ray_origin, &point_on_triangle_correct);
 
-        let point_on_triangle_calculated = ray_intersects_triangle(
+        let point_on_triangle_computed = ray_intersects_triangle(
             &ray_origin,
             &ray_vector,
             triangle_points.0,
@@ -918,11 +918,8 @@ mod tests {
         )
         .expect("Point is not on the triangle.");
 
-        assert_eq!(
-            point_on_triangle_calculated.point,
-            point_on_triangle_correct
-        );
-        assert_eq!(point_on_triangle_calculated.distance, distance_correct);
+        assert_eq!(point_on_triangle_computed.point, point_on_triangle_correct);
+        assert_eq!(point_on_triangle_computed.distance, distance_correct);
     }
 
     #[test]
@@ -936,7 +933,7 @@ mod tests {
         let ray_origin = Point3::new(1.25, 0.25, 0.25);
         let ray_vector = Vector3::new(0.0, 0.0, -1.0);
 
-        let point_on_triangle_calculated = ray_intersects_triangle(
+        let point_on_triangle_computed = ray_intersects_triangle(
             &ray_origin,
             &ray_vector,
             triangle_points.0,
@@ -945,7 +942,7 @@ mod tests {
         );
 
         // There is no intersection of the triangle and ray
-        assert_eq!(None, point_on_triangle_calculated);
+        assert_eq!(None, point_on_triangle_computed);
     }
 
     #[test]
@@ -959,7 +956,7 @@ mod tests {
         let ray_origin = Point3::new(0.25, 0.25, 0.25);
         let ray_vector = Vector3::new(1.0, 0.0, 0.0);
 
-        let point_on_triangle_calculated = ray_intersects_triangle(
+        let point_on_triangle_computed = ray_intersects_triangle(
             &ray_origin,
             &ray_vector,
             triangle_points.0,
@@ -968,7 +965,7 @@ mod tests {
         );
 
         // There is no intersection of the triangle and ray
-        assert_eq!(None, point_on_triangle_calculated);
+        assert_eq!(None, point_on_triangle_computed);
     }
 
     #[test]
@@ -985,7 +982,7 @@ mod tests {
         let point_on_triangle_correct = Point3::new(0.07773773, 0.42011225, 0.11615828);
         let distance_correct = nalgebra::distance(&ray_origin, &point_on_triangle_correct);
 
-        let point_on_triangle_calculated = ray_intersects_triangle(
+        let point_on_triangle_computed = ray_intersects_triangle(
             &ray_origin,
             &ray_vector,
             triangle_points.0,
@@ -994,11 +991,8 @@ mod tests {
         )
         .expect("Point is not on the triangle.");
 
-        assert_eq!(
-            point_on_triangle_calculated.point,
-            point_on_triangle_correct
-        );
-        assert_eq!(point_on_triangle_calculated.distance, distance_correct);
+        assert_eq!(point_on_triangle_computed.point, point_on_triangle_correct);
+        assert_eq!(point_on_triangle_computed.distance, distance_correct);
     }
 
     #[test]
@@ -1012,12 +1006,12 @@ mod tests {
         let point_on_plane_correct = Point3::new(-3.4010215, 1.2537622, -3.6794877);
         let distance_correct = nalgebra::distance(&ray_origin, &point_on_plane_correct);
 
-        let point_on_plane_calculated = ray_intersects_plane(&ray_origin, &ray_vector, &plane)
+        let point_on_plane_computed = ray_intersects_plane(&ray_origin, &ray_vector, &plane)
             .expect("The ray doesn't intersect the plane");
 
-        assert_eq!(point_on_plane_calculated.point, point_on_plane_correct);
+        assert_eq!(point_on_plane_computed.point, point_on_plane_correct);
         assert!(approx::relative_eq!(
-            point_on_plane_calculated.distance,
+            point_on_plane_computed.distance,
             distance_correct
         ));
     }
@@ -1033,12 +1027,12 @@ mod tests {
         let point_on_plane_correct = Point3::new(-0.25097048, -1.667917, 1.3855792);
         let distance_correct = nalgebra::distance(&ray_origin, &point_on_plane_correct);
 
-        let point_on_plane_calculated = ray_intersects_plane(&ray_origin, &ray_vector, &plane)
+        let point_on_plane_computed = ray_intersects_plane(&ray_origin, &ray_vector, &plane)
             .expect("The ray doesn't intersect the plane");
 
-        assert_eq!(point_on_plane_calculated.point, point_on_plane_correct);
+        assert_eq!(point_on_plane_computed.point, point_on_plane_correct);
         assert!(approx::relative_eq!(
-            point_on_plane_calculated.distance,
+            point_on_plane_computed.distance,
             distance_correct
         ));
     }
@@ -1051,9 +1045,9 @@ mod tests {
 
         let plane = Plane::from_origin_and_normal(&Point3::origin(), &normal);
 
-        let point_on_plane_calculated = ray_intersects_plane(&ray_origin, &ray_vector, &plane);
+        let point_on_plane_computed = ray_intersects_plane(&ray_origin, &ray_vector, &plane);
 
-        assert_eq!(point_on_plane_calculated, None);
+        assert_eq!(point_on_plane_computed, None);
     }
 
     #[test]
@@ -1064,14 +1058,11 @@ mod tests {
 
         let plane = Plane::from_origin_and_normal(&Point3::origin(), &normal);
 
-        let point_on_plane_calculated = ray_intersects_plane(&ray_origin, &ray_vector, &plane)
+        let point_on_plane_computed = ray_intersects_plane(&ray_origin, &ray_vector, &plane)
             .expect("The ray doesn't intersect the plane");
 
-        assert_eq!(point_on_plane_calculated.point, ray_origin);
-        assert!(approx::relative_eq!(
-            point_on_plane_calculated.distance,
-            0.0,
-        ));
+        assert_eq!(point_on_plane_computed.point, ray_origin);
+        assert!(approx::relative_eq!(point_on_plane_computed.distance, 0.0,));
     }
 
     #[test]
@@ -1094,9 +1085,9 @@ mod tests {
 
         let plane = Plane::from_origin_and_normal(&Point3::origin(), &normal);
 
-        let point_on_plane_calculated = ray_intersects_plane(&ray_origin, &ray_vector, &plane);
+        let point_on_plane_computed = ray_intersects_plane(&ray_origin, &ray_vector, &plane);
 
-        assert_eq!(point_on_plane_calculated, None);
+        assert_eq!(point_on_plane_computed, None);
     }
 
     #[test]

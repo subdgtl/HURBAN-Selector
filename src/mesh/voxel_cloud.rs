@@ -51,7 +51,7 @@ impl VoxelCloud {
         }
     }
 
-    /// Calculate a voxel cloud from an existing mesh.
+    /// Compute a voxel cloud from an existing mesh.
     pub fn from_mesh(mesh: &Mesh, voxel_dimensions: &Vector3<f32>) -> Self {
         assert!(
             voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
@@ -89,7 +89,7 @@ impl VoxelCloud {
                     let point_a = &mesh.vertices()[cast_usize(f.vertices.0)];
                     let point_b = &mesh.vertices()[cast_usize(f.vertices.1)];
                     let point_c = &mesh.vertices()[cast_usize(f.vertices.2)];
-                    // Calculate the density of points on the respective face
+                    // Compute the density of points on the respective face
                     let ab_distance_sq = nalgebra::distance_squared(point_a, point_b);
                     let bc_distance_sq = nalgebra::distance_squared(point_b, point_c);
                     let ca_distance_sq = nalgebra::distance_squared(point_c, point_a);
@@ -108,7 +108,7 @@ impl VoxelCloud {
                             if v_normalized >= 0.0 {
                                 let barycentric =
                                     Point3::new(u_normalized, v_normalized, w_normalized);
-                                // Calculate point position in model space
+                                // Compute point position in model space
                                 let cartesian = geometry::barycentric_to_cartesian(
                                     &barycentric,
                                     &point_a,
@@ -389,7 +389,7 @@ impl VoxelCloud {
         }
     }
 
-    /// Calculates a simple triangulated welded mesh from the current state of
+    /// Computes a simple triangulated welded mesh from the current state of
     /// the voxel cloud.
     ///
     /// For watertight meshes this creates both, outer and inner boundary mesh.
@@ -414,7 +414,7 @@ impl VoxelCloud {
             voxel_dimensions: Vector2<f32>,
         }
 
-        // Pre-calculated geometry helpers
+        // Pre-computed geometry helpers
         let neighbor_helpers = [
             VoxelMeshHelper {
                 //top
@@ -493,7 +493,7 @@ impl VoxelCloud {
                     &self.block_dimensions,
                 )
                 .expect("Out of bounds");
-                // calculate the position of its center in model space coordinates
+                // compute the position of its center in model space coordinates
                 let voxel_center = relative_voxel_to_cartesian_coords(
                     &voxel_coords,
                     &self.block_start,
@@ -612,7 +612,7 @@ fn one_dimensional_to_absolute_three_dimensional_coordinate(
         .map(|relative| relative + block_start.coords)
 }
 
-/// Calculates the voxel-space coordinates of a voxel containing the input
+/// Computes the voxel-space coordinates of a voxel containing the input
 /// point.
 fn cartesian_to_absolute_voxel_coords(
     point: &Point3<f32>,
@@ -631,7 +631,7 @@ fn cartesian_to_absolute_voxel_coords(
     )
 }
 
-/// Calculates the voxel-space coordinates of a voxel containing the input
+/// Computes the voxel-space coordinates of a voxel containing the input
 /// point
 #[allow(dead_code)]
 fn cartesian_to_relative_voxel_coords(
@@ -652,7 +652,7 @@ fn cartesian_to_relative_voxel_coords(
     )
 }
 
-/// Calculates the center of a voxel in model-space coordinates from
+/// Computes the center of a voxel in model-space coordinates from
 /// absolute voxel coordinates (relative to the voxel space origin)
 #[allow(dead_code)]
 fn absolute_voxel_to_cartesian_coords(
@@ -672,7 +672,7 @@ fn absolute_voxel_to_cartesian_coords(
     )
 }
 
-/// Calculates the center of a voxel in model-space coordinates from voxel
+/// Computes the center of a voxel in model-space coordinates from voxel
 /// coordinates relative to the voxel block start.
 fn relative_voxel_to_cartesian_coords(
     relative_coords: &Point3<i32>,
@@ -700,7 +700,6 @@ mod tests {
 
     use super::*;
 
-    // FIXME: Snapshot testing
     fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
             Point3::new(0.566987, -1.129e-11, 0.25),

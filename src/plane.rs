@@ -17,7 +17,7 @@ impl Plane {
     ///
     /// The X vector is leading and its direction is kept in the plane unchanged.
     ///
-    /// The Y vector is only a hint and is being recalculated to be perpendicular to
+    /// The Y vector is only a hint and is being recomputed to be perpendicular to
     /// the leading X vector.
     /// # Panics
     /// Panics if the X and Y vectors are parallel (identical or reverted).
@@ -26,7 +26,7 @@ impl Plane {
         x_vector: &Vector3<f32>,
         y_vector_hint: &Vector3<f32>,
     ) -> Plane {
-        // Calculate plane normal, then use it to calculate certainly
+        // Compute plane normal, then use it to compute certainly
         // perpendicular Y vector.
         let plane_normal = x_vector.cross(&y_vector_hint);
 
@@ -91,7 +91,7 @@ impl Plane {
     #[allow(dead_code)]
     pub fn fit(points: &[Point3<f32>]) -> Option<Plane> {
         let n = points.len();
-        // Not enough points to calculate a plane.
+        // Not enough points to compute a plane.
         if n < 3 {
             return None;
         }
@@ -102,7 +102,7 @@ impl Plane {
         }
         let centroid = sum * (1.0 / (n as f32));
 
-        // Calculate full 3x3 covariance matrix, excluding symmetries:
+        // Compute full 3x3 covariance matrix, excluding symmetries:
         let mut xx = 0.0;
         let mut xy = 0.0;
         let mut xz = 0.0;
@@ -198,7 +198,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_plane_new_calculate_perpendicular_y() {
+    fn test_plane_new_compute_perpendicular_y() {
         let test_plane = Plane::new(
             &Point3::new(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 0.0, 0.0),
@@ -228,7 +228,7 @@ mod tests {
         );
     }
 
-    /// The test compares calculated values to the result of a similar function
+    /// The test compares computed values to the result of a similar function
     /// in Grasshopper. The internal logic of the Grasshopper function is
     /// unknown, therefore the resulting plane is flipped or rotated around its
     /// normal differently. The origin of a plane fitted in Grasshopper is also
@@ -253,16 +253,16 @@ mod tests {
             Point3::new(0.037465, 2.681375, 0.790804),
         ];
 
-        let plane_calculated = Plane::fit(&points).expect("Plane not created");
+        let plane_computed = Plane::fit(&points).expect("Plane not created");
 
         let origin_correct = Point3::new(4.8477926, 4.965808, 0.9303582);
         let normal_correct = Vector3::new(-0.026102116, 0.009860026, 0.9996106);
 
-        assert_eq!(plane_calculated.origin(), origin_correct);
-        assert_eq!(plane_calculated.normal(), normal_correct);
+        assert_eq!(plane_computed.origin(), origin_correct);
+        assert_eq!(plane_computed.normal(), normal_correct);
     }
 
-    /// The test compares calculated values to the result of a similar function
+    /// The test compares computed values to the result of a similar function
     /// in Grasshopper. The internal logic of the Grasshopper function is
     /// unknown, therefore the resulting plane is flipped or rotated around its
     /// normal differently. The origin of a plane fitted in Grasshopper is also
@@ -292,13 +292,13 @@ mod tests {
             Point3::new(9.237105, 8.553053, 0.030565),
         ];
 
-        let plane_calculated = Plane::fit(&points).expect("Plane not created");
+        let plane_computed = Plane::fit(&points).expect("Plane not created");
 
         let origin_correct = Point3::new(4.65731, 5.4324775, 0.913277);
         let normal_correct = Vector3::new(-0.021554187, 0.032416273, -0.999242);
 
-        assert_eq!(plane_calculated.origin(), origin_correct);
-        assert_eq!(plane_calculated.normal(), normal_correct);
+        assert_eq!(plane_computed.origin(), origin_correct);
+        assert_eq!(plane_computed.normal(), normal_correct);
     }
 
     #[test]
