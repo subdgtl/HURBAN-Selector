@@ -105,10 +105,9 @@ impl BoundingBox {
     }
 
     /// Check if the two bounding boxes intersect / share any portion of space
-
-    // https://math.stackexchange.com/questions/2651710/simplest-way-to-determine-if-two-3d-boxes-intersect
+    /// https://math.stackexchange.com/questions/2651710/simplest-way-to-determine-if-two-3d-boxes-intersect
     #[allow(dead_code)]
-    pub fn do_bounding_boxes_intersect(&self, other: &BoundingBox) -> bool {
+    pub fn intersects_with(&self, other: &BoundingBox) -> bool {
         let self_min_x = self.minimum_point.x.min(self.maximum_point.x);
         let self_min_y = self.minimum_point.y.min(self.maximum_point.y);
         let self_min_z = self.minimum_point.z.min(self.maximum_point.z);
