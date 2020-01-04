@@ -136,12 +136,6 @@ impl VoxelCloud {
         voxel_cloud
     }
 
-    /// Returns voxel cloud block start in absolute voxel coordinates
-    #[allow(dead_code)]
-    pub fn block_start(&self) -> Point3<i32> {
-        self.block_start
-    }
-
     /// Returns voxel cloud block end in absolute voxel coordinates
     pub fn block_end(&self) -> Point3<i32> {
         Point3::new(
@@ -149,18 +143,6 @@ impl VoxelCloud {
             self.block_start.y + cast_i32(self.block_dimensions.y) - 1,
             self.block_start.z + cast_i32(self.block_dimensions.z) - 1,
         )
-    }
-
-    /// Returns voxel cloud block dimensions in voxel units
-    #[allow(dead_code)]
-    pub fn block_dimensions(&self) -> Vector3<u32> {
-        self.block_dimensions
-    }
-
-    /// Returns single voxel dimensions in model space units
-    #[allow(dead_code)]
-    pub fn voxel_dimensions(&self) -> Vector3<f32> {
-        self.voxel_dimensions
     }
 
     /// For each existing voxel turn on all neighbor voxels to grow (offset) the
@@ -862,13 +844,13 @@ mod tests {
                     let relative_position = Point3::new(cast_i32(x), cast_i32(y), cast_i32(z));
                     let one_dimensional = relative_three_dimensional_coordinate_to_one_dimensional(
                         &relative_position,
-                        &voxel_cloud.block_dimensions(),
+                        &voxel_cloud.block_dimensions,
                     )
                     .unwrap();
                     let three_dimensional =
                         one_dimensional_to_relative_three_dimensional_coordinate(
                             one_dimensional,
-                            &voxel_cloud.block_dimensions(),
+                            &voxel_cloud.block_dimensions,
                         )
                         .unwrap();
                     assert_eq!(relative_position, three_dimensional);
@@ -940,8 +922,8 @@ mod tests {
         let new_block_dimensions = Vector3::new(4, 5, 6);
         voxel_cloud.resize(&new_origin, &new_block_dimensions);
 
-        assert_eq!(voxel_cloud.block_start(), new_origin);
-        assert_eq!(voxel_cloud.block_dimensions(), new_block_dimensions);
+        assert_eq!(voxel_cloud.block_start, new_origin);
+        assert_eq!(voxel_cloud.block_dimensions, new_block_dimensions);
         assert_eq!(voxel_cloud.voxel_map.len(), 4 * 5 * 6);
     }
 
@@ -956,8 +938,8 @@ mod tests {
         let new_block_dimensions = Vector3::zeros();
         voxel_cloud.resize(&new_origin, &new_block_dimensions);
 
-        assert_eq!(voxel_cloud.block_start(), new_origin);
-        assert_eq!(voxel_cloud.block_dimensions(), new_block_dimensions);
+        assert_eq!(voxel_cloud.block_start, new_origin);
+        assert_eq!(voxel_cloud.block_dimensions, new_block_dimensions);
         assert_eq!(voxel_cloud.voxel_map.len(), 0);
     }
 
@@ -972,8 +954,8 @@ mod tests {
         let new_block_dimensions = Vector3::new(1, 2, 3);
         voxel_cloud.resize(&new_origin, &new_block_dimensions);
 
-        assert_eq!(voxel_cloud.block_start(), new_origin);
-        assert_eq!(voxel_cloud.block_dimensions(), new_block_dimensions);
+        assert_eq!(voxel_cloud.block_start, new_origin);
+        assert_eq!(voxel_cloud.block_dimensions, new_block_dimensions);
         assert_eq!(voxel_cloud.voxel_map.len(), 1 * 2 * 3);
     }
 
@@ -988,8 +970,8 @@ mod tests {
         let new_block_dimensions = Vector3::new(4, 5, 6);
         voxel_cloud.resize(&new_origin, &new_block_dimensions);
 
-        assert_eq!(voxel_cloud.block_start(), new_origin);
-        assert_eq!(voxel_cloud.block_dimensions(), new_block_dimensions);
+        assert_eq!(voxel_cloud.block_start, new_origin);
+        assert_eq!(voxel_cloud.block_dimensions, new_block_dimensions);
         assert_eq!(voxel_cloud.voxel_map.len(), 4 * 5 * 6);
     }
 
@@ -1015,8 +997,8 @@ mod tests {
         for (i, v) in voxel_cloud.voxel_map.iter().enumerate() {
             let coords = one_dimensional_to_absolute_three_dimensional_coordinate(
                 i,
-                &voxel_cloud.block_start(),
-                &voxel_cloud.block_dimensions(),
+                &voxel_cloud.block_start,
+                &voxel_cloud.block_dimensions,
             )
             .unwrap();
 
@@ -1044,8 +1026,8 @@ mod tests {
         voxel_cloud.set_voxel_at_relative_coords(&Point3::new(1, 1, 1), true);
         voxel_cloud.shrink_to_fit();
 
-        assert_eq!(voxel_cloud.block_start(), Point3::new(1, 1, 1));
-        assert_eq!(voxel_cloud.block_dimensions(), Vector3::new(1, 1, 1));
+        assert_eq!(voxel_cloud.block_start, Point3::new(1, 1, 1));
+        assert_eq!(voxel_cloud.block_dimensions, Vector3::new(1, 1, 1));
         assert_eq!(voxel_cloud.voxel_map.len(), 1);
         assert!(voxel_cloud
             .voxel_at_relative_coords(&Point3::new(0, 0, 0))
@@ -1061,8 +1043,8 @@ mod tests {
         );
         voxel_cloud.shrink_to_fit();
 
-        assert_eq!(voxel_cloud.block_start(), Point3::origin());
-        assert_eq!(voxel_cloud.block_dimensions(), Vector3::new(0, 0, 0));
+        assert_eq!(voxel_cloud.block_start, Point3::origin());
+        assert_eq!(voxel_cloud.block_dimensions, Vector3::new(0, 0, 0));
         assert_eq!(voxel_cloud.voxel_map.len(), 0);
     }
 }
