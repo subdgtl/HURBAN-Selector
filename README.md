@@ -123,6 +123,13 @@ Before running on target computer, make sure "Microsoft Visual C++
 Redistributable for Visual Studio 2019" is installed (get it
 [here](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads))
 
+### Creating a Windows installer
+
+- Install [Inno Setup](http://www.jrsoftware.org/isinfo.php),
+- `cargo build --release`,
+- Compile `installer/setup.iss` from Inno Setup IDE,
+- Output file will be located at `installer/bin`.
+
 ### Licence
 
 The editor source code is provided under the GNU GENERAL PUBLIC

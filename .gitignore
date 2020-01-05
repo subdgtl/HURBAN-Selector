@@ -1,9 +1,10 @@
 /target/
 **/*.rs.bk
 
-# VS Code
+# Editors
 .vscode/
-
+HURBAN-Selector.iml
 .idea/
 
-HURBAN-Selector.iml
+# Inno Setup
+installer/bin/*
