@@ -340,7 +340,6 @@ pub fn loop_subdivision(
     assert_eq!(faces.len(), faces_len_estimate);
     assert_eq!(faces.capacity(), faces_len_estimate);
 
-    // FIXME: Calculate better normals here? Maybe use `Smooth` strategy once we have it?
     Some(
         Mesh::from_triangle_faces_with_vertices_and_computed_normals(
             faces,
@@ -360,7 +359,6 @@ mod tests {
 
     use super::*;
 
-    // FIXME: Snapshot testing
     fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
         let vertices = vec![
             Point3::new(0.566987, -1.129e-11, 0.25),
