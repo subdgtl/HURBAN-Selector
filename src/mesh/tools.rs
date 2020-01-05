@@ -82,7 +82,7 @@ pub fn synchronize_mesh_winding(
             // Put the properly winded face into the stack of processed faces.
             synchronized_faces.push(proper_triangle_face);
 
-            // Calculate properly oriented edges of face's neighbors
+            // Compute properly oriented edges of face's neighbors
             let proper_neighbor_oriented_edges: ArrayVec<[OrientedEdge; 3]> =
                 ArrayVec::from(proper_triangle_face.to_oriented_edges())
                     .into_iter()
@@ -262,7 +262,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
             .extend_from_slice(&old_normals_indices);
     }
 
-    // Calculate an average normal for each new (averaged) vertex
+    // Compute an average normal for each new (averaged) vertex
     let new_normals: Vec<Vector3<f32>> = new_vertex_old_normals_index_map
         .iter()
         .map(|old_normals_indices| {
@@ -656,11 +656,11 @@ mod tests {
     fn test_disjoint_mesh_returns_similar_for_tessellated_triangle() {
         let mesh = tessellated_triangle_mesh();
 
-        let calculated_meshes = disjoint_mesh(&mesh);
+        let computed_meshes = disjoint_mesh(&mesh);
 
-        assert_eq!(calculated_meshes.len(), 1);
+        assert_eq!(computed_meshes.len(), 1);
 
-        assert!(analysis::are_similar(&calculated_meshes[0], &mesh));
+        assert!(analysis::are_similar(&computed_meshes[0], &mesh));
     }
 
     #[test]
@@ -671,10 +671,10 @@ mod tests {
             Vector3::new(1.0, 1.0, 1.0),
         );
 
-        let calculated_meshes = disjoint_mesh(&mesh);
+        let computed_meshes = disjoint_mesh(&mesh);
 
-        assert_eq!(calculated_meshes.len(), 1);
-        assert!(analysis::are_similar(&mesh, &calculated_meshes[0]));
+        assert_eq!(computed_meshes.len(), 1);
+        assert!(analysis::are_similar(&mesh, &computed_meshes[0]));
     }
 
     #[test]
@@ -683,22 +683,22 @@ mod tests {
         let mesh_triangle_correct = tessellated_triangle_mesh();
         let mesh_island_correct = triangular_island_mesh();
 
-        let calculated_meshes = disjoint_mesh(&mesh);
+        let computed_meshes = disjoint_mesh(&mesh);
 
-        assert_eq!(calculated_meshes.len(), 2);
+        assert_eq!(computed_meshes.len(), 2);
 
-        if analysis::are_similar(&calculated_meshes[0], &mesh_triangle_correct) {
+        if analysis::are_similar(&computed_meshes[0], &mesh_triangle_correct) {
             assert!(analysis::are_similar(
-                &calculated_meshes[1],
+                &computed_meshes[1],
                 &mesh_island_correct
             ));
         } else {
             assert!(analysis::are_similar(
-                &calculated_meshes[1],
+                &computed_meshes[1],
                 &mesh_triangle_correct
             ));
             assert!(analysis::are_similar(
-                &calculated_meshes[0],
+                &computed_meshes[0],
                 &mesh_island_correct
             ));
         }
@@ -834,8 +834,8 @@ mod tests {
         let multiple_meshes = vec![tessellated_triangle_mesh(), triangular_island_mesh()];
 
         let mesh_correct = tessellated_triangle_with_island_mesh();
-        let mesh_calculated = join_multiple_meshes(&multiple_meshes);
+        let mesh_computed = join_multiple_meshes(&multiple_meshes);
 
-        assert_eq!(&mesh_correct, &mesh_calculated);
+        assert_eq!(&mesh_correct, &mesh_computed);
     }
 }

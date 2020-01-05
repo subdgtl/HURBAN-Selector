@@ -1219,12 +1219,12 @@ mod tests {
             UnorientedEdge(OrientedEdge::new(3, 0)),
         ];
 
-        let calculated_loops = border_edge_loops(&edge_sharing_map);
+        let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert_eq!(calculated_loops.len(), 1);
-        assert_eq!(calculated_loops[0].len(), correct_loop.len());
+        assert_eq!(computed_loops.len(), 1);
+        assert_eq!(computed_loops[0].len(), correct_loop.len());
         for edge in correct_loop {
-            assert!(calculated_loops[0].iter().any(|e| *e == edge));
+            assert!(computed_loops[0].iter().any(|e| *e == edge));
         }
     }
 
@@ -1239,9 +1239,9 @@ mod tests {
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_sharing(&oriented_edges);
 
-        let calculated_loops = border_edge_loops(&edge_sharing_map);
+        let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert!(calculated_loops.is_empty());
+        assert!(computed_loops.is_empty());
     }
 
     #[test]
@@ -1272,26 +1272,26 @@ mod tests {
             ],
         ];
 
-        let calculated_loops = border_edge_loops(&edge_sharing_map);
+        let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert_eq!(calculated_loops.len(), 2);
+        assert_eq!(computed_loops.len(), 2);
         assert!(
-            calculated_loops[0].len() == correct_loops[0].len()
-                || calculated_loops[0].len() == correct_loops[1].len()
+            computed_loops[0].len() == correct_loops[0].len()
+                || computed_loops[0].len() == correct_loops[1].len()
         );
 
-        if calculated_loops[0].len() == correct_loops[0].len() {
-            assert_eq!(calculated_loops[1].len(), correct_loops[1].len());
+        if computed_loops[0].len() == correct_loops[0].len() {
+            assert_eq!(computed_loops[1].len(), correct_loops[1].len());
             for (i, correct_loop) in correct_loops.iter().enumerate() {
                 for edge in correct_loop {
-                    assert!(calculated_loops[i].iter().any(|e| e == edge));
+                    assert!(computed_loops[i].iter().any(|e| e == edge));
                 }
             }
         } else {
-            assert_eq!(calculated_loops[1].len(), correct_loops[0].len());
+            assert_eq!(computed_loops[1].len(), correct_loops[0].len());
             for (i, correct_loop) in correct_loops.iter().enumerate() {
                 for edge in correct_loop {
-                    assert!(calculated_loops[(i + 1) % 2].iter().any(|e| e == edge));
+                    assert!(computed_loops[(i + 1) % 2].iter().any(|e| e == edge));
                 }
             }
         }

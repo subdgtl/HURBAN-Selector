@@ -155,7 +155,7 @@ impl Mesh {
                     cast_u32(vertices_collection.len()),
                 );
 
-                let normals_collection_smooth = calculate_smooth_normals_from_components(
+                let normals_collection_smooth = compute_smooth_normals_from_components(
                     &vertices_collection,
                     &faces_collection_smooth,
                     &v2f,
@@ -821,7 +821,7 @@ fn remove_orphan_vertices_and_normals(
     (faces_renumbered, vertices_reduced, normals_reduced)
 }
 
-pub fn calculate_smooth_normals_from_components(
+pub fn compute_smooth_normals_from_components(
     vertices: &[Point3<f32>],
     faces: &[Face],
     vertex_to_face_topology: &[SmallVec<[u32; topology::MAX_INLINE_NEIGHBOR_COUNT]>],
@@ -1439,16 +1439,16 @@ mod tests {
         let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
         let face_reverted_correct = TriangleFace::new(3, 2, 1, 6, 5, 4);
 
-        let face_reverted_calculated = face.to_reverted();
-        assert_eq!(face_reverted_correct, face_reverted_calculated);
+        let face_reverted_computed = face.to_reverted();
+        assert_eq!(face_reverted_correct, face_reverted_computed);
     }
 
     #[test]
     fn test_triangle_face_to_reverted_comparison_to_same() {
         let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
 
-        let face_reverted_calculated = face.to_reverted();
-        assert_ne!(face, face_reverted_calculated);
+        let face_reverted_computed = face.to_reverted();
+        assert_ne!(face, face_reverted_computed);
     }
 
     #[test]
@@ -1456,8 +1456,8 @@ mod tests {
         let face = TriangleFace::new(1, 2, 3, 4, 5, 6);
         let face_reverted_correct_shifted = TriangleFace::new(2, 1, 3, 5, 4, 6);
 
-        let face_reverted_calculated = face.to_reverted();
-        assert_eq!(face_reverted_correct_shifted, face_reverted_calculated);
+        let face_reverted_computed = face.to_reverted();
+        assert_eq!(face_reverted_correct_shifted, face_reverted_computed);
     }
 
     #[test]
