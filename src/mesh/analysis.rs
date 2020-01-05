@@ -103,6 +103,40 @@ impl BoundingBox {
     pub fn diagonal_length(&self) -> f32 {
         nalgebra::distance(&self.minimum_point, &self.maximum_point)
     }
+
+    /// Checks if the two bounding boxes intersect / share any portion
+    /// of space.
+    ///
+    /// # Sources
+    /// https://math.stackexchange.com/questions/2651710/simplest-way-to-determine-if-two-3d-boxes-intersect
+    #[allow(dead_code)]
+    pub fn intersects_with(&self, other: &BoundingBox) -> bool {
+        let self_min_x = self.minimum_point.x.min(self.maximum_point.x);
+        let self_min_y = self.minimum_point.y.min(self.maximum_point.y);
+        let self_min_z = self.minimum_point.z.min(self.maximum_point.z);
+        let self_max_x = self.minimum_point.x.max(self.maximum_point.x);
+        let self_max_y = self.minimum_point.y.max(self.maximum_point.y);
+        let self_max_z = self.minimum_point.z.max(self.maximum_point.z);
+        let other_min_x = other.minimum_point.x.min(other.maximum_point.x);
+        let other_min_y = other.minimum_point.y.min(other.maximum_point.y);
+        let other_min_z = other.minimum_point.z.min(other.maximum_point.z);
+        let other_max_x = other.minimum_point.x.max(other.maximum_point.x);
+        let other_max_y = other.minimum_point.y.max(other.maximum_point.y);
+        let other_max_z = other.minimum_point.z.max(other.maximum_point.z);
+
+        ((self_min_x <= other_min_x && other_min_x <= self_max_x)
+            || (self_min_x <= other_max_x && other_max_x <= self_max_x)
+            || (other_min_x <= self_min_x && self_min_x <= other_max_x)
+            || (other_min_x <= self_max_x && self_max_x <= other_max_x))
+            && ((self_min_y <= other_min_y && other_min_y <= self_max_y)
+                || (self_min_y <= other_max_y && other_max_y <= self_max_y)
+                || (other_min_y <= self_min_y && self_min_y <= other_max_y)
+                || (other_min_y <= self_max_y && self_max_y <= other_max_y))
+            && ((self_min_z <= other_min_z && other_min_z <= self_max_z)
+                || (self_min_z <= other_max_z && other_max_z <= self_max_z)
+                || (other_min_z <= self_min_z && self_min_z <= other_max_z)
+                || (other_min_z <= self_max_z && self_max_z <= other_max_z))
+    }
 }
 
 // FIXME: Make more generic: take &[Point] or Iterator<Item=&Point>

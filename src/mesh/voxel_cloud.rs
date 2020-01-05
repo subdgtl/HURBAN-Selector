@@ -51,17 +51,14 @@ impl VoxelCloud {
         }
     }
 
-    /// Compute a voxel cloud from an existing mesh.
-    pub fn from_mesh(mesh: &Mesh, voxel_dimensions: &Vector3<f32>) -> Self {
+    /// Creates a new empty voxel space from a bounding box.
+    pub fn from_bounding_box(bounding_box: &BoundingBox, voxel_dimensions: &Vector3<f32>) -> Self {
         assert!(
             voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
             "One or more voxel dimensions are 0.0"
         );
-        // Determine the needed block of voxel space.
-        let b_box = BoundingBox::from_meshes(iter::once(mesh));
-
-        let min_point = &b_box.minimum_point();
-        let max_point = &b_box.maximum_point();
+        let min_point = &bounding_box.minimum_point();
+        let max_point = &bounding_box.maximum_point();
         let min_x_index = (min_point.x.min(max_point.x) / voxel_dimensions.x).floor() as i32;
         let max_x_index = (min_point.x.max(max_point.x) / voxel_dimensions.x).ceil() as i32;
         let min_y_index = (min_point.y.min(max_point.y) / voxel_dimensions.y).floor() as i32;
@@ -76,12 +73,25 @@ impl VoxelCloud {
             cast_u32(max_z_index - min_z_index) + 1,
         );
 
+        VoxelCloud::new(&block_start, &block_dimensions, voxel_dimensions)
+    }
+
+    /// Creates a voxel cloud from an existing mesh with computed
+    /// occupied voxels.
+    pub fn from_mesh(mesh: &Mesh, voxel_dimensions: &Vector3<f32>) -> Self {
+        assert!(
+            voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
+            "One or more voxel dimensions are 0.0"
+        );
+        // Determine the needed block of voxel space.
+        let b_box = BoundingBox::from_meshes(iter::once(mesh));
+
+        let mut voxel_cloud = VoxelCloud::from_bounding_box(&b_box, voxel_dimensions);
+
         // Going to populate the mesh with points as dense as the smallest voxel dimension.
         let shortest_voxel_dimension = voxel_dimensions
             .x
             .min(voxel_dimensions.y.min(voxel_dimensions.z));
-
-        let mut voxel_cloud = VoxelCloud::new(&block_start, &block_dimensions, voxel_dimensions);
 
         for face in mesh.faces() {
             match face {
@@ -127,16 +137,28 @@ impl VoxelCloud {
         voxel_cloud
     }
 
+    /// Returns voxel cloud block start in absolute voxel coordinates
     #[allow(dead_code)]
     pub fn block_start(&self) -> Point3<i32> {
         self.block_start
     }
 
+    /// Returns voxel cloud block end in absolute voxel coordinates
+    pub fn block_end(&self) -> Point3<i32> {
+        Point3::new(
+            self.block_start.x + cast_i32(self.block_dimensions.x) - 1,
+            self.block_start.y + cast_i32(self.block_dimensions.y) - 1,
+            self.block_start.z + cast_i32(self.block_dimensions.z) - 1,
+        )
+    }
+
+    /// Returns voxel cloud block dimensions in voxel units
     #[allow(dead_code)]
     pub fn block_dimensions(&self) -> Vector3<u32> {
         self.block_dimensions
     }
 
+    /// Returns single voxel dimensions in model space units
     #[allow(dead_code)]
     pub fn voxel_dimensions(&self) -> Vector3<f32> {
         self.voxel_dimensions
@@ -218,7 +240,6 @@ impl VoxelCloud {
 
     /// Gets the state of a voxel defined in absolute voxel coordinates
     /// (relative to the voxel space origin).
-    #[allow(dead_code)]
     pub fn voxel_at_absolute_coords(&self, absolute_coords: &Point3<i32>) -> Option<bool> {
         absolute_three_dimensional_coordinate_to_one_dimensional(
             absolute_coords,
@@ -314,10 +335,10 @@ impl VoxelCloud {
         }
     }
 
-    /// Resize the existing voxel cloud block to exactly fit the volumetric
-    /// geometry. This mutates the existing voxel cloud.
-    #[allow(dead_code)]
-    pub fn shrink_to_fit(&mut self) {
+    /// Computes boundaries of volumes contained in voxel cloud. Returns tuple
+    /// (block_start, block_dimensions). For empty voxel clouds returns the
+    /// original block start and zero block dimensions.
+    pub fn compute_volume_boundaries(&self) -> (Point3<i32>, Vector3<u32>) {
         let mut min: Vector3<i32> =
             Vector3::new(i32::max_value(), i32::max_value(), i32::max_value());
         let mut max: Vector3<i32> =
@@ -377,16 +398,23 @@ impl VoxelCloud {
                 i32::min_value(),
                 "Voxel cloud emptiness check failed"
             );
-            let block_start = self.block_start;
-            self.resize(&block_start, &Vector3::zeros());
+            (self.block_start, Vector3::zeros())
         } else {
             let block_dimensions = Vector3::new(
                 clamp_cast_i32_to_u32(max.x - min.x + 1),
                 clamp_cast_i32_to_u32(max.y - min.y + 1),
                 clamp_cast_i32_to_u32(max.z - min.z + 1),
             );
-            self.resize(&(self.block_start + min), &block_dimensions);
+            ((self.block_start + min), block_dimensions)
         }
+    }
+
+    /// Resize the voxel cloud block to exactly fit the volumetric geometry.
+    /// Returns None for empty the voxel cloud.
+    #[allow(dead_code)]
+    pub fn shrink_to_fit(&mut self) {
+        let (shrunk_block_start, shrunk_block_dimensions) = self.compute_volume_boundaries();
+        self.resize(&shrunk_block_start, &shrunk_block_dimensions);
     }
 
     /// Computes a simple triangulated welded mesh from the current state of
@@ -538,6 +566,66 @@ impl VoxelCloud {
         // and weld naked edges
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
+
+    /// Returns the bounding box of this voxel cloud in world space.
+    #[allow(dead_code)]
+    pub fn bounding_box(&self) -> BoundingBox {
+        let voxel_dimensions = self.voxel_dimensions;
+        let block_start = self.block_start;
+        let block_end = self.block_end();
+        BoundingBox::new(
+            Point3::new(
+                block_start.x as f32 * voxel_dimensions.x,
+                block_start.y as f32 * voxel_dimensions.y,
+                block_start.z as f32 * voxel_dimensions.z,
+            ),
+            Point3::new(
+                block_end.x as f32 * voxel_dimensions.x,
+                block_end.y as f32 * voxel_dimensions.y,
+                block_end.z as f32 * voxel_dimensions.z,
+            ),
+        )
+    }
+
+    /// Returns the bounding box of the mesh produced by
+    /// `VoxelCloud::to_mesh` for this voxel cloud in world space.
+    #[allow(dead_code)]
+    pub fn mesh_bounding_box(&self) -> BoundingBox {
+        let voxel_dimensions = self.voxel_dimensions;
+        let (volume_start, volume_dimensions) = self.compute_volume_boundaries();
+        BoundingBox::new(
+            Point3::new(
+                (volume_start.x as f32 - 0.5) * voxel_dimensions.x,
+                (volume_start.y as f32 - 0.5) * voxel_dimensions.y,
+                (volume_start.z as f32 - 0.5) * voxel_dimensions.z,
+            ),
+            Point3::new(
+                (volume_start.x as f32 + volume_dimensions.x as f32 + 0.5) * voxel_dimensions.x,
+                (volume_start.y as f32 + volume_dimensions.x as f32 + 0.5) * voxel_dimensions.y,
+                (volume_start.z as f32 + volume_dimensions.x as f32 + 0.5) * voxel_dimensions.z,
+            ),
+        )
+    }
+
+    /// Returns the bounding box of this voxel cloud after shrinking
+    /// to fit just the nonempty voxels.
+    #[allow(dead_code)]
+    pub fn volume_bounding_box(&self) -> BoundingBox {
+        let voxel_dimensions = self.voxel_dimensions;
+        let (volume_start, volume_dimensions) = self.compute_volume_boundaries();
+        BoundingBox::new(
+            Point3::new(
+                (volume_start.x as f32) * voxel_dimensions.x,
+                (volume_start.y as f32) * voxel_dimensions.y,
+                (volume_start.z as f32) * voxel_dimensions.z,
+            ),
+            Point3::new(
+                (volume_start.x as f32 + volume_dimensions.x as f32) * voxel_dimensions.x,
+                (volume_start.y as f32 + volume_dimensions.x as f32) * voxel_dimensions.y,
+                (volume_start.z as f32 + volume_dimensions.x as f32) * voxel_dimensions.z,
+            ),
+        )
+    }
 }
 
 /// Computes an index to the linear representation of the voxel block from
@@ -631,8 +719,8 @@ fn cartesian_to_absolute_voxel_coords(
     )
 }
 
-/// Computes the voxel-space coordinates of a voxel containing the input
-/// point
+/// Computes the voxel-space coordinates of a voxel containing the
+/// input point
 #[allow(dead_code)]
 fn cartesian_to_relative_voxel_coords(
     point: &Point3<f32>,
@@ -653,7 +741,7 @@ fn cartesian_to_relative_voxel_coords(
 }
 
 /// Computes the center of a voxel in model-space coordinates from
-/// absolute voxel coordinates (relative to the voxel space origin)
+/// absolute voxel coordinates (relative to the voxel space origin).
 #[allow(dead_code)]
 fn absolute_voxel_to_cartesian_coords(
     absolute_coords: &Point3<i32>,
@@ -914,16 +1002,12 @@ mod tests {
     fn test_voxel_cloud_resize_nonzero_to_larger_nonzero_grown_contains_false_rest_original() {
         let original_origin = Point3::new(0i32, 0i32, 0i32);
         let original_block_dimensions = Vector3::new(1u32, 10u32, 3u32);
-        let original_block_end = Point3::new(
-            original_origin.x + cast_i32(original_block_dimensions.x) - 1,
-            original_origin.y + cast_i32(original_block_dimensions.y) - 1,
-            original_origin.z + cast_i32(original_block_dimensions.z) - 1,
-        );
         let mut voxel_cloud = VoxelCloud::new(
             &original_origin,
             &original_block_dimensions,
             &Vector3::new(1.0, 1.0, 1.0),
         );
+        let original_block_end = voxel_cloud.block_end();
 
         for v in voxel_cloud.voxel_map.iter_mut() {
             *v = true;
