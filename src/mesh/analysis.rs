@@ -104,7 +104,10 @@ impl BoundingBox {
         nalgebra::distance(&self.minimum_point, &self.maximum_point)
     }
 
-    /// Check if the two bounding boxes intersect / share any portion of space
+    /// Checks if the two bounding boxes intersect / share any portion
+    /// of space.
+    ///
+    /// # Sources
     /// https://math.stackexchange.com/questions/2651710/simplest-way-to-determine-if-two-3d-boxes-intersect
     #[allow(dead_code)]
     pub fn intersects_with(&self, other: &BoundingBox) -> bool {

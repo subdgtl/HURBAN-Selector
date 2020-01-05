@@ -566,6 +566,7 @@ impl VoxelCloud {
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
+    /// Returns the bounding box of this voxel cloud in world space.
     #[allow(dead_code)]
     pub fn bounding_box(&self) -> BoundingBox {
         let voxel_dimensions = self.voxel_dimensions;
@@ -585,6 +586,8 @@ impl VoxelCloud {
         )
     }
 
+    /// Returns the bounding box of the mesh produced by
+    /// `VoxelCloud::to_mesh` for this voxel cloud in world space.
     #[allow(dead_code)]
     pub fn mesh_bounding_box(&self) -> BoundingBox {
         let voxel_dimensions = self.voxel_dimensions;
@@ -603,6 +606,8 @@ impl VoxelCloud {
         )
     }
 
+    /// Returns the bounding box of this voxel cloud after shrinking
+    /// to fit just the nonempty voxels.
     #[allow(dead_code)]
     pub fn volume_bounding_box(&self) -> BoundingBox {
         let voxel_dimensions = self.voxel_dimensions;
