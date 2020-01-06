@@ -12,14 +12,14 @@ use crate::interpreter::{
 use crate::mesh::voxel_cloud::VoxelCloud;
 
 #[derive(Debug, PartialEq)]
-pub enum FuncVoxelizeError {
+pub enum FuncBooleanDifferenceError {
     WeldFailed,
 }
 
-impl fmt::Display for FuncVoxelizeError {
+impl fmt::Display for FuncBooleanDifferenceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FuncVoxelizeError::WeldFailed => write!(
+            FuncBooleanDifferenceError::WeldFailed => write!(
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
@@ -27,15 +27,15 @@ impl fmt::Display for FuncVoxelizeError {
     }
 }
 
-impl error::Error for FuncVoxelizeError {}
+impl error::Error for FuncBooleanDifferenceError {}
 
-pub struct FuncVoxelize;
+pub struct FuncBooleanDifference;
 
-impl Func for FuncVoxelize {
+impl Func for FuncBooleanDifference {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Voxelize Mesh",
-            return_value_name: "Voxelized mesh",
+            name: "Difference",
+            return_value_name: "Difference mesh",
         }
     }
 
@@ -45,6 +45,11 @@ impl Func for FuncVoxelize {
 
     fn param_info(&self) -> &[ParamInfo] {
         &[
+            ParamInfo {
+                name: "Mesh",
+                refinement: ParamRefinement::Mesh,
+                optional: false,
+            },
             ParamInfo {
                 name: "Mesh",
                 refinement: ParamRefinement::Mesh,
@@ -68,7 +73,7 @@ impl Func for FuncVoxelize {
             ParamInfo {
                 name: "Grow",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
-                    default_value: Some(2),
+                    default_value: Some(1),
                     min_value: None,
                     max_value: None,
                 }),
@@ -82,18 +87,23 @@ impl Func for FuncVoxelize {
     }
 
     fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let mesh = args[0].unwrap_mesh();
-        let voxel_dimensions = args[1].unwrap_float3();
-        let growth_iterations = args[2].unwrap_uint();
+        let mesh1 = args[0].unwrap_mesh();
+        let mesh2 = args[1].unwrap_mesh();
+        let voxel_dimensions = args[2].unwrap_float3();
+        let growth_iterations = args[3].unwrap_uint();
 
-        let mut voxel_cloud = VoxelCloud::from_mesh(mesh, &Vector3::from(voxel_dimensions));
+        let mut voxel_cloud1 = VoxelCloud::from_mesh(mesh1, &Vector3::from(voxel_dimensions));
+        let mut voxel_cloud2 = VoxelCloud::from_mesh(mesh2, &Vector3::from(voxel_dimensions));
+
         for _ in 0..growth_iterations {
-            voxel_cloud.grow_volume();
+            voxel_cloud1.grow_volume();
+            voxel_cloud2.grow_volume();
         }
 
-        match voxel_cloud.to_mesh() {
+        voxel_cloud1.boolean_difference_mut(&voxel_cloud2);
+        match voxel_cloud1.to_mesh() {
             Some(value) => Ok(Value::Mesh(Arc::new(value))),
-            None => Err(FuncError::new(FuncVoxelizeError::WeldFailed)),
+            None => Err(FuncError::new(FuncBooleanDifferenceError::WeldFailed)),
         }
     }
 }

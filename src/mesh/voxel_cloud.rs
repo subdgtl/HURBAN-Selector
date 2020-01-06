@@ -19,7 +19,7 @@ use super::{primitive, tools, Face, Mesh};
 /// voxel-space coordinates. The voxel space starts at the cartesian space
 /// origin with voxel coordinates 0, 0, 0. Voxel clouds with the same voxel size
 /// are compatible and collateral operations be performed on them.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
 pub struct VoxelCloud {
     block_start: Point3<i32>,
     block_dimensions: Vector3<u32>,
@@ -164,6 +164,18 @@ impl VoxelCloud {
         self.voxel_dimensions
     }
 
+    /// Checks if the voxel cloud contains any voxel / volume
+    #[allow(dead_code)]
+    pub fn contains_voxels(&self) -> bool {
+        self.voxel_map.iter().any(|v| *v)
+    }
+
+    /// Checks if the voxel cloud contains any voxel / volume
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.voxel_map.is_empty()
+    }
+
     /// For each existing voxel turn on all neighbor voxels to grow (offset) the
     /// volumes stored in the voxel cloud.
 
@@ -197,9 +209,8 @@ impl VoxelCloud {
         );
 
         // The original voxel map is shorter, therefore wipe it before resizing.
-        for v in self.voxel_map.iter_mut() {
-            *v = false;
-        }
+        self.fill_with(false);
+
         self.voxel_map.resize(grown_voxel_map_len, false);
 
         for grown_index in 0..self.voxel_map.len() {
@@ -222,6 +233,139 @@ impl VoxelCloud {
                             &(absolute_coords + neighbor_offset),
                             true,
                         );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Computes boolean intersection (logical AND operation) of the current and
+    /// another Voxel cloud. The Voxel clouds have to intersect and the voxel
+    /// dimension must be equal. The current Voxel cloud will be mutated and
+    /// resized to the size and position of an intersection of the two Voxel
+    /// clouds (not the contained volumes).
+    pub fn boolean_intersection_mut(&mut self, other: &VoxelCloud) {
+        assert!(
+            approx::relative_eq!(self.voxel_dimensions, other.voxel_dimensions()),
+            "The two voxel clouds don't contain voxels of the same size"
+        );
+
+        let self_min = self.block_start;
+        let self_max = self.block_end();
+        let other_min = other.block_start;
+        let other_max = other.block_end();
+
+        let min_coord = Point3::new(
+            self_min.x.max(other_min.x),
+            self_min.y.max(other_min.y),
+            self_min.z.max(other_min.z),
+        );
+        let max_coord = Point3::new(
+            self_max.x.min(other_max.x),
+            self_max.y.min(other_max.y),
+            self_max.z.min(other_max.z),
+        );
+
+        assert!(
+            (max_coord.coords - min_coord.coords)
+                .iter()
+                .all(|v| *v >= 0),
+            "The two voxel clouds don't intersect"
+        );
+
+        let block_dimensions = Vector3::new(
+            cast_u32(max_coord.x - min_coord.x) + 1,
+            cast_u32(max_coord.y - min_coord.y) + 1,
+            cast_u32(max_coord.z - min_coord.z) + 1,
+        );
+
+        self.resize(&min_coord, &block_dimensions);
+
+        for i in 0..self.voxel_map.len() {
+            let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
+                i,
+                &min_coord,
+                &block_dimensions,
+            )
+            .expect("The current voxel map out of bounds");
+            self.voxel_map[i] &= other
+                .voxel_at_absolute_coords(&absolute_coords)
+                .expect("The other voxel map out of bounds");
+        }
+    }
+
+    /// Computes boolean union (logical OR operation) of two Voxel clouds. The
+    /// voxel dimensions of both input Voxel clouds must be equal. he current
+    /// Voxel cloud will be mutated and resized to contain both input Voxel
+    /// clouds (not the contained volumes).
+    ///
+    /// # Warning
+    /// If the input Voxel clouds are far apart, the resulting voxel cloud might
+    /// be huge.
+    pub fn boolean_union_mut(&mut self, other: &VoxelCloud) {
+        assert!(
+            approx::relative_eq!(self.voxel_dimensions, other.voxel_dimensions()),
+            "The two voxel clouds don't contain voxels of the same size"
+        );
+
+        let self_min = self.block_start;
+        let self_max = self.block_end();
+        let other_min = other.block_start;
+        let other_max = other.block_end();
+
+        let min_coord = Point3::new(
+            self_min.x.min(other_min.x),
+            self_min.y.min(other_min.y),
+            self_min.z.min(other_min.z),
+        );
+        let max_coord = Point3::new(
+            self_max.x.max(other_max.x),
+            self_max.y.max(other_max.y),
+            self_max.z.max(other_max.z),
+        );
+
+        let block_dimensions = Vector3::new(
+            cast_u32(max_coord.x - min_coord.x) + 1,
+            cast_u32(max_coord.y - min_coord.y) + 1,
+            cast_u32(max_coord.z - min_coord.z) + 1,
+        );
+
+        self.resize(&min_coord, &block_dimensions);
+
+        for i in 0..self.voxel_map.len() {
+            let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
+                i,
+                &min_coord,
+                &block_dimensions,
+            )
+            .expect("The current voxel map out of bounds");
+            if let Some(v) = other.voxel_at_absolute_coords(&absolute_coords) {
+                self.voxel_map[i] |= v;
+            }
+        }
+    }
+
+    /// Computes boolean difference of the current Voxel cloud minus the other
+    /// Voxel cloud. The current Voxel cloud will be modified so that voxels,
+    /// that are on in both Voxel clouds will be turned off, while the rest
+    /// remains intact.
+    pub fn boolean_difference_mut(&mut self, other: &VoxelCloud) {
+        assert!(
+            approx::relative_eq!(self.voxel_dimensions, other.voxel_dimensions()),
+            "The two voxel clouds don't contain voxels of the same size"
+        );
+
+        for i in 0..self.voxel_map.len() {
+            let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
+                i,
+                &self.block_start,
+                &self.block_dimensions,
+            )
+            .expect("The current voxel map out of bounds");
+            if self.voxel_map[i] {
+                if let Some(v) = other.voxel_at_absolute_coords(&absolute_coords) {
+                    if v {
+                        self.voxel_map[i] = false;
                     }
                 }
             }
@@ -286,6 +430,13 @@ impl VoxelCloud {
     pub fn set_voxel_at_cartesian_coords(&mut self, point: &Point3<f32>, state: bool) {
         let voxel_coords = cartesian_to_absolute_voxel_coords(point, &self.voxel_dimensions);
         self.set_voxel_at_absolute_coords(&voxel_coords, state);
+    }
+
+    /// Fills the current Voxel cloud with the given value.
+    pub fn fill_with(&mut self, value: bool) {
+        for v in self.voxel_map.iter_mut() {
+            *v = value;
+        }
     }
 
     /// Resize the voxel cloud block to match new block start and block dimensions.
@@ -568,7 +719,6 @@ impl VoxelCloud {
     }
 
     /// Returns the bounding box of this voxel cloud in world space.
-    #[allow(dead_code)]
     pub fn bounding_box(&self) -> BoundingBox {
         let voxel_dimensions = self.voxel_dimensions;
         let block_start = self.block_start;
@@ -626,6 +776,158 @@ impl VoxelCloud {
             ),
         )
     }
+}
+
+/// Computes boolean intersection (logical AND operation) of many Voxel clouds.
+/// The Voxel clouds have to intersect and the voxel dimension must be equal.
+/// The output Voxel cloud will be sized to the size and position of an
+/// intersection of the input Voxel clouds (not the contained volumes).
+#[allow(dead_code)]
+pub fn boolean_intersection_many<'a, T>(voxel_clouds: T) -> VoxelCloud
+where
+    T: IntoIterator<Item = &'a VoxelCloud> + Clone,
+{
+    let first_voxel_dimensions = voxel_clouds
+        .clone()
+        .into_iter()
+        .next()
+        .expect("The list of voxel clouds is empty")
+        .voxel_dimensions();
+    assert!(
+        voxel_clouds
+            .clone()
+            .into_iter()
+            .all(|vc| approx::relative_eq!(vc.voxel_dimensions(), first_voxel_dimensions)),
+        "The voxel clouds in the list don't contain voxels of the same size"
+    );
+
+    let mut min_coord = Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
+    let mut max_coord = Point3::new(i32::max_value(), i32::max_value(), i32::max_value());
+
+    for vc in voxel_clouds.clone() {
+        let block_start = vc.block_start();
+        let block_end = vc.block_end();
+
+        min_coord.x = min_coord.x.max(block_start.x);
+        min_coord.y = min_coord.y.max(block_start.y);
+        min_coord.z = min_coord.z.max(block_start.z);
+        max_coord.x = max_coord.x.min(block_end.x);
+        max_coord.y = max_coord.y.min(block_end.y);
+        max_coord.z = max_coord.z.min(block_end.z);
+    }
+
+    assert!(
+        (max_coord.coords - min_coord.coords)
+            .iter()
+            .all(|v| *v >= 0),
+        "Some of the voxel clouds don't intersect"
+    );
+
+    let block_dimensions = Vector3::new(
+        cast_u32(max_coord.x - min_coord.x) + 1,
+        cast_u32(max_coord.y - min_coord.y) + 1,
+        cast_u32(max_coord.z - min_coord.z) + 1,
+    );
+
+    let mut intersection_voxel_cloud =
+        VoxelCloud::new(&min_coord, &block_dimensions, &first_voxel_dimensions);
+
+    for i in 0..intersection_voxel_cloud.voxel_map.len() {
+        let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
+            i,
+            &min_coord,
+            &block_dimensions,
+        )
+        .expect("The voxel map out of bounds");
+
+        intersection_voxel_cloud.voxel_map[i] =
+            voxel_clouds
+                .clone()
+                .into_iter()
+                .fold(true, |value: bool, vc| {
+                    value
+                        && vc
+                            .voxel_at_absolute_coords(&absolute_coords)
+                            .expect("The other voxel map out of bounds")
+                });
+    }
+
+    intersection_voxel_cloud
+}
+
+/// Computes boolean union (logical OR operation) of many Voxel clouds. The
+/// voxel dimensions of all the input Voxel clouds must be equal. The output
+/// Voxel cloud will be sized to contain all the input Voxel clouds (not the
+/// contained volumes).
+///
+/// # Warning
+/// If the input Voxel clouds are far apart, the resulting voxel cloud
+/// might be huge.
+#[allow(dead_code)]
+pub fn boolean_union_many<'a, T>(voxel_clouds: T) -> VoxelCloud
+where
+    T: IntoIterator<Item = &'a VoxelCloud> + Clone,
+{
+    let first_voxel_dimensions = voxel_clouds
+        .clone()
+        .into_iter()
+        .next()
+        .expect("The list of voxel clouds is empty")
+        .voxel_dimensions();
+    assert!(
+        voxel_clouds
+            .clone()
+            .into_iter()
+            .all(|vc| approx::relative_eq!(vc.voxel_dimensions(), first_voxel_dimensions)),
+        "The voxel clouds in the list don't contain voxels of the same size"
+    );
+
+    let mut min_coord = Point3::new(i32::max_value(), i32::max_value(), i32::max_value());
+    let mut max_coord = Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
+
+    for vc in voxel_clouds.clone() {
+        let block_start = vc.block_start();
+        let block_end = vc.block_end();
+
+        min_coord.x = min_coord.x.min(block_start.x);
+        min_coord.y = min_coord.y.min(block_start.y);
+        min_coord.z = min_coord.z.min(block_start.z);
+        max_coord.x = max_coord.x.max(block_end.x);
+        max_coord.y = max_coord.y.max(block_end.y);
+        max_coord.z = max_coord.z.max(block_end.z);
+    }
+
+    let block_dimensions = Vector3::new(
+        cast_u32(max_coord.x - min_coord.x) + 1,
+        cast_u32(max_coord.y - min_coord.y) + 1,
+        cast_u32(max_coord.z - min_coord.z) + 1,
+    );
+
+    let mut union_voxel_cloud =
+        VoxelCloud::new(&min_coord, &block_dimensions, &first_voxel_dimensions);
+
+    for i in 0..union_voxel_cloud.voxel_map.len() {
+        let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
+            i,
+            &min_coord,
+            &block_dimensions,
+        )
+        .expect("The voxel map out of bounds");
+
+        union_voxel_cloud.voxel_map[i] =
+            voxel_clouds
+                .clone()
+                .into_iter()
+                .fold(false, |value: bool, vc| {
+                    if let Some(v) = vc.voxel_at_absolute_coords(&absolute_coords) {
+                        value || v
+                    } else {
+                        value
+                    }
+                });
+    }
+
+    union_voxel_cloud
 }
 
 /// Computes an index to the linear representation of the voxel block from
@@ -883,6 +1185,200 @@ mod tests {
     }
 
     #[test]
+    fn test_voxel_cloud_boolean_intersection_mut_all_true() {
+        let mut vc_a = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_b = VoxelCloud::new(
+            &Point3::new(2, 1, 1),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_correct = VoxelCloud::new(
+            &Point3::new(2, 1, 1),
+            &Vector3::new(1, 2, 2),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        vc_a.fill_with(true);
+        vc_b.fill_with(true);
+        vc_correct.fill_with(true);
+
+        vc_a.boolean_intersection_mut(&vc_b);
+
+        assert_eq!(vc_a, vc_correct);
+    }
+
+    #[test]
+    fn test_voxel_cloud_boolean_intersection_mut_one_false() {
+        let mut vc_a = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_b = VoxelCloud::new(
+            &Point3::new(1, 1, 1),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_correct = VoxelCloud::new(
+            &Point3::new(1, 1, 1),
+            &Vector3::new(2, 2, 2),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        vc_a.fill_with(true);
+        vc_b.fill_with(true);
+        vc_b.set_voxel_at_relative_coords(&Point3::new(1, 1, 1), false);
+        vc_correct.fill_with(true);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(1, 1, 1), false);
+
+        vc_a.boolean_intersection_mut(&vc_b);
+
+        assert_eq!(vc_a, vc_correct);
+    }
+
+    #[test]
+    fn test_voxel_cloud_boolean_intersection_many_one_false() {
+        let mut vc_a = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_b = VoxelCloud::new(
+            &Point3::new(1, 1, 1),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_correct = VoxelCloud::new(
+            &Point3::new(1, 1, 1),
+            &Vector3::new(2, 2, 2),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        vc_a.fill_with(true);
+        vc_b.fill_with(true);
+        vc_b.set_voxel_at_relative_coords(&Point3::new(1, 1, 1), false);
+        vc_correct.fill_with(true);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(1, 1, 1), false);
+
+        let vc_test = boolean_intersection_many(vec![&vc_a, &vc_b]);
+
+        assert_eq!(vc_test, vc_correct);
+    }
+
+    #[test]
+    #[should_panic(expected = "Some of the voxel clouds don't intersect")]
+    fn test_voxel_cloud_boolean_intersection_many_non_intersecting() {
+        let vc_a = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let vc_b = VoxelCloud::new(
+            &Point3::new(4, 1, 1),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        boolean_intersection_many(vec![&vc_a, &vc_b]);
+    }
+
+    #[test]
+    fn test_voxel_cloud_boolean_union_mut_one_false() {
+        let mut vc_a = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_b = VoxelCloud::new(
+            &Point3::new(1, 1, 1),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_correct = VoxelCloud::new(
+            &Point3::new(0, 0, 0),
+            &Vector3::new(4, 4, 4),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        vc_a.fill_with(true);
+        vc_b.fill_with(true);
+        vc_b.set_voxel_at_relative_coords(&Point3::new(1, 1, 1), false);
+        vc_correct.fill_with(true);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 0, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 1, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 2, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 3, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 0, 1), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 0, 2), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 0, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(2, 0, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(1, 0, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 0, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 1, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 2, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 3, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 3, 2), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 3, 1), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 3, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(1, 3, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(2, 3, 0), false);
+
+        vc_a.boolean_union_mut(&vc_b);
+
+        assert_eq!(vc_a, vc_correct);
+    }
+
+    #[test]
+    fn test_voxel_cloud_boolean_union_many_one_false() {
+        let mut vc_a = VoxelCloud::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_b = VoxelCloud::new(
+            &Point3::new(1, 1, 1),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut vc_correct = VoxelCloud::new(
+            &Point3::new(0, 0, 0),
+            &Vector3::new(4, 4, 4),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        vc_a.fill_with(true);
+        vc_b.fill_with(true);
+        vc_b.set_voxel_at_relative_coords(&Point3::new(1, 1, 1), false);
+        vc_correct.fill_with(true);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 0, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 1, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 2, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 3, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 0, 1), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 0, 2), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(3, 0, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(2, 0, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(1, 0, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 0, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 1, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 2, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 3, 3), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 3, 2), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 3, 1), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(0, 3, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(1, 3, 0), false);
+        vc_correct.set_voxel_at_relative_coords(&Point3::new(2, 3, 0), false);
+
+        let vc_test = boolean_union_many(vec![&vc_a, &vc_b]);
+
+        assert_eq!(vc_test, vc_correct);
+    }
+
+    #[test]
     fn test_voxel_cloud_get_set_for_single_voxel() {
         let mut voxel_cloud = VoxelCloud::new(
             &Point3::origin(),
@@ -1009,9 +1505,7 @@ mod tests {
         );
         let original_block_end = voxel_cloud.block_end();
 
-        for v in voxel_cloud.voxel_map.iter_mut() {
-            *v = true;
-        }
+        voxel_cloud.fill_with(true);
 
         let new_origin = Point3::new(-1, 2, 3);
         let new_block_dimensions = Vector3::new(4, 5, 6);
