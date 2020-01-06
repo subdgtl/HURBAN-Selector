@@ -250,6 +250,9 @@ impl VoxelCloud {
             "The two voxel clouds don't contain voxels of the same size"
         );
 
+        // Find volume common to both voxel clouds.
+        // FIXME: This could be delegated to BoundingBox. @Optimization Compute
+        // bounding boxes so that they contain actual voxels.
         let self_min = self.block_start;
         let self_max = self.block_end();
         let other_min = other.block_start;
@@ -266,6 +269,8 @@ impl VoxelCloud {
             self_max.z.min(other_max.z),
         );
 
+        // If the voxel clouds don't share the same chunk of space, there can't
+        // be any intersection.
         assert!(
             (max_coord.coords - min_coord.coords)
                 .iter()
@@ -279,8 +284,11 @@ impl VoxelCloud {
             cast_u32(max_coord.z - min_coord.z) + 1,
         );
 
+        // Resize (keep or shrink) the existing voxel cloud so that that can
+        // possibly contain intersection voxels.
         self.resize(&min_coord, &block_dimensions);
 
+        // Iterate through the block of space common to both voxel clouds.
         for i in 0..self.voxel_map.len() {
             let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
                 i,
@@ -288,10 +296,14 @@ impl VoxelCloud {
                 &block_dimensions,
             )
             .expect("The current voxel map out of bounds");
+
+            // Perform boolean AND on voxel states of both voxel clouds
             self.voxel_map[i] &= other
                 .voxel_at_absolute_coords(&absolute_coords)
                 .expect("The other voxel map out of bounds");
         }
+
+        // FIXME: consider calling shrink_to_fit
     }
 
     /// Computes boolean union (logical OR operation) of two Voxel clouds. The
@@ -308,6 +320,8 @@ impl VoxelCloud {
             "The two voxel clouds don't contain voxels of the same size"
         );
 
+        // Find volume envelope both input voxel clouds.
+        // FIXME: This could be delegated to BoundingBox.
         let self_min = self.block_start;
         let self_max = self.block_end();
         let other_min = other.block_start;
@@ -330,8 +344,11 @@ impl VoxelCloud {
             cast_u32(max_coord.z - min_coord.z) + 1,
         );
 
+        // Resize (keep or grow) the existing voxel cloud to a block that can
+        // possibly contain union voxels.
         self.resize(&min_coord, &block_dimensions);
 
+        // Iterate through the block of space containing both voxel clouds.
         for i in 0..self.voxel_map.len() {
             let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
                 i,
@@ -339,10 +356,14 @@ impl VoxelCloud {
                 &block_dimensions,
             )
             .expect("The current voxel map out of bounds");
+            // If the other voxel cloud exists on the current absolute
+            // coordinate, perform boolean OR, otherwise don;t change the
+            // existing voxel.
             if let Some(v) = other.voxel_at_absolute_coords(&absolute_coords) {
                 self.voxel_map[i] |= v;
             }
         }
+        // FIXME: consider calling shrink_to_fit
     }
 
     /// Computes boolean difference of the current Voxel cloud minus the other
@@ -355,6 +376,7 @@ impl VoxelCloud {
             "The two voxel clouds don't contain voxels of the same size"
         );
 
+        // Iterate through the target voxel cloud
         for i in 0..self.voxel_map.len() {
             let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
                 i,
@@ -362,14 +384,16 @@ impl VoxelCloud {
                 &self.block_dimensions,
             )
             .expect("The current voxel map out of bounds");
+
+            // If the other voxel clouds contains a voxel at the position,
+            // remove the existing voxel from the target voxel cloud
             if self.voxel_map[i] {
-                if let Some(v) = other.voxel_at_absolute_coords(&absolute_coords) {
-                    if v {
-                        self.voxel_map[i] = false;
-                    }
+                if let Some(true) = other.voxel_at_absolute_coords(&absolute_coords) {
+                    self.voxel_map[i] = false;
                 }
             }
         }
+        // FIXME: consider calling shrink_to_fit
     }
 
     /// Gets the state of a voxel defined in voxel coordinates relative to the
@@ -787,12 +811,14 @@ pub fn boolean_intersection_many<'a, T>(voxel_clouds: T) -> VoxelCloud
 where
     T: IntoIterator<Item = &'a VoxelCloud> + Clone,
 {
+    // Check if all the input voxel clouds contain voxels of the same size.
     let first_voxel_dimensions = voxel_clouds
         .clone()
         .into_iter()
         .next()
         .expect("The list of voxel clouds is empty")
         .voxel_dimensions();
+
     assert!(
         voxel_clouds
             .clone()
@@ -801,6 +827,9 @@ where
         "The voxel clouds in the list don't contain voxels of the same size"
     );
 
+    // Find volume common to all input voxel clouds.
+    // FIXME: This could be delegated to BoundingBox. @Optimization Compute
+    // bounding boxes so that they contain actual voxels.
     let mut min_coord = Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
     let mut max_coord = Point3::new(i32::max_value(), i32::max_value(), i32::max_value());
 
@@ -816,6 +845,8 @@ where
         max_coord.z = max_coord.z.min(block_end.z);
     }
 
+    // If the voxel clouds don't share the same chunk of space, there can't be
+    // any intersection.
     assert!(
         (max_coord.coords - min_coord.coords)
             .iter()
@@ -829,9 +860,11 @@ where
         cast_u32(max_coord.z - min_coord.z) + 1,
     );
 
+    // Create a new voxel cloud that can possibly contain intersection voxels.
     let mut intersection_voxel_cloud =
         VoxelCloud::new(&min_coord, &block_dimensions, &first_voxel_dimensions);
 
+    // Iterate through the block of space common to all the input voxel clouds.
     for i in 0..intersection_voxel_cloud.voxel_map.len() {
         let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
             i,
@@ -840,18 +873,15 @@ where
         )
         .expect("The voxel map out of bounds");
 
-        intersection_voxel_cloud.voxel_map[i] =
-            voxel_clouds
-                .clone()
-                .into_iter()
-                .fold(true, |value: bool, vc| {
-                    value
-                        && vc
-                            .voxel_at_absolute_coords(&absolute_coords)
-                            .expect("The other voxel map out of bounds")
-                });
+        // If all the input voxel clouds contain a voxel at the given absolute
+        // coordinate, put there a voxel to the intersection voxel cloud.
+        intersection_voxel_cloud.voxel_map[i] = voxel_clouds.clone().into_iter().all(|vc| {
+            vc.voxel_at_absolute_coords(&absolute_coords)
+                .expect("The other voxel map out of bounds")
+        });
     }
 
+    // FIXME: consider calling shrink_to_fit
     intersection_voxel_cloud
 }
 
@@ -868,12 +898,14 @@ pub fn boolean_union_many<'a, T>(voxel_clouds: T) -> VoxelCloud
 where
     T: IntoIterator<Item = &'a VoxelCloud> + Clone,
 {
+    // Check if all the input voxel clouds contain voxels of the same size.
     let first_voxel_dimensions = voxel_clouds
         .clone()
         .into_iter()
         .next()
         .expect("The list of voxel clouds is empty")
         .voxel_dimensions();
+
     assert!(
         voxel_clouds
             .clone()
@@ -882,6 +914,9 @@ where
         "The voxel clouds in the list don't contain voxels of the same size"
     );
 
+    // Find volume envelope of all input voxel clouds.
+    // FIXME: This could be delegated to BoundingBox. @Optimization Compute
+    // bounding boxes so that they contain actual voxels.
     let mut min_coord = Point3::new(i32::max_value(), i32::max_value(), i32::max_value());
     let mut max_coord = Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
 
@@ -903,9 +938,11 @@ where
         cast_u32(max_coord.z - min_coord.z) + 1,
     );
 
+    // Create a new voxel cloud that can possibly contain union voxels.
     let mut union_voxel_cloud =
         VoxelCloud::new(&min_coord, &block_dimensions, &first_voxel_dimensions);
 
+    // Iterate through the block of space containing all the input voxel clouds.
     for i in 0..union_voxel_cloud.voxel_map.len() {
         let absolute_coords = one_dimensional_to_absolute_three_dimensional_coordinate(
             i,
@@ -914,19 +951,18 @@ where
         )
         .expect("The voxel map out of bounds");
 
-        union_voxel_cloud.voxel_map[i] =
-            voxel_clouds
-                .clone()
-                .into_iter()
-                .fold(false, |value: bool, vc| {
-                    if let Some(v) = vc.voxel_at_absolute_coords(&absolute_coords) {
-                        value || v
-                    } else {
-                        value
-                    }
-                });
+        // If any of the input voxel clouds contains a voxel at the given
+        // absolute coordinate, put there a voxel to the intersection voxel
+        // cloud as well.
+        union_voxel_cloud.voxel_map[i] = voxel_clouds.clone().into_iter().any(|vc| {
+            match vc.voxel_at_absolute_coords(&absolute_coords) {
+                Some(true) => true,
+                _ => false,
+            }
+        });
     }
 
+    // FIXME: consider calling shrink_to_fit
     union_voxel_cloud
 }
 
