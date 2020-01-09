@@ -103,6 +103,40 @@ impl BoundingBox {
     pub fn diagonal_length(&self) -> f32 {
         nalgebra::distance(&self.minimum_point, &self.maximum_point)
     }
+
+    /// Checks if the two bounding boxes intersect / share any portion
+    /// of space.
+    ///
+    /// # Sources
+    /// https://math.stackexchange.com/questions/2651710/simplest-way-to-determine-if-two-3d-boxes-intersect
+    #[allow(dead_code)]
+    pub fn intersects_with(&self, other: &BoundingBox) -> bool {
+        let self_min_x = self.minimum_point.x.min(self.maximum_point.x);
+        let self_min_y = self.minimum_point.y.min(self.maximum_point.y);
+        let self_min_z = self.minimum_point.z.min(self.maximum_point.z);
+        let self_max_x = self.minimum_point.x.max(self.maximum_point.x);
+        let self_max_y = self.minimum_point.y.max(self.maximum_point.y);
+        let self_max_z = self.minimum_point.z.max(self.maximum_point.z);
+        let other_min_x = other.minimum_point.x.min(other.maximum_point.x);
+        let other_min_y = other.minimum_point.y.min(other.maximum_point.y);
+        let other_min_z = other.minimum_point.z.min(other.maximum_point.z);
+        let other_max_x = other.minimum_point.x.max(other.maximum_point.x);
+        let other_max_y = other.minimum_point.y.max(other.maximum_point.y);
+        let other_max_z = other.minimum_point.z.max(other.maximum_point.z);
+
+        ((self_min_x <= other_min_x && other_min_x <= self_max_x)
+            || (self_min_x <= other_max_x && other_max_x <= self_max_x)
+            || (other_min_x <= self_min_x && self_min_x <= other_max_x)
+            || (other_min_x <= self_max_x && self_max_x <= other_max_x))
+            && ((self_min_y <= other_min_y && other_min_y <= self_max_y)
+                || (self_min_y <= other_max_y && other_max_y <= self_max_y)
+                || (other_min_y <= self_min_y && self_min_y <= other_max_y)
+                || (other_min_y <= self_max_y && self_max_y <= other_max_y))
+            && ((self_min_z <= other_min_z && other_min_z <= self_max_z)
+                || (self_min_z <= other_max_z && other_max_z <= self_max_z)
+                || (other_min_z <= self_min_z && self_min_z <= other_max_z)
+                || (other_min_z <= self_max_z && self_max_z <= other_max_z))
+    }
 }
 
 // FIXME: Make more generic: take &[Point] or Iterator<Item=&Point>
@@ -1185,12 +1219,12 @@ mod tests {
             UnorientedEdge(OrientedEdge::new(3, 0)),
         ];
 
-        let calculated_loops = border_edge_loops(&edge_sharing_map);
+        let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert_eq!(calculated_loops.len(), 1);
-        assert_eq!(calculated_loops[0].len(), correct_loop.len());
+        assert_eq!(computed_loops.len(), 1);
+        assert_eq!(computed_loops[0].len(), correct_loop.len());
         for edge in correct_loop {
-            assert!(calculated_loops[0].iter().any(|e| *e == edge));
+            assert!(computed_loops[0].iter().any(|e| *e == edge));
         }
     }
 
@@ -1205,9 +1239,9 @@ mod tests {
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_sharing(&oriented_edges);
 
-        let calculated_loops = border_edge_loops(&edge_sharing_map);
+        let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert!(calculated_loops.is_empty());
+        assert!(computed_loops.is_empty());
     }
 
     #[test]
@@ -1238,26 +1272,26 @@ mod tests {
             ],
         ];
 
-        let calculated_loops = border_edge_loops(&edge_sharing_map);
+        let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert_eq!(calculated_loops.len(), 2);
+        assert_eq!(computed_loops.len(), 2);
         assert!(
-            calculated_loops[0].len() == correct_loops[0].len()
-                || calculated_loops[0].len() == correct_loops[1].len()
+            computed_loops[0].len() == correct_loops[0].len()
+                || computed_loops[0].len() == correct_loops[1].len()
         );
 
-        if calculated_loops[0].len() == correct_loops[0].len() {
-            assert_eq!(calculated_loops[1].len(), correct_loops[1].len());
+        if computed_loops[0].len() == correct_loops[0].len() {
+            assert_eq!(computed_loops[1].len(), correct_loops[1].len());
             for (i, correct_loop) in correct_loops.iter().enumerate() {
                 for edge in correct_loop {
-                    assert!(calculated_loops[i].iter().any(|e| e == edge));
+                    assert!(computed_loops[i].iter().any(|e| e == edge));
                 }
             }
         } else {
-            assert_eq!(calculated_loops[1].len(), correct_loops[0].len());
+            assert_eq!(computed_loops[1].len(), correct_loops[0].len());
             for (i, correct_loop) in correct_loops.iter().enumerate() {
                 for edge in correct_loop {
-                    assert!(calculated_loops[(i + 1) % 2].iter().any(|e| e == edge));
+                    assert!(computed_loops[(i + 1) % 2].iter().any(|e| e == edge));
                 }
             }
         }
