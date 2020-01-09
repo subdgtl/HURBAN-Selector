@@ -28,6 +28,16 @@ pub enum ResolveError {
     UndeclaredFuncUse { stmt_index: usize, func: FuncIdent },
 }
 
+impl ResolveError {
+    pub fn stmt_index(&self) -> usize {
+        match self {
+            ResolveError::VarRedefinition { stmt_index, .. } => *stmt_index,
+            ResolveError::UndeclaredVarUse { stmt_index, .. } => *stmt_index,
+            ResolveError::UndeclaredFuncUse { stmt_index, .. } => *stmt_index,
+        }
+    }
+}
+
 impl fmt::Display for ResolveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -51,18 +61,6 @@ impl fmt::Display for ResolveError {
 }
 
 impl error::Error for ResolveError {}
-
-/// A type-checking error.
-#[derive(Debug, PartialEq)]
-pub enum TypecheckError {}
-
-impl fmt::Display for TypecheckError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TypecheckError")
-    }
-}
-
-impl error::Error for TypecheckError {}
 
 /// A dynamic func error.
 #[derive(Debug)]
@@ -119,6 +117,17 @@ pub enum RuntimeError {
         call: ast::CallExpr,
         func_error: FuncError,
     },
+}
+
+impl RuntimeError {
+    pub fn stmt_index(&self) -> usize {
+        match self {
+            RuntimeError::ArgCountMismatch { stmt_index, .. } => *stmt_index,
+            RuntimeError::ArgTyMismatch { stmt_index, .. } => *stmt_index,
+            RuntimeError::ReturnTyMismatch { stmt_index, .. } => *stmt_index,
+            RuntimeError::Func { stmt_index, .. } => *stmt_index,
+        }
+    }
 }
 
 impl fmt::Display for RuntimeError {
@@ -186,15 +195,22 @@ impl error::Error for RuntimeError {}
 #[derive(Debug, PartialEq)]
 pub enum InterpretError {
     Resolve(ResolveError),
-    Typecheck(TypecheckError),
     Runtime(RuntimeError),
+}
+
+impl InterpretError {
+    pub fn stmt_index(&self) -> usize {
+        match self {
+            InterpretError::Resolve(resolve_error) => resolve_error.stmt_index(),
+            InterpretError::Runtime(runtime_error) => runtime_error.stmt_index(),
+        }
+    }
 }
 
 impl fmt::Display for InterpretError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             InterpretError::Resolve(resolve_error) => f.write_str(&resolve_error.to_string()),
-            InterpretError::Typecheck(typecheck_error) => f.write_str(&typecheck_error.to_string()),
             InterpretError::Runtime(runtime_error) => f.write_str(&runtime_error.to_string()),
         }
     }
@@ -205,12 +221,6 @@ impl error::Error for InterpretError {}
 impl From<ResolveError> for InterpretError {
     fn from(resolve_error: ResolveError) -> InterpretError {
         InterpretError::Resolve(resolve_error)
-    }
-}
-
-impl From<TypecheckError> for InterpretError {
-    fn from(typecheck_error: TypecheckError) -> InterpretError {
-        InterpretError::Typecheck(typecheck_error)
     }
 }
 
@@ -446,12 +456,6 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn typecheck(&mut self) -> Result<(), TypecheckError> {
-        // FIXME: @Diagnostics Implement type-checking
-
-        Ok(())
-    }
-
     /// Interprets the whole currently set program and returns the
     /// used/unused values after the last statement.
     pub fn interpret(&mut self) -> InterpretOutcome {
@@ -485,13 +489,7 @@ impl Interpreter {
             };
         }
 
-        if let Err(err) = self.typecheck() {
-            return InterpretOutcome {
-                result: Err(InterpretError::from(err)),
-                pc: 0,
-                log_messages: vec![Vec::new(); self.log_messages.len()],
-            };
-        }
+        // FIXME: @Diagnostics Implement type-checking
 
         index = cmp::min(index, self.prog.stmts().len().saturating_sub(1));
 
