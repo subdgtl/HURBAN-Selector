@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::importer::{Importer, ImporterError, ObjCache};
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, MeshArrayValue, ParamInfo, ParamRefinement,
+    Func, FuncError, FuncFlags, FuncInfo, LogMessage, MeshArrayValue, ParamInfo, ParamRefinement,
     StringParamRefinement, Ty, Value,
 };
 
@@ -63,7 +63,11 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
         Ty::MeshArray
     }
 
-    fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        values: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let path = values[0].unwrap_string();
 
         let result = self.importer.import_obj(path);

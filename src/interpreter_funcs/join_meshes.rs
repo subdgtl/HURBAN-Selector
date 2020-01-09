@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
+    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::tools;
 
@@ -38,7 +38,11 @@ impl Func for FuncJoinMeshes {
         Ty::Mesh
     }
 
-    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        args: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let meshes = args.iter().map(|a| a.unwrap_mesh());
 
         let value = tools::join_multiple_meshes(meshes);
