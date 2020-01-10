@@ -1,8 +1,10 @@
 pub use crate::logger::LogLevel;
-pub use crate::renderer::{GpuBackend, Msaa, PresentMode};
+pub use crate::renderer::{GpuBackend, Msaa};
 pub use crate::ui::Theme;
 
 use std::collections::HashMap;
+use std::fs::File;
+use std::mem;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -14,9 +16,9 @@ use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
 use crate::mesh::analysis::BoundingBox;
 use crate::mesh::Mesh;
-use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshId, Options as RendererOptions, Renderer};
+use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshHandle, Options as RendererOptions, Renderer};
 use crate::session::{PollInterpreterResponseNotification, Session};
-use crate::ui::Ui;
+use crate::ui::{ScreenshotOptions, Ui};
 
 pub mod geometry;
 pub mod importer;
@@ -32,7 +34,6 @@ mod logger;
 mod math;
 mod mesh;
 mod plane;
-mod platform;
 mod pull;
 mod session;
 mod ui;
@@ -48,7 +49,7 @@ pub struct Options {
     /// Which multi-sampling setting to use.
     pub msaa: Msaa,
     /// Whether to run with VSync or not.
-    pub present_mode: PresentMode,
+    pub vsync: bool,
     /// Whether to select an explicit gpu backend for the renderer to use.
     pub gpu_backend: Option<GpuBackend>,
     /// Logging level for the editor.
@@ -129,14 +130,18 @@ pub fn init_and_run(options: Options) -> ! {
             .expect("Failed to create window")
     };
 
-    let window_size = window.inner_size().to_physical(window.hidpi_factor());
+    let initial_window_size = window.inner_size().to_physical(window.hidpi_factor());
+    let initial_window_width = initial_window_size.width.round() as u32;
+    let initial_window_height = initial_window_size.height.round() as u32;
+    let initial_window_aspect_ratio =
+        initial_window_size.width as f32 / initial_window_size.height as f32;
 
     let mut session = Session::new();
     let mut input_manager = InputManager::new();
     let mut ui = Ui::new(&window, options.theme);
 
     let mut camera = Camera::new(
-        window_size,
+        initial_window_aspect_ratio,
         5.0,
         45f32.to_radians(),
         60f32.to_radians(),
@@ -154,30 +159,39 @@ pub fn init_and_run(options: Options) -> ! {
         },
     );
 
+    let mut screenshot_modal_open = false;
+    let mut screenshot_options = ScreenshotOptions {
+        width: initial_window_width,
+        height: initial_window_height,
+        transparent: true,
+    };
+
+    let clear_color = match options.theme {
+        Theme::Dark => [0.1, 0.1, 0.1, 1.0],
+        Theme::Funky => cast_u8_color_to_f64([0xea, 0xe7, 0xe1, 0xff]),
+    };
     let mut renderer_draw_mesh_mode = DrawMeshMode::Shaded;
     let mut renderer = Renderer::new(
         &window,
+        initial_window_width,
+        initial_window_height,
         &camera.projection_matrix(),
         &camera.view_matrix(),
         ui.fonts(),
         RendererOptions {
-            clear_color: match options.theme {
-                Theme::Dark => [0.1, 0.1, 0.1, 1.0],
-                Theme::Funky => cast_u8_color_to_f64([0xea, 0xe7, 0xe1, 0xff]),
-            },
             // FIXME: @Correctness Msaa X4 is the only value currently
             // working on all devices we tried. Once msaa capabilities
             // are queryable with wgpu `Limits`, we should have a
             // chain of options the renderer tries before giving up,
             // and this field should be renamed to `desired_msaa`.
             msaa: options.msaa,
-            present_mode: options.present_mode,
+            vsync: options.vsync,
             gpu_backend: options.gpu_backend,
         },
     );
 
     let mut scene_meshes: HashMap<ValuePath, Arc<Mesh>> = HashMap::new();
-    let mut scene_gpu_mesh_ids: HashMap<ValuePath, GpuMeshId> = HashMap::new();
+    let mut scene_gpu_mesh_handles: HashMap<ValuePath, GpuMeshHandle> = HashMap::new();
 
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
 
@@ -219,6 +233,10 @@ pub fn init_and_run(options: Options) -> ! {
 
                 let input_state = input_manager.input_state();
 
+                if input_state.open_screenshot_options {
+                    screenshot_modal_open = true;
+                }
+
                 let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
                 let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
                 let [rotate_x, rotate_y] = input_state.camera_rotate;
@@ -229,18 +247,39 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.zoom(input_state.camera_zoom);
                 camera.zoom_step(input_state.camera_zoom_steps);
 
-                let ui_reset_viewport =
-                    ui_frame.draw_viewport_settings_window(&mut renderer_draw_mesh_mode);
+                let ui_reset_viewport = ui_frame.draw_viewport_settings_window(
+                    &mut screenshot_modal_open,
+                    &mut renderer_draw_mesh_mode,
+                );
+                let reset_viewport = input_state.camera_reset_viewport || ui_reset_viewport;
+
+                let window_size = window.inner_size().to_physical(window.hidpi_factor());
+                let take_screenshot = ui_frame.draw_screenshot_window(
+                    &mut screenshot_modal_open,
+                    &mut screenshot_options,
+                    window_size.width.round() as u32,
+                    window_size.height.round() as u32,
+                );
+
                 ui_frame.draw_pipeline_window(&mut session);
                 ui_frame.draw_operations_window(&mut session);
 
-                if input_state.camera_reset_viewport || ui_reset_viewport {
+                if reset_viewport {
                     camera_interpolation = Some(CameraInterpolation::new(
                         &camera,
                         scene_meshes.values().map(Arc::as_ref),
                         time,
                     ));
                 }
+
+                let screenshot_render_target = if take_screenshot {
+                    Some(renderer.add_offscreen_render_target(
+                        screenshot_options.width,
+                        screenshot_options.height,
+                    ))
+                } else {
+                    None
+                };
 
                 if input_state.close_requested {
                     *control_flow = winit::event_loop::ControlFlow::Exit;
@@ -249,15 +288,19 @@ pub fn init_and_run(options: Options) -> ! {
                 if let Some(logical_size) = input_state.window_resized {
                     let physical_size = logical_size.to_physical(window.hidpi_factor());
                     log::debug!(
-                        "Window resized to new size: logical {}x{}, physical {}x{}",
-                        logical_size.width,
-                        logical_size.height,
+                        "Window resized to new physical size {}x{}",
                         physical_size.width,
                         physical_size.height,
                     );
 
-                    camera.set_window_size(physical_size);
-                    renderer.set_window_size(physical_size);
+                    let aspect_ratio = physical_size.width as f32 / physical_size.height as f32;
+                    let width = physical_size.width.round() as u32;
+                    let height = physical_size.height.round() as u32;
+
+                    screenshot_options.width = width;
+                    screenshot_options.height = height;
+                    camera.set_viewport_aspect_ratio(aspect_ratio);
+                    renderer.set_window_size(width, height);
                 }
 
                 session.poll_interpreter_response(|callback_value| match callback_value {
@@ -271,7 +314,7 @@ pub fn init_and_run(options: Options) -> ! {
                             let path = ValuePath(var_ident, 0);
 
                             scene_meshes.insert(path, mesh);
-                            scene_gpu_mesh_ids.insert(path, gpu_mesh_id);
+                            scene_gpu_mesh_handles.insert(path, gpu_mesh_id);
                         }
                         Value::MeshArray(mesh_array) => {
                             for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
@@ -283,7 +326,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 let path = ValuePath(var_ident, index);
 
                                 scene_meshes.insert(path, mesh);
-                                scene_gpu_mesh_ids.insert(path, gpu_mesh_id);
+                                scene_gpu_mesh_handles.insert(path, gpu_mesh_id);
                             }
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
@@ -293,7 +336,7 @@ pub fn init_and_run(options: Options) -> ! {
                             let path = ValuePath(var_ident, 0);
 
                             scene_meshes.remove(&path);
-                            let gpu_mesh_id = scene_gpu_mesh_ids
+                            let gpu_mesh_id = scene_gpu_mesh_handles
                                 .remove(&path)
                                 .expect("Gpu mesh ID was not tracked");
 
@@ -304,7 +347,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 let path = ValuePath(var_ident, cast_usize(index));
 
                                 scene_meshes.remove(&path);
-                                let gpu_mesh_id = scene_gpu_mesh_ids
+                                let gpu_mesh_id = scene_gpu_mesh_handles
                                     .remove(&path)
                                     .expect("Gpu mesh ID was not tracked");
 
@@ -328,18 +371,91 @@ pub fn init_and_run(options: Options) -> ! {
 
                 let imgui_draw_data = ui_frame.render(&window);
 
-                // Camera matrices have to be uploaded when either window
-                // resizes or the camera moves. We do it every frame for
-                // simplicity.
-                // FIXME: @Optimization Update camera matrices within
-                // the same command encoder.
-                renderer.set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
-                let mut render_pass = renderer.begin_render_pass();
+                let mut window_command_buffer = renderer.begin_command_buffer(clear_color);
+                window_command_buffer
+                    .set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
+                window_command_buffer.draw_meshes_to_primary_render_target(
+                    scene_gpu_mesh_handles.values(),
+                    renderer_draw_mesh_mode,
+                );
+                window_command_buffer.blit_primary_render_target_to_backbuffer();
+                window_command_buffer.draw_ui_to_backbuffer(imgui_draw_data);
+                window_command_buffer.submit();
 
-                render_pass.draw_mesh(scene_gpu_mesh_ids.values(), renderer_draw_mesh_mode);
-                render_pass.draw_ui(imgui_draw_data);
+                if let Some(screenshot_render_target) = screenshot_render_target {
+                    log::info!(
+                        "Capturing screenshot with dimensions {}x{} and transparency {}",
+                        screenshot_options.width,
+                        screenshot_options.height,
+                        screenshot_options.transparent,
+                    );
 
-                render_pass.submit();
+                    let screenshot_aspect_ratio =
+                        screenshot_options.width as f32 / screenshot_options.height as f32;
+
+                    let mut screenshot_camera = camera.clone();
+                    screenshot_camera.set_viewport_aspect_ratio(screenshot_aspect_ratio);
+
+                    let screenshot_clear_color = if screenshot_options.transparent {
+                        [0.0; 4]
+                    } else {
+                        clear_color
+                    };
+
+                    let mut screenshot_command_buffer =
+                        renderer.begin_command_buffer(screenshot_clear_color);
+                    screenshot_command_buffer.set_camera_matrices(
+                        &screenshot_camera.projection_matrix(),
+                        &screenshot_camera.view_matrix(),
+                    );
+                    screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                        &screenshot_render_target,
+                        scene_gpu_mesh_handles.values(),
+                        renderer_draw_mesh_mode,
+                    );
+                    screenshot_command_buffer.submit();
+
+                    renderer.offscreen_render_target_data(
+                        &screenshot_render_target,
+                        |width, height, data| {
+                            let actual_data_len = data.len();
+                            let expected_data_len = cast_usize(width)
+                                * cast_usize(height)
+                                * cast_usize(mem::size_of::<[u8; 4]>());
+                            if expected_data_len != actual_data_len {
+                                log::error!(
+                                    "Screenshot data is {} bytes, but was expected to be {} bytes",
+                                    actual_data_len,
+                                    expected_data_len,
+                                );
+
+                                return;
+                            }
+
+                            if let Some(mut path) = dirs::picture_dir() {
+                                path.push(format!(
+                                    "hurban_selector-{}.png",
+                                    chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
+                                ));
+
+                                let file = File::create(&path).unwrap();
+                                let mut png_encoder = png::Encoder::new(file, width, height);
+                                png_encoder.set_color(png::ColorType::RGBA);
+                                png_encoder.set_depth(png::BitDepth::Eight);
+
+                                png_encoder
+                                    .write_header()
+                                    .expect("Failed to write png header")
+                                    .write_image_data(data)
+                                    .expect("Failed to write png data");
+                            } else {
+                                log::error!("Failed to find picture directory");
+                            }
+                        },
+                    );
+
+                    renderer.remove_offscreen_render_target(screenshot_render_target);
+                }
             }
 
             winit::event::Event::WindowEvent {

@@ -20,6 +20,13 @@ pub enum Theme {
     Funky,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScreenshotOptions {
+    pub width: u32,
+    pub height: u32,
+    pub transparent: bool,
+}
+
 struct FontIds {
     regular: imgui::FontId,
     bold: imgui::FontId,
@@ -256,18 +263,100 @@ impl<'a> UiFrame<'a> {
         self.imgui_ui.render()
     }
 
-    pub fn draw_viewport_settings_window(&self, draw_mode: &mut DrawMeshMode) -> bool {
+    pub fn draw_screenshot_window(
+        &self,
+        screenshot_modal_open: &mut bool,
+        screenshot_options: &mut ScreenshotOptions,
+        viewport_width: u32,
+        viewport_height: u32,
+    ) -> bool {
+        let ui = &self.imgui_ui;
+
+        let window_name = imgui::im_str!("Screenshot");
+        if *screenshot_modal_open {
+            ui.open_popup(window_name);
+        }
+
+        let mut take_screenshot_clicked = false;
+
+        let viewport_width_f32 = viewport_width as f32;
+        let viewport_height_f32 = viewport_height as f32;
+        let mut viewport_scale = [
+            screenshot_options.width as f32 / viewport_width_f32,
+            screenshot_options.height as f32 / viewport_height_f32,
+        ];
+
+        let bold_font_token = ui.push_font(self.font_ids.bold);
+        ui.popup_modal(window_name)
+            .opened(screenshot_modal_open)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .always_auto_resize(true)
+            .build(|| {
+                let regular_font_token = ui.push_font(self.font_ids.regular);
+
+                let mut dimensions = [
+                    clamp_cast_u32_to_i32(screenshot_options.width),
+                    clamp_cast_u32_to_i32(screenshot_options.height),
+                ];
+
+                if ui
+                    .input_int2(imgui::im_str!("Dimensions"), &mut dimensions)
+                    .build()
+                {
+                    screenshot_options.width = clamp_cast_i32_to_u32(dimensions[0]);
+                    screenshot_options.height = clamp_cast_i32_to_u32(dimensions[1]);
+                }
+
+                if ui
+                    .input_float2(imgui::im_str!("Scale"), &mut viewport_scale)
+                    .build()
+                {
+                    screenshot_options.width = clamp_cast_i32_to_u32(
+                        (viewport_width_f32 * viewport_scale[0]).round() as i32,
+                    );
+                    screenshot_options.height = clamp_cast_i32_to_u32(
+                        (viewport_height_f32 * viewport_scale[1]).round() as i32,
+                    );
+                }
+
+                ui.checkbox(
+                    imgui::im_str!("Transparent"),
+                    &mut screenshot_options.transparent,
+                );
+
+                if ui.button(imgui::im_str!("Take Screenshot"), [0.0, 0.0]) {
+                    take_screenshot_clicked = true;
+                }
+
+                regular_font_token.pop(ui);
+            });
+        bold_font_token.pop(ui);
+
+        if take_screenshot_clicked {
+            *screenshot_modal_open = false;
+        }
+
+        take_screenshot_clicked
+    }
+
+    pub fn draw_viewport_settings_window(
+        &self,
+        screenshot_modal_open: &mut bool,
+        draw_mode: &mut DrawMeshMode,
+    ) -> bool {
         let ui = &self.imgui_ui;
 
         const VIEWPORT_WINDOW_WIDTH: f32 = 150.0;
-        const VIEWPORT_WINDOW_HEIGHT: f32 = 150.0;
+        const VIEWPORT_WINDOW_HEIGHT: f32 = 170.0;
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
         let mut reset_viewport_clicked = false;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
-        imgui::Window::new(imgui::im_str!("Viewport Settings"))
+        imgui::Window::new(imgui::im_str!("Viewport"))
             .movable(false)
             .resizable(false)
             .collapsible(false)
@@ -296,7 +385,13 @@ impl<'a> UiFrame<'a> {
                     DrawMeshMode::ShadedEdgesXray,
                 );
 
-                reset_viewport_clicked = ui.button(imgui::im_str!("Reset Viewport"), [0.0, 0.0]);
+                reset_viewport_clicked =
+                    ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
+
+                if ui.button(imgui::im_str!("Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
+                    *screenshot_modal_open = true;
+                }
+
                 regular_font_token.pop(ui);
             });
         bold_font_token.pop(ui);

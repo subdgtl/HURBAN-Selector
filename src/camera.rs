@@ -22,7 +22,7 @@ pub struct CameraOptions {
     pub zfar: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Camera {
     aspect_ratio: f32,
     radius: f32,
@@ -35,14 +35,14 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(
-        window_size: winit::dpi::PhysicalSize,
+        aspect_ratio: f32,
         radius: f32,
         azimuthal_angle: f32,
         polar_angle: f32,
         options: CameraOptions,
     ) -> Camera {
         Camera {
-            aspect_ratio: (window_size.width / window_size.height) as f32,
+            aspect_ratio,
             radius: clamp(radius, options.radius_min, options.radius_max),
             azimuthal_angle: azimuthal_angle % TWO_PI,
             polar_angle: clamp(
@@ -56,8 +56,8 @@ impl Camera {
         }
     }
 
-    pub fn set_window_size(&mut self, window_size: winit::dpi::PhysicalSize) {
-        self.aspect_ratio = (window_size.width / window_size.height) as f32;
+    pub fn set_viewport_aspect_ratio(&mut self, aspect_ratio: f32) {
+        self.aspect_ratio = aspect_ratio;
     }
 
     #[allow(dead_code)]

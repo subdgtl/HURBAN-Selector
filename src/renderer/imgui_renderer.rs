@@ -7,6 +7,9 @@ use crate::include_shader;
 
 use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
 
+static SHADER_IMGUI_VERT: &[u8] = include_shader!("imgui.vert.spv");
+static SHADER_IMGUI_FRAG: &[u8] = include_shader!("imgui.frag.spv");
+
 #[derive(Debug, Clone)]
 pub enum Error {
     BadTexture(imgui::TextureId),
@@ -14,8 +17,6 @@ pub enum Error {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
-    pub clear_color: [f64; 4],
-    pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
 }
 
@@ -26,8 +27,6 @@ pub struct ImguiRenderer {
     transform_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     render_pipeline: wgpu::RenderPipeline,
-
-    options: Options,
 }
 
 impl ImguiRenderer {
@@ -39,12 +38,10 @@ impl ImguiRenderer {
     ) -> Result<ImguiRenderer, Error> {
         // Link shaders
 
-        let vs_spv: &[u8] = include_shader!("imgui.vert.spv");
-        let fs_spv: &[u8] = include_shader!("imgui.frag.spv");
-        let vs_words =
-            wgpu::read_spirv(io::Cursor::new(vs_spv)).expect("Couldn't read pre-built SPIR-V");
-        let fs_words =
-            wgpu::read_spirv(io::Cursor::new(fs_spv)).expect("Couldn't read pre-built SPIR-V");
+        let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_IMGUI_VERT))
+            .expect("Couldn't read pre-built SPIR-V");
+        let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_IMGUI_FRAG))
+            .expect("Couldn't read pre-built SPIR-V");
         let vs_module = device.create_shader_module(&vs_words);
         let fs_module = device.create_shader_module(&fs_words);
 
@@ -119,21 +116,21 @@ impl ImguiRenderer {
             color_states: &[wgpu::ColorStateDescriptor {
                 format: options.output_color_attachment_format,
                 // Enable alpha blending
-                color_blend: wgpu::BlendDescriptor {
+                alpha_blend: wgpu::BlendDescriptor {
                     src_factor: wgpu::BlendFactor::SrcAlpha,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                     operation: wgpu::BlendOperation::Add,
                 },
-                alpha_blend: wgpu::BlendDescriptor {
+                color_blend: wgpu::BlendDescriptor {
                     src_factor: wgpu::BlendFactor::SrcAlpha,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                     operation: wgpu::BlendOperation::Add,
                 },
                 write_mask: wgpu::ColorWrite::ALL,
             }],
-            // Disabled depth test
+            // Disable depth test
             depth_stencil_state: None,
-            index_format: wgpu::IndexFormat::Uint16, // FIXME(yanchith): may need 32bit indices!
+            index_format: wgpu::IndexFormat::Uint16,
             vertex_buffers: &[wgpu::VertexBufferDescriptor {
                 stride: wgpu_size_of::<imgui::DrawVert>(),
                 step_mode: wgpu::InputStepMode::Vertex,
@@ -155,7 +152,7 @@ impl ImguiRenderer {
                     },
                 ],
             }],
-            sample_count: options.sample_count,
+            sample_count: 1,
             sample_mask: !0,
             alpha_to_coverage_enabled: false,
         });
@@ -215,9 +212,14 @@ impl ImguiRenderer {
             transform_buffer,
             transform_bind_group,
             texture_bind_group_layout,
-            options,
         })
     }
+
+    // FIXME: Return our own `TextureHandle` instead of imgui's
+    // `TextureId` so that we can disallow `Clone` and `Copy` and
+    // properly track it's ownership in the type system. Imgui's
+    // `TextureId` can be converted to/from usize, so this should be
+    // possible.
 
     pub fn add_texture_rgba8_unorm(
         &mut self,
@@ -261,10 +263,10 @@ impl ImguiRenderer {
     pub fn draw_ui(
         &self,
         color_needs_clearing: bool,
+        clear_color: [f64; 4],
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
-        msaa_attachment: Option<&wgpu::TextureView>,
         draw_data: &imgui::DrawData,
     ) -> Result<(), Error> {
         // This is mostly a transcript of the following:
@@ -321,41 +323,23 @@ impl ImguiRenderer {
         // `idx_start..idx_end` and set those to the render pass, and
         // finally draw.
 
-        let color_load_op = if color_needs_clearing {
-            wgpu::LoadOp::Clear
-        } else {
-            wgpu::LoadOp::Load
-        };
-        let rpass_color_attachment_descriptor = if let Some(msaa_attachment) = msaa_attachment {
-            wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: msaa_attachment,
-                resolve_target: Some(color_attachment),
-                load_op: color_load_op,
-                store_op: wgpu::StoreOp::Store,
-                clear_color: wgpu::Color {
-                    r: self.options.clear_color[0],
-                    g: self.options.clear_color[1],
-                    b: self.options.clear_color[2],
-                    a: self.options.clear_color[3],
-                },
-            }
-        } else {
-            wgpu::RenderPassColorAttachmentDescriptor {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: color_attachment,
                 resolve_target: None,
-                load_op: color_load_op,
+                load_op: if color_needs_clearing {
+                    wgpu::LoadOp::Clear
+                } else {
+                    wgpu::LoadOp::Load
+                },
                 store_op: wgpu::StoreOp::Store,
                 clear_color: wgpu::Color {
-                    r: self.options.clear_color[0],
-                    g: self.options.clear_color[1],
-                    b: self.options.clear_color[2],
-                    a: self.options.clear_color[3],
+                    r: clear_color[0],
+                    g: clear_color[1],
+                    b: clear_color[2],
+                    a: clear_color[3],
                 },
-            }
-        };
-
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[rpass_color_attachment_descriptor],
+            }],
             depth_stencil_attachment: None,
         });
 
