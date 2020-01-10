@@ -410,6 +410,11 @@ impl Session {
                                             ));
                                         }
                                     }
+
+                                    // Impure funcs (think import) can sometimes succeed
+                                    // with the same parameters for which they previously
+                                    // failed. We want to clear the error in this case.
+                                    self.error = None;
                                 }
                                 Err(interpret_error) => {
                                     log::error!(
