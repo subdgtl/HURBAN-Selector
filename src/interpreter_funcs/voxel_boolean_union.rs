@@ -12,35 +12,30 @@ use crate::interpreter::{
 use crate::mesh::voxel_cloud::VoxelCloud;
 
 #[derive(Debug, PartialEq)]
-pub enum FuncBooleanIntersectionError {
+pub enum FuncBooleanUnionError {
     WeldFailed,
-    NotIntersecting,
 }
 
-impl fmt::Display for FuncBooleanIntersectionError {
+impl fmt::Display for FuncBooleanUnionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FuncBooleanIntersectionError::WeldFailed => write!(
+            FuncBooleanUnionError::WeldFailed => write!(
                 f,
-                "Welding of separate voxels failed due to high welding proximity tolerance or the two meshes for intersection didn't intersect"
-            ),
-            FuncBooleanIntersectionError::NotIntersecting => write!(
-                f,
-                "The selected meshes don't intersect"
+                "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
         }
     }
 }
 
-impl error::Error for FuncBooleanIntersectionError {}
+impl error::Error for FuncBooleanUnionError {}
 
-pub struct FuncBooleanIntersection;
+pub struct FuncBooleanUnion;
 
-impl Func for FuncBooleanIntersection {
+impl Func for FuncBooleanUnion {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Intersection",
-            return_value_name: "Intersection mesh",
+            name: "Union",
+            return_value_name: "Union Mesh",
         }
     }
 
@@ -51,17 +46,17 @@ impl Func for FuncBooleanIntersection {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                name: "Mesh",
+                name: "Mesh 1",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
-                name: "Mesh",
+                name: "Mesh 2",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
-                name: "Voxel size",
+                name: "Voxel Size",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(f32::MIN_POSITIVE),
@@ -105,19 +100,10 @@ impl Func for FuncBooleanIntersection {
             voxel_cloud2.grow_volume();
         }
 
-        let b_box1 = voxel_cloud1.bounding_box();
-        let b_box2 = voxel_cloud2.bounding_box();
-
-        if b_box1.intersects_with(&b_box2) {
-            voxel_cloud1.boolean_intersection_mut(&voxel_cloud2);
-            match voxel_cloud1.to_mesh() {
-                Some(value) => Ok(Value::Mesh(Arc::new(value))),
-                None => Err(FuncError::new(FuncBooleanIntersectionError::WeldFailed)),
-            }
-        } else {
-            Err(FuncError::new(
-                FuncBooleanIntersectionError::NotIntersecting,
-            ))
+        voxel_cloud1.boolean_union(&voxel_cloud2);
+        match voxel_cloud1.to_mesh() {
+            Some(value) => Ok(Value::Mesh(Arc::new(value))),
+            None => Err(FuncError::new(FuncBooleanUnionError::WeldFailed)),
         }
     }
 }

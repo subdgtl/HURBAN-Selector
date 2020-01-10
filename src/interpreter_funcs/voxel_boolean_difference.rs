@@ -12,14 +12,14 @@ use crate::interpreter::{
 use crate::mesh::voxel_cloud::VoxelCloud;
 
 #[derive(Debug, PartialEq)]
-pub enum FuncBooleanUnionError {
+pub enum FuncBooleanDifferenceError {
     WeldFailed,
 }
 
-impl fmt::Display for FuncBooleanUnionError {
+impl fmt::Display for FuncBooleanDifferenceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FuncBooleanUnionError::WeldFailed => write!(
+            FuncBooleanDifferenceError::WeldFailed => write!(
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
@@ -27,15 +27,15 @@ impl fmt::Display for FuncBooleanUnionError {
     }
 }
 
-impl error::Error for FuncBooleanUnionError {}
+impl error::Error for FuncBooleanDifferenceError {}
 
-pub struct FuncBooleanUnion;
+pub struct FuncBooleanDifference;
 
-impl Func for FuncBooleanUnion {
+impl Func for FuncBooleanDifference {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Union",
-            return_value_name: "Union mesh",
+            name: "Difference",
+            return_value_name: "Difference Mesh",
         }
     }
 
@@ -46,17 +46,17 @@ impl Func for FuncBooleanUnion {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                name: "Mesh",
+                name: "Mesh 1",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
-                name: "Mesh",
+                name: "Mesh 2",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
-                name: "Voxel size",
+                name: "Voxel Size",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(f32::MIN_POSITIVE),
@@ -100,10 +100,10 @@ impl Func for FuncBooleanUnion {
             voxel_cloud2.grow_volume();
         }
 
-        voxel_cloud1.boolean_union_mut(&voxel_cloud2);
+        voxel_cloud1.boolean_difference_mut(&voxel_cloud2);
         match voxel_cloud1.to_mesh() {
             Some(value) => Ok(Value::Mesh(Arc::new(value))),
-            None => Err(FuncError::new(FuncBooleanUnionError::WeldFailed)),
+            None => Err(FuncError::new(FuncBooleanDifferenceError::WeldFailed)),
         }
     }
 }

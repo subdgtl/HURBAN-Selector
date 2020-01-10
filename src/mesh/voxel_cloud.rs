@@ -19,12 +19,12 @@ use super::{primitive, tools, Face, Mesh};
 /// voxel-space coordinates. The voxel space starts at the cartesian space
 /// origin with voxel coordinates 0, 0, 0. Voxel clouds with the same voxel size
 /// are compatible and collateral operations be performed on them.
-#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct VoxelCloud {
     block_start: Point3<i32>,
     block_dimensions: Vector3<u32>,
     voxel_dimensions: Vector3<f32>,
-    // FIXME: @Optimization Change this to a bit vector
+    // FIXME: @Optimization Change this to a bit vector.
     voxel_map: Vec<bool>,
 }
 
@@ -52,7 +52,7 @@ impl VoxelCloud {
     }
 
     /// Creates a new empty voxel space from a bounding box.
-    pub fn from_bounding_box(bounding_box: &BoundingBox, voxel_dimensions: &Vector3<f32>) -> Self {
+    pub fn from_bounding_box(bounding_box: &BoundingBox<f32>, voxel_dimensions: &Vector3<f32>) -> Self {
         assert!(
             voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
             "One or more voxel dimensions are 0.0"
@@ -137,13 +137,13 @@ impl VoxelCloud {
         voxel_cloud
     }
 
-    /// Returns voxel cloud block start in absolute voxel coordinates
+    /// Returns voxel cloud block start in absolute voxel coordinates.
     #[allow(dead_code)]
     pub fn block_start(&self) -> Point3<i32> {
         self.block_start
     }
 
-    /// Returns voxel cloud block end in absolute voxel coordinates
+    /// Returns voxel cloud block end in absolute voxel coordinates.
     pub fn block_end(&self) -> Point3<i32> {
         Point3::new(
             self.block_start.x + cast_i32(self.block_dimensions.x) - 1,
@@ -152,13 +152,13 @@ impl VoxelCloud {
         )
     }
 
-    /// Returns voxel cloud block dimensions in voxel units
+    /// Returns voxel cloud block dimensions in voxel units.
     #[allow(dead_code)]
     pub fn block_dimensions(&self) -> Vector3<u32> {
         self.block_dimensions
     }
 
-    /// Returns single voxel dimensions in model space units
+    /// Returns single voxel dimensions in model space units.
     #[allow(dead_code)]
     pub fn voxel_dimensions(&self) -> Vector3<f32> {
         self.voxel_dimensions
@@ -170,7 +170,7 @@ impl VoxelCloud {
         self.voxel_map.iter().any(|v| *v)
     }
 
-    /// Checks if the voxel cloud contains any voxel / volume
+    /// Checks if the voxel cloud is described by a zero length block.
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.voxel_map.is_empty()
@@ -244,7 +244,7 @@ impl VoxelCloud {
     /// dimension must be equal. The current Voxel cloud will be mutated and
     /// resized to the size and position of an intersection of the two Voxel
     /// clouds (not the contained volumes).
-    pub fn boolean_intersection_mut(&mut self, other: &VoxelCloud) {
+    pub fn boolean_intersection(&mut self, other: &VoxelCloud) {
         assert!(
             approx::relative_eq!(self.voxel_dimensions, other.voxel_dimensions()),
             "The two voxel clouds don't contain voxels of the same size"
@@ -314,7 +314,7 @@ impl VoxelCloud {
     /// # Warning
     /// If the input Voxel clouds are far apart, the resulting voxel cloud might
     /// be huge.
-    pub fn boolean_union_mut(&mut self, other: &VoxelCloud) {
+    pub fn boolean_union(&mut self, other: &VoxelCloud) {
         assert!(
             approx::relative_eq!(self.voxel_dimensions, other.voxel_dimensions()),
             "The two voxel clouds don't contain voxels of the same size"
@@ -357,7 +357,7 @@ impl VoxelCloud {
             )
             .expect("The current voxel map out of bounds");
             // If the other voxel cloud exists on the current absolute
-            // coordinate, perform boolean OR, otherwise don;t change the
+            // coordinate, perform boolean OR, otherwise don't change the
             // existing voxel.
             if let Some(v) = other.voxel_at_absolute_coords(&absolute_coords) {
                 self.voxel_map[i] |= v;
@@ -387,10 +387,8 @@ impl VoxelCloud {
 
             // If the other voxel clouds contains a voxel at the position,
             // remove the existing voxel from the target voxel cloud
-            if self.voxel_map[i] {
-                if let Some(true) = other.voxel_at_absolute_coords(&absolute_coords) {
-                    self.voxel_map[i] = false;
-                }
+            if let Some(true) = other.voxel_at_absolute_coords(&absolute_coords) {
+                self.voxel_map[i] = false;
             }
         }
         // FIXME: consider calling shrink_to_fit
@@ -509,6 +507,13 @@ impl VoxelCloud {
             }
         }
     }
+
+    // pub fn resize_to_bounding_box(&mut self, bounding_box: &BoundingBox) {
+    //     self.resize(
+    //         &bounding_box.minimum_point(),
+    //         &(bounding_box.maximum_point().coords - bounding_box.minimum_point().coords),
+    //     );
+    // }
 
     /// Computes boundaries of volumes contained in voxel cloud. Returns tuple
     /// (block_start, block_dimensions). For empty voxel clouds returns the
@@ -743,7 +748,7 @@ impl VoxelCloud {
     }
 
     /// Returns the bounding box of this voxel cloud in world space.
-    pub fn bounding_box(&self) -> BoundingBox {
+    pub fn bounding_box_cartesian(&self) -> BoundingBox<f32> {
         let voxel_dimensions = self.voxel_dimensions;
         let block_start = self.block_start;
         let block_end = self.block_end();
@@ -764,7 +769,7 @@ impl VoxelCloud {
     /// Returns the bounding box of the mesh produced by
     /// `VoxelCloud::to_mesh` for this voxel cloud in world space.
     #[allow(dead_code)]
-    pub fn mesh_bounding_box(&self) -> BoundingBox {
+    pub fn mesh_bounding_box_cartesian(&self) -> BoundingBox<f32> {
         let voxel_dimensions = self.voxel_dimensions;
         let (volume_start, volume_dimensions) = self.compute_volume_boundaries();
         BoundingBox::new(
@@ -784,7 +789,7 @@ impl VoxelCloud {
     /// Returns the bounding box of this voxel cloud after shrinking
     /// to fit just the nonempty voxels.
     #[allow(dead_code)]
-    pub fn volume_bounding_box(&self) -> BoundingBox {
+    pub fn volume_bounding_box_cartesian(&self) -> BoundingBox<f32> {
         let voxel_dimensions = self.voxel_dimensions;
         let (volume_start, volume_dimensions) = self.compute_volume_boundaries();
         BoundingBox::new(
@@ -1221,7 +1226,7 @@ mod tests {
     }
 
     #[test]
-    fn test_voxel_cloud_boolean_intersection_mut_all_true() {
+    fn test_voxel_cloud_boolean_intersection_all_true() {
         let mut vc_a = VoxelCloud::new(
             &Point3::origin(),
             &Vector3::new(3, 3, 3),
@@ -1242,13 +1247,13 @@ mod tests {
         vc_b.fill_with(true);
         vc_correct.fill_with(true);
 
-        vc_a.boolean_intersection_mut(&vc_b);
+        vc_a.boolean_intersection(&vc_b);
 
         assert_eq!(vc_a, vc_correct);
     }
 
     #[test]
-    fn test_voxel_cloud_boolean_intersection_mut_one_false() {
+    fn test_voxel_cloud_boolean_intersection_one_false() {
         let mut vc_a = VoxelCloud::new(
             &Point3::origin(),
             &Vector3::new(3, 3, 3),
@@ -1271,7 +1276,7 @@ mod tests {
         vc_correct.fill_with(true);
         vc_correct.set_voxel_at_relative_coords(&Point3::new(1, 1, 1), false);
 
-        vc_a.boolean_intersection_mut(&vc_b);
+        vc_a.boolean_intersection(&vc_b);
 
         assert_eq!(vc_a, vc_correct);
     }
@@ -1323,7 +1328,7 @@ mod tests {
     }
 
     #[test]
-    fn test_voxel_cloud_boolean_union_mut_one_false() {
+    fn test_voxel_cloud_boolean_union_one_false() {
         let mut vc_a = VoxelCloud::new(
             &Point3::origin(),
             &Vector3::new(3, 3, 3),
@@ -1363,7 +1368,7 @@ mod tests {
         vc_correct.set_voxel_at_relative_coords(&Point3::new(1, 3, 0), false);
         vc_correct.set_voxel_at_relative_coords(&Point3::new(2, 3, 0), false);
 
-        vc_a.boolean_union_mut(&vc_b);
+        vc_a.boolean_union(&vc_b);
 
         assert_eq!(vc_a, vc_correct);
     }

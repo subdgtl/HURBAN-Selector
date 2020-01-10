@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::f32;
 
 use nalgebra as na;
-use nalgebra::{Point3, Vector3};
+use nalgebra::{Point3, Scalar, Vector3};
+use num_traits::{Bounded, Zero};
 
 use crate::convert::{cast_i32, cast_usize};
 
@@ -10,32 +10,52 @@ use super::{Face, Mesh, OrientedEdge, UnorientedEdge};
 
 /// World-aligned bounding box contains the entire given geometry and defines an
 /// envelope aligned to the world (euclidean) coordinate system.
-pub struct BoundingBox {
-    minimum_point: Point3<f32>,
-    maximum_point: Point3<f32>,
+pub struct BoundingBox<T>
+where
+    T: Scalar,
+{
+    minimum_point: Point3<T>,
+    maximum_point: Point3<T>,
 }
 
-impl BoundingBox {
+impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
     #[allow(dead_code)]
-    pub fn new_separate(
-        min_x: f32,
-        min_y: f32,
-        min_z: f32,
-        max_x: f32,
-        max_y: f32,
-        max_z: f32,
-    ) -> Self {
+    pub fn new(box_corner1: Point3<T>, box_corner2: Point3<T>) -> Self {
         BoundingBox {
-            minimum_point: Point3::new(min_x, min_y, min_z),
-            maximum_point: Point3::new(max_x, max_y, max_z),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn new(minimum_point: Point3<f32>, maximum_point: Point3<f32>) -> Self {
-        BoundingBox {
-            minimum_point,
-            maximum_point,
+            minimum_point: Point3::new(
+                if box_corner1.x < box_corner2.x {
+                    box_corner1.x
+                } else {
+                    box_corner2.x
+                },
+                if box_corner1.y < box_corner2.y {
+                    box_corner1.y
+                } else {
+                    box_corner2.y
+                },
+                if box_corner1.z < box_corner2.z {
+                    box_corner1.z
+                } else {
+                    box_corner2.z
+                },
+            ),
+            maximum_point: Point3::new(
+                if box_corner1.x > box_corner2.x {
+                    box_corner1.x
+                } else {
+                    box_corner2.x
+                },
+                if box_corner1.y > box_corner2.y {
+                    box_corner1.y
+                } else {
+                    box_corner2.y
+                },
+                if box_corner1.z > box_corner2.z {
+                    box_corner1.z
+                } else {
+                    box_corner2.z
+                },
+            ),
         }
     }
 
@@ -50,14 +70,14 @@ impl BoundingBox {
 
     pub fn from_points<'a, I>(points: I) -> Self
     where
-        I: IntoIterator<Item = &'a Point3<f32>>,
+        I: IntoIterator<Item = &'a Point3<T>>,
     {
-        let mut min_x = f32::MAX;
-        let mut min_y = f32::MAX;
-        let mut min_z = f32::MAX;
-        let mut max_x = f32::MIN;
-        let mut max_y = f32::MIN;
-        let mut max_z = f32::MIN;
+        let mut min_x = T::max_value();
+        let mut min_y = T::max_value();
+        let mut min_z = T::max_value();
+        let mut max_x = T::min_value();
+        let mut max_y = T::min_value();
+        let mut max_z = T::min_value();
 
         for point in points {
             if point.x < min_x {
@@ -87,21 +107,156 @@ impl BoundingBox {
     }
 
     #[allow(dead_code)]
-    pub fn minimum_point(&self) -> Point3<f32> {
+    pub fn singularity() -> Self {
+        BoundingBox {
+            minimum_point: Point3::origin(),
+            maximum_point: Point3::origin(),
+        }
+    }
+
+    pub fn set_singularity(&mut self) {
+        self.minimum_point = Point3::origin();
+        self.maximum_point = Point3::origin();
+    }
+
+    #[allow(dead_code)]
+    pub fn minimum_point(&self) -> Point3<T> {
         self.minimum_point
     }
 
     #[allow(dead_code)]
-    pub fn maximum_point(&self) -> Point3<f32> {
+    pub fn maximum_point(&self) -> Point3<T> {
         self.maximum_point
     }
 
-    pub fn center(&self) -> Point3<f32> {
+    #[allow(dead_code)]
+    pub fn is_singularity(&self) -> bool {
+        approx::relative_eq!(self.minimum_point(), self.maximum_point())
+    }
+
+    pub fn center(&self) -> Point3<T> {
         nalgebra::center(&self.minimum_point, &self.maximum_point)
     }
 
-    pub fn diagonal_length(&self) -> f32 {
+    pub fn diagonal_length(&self) -> T {
         nalgebra::distance(&self.minimum_point, &self.maximum_point)
+    }
+
+    pub fn corners(&self) -> Vec<Point3<T>> {
+        vec![
+            Point3::new(
+                self.minimum_point.x,
+                self.minimum_point.y,
+                self.minimum_point.z,
+            ),
+            Point3::new(
+                self.minimum_point.x,
+                self.minimum_point.y,
+                self.maximum_point.z,
+            ),
+            Point3::new(
+                self.maximum_point.x,
+                self.minimum_point.y,
+                self.maximum_point.z,
+            ),
+            Point3::new(
+                self.maximum_point.x,
+                self.minimum_point.y,
+                self.minimum_point.z,
+            ),
+            Point3::new(
+                self.minimum_point.x,
+                self.maximum_point.y,
+                self.minimum_point.z,
+            ),
+            Point3::new(
+                self.minimum_point.x,
+                self.maximum_point.y,
+                self.maximum_point.z,
+            ),
+            Point3::new(
+                self.maximum_point.x,
+                self.maximum_point.y,
+                self.maximum_point.z,
+            ),
+            Point3::new(
+                self.maximum_point.x,
+                self.maximum_point.y,
+                self.minimum_point.z,
+            ),
+        ]
+    }
+
+    #[allow(dead_code)]
+    pub fn grow_to_contain_points<'a, I>(&mut self, points: I)
+    where
+        I: IntoIterator<Item = &'a Point3<T>>,
+    {
+        for point in points {
+            if point.x < self.minimum_point.x {
+                self.minimum_point.x = point.x;
+            }
+            if point.y < self.minimum_point.y {
+                self.minimum_point.y = point.y;
+            }
+            if point.z < self.minimum_point.z {
+                self.minimum_point.z = point.z;
+            }
+            if point.x > self.maximum_point.x {
+                self.maximum_point.x = point.x;
+            }
+            if point.y > self.maximum_point.y {
+                self.maximum_point.y = point.y;
+            }
+            if point.z > self.maximum_point.z {
+                self.maximum_point.z = point.z;
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn union<'a, I>(&mut self, bounding_boxes: I)
+    where
+        I: IntoIterator<Item = &'a BoundingBox<T>>,
+    {
+        for bounding_box in bounding_boxes {
+            self.grow_to_contain_points(&bounding_box.corners());
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn intersect<'a, I>(&mut self, bounding_boxes: I)
+    where
+        I: IntoIterator<Item = &'a BoundingBox<T>>,
+    {
+        for bounding_box in bounding_boxes {
+            if bounding_box.minimum_point.x > self.minimum_point.x {
+                self.minimum_point.x = bounding_box.minimum_point.x;
+            }
+            if bounding_box.minimum_point.y > self.minimum_point.y {
+                self.minimum_point.y = bounding_box.minimum_point.y;
+            }
+            if bounding_box.minimum_point.z > self.minimum_point.z {
+                self.minimum_point.z = bounding_box.minimum_point.z;
+            }
+            if bounding_box.maximum_point.x < self.maximum_point.x {
+                self.maximum_point.x = bounding_box.maximum_point.x;
+            }
+            if bounding_box.maximum_point.y < self.maximum_point.y {
+                self.maximum_point.y = bounding_box.maximum_point.y;
+            }
+            if bounding_box.maximum_point.z < self.maximum_point.z {
+                self.maximum_point.z = bounding_box.maximum_point.z;
+            }
+
+            if self.minimum_point.x > self.maximum_point.x
+                || self.minimum_point.y > self.maximum_point.y
+                || self.minimum_point.z > self.maximum_point.z
+            {
+                self.set_singularity();
+                return;
+            }
+        }
     }
 
     /// Checks if the two bounding boxes intersect / share any portion
@@ -110,19 +265,19 @@ impl BoundingBox {
     /// # Sources
     /// https://math.stackexchange.com/questions/2651710/simplest-way-to-determine-if-two-3d-boxes-intersect
     #[allow(dead_code)]
-    pub fn intersects_with(&self, other: &BoundingBox) -> bool {
-        let self_min_x = self.minimum_point.x.min(self.maximum_point.x);
-        let self_min_y = self.minimum_point.y.min(self.maximum_point.y);
-        let self_min_z = self.minimum_point.z.min(self.maximum_point.z);
-        let self_max_x = self.minimum_point.x.max(self.maximum_point.x);
-        let self_max_y = self.minimum_point.y.max(self.maximum_point.y);
-        let self_max_z = self.minimum_point.z.max(self.maximum_point.z);
-        let other_min_x = other.minimum_point.x.min(other.maximum_point.x);
-        let other_min_y = other.minimum_point.y.min(other.maximum_point.y);
-        let other_min_z = other.minimum_point.z.min(other.maximum_point.z);
-        let other_max_x = other.minimum_point.x.max(other.maximum_point.x);
-        let other_max_y = other.minimum_point.y.max(other.maximum_point.y);
-        let other_max_z = other.minimum_point.z.max(other.maximum_point.z);
+    pub fn intersects_with(&self, other: &BoundingBox<T>) -> bool {
+        let self_min_x = self.minimum_point.x;
+        let self_min_y = self.minimum_point.y;
+        let self_min_z = self.minimum_point.z;
+        let self_max_x = self.minimum_point.x;
+        let self_max_y = self.minimum_point.y;
+        let self_max_z = self.minimum_point.z;
+        let other_min_x = other.minimum_point.x;
+        let other_min_y = other.minimum_point.y;
+        let other_min_z = other.minimum_point.z;
+        let other_max_x = other.minimum_point.x;
+        let other_max_y = other.minimum_point.y;
+        let other_max_z = other.minimum_point.z;
 
         ((self_min_x <= other_min_x && other_min_x <= self_max_x)
             || (self_min_x <= other_max_x && other_max_x <= self_max_x)

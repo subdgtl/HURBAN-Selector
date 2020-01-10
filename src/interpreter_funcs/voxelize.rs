@@ -51,7 +51,7 @@ impl Func for FuncVoxelize {
                 optional: false,
             },
             ParamInfo {
-                name: "Voxel size",
+                name: "Voxel Size",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(f32::MIN_POSITIVE),
