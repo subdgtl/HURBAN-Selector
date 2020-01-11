@@ -1,5 +1,6 @@
 #define AppSetupName 'HURBAN Selector'
 #define AppVersion '1.0'
+#define AppExeName 'hurban_selector.exe'
 
 [Setup]
 AppName={#AppSetupName}
@@ -25,7 +26,14 @@ DisableReadyMemo=no
 #include "scripts\lang\english.iss"
 
 [Files]
-Source: "..\target\release\hurban_selector.exe"; DestDir: "{app}"; Check: IsX64
+Source: "..\target\release\{#AppExeName}"; DestDir: "{app}"; Check: IsX64
+
+[Icons]
+Name: "{userdesktop}\{#AppSetupName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+Name: "{group}\{#AppSetupName}"; Filename: "{app}\{#AppExeName}"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 
 [CustomMessages]
 DependenciesDir=dependencies
