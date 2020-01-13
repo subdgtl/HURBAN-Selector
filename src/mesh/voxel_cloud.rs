@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use nalgebra::{Point3, Vector2, Vector3};
 
 use crate::bounding_box::BoundingBox;
@@ -803,6 +805,101 @@ impl VoxelCloud {
                     );
                 BoundingBox::new(&volume_start, &volume_end)
             })
+    }
+
+    /// Fill hollow volumes in voxel cloud. The original voxel cloud will be
+    /// mutated. The method flood-fills the outer space with void voxels,
+    /// leaving everything inside volume voxels filled.
+    ///
+    /// The method prefills the voxel cloud with voxels. Then scans the entire
+    /// boundaries of the voxel cloud and starts flood-filling with void voxels
+    /// wherever there is a void voxel. The flood fill stops at volume voxels.
+
+    // FIXME: Establish a naming convention explaining whether a method mutates
+    // existing Voxel cloud or generates a new one.
+    pub fn fill_volumes(&mut self) {
+        // Lookup table of neighbor coordinates
+        let neighbor_offsets = [
+            Vector3::new(-1, 0, 0),
+            Vector3::new(1, 0, 0),
+            Vector3::new(0, -1, 0),
+            Vector3::new(0, 1, 0),
+            Vector3::new(0, 0, -1),
+            Vector3::new(0, 0, 1),
+        ];
+
+        // New voxel map that will eventually contain filled volumes. Initially
+        // it's prefilled with voxels and later on the voids will be removed
+        // from it.
+        let mut filled_voxel_map = vec![true; self.voxel_map.len()];
+        // Contains indices into the voxel map
+        let mut queue_to_process: VecDeque<usize> = VecDeque::new();
+        // Matches the voxel map length
+        let mut discovered = vec![false; self.voxel_map.len()];
+
+        // Scan for void voxels at the boundaries of the voxel cloud. For
+        // optimization and readability reasons this scans the entire voxel
+        // cloud and filters out coordinates inside the voxel cloud block.
+        for one_dimensional in 0..self.voxel_map.len() {
+            let coord = one_dimensional_to_relative_three_dimensional_coordinate(
+                one_dimensional,
+                &self.block_dimensions,
+            )
+            .expect("Coord out of bounds");
+            // If any of these is true, the coordinate is at the boundary of the
+            // voxel cloud block
+            if coord.x == 0
+                || coord.y == 0
+                || coord.z == 0
+                || coord.x == cast_i32(self.block_dimensions.x) - 1
+                || coord.y == cast_i32(self.block_dimensions.y) - 1
+                || coord.z == cast_i32(self.block_dimensions.z) - 1
+            {
+                // If the voxel is void and hasn't been discovered yet
+                if !self.voxel_map[one_dimensional] && !discovered[one_dimensional] {
+                    // put it into the processing queue
+                    queue_to_process.push_back(one_dimensional);
+                    // and mark it discovered.
+                    discovered[one_dimensional] = true;
+                }
+            }
+        }
+
+        // Process the queue
+        while let Some(one_dimensional) = queue_to_process.pop_front() {
+            // Set the current voxel to void.
+            filled_voxel_map[one_dimensional] = false;
+            // Calculate the relative coord of the currently processed voxel.
+            // Will be needed to calculate its neighbors.
+            let coord = one_dimensional_to_relative_three_dimensional_coordinate(
+                one_dimensional,
+                &self.block_dimensions,
+            )
+            .expect("Coord out of bounds");
+            // Check all the neighbors
+            for neighbor_offset in neighbor_offsets.iter() {
+                let neighbor_coord = coord + neighbor_offset;
+                // If the neighbor exists (is not out of bounds)
+                if let Some(neighbor_voxel) = self.voxel_at_relative_coords(&neighbor_coord) {
+                    let neighbor_one_dimensional =
+                        relative_three_dimensional_coordinate_to_one_dimensional(
+                            &neighbor_coord,
+                            &self.block_dimensions,
+                        )
+                        .expect("Coord out of bounds");
+                    // Check if it is void and hasn't been discovered yet
+                    if !neighbor_voxel && !discovered[neighbor_one_dimensional] {
+                        // Put it to the processing queue
+                        queue_to_process.push_back(neighbor_one_dimensional);
+                        // and mark it discovered.
+                        discovered[neighbor_one_dimensional] = true;
+                    }
+                }
+            }
+        }
+
+        // Replace the original voxel map with the newly created one
+        self.voxel_map = filled_voxel_map;
     }
 }
 
