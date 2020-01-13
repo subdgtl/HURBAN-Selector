@@ -156,7 +156,7 @@ impl Camera {
         let alpha = self.compute_visible_sphere_alpha();
 
         // Compute the distance needed from the sphere for it to fit
-        // inside the camera frustrum
+        // inside the camera frustum
         let new_radius = MARGIN_MULTIPLIER * sphere_radius / alpha.tan();
 
         self.origin = sphere_origin;

@@ -360,7 +360,7 @@ impl Mesh {
         &self.normals
     }
 
-    pub fn bounding_box(&self) -> BoundingBox<f32> {
+    pub fn bounding_box(&self) -> Option<BoundingBox<f32>> {
         let points = self.vertices();
 
         BoundingBox::from_points(points)

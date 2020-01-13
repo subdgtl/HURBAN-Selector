@@ -398,16 +398,19 @@ impl CameraInterpolation {
         // FIXME: @Optimization Remove the allocation, try from_fn or successors
         let bounding_boxes: Vec<_> = scene_meshes
             .into_iter()
-            .map(|mesh| mesh.bounding_box())
+            .map(|mesh| mesh.bounding_box().expect("The mesh is empty"))
             .collect();
-        let bounding_box: BoundingBox<f32> =
-            BoundingBox::from_bounding_boxes_union(bounding_boxes.iter());
+
+        let (target_origin, target_radius) = match BoundingBox::union(bounding_boxes.iter()) {
+            Some(bounding_box) => (bounding_box.center(), bounding_box.diagonal().norm() / 2.0),
+            None => (Point3::origin(), 1.0),
+        };
 
         CameraInterpolation {
             source_origin,
             source_radius,
-            target_origin: bounding_box.center(),
-            target_radius: bounding_box.diagonal_length() / 2.0,
+            target_origin,
+            target_radius,
             target_time: time + CAMERA_INTERPOLATION_DURATION,
         }
     }

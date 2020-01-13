@@ -86,7 +86,7 @@ impl VoxelCloud {
             "One or more voxel dimensions are 0.0"
         );
         // Determine the needed block of voxel space.
-        let b_box = mesh.bounding_box();
+        let b_box = mesh.bounding_box().expect("The mesh is empty");
 
         let mut voxel_cloud = VoxelCloud::from_cartesian_bounding_box(&b_box, voxel_dimensions);
 
@@ -137,6 +137,13 @@ impl VoxelCloud {
         }
 
         voxel_cloud
+    }
+
+    /// Clears the voxel cloud, sets its block dimensions to zero.
+    pub fn wipe(&mut self) {
+        self.block_start = Point3::origin();
+        self.block_dimensions = Vector3::zeros();
+        self.voxel_map.resize(0, false);
     }
 
     /// Returns voxel cloud block end in absolute voxel coordinates.
@@ -229,34 +236,50 @@ impl VoxelCloud {
     /// volumes.
     pub fn boolean_intersection(&mut self, other: &VoxelCloud) {
         // Find volume common to both voxel clouds.
-        let bounding_box = BoundingBox::from_bounding_boxes_intersection(
-            [self.bounding_box(), other.bounding_box()].iter(),
-        );
+        let self_volume_bounding_box = self.volume_bounding_box();
+        let other_volume_bounding_box = other.volume_bounding_box();
+        // If there are no voxels in any of the input voxel clouds, wipe the
+        // resulting voxel cloud.
+        if self_volume_bounding_box.is_none() || other_volume_bounding_box.is_none() {
+            self.wipe();
+        } else {
+            if let Some(bounding_box) = BoundingBox::intersection(
+                [
+                    self_volume_bounding_box.unwrap(),
+                    other_volume_bounding_box.unwrap(),
+                ]
+                .iter(),
+            ) {
+                // Resize (keep or shrink) the existing voxel cloud so that that can
+                // possibly contain intersection voxels.
+                self.resize_to_voxel_space_bounding_box(&bounding_box);
 
-        // Resize (keep or shrink) the existing voxel cloud so that that can
-        // possibly contain intersection voxels.
-        self.resize_to_voxel_space_bounding_box(&bounding_box);
+                let block_start = bounding_box.minimum_point();
+                let block_dimensions = bounding_box.diagonal();
+                // Iterate through the block of space common to both voxel clouds.
+                for i in 0..self.voxel_map.len() {
+                    let cartesian_coords = absolute_voxel_to_cartesian_coords(
+                        &one_dimensional_to_absolute_three_dimensional_coordinate(
+                            i,
+                            &block_start,
+                            &block_dimensions,
+                        )
+                        .expect("The current voxel map out of bounds"),
+                        self.voxel_dimensions,
+                    );
 
-        let block_start = bounding_box.minimum_point();
-        let block_dimensions = bounding_box.diagonal();
-        // Iterate through the block of space common to both voxel clouds.
-        for i in 0..self.voxel_map.len() {
-            let cartesian_coords = absolute_voxel_to_cartesian_coords(
-                &one_dimensional_to_absolute_three_dimensional_coordinate(
-                    i,
-                    &block_start,
-                    &block_dimensions,
-                )
-                .expect("The current voxel map out of bounds"),
-                self.voxel_dimensions,
-            );
-
-            // Perform boolean AND on voxel states of both voxel clouds
-            self.voxel_map[i] &= other
-                .voxel_at_cartesian_coords(&cartesian_coords)
-                .unwrap_or(false);
+                    // Perform boolean AND on voxel states of both voxel clouds.
+                    self.voxel_map[i] &= other
+                        .voxel_at_cartesian_coords(&cartesian_coords)
+                        .unwrap_or(false);
+                }
+                self.shrink_to_fit();
+            } else {
+                // If the two voxel clouds don't intersect, then wipe the
+                // resulting voxel cloud.
+                self.wipe();
+            }
         }
-        self.shrink_to_fit()
     }
 
     /// Computes boolean union (logical OR operation) of two Voxel clouds. The
@@ -267,35 +290,41 @@ impl VoxelCloud {
     /// If the input Voxel clouds are far apart, the resulting voxel cloud may
     /// be huge.
     pub fn boolean_union(&mut self, other: &VoxelCloud) {
-        let bounding_box = BoundingBox::from_bounding_boxes_union(
-            [self.bounding_box(), other.bounding_box()].iter(),
-        );
+        let valid_bounding_boxes: Vec<_> =
+            [self.volume_bounding_box(), other.volume_bounding_box()]
+                .iter()
+                .filter_map(|b| *b)
+                .collect();
 
-        // Resize (keep or grow) the existing voxel cloud to a block that can
-        // possibly contain union voxels.
-        self.resize_to_voxel_space_bounding_box(&bounding_box);
+        if let Some(bounding_box) = BoundingBox::union(valid_bounding_boxes.iter()) {
+            // Resize (keep or grow) the existing voxel cloud to a block that can
+            // possibly contain union voxels.
+            self.resize_to_voxel_space_bounding_box(&bounding_box);
 
-        let block_start = bounding_box.minimum_point();
-        let block_dimensions = bounding_box.diagonal();
-        // Iterate through the block of space containing both voxel clouds.
-        for i in 0..self.voxel_map.len() {
-            let cartesian_coords = absolute_voxel_to_cartesian_coords(
-                &one_dimensional_to_absolute_three_dimensional_coordinate(
-                    i,
-                    &block_start,
-                    &block_dimensions,
-                )
-                .expect("The current voxel map out of bounds"),
-                self.voxel_dimensions,
-            );
-            // If the other voxel cloud exists on the current absolute
-            // coordinate, perform boolean OR, otherwise don't change the
-            // existing voxel.
-            if let Some(true) = other.voxel_at_cartesian_coords(&cartesian_coords) {
-                self.voxel_map[i] = true;
+            let block_start = bounding_box.minimum_point();
+            let block_dimensions = bounding_box.diagonal();
+            // Iterate through the block of space containing both voxel clouds.
+            for i in 0..self.voxel_map.len() {
+                let cartesian_coords = absolute_voxel_to_cartesian_coords(
+                    &one_dimensional_to_absolute_three_dimensional_coordinate(
+                        i,
+                        &block_start,
+                        &block_dimensions,
+                    )
+                    .expect("The current voxel map out of bounds"),
+                    self.voxel_dimensions,
+                );
+                // If the other voxel cloud exists on the current absolute
+                // coordinate, perform boolean OR, otherwise don't change the
+                // existing voxel.
+                if let Some(true) = other.voxel_at_cartesian_coords(&cartesian_coords) {
+                    self.voxel_map[i] = true;
+                }
             }
+            self.shrink_to_fit();
+        } else {
+            self.wipe();
         }
-        self.shrink_to_fit()
     }
 
     /// Computes boolean difference of the current Voxel cloud minus the other
@@ -403,9 +432,7 @@ impl VoxelCloud {
         {
             // Short cut if resizing to an empty voxel cloud.
             if resized_block_dimensions == &Vector3::zeros() {
-                self.block_start = *resized_block_start;
-                self.block_dimensions = *resized_block_dimensions;
-                self.voxel_map.resize(0, false);
+                self.wipe();
                 return;
             }
 
@@ -454,7 +481,7 @@ impl VoxelCloud {
     /// Computes boundaries of volumes contained in voxel cloud. Returns tuple
     /// (block_start, block_dimensions). For empty voxel clouds returns the
     /// original block start and zero block dimensions.
-    pub fn compute_volume_boundaries(&self) -> (Point3<i32>, Vector3<u32>) {
+    pub fn compute_volume_boundaries(&self) -> Option<(Point3<i32>, Vector3<u32>)> {
         let mut min: Vector3<i32> =
             Vector3::new(i32::max_value(), i32::max_value(), i32::max_value());
         let mut max: Vector3<i32> =
@@ -514,14 +541,14 @@ impl VoxelCloud {
                 i32::min_value(),
                 "Voxel cloud emptiness check failed"
             );
-            (self.block_start, Vector3::zeros())
+            None
         } else {
             let block_dimensions = Vector3::new(
                 clamp_cast_i32_to_u32(max.x - min.x + 1),
                 clamp_cast_i32_to_u32(max.y - min.y + 1),
                 clamp_cast_i32_to_u32(max.z - min.z + 1),
             );
-            ((self.block_start + min), block_dimensions)
+            Some(((self.block_start + min), block_dimensions))
         }
     }
 
@@ -529,8 +556,13 @@ impl VoxelCloud {
     /// Returns None for empty the voxel cloud.
 
     pub fn shrink_to_fit(&mut self) {
-        let (shrunk_block_start, shrunk_block_dimensions) = self.compute_volume_boundaries();
-        self.resize(&shrunk_block_start, &shrunk_block_dimensions);
+        if let Some((shrunk_block_start, shrunk_block_dimensions)) =
+            self.compute_volume_boundaries()
+        {
+            self.resize(&shrunk_block_start, &shrunk_block_dimensions);
+        } else {
+            self.wipe();
+        }
     }
 
     /// Computes a simple triangulated welded mesh from the current state of
@@ -685,6 +717,7 @@ impl VoxelCloud {
 
     /// Returns the bounding box of this voxel cloud in world space cartesian
     /// units.
+    #[allow(dead_code)]
     pub fn bounding_box_cartesian(&self) -> BoundingBox<f32> {
         let voxel_dimensions = self.voxel_dimensions;
         let block_start = self.block_start;
@@ -704,6 +737,7 @@ impl VoxelCloud {
     }
 
     /// Returns the bounding box of this voxel cloud in voxel units.
+    #[allow(dead_code)]
     pub fn bounding_box(&self) -> BoundingBox<i32> {
         BoundingBox::new(&self.block_start, &self.block_end())
     }
@@ -711,55 +745,64 @@ impl VoxelCloud {
     /// Returns the bounding box of the mesh produced by `VoxelCloud::to_mesh`
     /// for this voxel cloud in world space cartesian units.
     #[allow(dead_code)]
-    pub fn mesh_bounding_box_cartesian(&self) -> BoundingBox<f32> {
+    pub fn mesh_bounding_box_cartesian(&self) -> Option<BoundingBox<f32>> {
         let voxel_dimensions = self.voxel_dimensions;
-        let (volume_start, volume_dimensions) = self.compute_volume_boundaries();
-        BoundingBox::new(
-            &Point3::new(
-                (volume_start.x as f32 - 0.5) * voxel_dimensions.x,
-                (volume_start.y as f32 - 0.5) * voxel_dimensions.y,
-                (volume_start.z as f32 - 0.5) * voxel_dimensions.z,
-            ),
-            &Point3::new(
-                (volume_start.x as f32 + volume_dimensions.x as f32 + 0.5) * voxel_dimensions.x,
-                (volume_start.y as f32 + volume_dimensions.x as f32 + 0.5) * voxel_dimensions.y,
-                (volume_start.z as f32 + volume_dimensions.x as f32 + 0.5) * voxel_dimensions.z,
-            ),
-        )
+        self.compute_volume_boundaries()
+            .map(|(volume_start, volume_dimensions)| {
+                BoundingBox::new(
+                    &Point3::new(
+                        (volume_start.x as f32 - 0.5) * voxel_dimensions.x,
+                        (volume_start.y as f32 - 0.5) * voxel_dimensions.y,
+                        (volume_start.z as f32 - 0.5) * voxel_dimensions.z,
+                    ),
+                    &Point3::new(
+                        (volume_start.x as f32 + volume_dimensions.x as f32 + 0.5)
+                            * voxel_dimensions.x,
+                        (volume_start.y as f32 + volume_dimensions.x as f32 + 0.5)
+                            * voxel_dimensions.y,
+                        (volume_start.z as f32 + volume_dimensions.x as f32 + 0.5)
+                            * voxel_dimensions.z,
+                    ),
+                )
+            })
     }
 
     /// Returns the bounding box in world space cartesian units of the current
     /// voxel cloud after shrinking to fit just the nonempty voxels.
     #[allow(dead_code)]
-    pub fn volume_bounding_box_cartesian(&self) -> BoundingBox<f32> {
+    pub fn volume_bounding_box_cartesian(&self) -> Option<BoundingBox<f32>> {
         let voxel_dimensions = self.voxel_dimensions;
-        let (volume_start, volume_dimensions) = self.compute_volume_boundaries();
-        BoundingBox::new(
-            &Point3::new(
-                (volume_start.x as f32) * voxel_dimensions.x,
-                (volume_start.y as f32) * voxel_dimensions.y,
-                (volume_start.z as f32) * voxel_dimensions.z,
-            ),
-            &Point3::new(
-                (volume_start.x as f32 + volume_dimensions.x as f32) * voxel_dimensions.x,
-                (volume_start.y as f32 + volume_dimensions.x as f32) * voxel_dimensions.y,
-                (volume_start.z as f32 + volume_dimensions.x as f32) * voxel_dimensions.z,
-            ),
-        )
+        self.compute_volume_boundaries()
+            .map(|(volume_start, volume_dimensions)| {
+                BoundingBox::new(
+                    &Point3::new(
+                        (volume_start.x as f32) * voxel_dimensions.x,
+                        (volume_start.y as f32) * voxel_dimensions.y,
+                        (volume_start.z as f32) * voxel_dimensions.z,
+                    ),
+                    &Point3::new(
+                        (volume_start.x as f32 + volume_dimensions.x as f32) * voxel_dimensions.x,
+                        (volume_start.y as f32 + volume_dimensions.x as f32) * voxel_dimensions.y,
+                        (volume_start.z as f32 + volume_dimensions.x as f32) * voxel_dimensions.z,
+                    ),
+                )
+            })
     }
 
     /// Returns the bounding box in voxel units of the current voxel cloud after
     /// shrinking to fit just the nonempty voxels.
     #[allow(dead_code)]
-    pub fn volume_bounding_box(&self) -> BoundingBox<i32> {
-        let (volume_start, volume_dimensions) = self.compute_volume_boundaries();
-        let volume_end = volume_start
-            + Vector3::new(
-                cast_i32(volume_dimensions.x),
-                cast_i32(volume_dimensions.y),
-                cast_i32(volume_dimensions.z),
-            );
-        BoundingBox::new(&volume_start, &volume_end)
+    pub fn volume_bounding_box(&self) -> Option<BoundingBox<i32>> {
+        self.compute_volume_boundaries()
+            .map(|(volume_start, volume_dimensions)| {
+                let volume_end = volume_start
+                    + Vector3::new(
+                        cast_i32(volume_dimensions.x),
+                        cast_i32(volume_dimensions.y),
+                        cast_i32(volume_dimensions.z),
+                    );
+                BoundingBox::new(&volume_start, &volume_end)
+            })
     }
 }
 

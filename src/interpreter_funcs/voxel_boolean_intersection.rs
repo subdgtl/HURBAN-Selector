@@ -14,16 +14,12 @@ use crate::mesh::voxel_cloud::VoxelCloud;
 #[derive(Debug, PartialEq)]
 pub enum FuncBooleanIntersectionError {
     EmptyMesh,
-    NotIntersecting,
 }
 
 impl fmt::Display for FuncBooleanIntersectionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             FuncBooleanIntersectionError::EmptyMesh => write!(f, "The resulting mesh is empty"),
-            FuncBooleanIntersectionError::NotIntersecting => {
-                write!(f, "The selected meshes don't intersect")
-            }
         }
     }
 }
@@ -105,19 +101,10 @@ impl Func for FuncBooleanIntersection {
             voxel_cloud2.grow_volume();
         }
 
-        let b_box1 = voxel_cloud1.bounding_box_cartesian();
-        let b_box2 = voxel_cloud2.bounding_box_cartesian();
-
-        if b_box1.intersects_with(&b_box2) {
-            voxel_cloud1.boolean_intersection(&voxel_cloud2);
-            match voxel_cloud1.to_mesh() {
-                Some(value) => Ok(Value::Mesh(Arc::new(value))),
-                None => Err(FuncError::new(FuncBooleanIntersectionError::EmptyMesh)),
-            }
-        } else {
-            Err(FuncError::new(
-                FuncBooleanIntersectionError::NotIntersecting,
-            ))
+        voxel_cloud1.boolean_intersection(&voxel_cloud2);
+        match voxel_cloud1.to_mesh() {
+            Some(value) => Ok(Value::Mesh(Arc::new(value))),
+            None => Err(FuncError::new(FuncBooleanIntersectionError::EmptyMesh)),
         }
     }
 }
