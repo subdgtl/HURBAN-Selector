@@ -68,9 +68,8 @@ impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
     where
         I: IntoIterator<Item = &'a Point3<T>> + Clone,
     {
-        if points.clone().into_iter().peekable().peek().is_none() {
-            return None;
-        }
+        // Return None if there are no input points.
+        points.clone().into_iter().peekable().peek()?;
 
         let mut min_x = T::max_value();
         let mut min_y = T::max_value();
@@ -129,15 +128,8 @@ impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
     where
         I: IntoIterator<Item = &'a BoundingBox<T>> + Clone,
     {
-        if bounding_boxes
-            .clone()
-            .into_iter()
-            .peekable()
-            .peek()
-            .is_none()
-        {
-            return None;
-        }
+        // Return None if there are no input bounding boxes.
+        bounding_boxes.clone().into_iter().peekable().peek()?;
 
         let mut min_x = T::min_value();
         let mut min_y = T::min_value();
