@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 
-use super::{FuncError, Ty, Value};
+use super::{FuncError, LogMessage, Ty, Value};
 
 /// Textual information about the function.
 pub struct FuncInfo {
@@ -22,6 +22,9 @@ bitflags! {
         /// not be re-run by the interpreter, if their inputs did not
         /// change. This flag triggers optimizations. Setting it
         /// incorrectly might produce stale results.
+        ///
+        /// A pure func's log messages are not returned twice, if the
+        /// func's result has been cached and not invalidated.
         const PURE = 0b_0000_0001;
     }
 }
@@ -291,5 +294,6 @@ pub trait Func {
     ///
     /// [`param_info`]: trait.Func.html#tymethod.param_info
     /// [`return_ty`]: trait.Func.html#tymethod.return_ty
-    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError>;
+    fn call(&mut self, args: &[Value], log: &mut dyn FnMut(LogMessage))
+        -> Result<Value, FuncError>;
 }

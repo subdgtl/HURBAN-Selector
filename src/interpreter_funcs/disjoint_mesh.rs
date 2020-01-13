@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, MeshArrayValue, ParamInfo, ParamRefinement, Ty, Value,
+    Func, FuncError, FuncFlags, FuncInfo, LogMessage, MeshArrayValue, ParamInfo, ParamRefinement,
+    Ty, Value,
 };
 use crate::mesh::tools;
 
@@ -31,7 +32,11 @@ impl Func for FuncDisjointMesh {
         Ty::MeshArray
     }
 
-    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        args: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
         let meshes = tools::disjoint_mesh(&mesh);

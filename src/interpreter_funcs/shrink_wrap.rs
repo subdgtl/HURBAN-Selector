@@ -3,8 +3,8 @@ use std::sync::Arc;
 use nalgebra::{Rotation3, Vector3};
 
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
-    Value,
+    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty,
+    UintParamRefinement, Value,
 };
 use crate::mesh::{analysis, primitive, NormalStrategy};
 
@@ -45,7 +45,11 @@ impl Func for FuncShrinkWrap {
         Ty::Mesh
     }
 
-    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        args: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let sphere_density = args[1].unwrap_uint();
 

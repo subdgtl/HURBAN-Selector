@@ -4,7 +4,7 @@ use std::thread;
 use crossbeam_channel as channel;
 
 use crate::interpreter::ast::{Prog, Stmt};
-use crate::interpreter::{InterpretResult, Interpreter};
+use crate::interpreter::{InterpretOutcome, Interpreter};
 use crate::interpreter_funcs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -43,12 +43,11 @@ pub enum InterpreterRequest {
 /// An interpreter response.
 #[derive(Debug)]
 pub enum InterpreterResponse {
-    /// Interpreter successfully completed request.
-    Completed,
+    /// Interpreter completed program edit request.
+    CompletedEditProg,
 
-    /// Interpreter successfully completed request and responded with
-    /// a result.
-    CompletedWithResult(InterpretResult),
+    /// Interpreter completed interpret request.
+    CompletedInterpret(InterpretOutcome),
 }
 
 enum Request {
@@ -107,7 +106,7 @@ impl InterpreterServer {
                         interpreter.set_prog(prog);
                         Response {
                             request_id,
-                            data: InterpreterResponse::Completed,
+                            data: InterpreterResponse::CompletedEditProg,
                         }
                     }
                     InterpreterRequest::ClearProg => {
@@ -115,7 +114,7 @@ impl InterpreterServer {
                         interpreter.clear_prog();
                         Response {
                             request_id,
-                            data: InterpreterResponse::Completed,
+                            data: InterpreterResponse::CompletedEditProg,
                         }
                     }
                     InterpreterRequest::PushProgStmt(stmt) => {
@@ -126,7 +125,7 @@ impl InterpreterServer {
                         interpreter.push_prog_stmt(stmt);
                         Response {
                             request_id,
-                            data: InterpreterResponse::Completed,
+                            data: InterpreterResponse::CompletedEditProg,
                         }
                     }
                     InterpreterRequest::PopProgStmt => {
@@ -134,7 +133,7 @@ impl InterpreterServer {
                         interpreter.pop_prog_stmt();
                         Response {
                             request_id,
-                            data: InterpreterResponse::Completed,
+                            data: InterpreterResponse::CompletedEditProg,
                         }
                     }
                     InterpreterRequest::SetProgStmtAt(index, stmt) => {
@@ -146,15 +145,15 @@ impl InterpreterServer {
                         interpreter.set_prog_stmt_at(index, stmt);
                         Response {
                             request_id,
-                            data: InterpreterResponse::Completed,
+                            data: InterpreterResponse::CompletedEditProg,
                         }
                     }
                     InterpreterRequest::Interpret => {
                         log::info!("Interpreter server received request 'Interpret'");
-                        let result = interpreter.interpret();
+                        let interpret_outcome = interpreter.interpret();
                         Response {
                             request_id,
-                            data: InterpreterResponse::CompletedWithResult(result),
+                            data: InterpreterResponse::CompletedInterpret(interpret_outcome),
                         }
                     }
                     InterpreterRequest::InterpretUpUntil(index) => {
@@ -162,10 +161,10 @@ impl InterpreterServer {
                             "Interpreter server received request 'InterpretUpUntil({})'",
                             index,
                         );
-                        let result = interpreter.interpret_up_until(index);
+                        let interpret_outcome = interpreter.interpret_up_until(index);
                         Response {
                             request_id,
-                            data: InterpreterResponse::CompletedWithResult(result),
+                            data: InterpreterResponse::CompletedInterpret(interpret_outcome),
                         }
                     }
                 };

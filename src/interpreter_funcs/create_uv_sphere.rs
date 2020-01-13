@@ -5,8 +5,8 @@ use std::sync::Arc;
 use nalgebra::{Point3, Rotation3, Vector3};
 
 use crate::interpreter::{
-    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty,
-    UintParamRefinement, Value,
+    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::{primitive, NormalStrategy};
 
@@ -126,7 +126,11 @@ impl Func for FuncCreateUvSphere {
         Ty::Mesh
     }
 
-    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        args: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let center = args[0].unwrap_float3();
         let rotate = args[1].unwrap_float3();
         let scale = args[2].unwrap_float3();

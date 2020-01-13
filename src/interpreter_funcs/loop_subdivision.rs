@@ -4,8 +4,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
-    Value,
+    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty,
+    UintParamRefinement, Value,
 };
 use crate::mesh::{smoothing, topology, NormalStrategy};
 
@@ -68,7 +68,11 @@ impl Func for FuncLoopSubdivision {
         Ty::Mesh
     }
 
-    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        args: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_refcounted_mesh();
         let iterations = cmp::min(args[1].unwrap_uint(), Self::MAX_ITERATIONS);
 

@@ -2,8 +2,8 @@ use std::error;
 use std::fmt;
 
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
-    Value,
+    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty,
+    UintParamRefinement, Value,
 };
 
 #[derive(Debug, PartialEq)]
@@ -58,7 +58,11 @@ impl Func for FuncExtract {
         Ty::Mesh
     }
 
-    fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        values: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let mesh_array = values[0].unwrap_mesh_array();
         let index = values[1].unwrap_uint();
 

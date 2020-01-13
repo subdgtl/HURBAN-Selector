@@ -3,8 +3,8 @@ use std::sync::Arc;
 use nalgebra::{Point3, Rotation3, Vector3};
 
 use crate::interpreter::{
-    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty,
-    Value,
+    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, Value,
 };
 use crate::mesh::primitive;
 
@@ -76,7 +76,11 @@ impl Func for FuncCreateBox {
         Ty::Mesh
     }
 
-    fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
+    fn call(
+        &mut self,
+        values: &[Value],
+        _log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
         let center = values[0].unwrap_float3();
         let rotate = values[1].unwrap_float3();
         let scale = values[2].unwrap_float3();
@@ -90,6 +94,7 @@ impl Func for FuncCreateBox {
             ),
             Vector3::from(scale),
         );
+
         Ok(Value::Mesh(Arc::new(value)))
     }
 }
