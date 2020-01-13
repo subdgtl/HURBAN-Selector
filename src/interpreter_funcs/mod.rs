@@ -3,9 +3,6 @@ use std::collections::BTreeMap;
 use crate::importer::{EndlessCache, Importer};
 use crate::interpreter::{Func, FuncIdent};
 
-use self::voxel_boolean_difference::FuncBooleanDifference;
-use self::voxel_boolean_intersection::FuncBooleanIntersection;
-use self::voxel_boolean_union::FuncBooleanUnion;
 use self::create_box::FuncCreateBox;
 use self::create_plane::FuncCreatePlane;
 use self::create_uv_sphere::FuncCreateUvSphere;
@@ -21,12 +18,12 @@ use self::revert_mesh_faces::FuncRevertMeshFaces;
 use self::shrink_wrap::FuncShrinkWrap;
 use self::synchronize_mesh_faces::FuncSynchronizeMeshFaces;
 use self::transform::FuncTransform;
+use self::voxel_boolean_difference::FuncBooleanDifference;
+use self::voxel_boolean_intersection::FuncBooleanIntersection;
+use self::voxel_boolean_union::FuncBooleanUnion;
 use self::voxelize::FuncVoxelize;
 use self::weld::FuncWeld;
 
-mod voxel_boolean_difference;
-mod voxel_boolean_intersection;
-mod voxel_boolean_union;
 mod create_box;
 mod create_plane;
 mod create_uv_sphere;
@@ -42,6 +39,9 @@ mod revert_mesh_faces;
 mod shrink_wrap;
 mod synchronize_mesh_faces;
 mod transform;
+mod voxel_boolean_difference;
+mod voxel_boolean_intersection;
+mod voxel_boolean_union;
 mod voxelize;
 mod weld;
 

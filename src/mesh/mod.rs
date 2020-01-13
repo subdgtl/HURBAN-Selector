@@ -8,6 +8,7 @@ use arrayvec::ArrayVec;
 use nalgebra::{Point3, Vector3};
 use smallvec::SmallVec;
 
+use crate::bounding_box::BoundingBox;
 use crate::convert::{cast_u32, cast_usize};
 use crate::geometry;
 
@@ -357,6 +358,12 @@ impl Mesh {
 
     pub fn normals(&self) -> &[Vector3<f32>] {
         &self.normals
+    }
+
+    pub fn bounding_box(&self) -> BoundingBox<f32> {
+        let points = self.vertices();
+
+        BoundingBox::from_points(points)
     }
 
     /// Extracts oriented edges from all mesh faces.

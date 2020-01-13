@@ -8,11 +8,11 @@ use std::time::{Duration, Instant};
 
 use nalgebra::Point3;
 
+use crate::bounding_box::BoundingBox;
 use crate::camera::{Camera, CameraOptions};
 use crate::convert::{cast_u8_color_to_f64, cast_usize};
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
-use crate::mesh::analysis::BoundingBox;
 use crate::mesh::Mesh;
 use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshId, Options as RendererOptions, Renderer};
 use crate::session::{PollInterpreterResponseNotification, Session};
@@ -22,6 +22,7 @@ pub mod geometry;
 pub mod importer;
 pub mod renderer;
 
+mod bounding_box;
 mod camera;
 mod convert;
 mod input;
@@ -62,7 +63,7 @@ pub struct Options {
 ///
 /// Since we support value arrays, there can be multiple geometries
 /// contained in a single value that all need to be treated separately
-/// for pusposes of scene geometry analysis and rendering.
+/// for purposes of scene geometry analysis and rendering.
 ///
 /// For simple values, the path is always `(var_ident, 0)`. For array
 /// element values, the path is `(var_ident, array_index)`.
@@ -393,7 +394,14 @@ impl CameraInterpolation {
         I: IntoIterator<Item = &'a Mesh> + Clone,
     {
         let (source_origin, source_radius) = camera.visible_sphere();
-        let bounding_box = BoundingBox::from_meshes(scene_meshes);
+
+        // FIXME: @Optimization Remove the allocation, try from_fn or successors
+        let bounding_boxes: Vec<_> = scene_meshes
+            .into_iter()
+            .map(|mesh| mesh.bounding_box())
+            .collect();
+        let bounding_box: BoundingBox<f32> =
+            BoundingBox::from_bounding_boxes_union(bounding_boxes.iter());
 
         CameraInterpolation {
             source_origin,

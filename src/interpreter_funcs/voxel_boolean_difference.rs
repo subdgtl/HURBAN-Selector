@@ -100,7 +100,7 @@ impl Func for FuncBooleanDifference {
             voxel_cloud2.grow_volume();
         }
 
-        voxel_cloud1.boolean_difference_mut(&voxel_cloud2);
+        voxel_cloud1.boolean_difference(&voxel_cloud2);
         match voxel_cloud1.to_mesh() {
             Some(value) => Ok(Value::Mesh(Arc::new(value))),
             None => Err(FuncError::new(FuncBooleanDifferenceError::WeldFailed)),
