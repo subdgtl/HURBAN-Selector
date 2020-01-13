@@ -242,43 +242,41 @@ impl VoxelCloud {
         // resulting voxel cloud.
         if self_volume_bounding_box.is_none() || other_volume_bounding_box.is_none() {
             self.wipe();
-        } else {
-            if let Some(bounding_box) = BoundingBox::intersection(
-                [
-                    self_volume_bounding_box.unwrap(),
-                    other_volume_bounding_box.unwrap(),
-                ]
-                .iter(),
-            ) {
-                // Resize (keep or shrink) the existing voxel cloud so that that can
-                // possibly contain intersection voxels.
-                self.resize_to_voxel_space_bounding_box(&bounding_box);
+        } else if let Some(bounding_box) = BoundingBox::intersection(
+            [
+                self_volume_bounding_box.unwrap(),
+                other_volume_bounding_box.unwrap(),
+            ]
+            .iter(),
+        ) {
+            // Resize (keep or shrink) the existing voxel cloud so that that can
+            // possibly contain intersection voxels.
+            self.resize_to_voxel_space_bounding_box(&bounding_box);
 
-                let block_start = bounding_box.minimum_point();
-                let block_dimensions = bounding_box.diagonal();
-                // Iterate through the block of space common to both voxel clouds.
-                for i in 0..self.voxel_map.len() {
-                    let cartesian_coords = absolute_voxel_to_cartesian_coords(
-                        &one_dimensional_to_absolute_three_dimensional_coordinate(
-                            i,
-                            &block_start,
-                            &block_dimensions,
-                        )
-                        .expect("The current voxel map out of bounds"),
-                        self.voxel_dimensions,
-                    );
+            let block_start = bounding_box.minimum_point();
+            let block_dimensions = bounding_box.diagonal();
+            // Iterate through the block of space common to both voxel clouds.
+            for i in 0..self.voxel_map.len() {
+                let cartesian_coords = absolute_voxel_to_cartesian_coords(
+                    &one_dimensional_to_absolute_three_dimensional_coordinate(
+                        i,
+                        &block_start,
+                        &block_dimensions,
+                    )
+                    .expect("The current voxel map out of bounds"),
+                    self.voxel_dimensions,
+                );
 
-                    // Perform boolean AND on voxel states of both voxel clouds.
-                    self.voxel_map[i] &= other
-                        .voxel_at_cartesian_coords(&cartesian_coords)
-                        .unwrap_or(false);
-                }
-                self.shrink_to_fit();
-            } else {
-                // If the two voxel clouds don't intersect, then wipe the
-                // resulting voxel cloud.
-                self.wipe();
+                // Perform boolean AND on voxel states of both voxel clouds.
+                self.voxel_map[i] &= other
+                    .voxel_at_cartesian_coords(&cartesian_coords)
+                    .unwrap_or(false);
             }
+            self.shrink_to_fit();
+        } else {
+            // If the two voxel clouds don't intersect, then wipe the
+            // resulting voxel cloud.
+            self.wipe();
         }
     }
 
