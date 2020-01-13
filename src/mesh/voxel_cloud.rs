@@ -814,9 +814,6 @@ impl VoxelCloud {
     /// The method prefills the voxel cloud with voxels. Then scans the entire
     /// boundaries of the voxel cloud and starts flood-filling with void voxels
     /// wherever there is a void voxel. The flood fill stops at volume voxels.
-
-    // FIXME: Establish a naming convention explaining whether a method mutates
-    // existing Voxel cloud or generates a new one.
     pub fn fill_volumes(&mut self) {
         // Lookup table of neighbor coordinates
         let neighbor_offsets = [
@@ -828,10 +825,6 @@ impl VoxelCloud {
             Vector3::new(0, 0, 1),
         ];
 
-        // New voxel map that will eventually contain filled volumes. Initially
-        // it's prefilled with voxels and later on the voids will be removed
-        // from it.
-        let mut filled_voxel_map = vec![true; self.voxel_map.len()];
         // Contains indices into the voxel map
         let mut queue_to_process: VecDeque<usize> = VecDeque::new();
         // Matches the voxel map length
@@ -867,8 +860,6 @@ impl VoxelCloud {
 
         // Process the queue
         while let Some(one_dimensional) = queue_to_process.pop_front() {
-            // Set the current voxel to void.
-            filled_voxel_map[one_dimensional] = false;
             // Calculate the relative coord of the currently processed voxel.
             // Will be needed to calculate its neighbors.
             let coord = one_dimensional_to_relative_three_dimensional_coordinate(
@@ -880,7 +871,7 @@ impl VoxelCloud {
             for neighbor_offset in neighbor_offsets.iter() {
                 let neighbor_coord = coord + neighbor_offset;
                 // If the neighbor exists (is not out of bounds)
-                if let Some(neighbor_voxel) = self.voxel_at_relative_coords(&neighbor_coord) {
+                if let Some(false) = self.voxel_at_relative_coords(&neighbor_coord) {
                     let neighbor_one_dimensional =
                         relative_three_dimensional_coordinate_to_one_dimensional(
                             &neighbor_coord,
@@ -888,7 +879,7 @@ impl VoxelCloud {
                         )
                         .expect("Coord out of bounds");
                     // Check if it is void and hasn't been discovered yet
-                    if !neighbor_voxel && !discovered[neighbor_one_dimensional] {
+                    if !discovered[neighbor_one_dimensional] {
                         // Put it to the processing queue
                         queue_to_process.push_back(neighbor_one_dimensional);
                         // and mark it discovered.
@@ -898,8 +889,12 @@ impl VoxelCloud {
             }
         }
 
-        // Replace the original voxel map with the newly created one
-        self.voxel_map = filled_voxel_map;
+        // All the discovered voxels were empty and connected with the voxel
+        // cloud boundaries. Therefore they are part of the outer void space and
+        // everything else is a filled volume.
+        for (i, v) in self.voxel_map.iter_mut().enumerate() {
+            *v = !discovered[i];
+        }
     }
 }
 
