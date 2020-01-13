@@ -6,8 +6,8 @@ use std::sync::Arc;
 use nalgebra::Vector3;
 
 use crate::interpreter::{
-    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
-    ParamRefinement, Ty, UintParamRefinement, Value,
+    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::voxel_cloud::VoxelCloud;
 
@@ -76,6 +76,13 @@ impl Func for FuncBooleanIntersection {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Fill closed volumes",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -92,6 +99,7 @@ impl Func for FuncBooleanIntersection {
         let mesh2 = args[1].unwrap_mesh();
         let voxel_dimensions = args[2].unwrap_float3();
         let growth_iterations = args[3].unwrap_uint();
+        let fill = args[4].unwrap_boolean();
 
         let mut voxel_cloud1 = VoxelCloud::from_mesh(mesh1, &Vector3::from(voxel_dimensions));
         let mut voxel_cloud2 = VoxelCloud::from_mesh(mesh2, &Vector3::from(voxel_dimensions));
@@ -99,6 +107,11 @@ impl Func for FuncBooleanIntersection {
         for _ in 0..growth_iterations {
             voxel_cloud1.grow_volume();
             voxel_cloud2.grow_volume();
+        }
+
+        if fill {
+            voxel_cloud1.fill_volumes();
+            voxel_cloud2.fill_volumes();
         }
 
         voxel_cloud1.boolean_intersection(&voxel_cloud2);
