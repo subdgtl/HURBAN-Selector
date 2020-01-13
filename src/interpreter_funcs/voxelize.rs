@@ -6,8 +6,8 @@ use std::sync::Arc;
 use nalgebra::Vector3;
 
 use crate::interpreter::{
-    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
-    ParamRefinement, Ty, UintParamRefinement, Value,
+    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::voxel_cloud::VoxelCloud;
 
@@ -74,6 +74,13 @@ impl Func for FuncVoxelize {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Fill closed volumes",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -89,10 +96,15 @@ impl Func for FuncVoxelize {
         let mesh = args[0].unwrap_mesh();
         let voxel_dimensions = args[1].unwrap_float3();
         let growth_iterations = args[2].unwrap_uint();
+        let fill = args[3].unwrap_boolean();
 
         let mut voxel_cloud = VoxelCloud::from_mesh(mesh, &Vector3::from(voxel_dimensions));
         for _ in 0..growth_iterations {
             voxel_cloud.grow_volume();
+        }
+
+        if fill {
+            voxel_cloud.fill_volumes();
         }
 
         match voxel_cloud.to_mesh() {
