@@ -77,7 +77,7 @@ impl Func for FuncTransform {
                 optional: false,
             },
             ParamInfo {
-                name: "Rotate and scale around object center",
+                name: "Transform around object center",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -111,7 +111,7 @@ impl Func for FuncTransform {
         let user_translation = Matrix4::new_translation(&translate);
 
         let value = if transform_around_local_center {
-            // Move to the origin, scale and rotate, then mve back and finally
+            // Move to the origin, scale and rotate, then move back and finally
             // move according to the user translation.
             let b_box = BoundingBox::from_meshes(iter::once(mesh));
             let center = b_box.center();
