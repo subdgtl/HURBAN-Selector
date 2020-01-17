@@ -53,7 +53,7 @@ impl Func for FuncShrinkWrap {
         let mesh = args[0].unwrap_mesh();
         let sphere_density = args[1].unwrap_uint();
 
-        let bounding_box = mesh.bounding_box().expect("The mesh is empty");
+        let bounding_box = mesh.bounding_box();
         let mut value = primitive::create_uv_sphere(
             bounding_box.center().coords.into(),
             Rotation3::identity(),

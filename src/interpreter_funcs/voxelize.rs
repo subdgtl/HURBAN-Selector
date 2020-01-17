@@ -14,6 +14,7 @@ use crate::mesh::voxel_cloud::VoxelCloud;
 #[derive(Debug, PartialEq)]
 pub enum FuncVoxelizeError {
     WeldFailed,
+    EmptyVoxelCloud,
 }
 
 impl fmt::Display for FuncVoxelizeError {
@@ -23,6 +24,7 @@ impl fmt::Display for FuncVoxelizeError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
+            FuncVoxelizeError::EmptyVoxelCloud => write!(f, "The resulting voxel cloud is empty"),
         }
     }
 }
@@ -75,7 +77,7 @@ impl Func for FuncVoxelize {
                 optional: false,
             },
             ParamInfo {
-                name: "Fill closed volumes",
+                name: "Fill Closed Volumes",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -105,6 +107,10 @@ impl Func for FuncVoxelize {
 
         if fill {
             voxel_cloud.fill_volumes();
+        }
+
+        if !voxel_cloud.contains_voxels() {
+            return Err(FuncError::new(FuncVoxelizeError::EmptyVoxelCloud));
         }
 
         match voxel_cloud.to_mesh() {

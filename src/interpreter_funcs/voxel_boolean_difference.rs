@@ -14,6 +14,7 @@ use crate::mesh::voxel_cloud::VoxelCloud;
 #[derive(Debug, PartialEq)]
 pub enum FuncBooleanDifferenceError {
     WeldFailed,
+    EmptyVoxelCloud,
 }
 
 impl fmt::Display for FuncBooleanDifferenceError {
@@ -23,6 +24,9 @@ impl fmt::Display for FuncBooleanDifferenceError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
+            FuncBooleanDifferenceError::EmptyVoxelCloud => {
+                write!(f, "The resulting voxel cloud is empty")
+            }
         }
     }
 }
@@ -80,7 +84,7 @@ impl Func for FuncBooleanDifference {
                 optional: false,
             },
             ParamInfo {
-                name: "Fill closed volumes",
+                name: "Fill Closed Volumes",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -118,6 +122,10 @@ impl Func for FuncBooleanDifference {
         }
 
         voxel_cloud1.boolean_difference(&voxel_cloud2);
+        if !voxel_cloud1.contains_voxels() {
+            return Err(FuncError::new(FuncBooleanDifferenceError::EmptyVoxelCloud));
+        }
+
         match voxel_cloud1.to_mesh() {
             Some(value) => Ok(Value::Mesh(Arc::new(value))),
             None => Err(FuncError::new(FuncBooleanDifferenceError::WeldFailed)),

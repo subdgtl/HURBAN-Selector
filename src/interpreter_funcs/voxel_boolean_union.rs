@@ -14,6 +14,7 @@ use crate::mesh::voxel_cloud::VoxelCloud;
 #[derive(Debug, PartialEq)]
 pub enum FuncBooleanUnionError {
     WeldFailed,
+    EmptyVoxelCloud,
 }
 
 impl fmt::Display for FuncBooleanUnionError {
@@ -22,6 +23,10 @@ impl fmt::Display for FuncBooleanUnionError {
             FuncBooleanUnionError::WeldFailed => write!(
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
+            ),
+            FuncBooleanUnionError::EmptyVoxelCloud => write!(
+                f,
+                "A voxel cloud from input meshes or the resulting mesh is empty"
             ),
         }
     }
@@ -80,7 +85,7 @@ impl Func for FuncBooleanUnion {
                 optional: false,
             },
             ParamInfo {
-                name: "Fill closed volumes",
+                name: "Fill Closed Volumes",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -118,6 +123,10 @@ impl Func for FuncBooleanUnion {
         }
 
         voxel_cloud1.boolean_union(&voxel_cloud2);
+        if !voxel_cloud1.contains_voxels() {
+            return Err(FuncError::new(FuncBooleanUnionError::EmptyVoxelCloud));
+        }
+
         match voxel_cloud1.to_mesh() {
             Some(value) => Ok(Value::Mesh(Arc::new(value))),
             None => Err(FuncError::new(FuncBooleanUnionError::WeldFailed)),

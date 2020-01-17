@@ -360,10 +360,11 @@ impl Mesh {
         &self.normals
     }
 
-    pub fn bounding_box(&self) -> Option<BoundingBox<f32>> {
+    pub fn bounding_box(&self) -> BoundingBox<f32> {
         let points = self.vertices();
 
-        BoundingBox::from_points(points)
+        BoundingBox::from_points(points.iter().copied())
+            .expect("Trying to compute a bounding box of an empty mesh")
     }
 
     /// Extracts oriented edges from all mesh faces.

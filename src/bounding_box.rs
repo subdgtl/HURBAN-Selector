@@ -2,8 +2,6 @@ use arrayvec::ArrayVec;
 use nalgebra::{Point3, Scalar, Vector3};
 use num_traits::{Bounded, Zero};
 
-use crate::convert::clamp_cast_i32_to_u32;
-
 /// World-origin-based axis-aligned bounding box contains the entire given
 /// geometry and defines an envelope aligned to the world (euclidean) coordinate
 /// system.
@@ -62,14 +60,16 @@ impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
 
     /// Creates a new bounding box from an iterator of points. The resulting
     /// bounding box will encompass all the input points. The resulting bounding
-    /// box will be defined in the units of the input points. If the input list
-    /// is empty, a zero size box at the word origin will be created.
-    pub fn from_points<'a, I>(points: I) -> Option<Self>
+    /// box will be defined in the units of the input points. Returns None if
+    /// the input list is empty.
+    pub fn from_points<I>(points: I) -> Option<Self>
     where
-        I: IntoIterator<Item = &'a Point3<T>> + Clone,
+        I: IntoIterator<Item = Point3<T>>,
     {
+        let mut points_iter = points.into_iter().peekable();
+
         // Return None if there are no input points.
-        points.clone().into_iter().peekable().peek()?;
+        points_iter.peek()?;
 
         let mut min_x = T::max_value();
         let mut min_y = T::max_value();
@@ -78,7 +78,7 @@ impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
         let mut max_y = T::min_value();
         let mut max_z = T::min_value();
 
-        for point in points {
+        for point in points_iter {
             if point.x < min_x {
                 min_x = point.x;
             }
@@ -108,28 +108,30 @@ impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
     /// Creates a new bounding box encompassing all the input bounding boxes.
     /// The resulting bounding box will be defined in the units of the input
     /// bounding boxes.
-    pub fn union<'a, I>(bounding_boxes: I) -> Option<Self>
+    ///
+    /// Returns None if there are no input bounding boxes.
+    pub fn union<I>(bounding_boxes: I) -> Option<Self>
     where
-        I: IntoIterator<Item = &'a BoundingBox<T>>,
+        I: IntoIterator<Item = BoundingBox<T>>,
     {
-        // FIXME: @Optimization Remove the allocation, try from_fn or successors
-        let points: Vec<_> = bounding_boxes
+        let points = bounding_boxes
             .into_iter()
-            .flat_map(|b_box| ArrayVec::from(b_box.corners()).into_iter())
-            .collect();
-        BoundingBox::from_points(points.iter())
+            .flat_map(|b_box| ArrayVec::from(b_box.corners()).into_iter());
+        BoundingBox::from_points(points)
     }
 
     /// Creates a new bounding box so that it encloses the block of space
     /// common to all the input bounding boxes, including the current one.
     ///
     /// Returns None if there is no intersection.
-    pub fn intersection<'a, I>(bounding_boxes: I) -> Option<Self>
+    pub fn intersection<I>(bounding_boxes: I) -> Option<Self>
     where
-        I: IntoIterator<Item = &'a BoundingBox<T>> + Clone,
+        I: IntoIterator<Item = BoundingBox<T>>,
     {
+        let mut bounding_boxes_iter = bounding_boxes.into_iter().peekable();
+
         // Return None if there are no input bounding boxes.
-        bounding_boxes.clone().into_iter().peekable().peek()?;
+        bounding_boxes_iter.peek()?;
 
         let mut min_x = T::min_value();
         let mut min_y = T::min_value();
@@ -138,7 +140,7 @@ impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
         let mut max_y = T::max_value();
         let mut max_z = T::max_value();
 
-        for bounding_box in bounding_boxes {
+        for bounding_box in bounding_boxes_iter {
             if bounding_box.minimum_point.x > min_x {
                 min_x = bounding_box.minimum_point.x;
             }
@@ -175,8 +177,8 @@ impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
         self.minimum_point
     }
 
-    /// Gets the minimum point of the bounding box. All the components of the
-    /// minimum point are the maximum values of the bounding box coordinates.
+    /// Gets the maximum point of the bounding box. All the components of the
+    /// maximum point are the maximum values of the bounding box coordinates.
     pub fn maximum_point(&self) -> Point3<T> {
         self.maximum_point
     }
@@ -254,17 +256,8 @@ impl BoundingBox<i32> {
     }
 
     /// Computes the diagonal vector of the current bounding box.
-    /// # Warning
-    /// The diagonal dimensions are `maximum point coordinates - minimum point
-    /// coordinates + 1`. For a singularity bounding box, this returns diagonal
-    /// size 1, 1, 1 because that is the size of a single voxel.
-    pub fn diagonal(&self) -> Vector3<u32> {
-        let diagonal_i32 = self.maximum_point - self.minimum_point;
-        Vector3::new(
-            clamp_cast_i32_to_u32(diagonal_i32.x) + 1,
-            clamp_cast_i32_to_u32(diagonal_i32.y) + 1,
-            clamp_cast_i32_to_u32(diagonal_i32.z) + 1,
-        )
+    pub fn diagonal(&self) -> Vector3<i32> {
+        self.maximum_point - self.minimum_point
     }
 }
 
@@ -330,7 +323,7 @@ mod tests {
     fn test_bounding_box_from_no_points_is_none_i32() {
         let points: Vec<Point3<i32>> = Vec::new();
 
-        let bb = BoundingBox::from_points(&points);
+        let bb = BoundingBox::from_points(points);
 
         assert_eq!(bb, None);
     }
@@ -347,7 +340,7 @@ mod tests {
             }
         }
 
-        let bb = BoundingBox::from_points(&points).unwrap();
+        let bb = BoundingBox::from_points(points).unwrap();
 
         assert_eq!(bb.minimum_point, Point3::new(0_i32, 1_i32, 2_i32));
         assert_eq!(bb.maximum_point, Point3::new(4_i32, 5_i32, 6_i32));
@@ -357,7 +350,7 @@ mod tests {
     fn test_bounding_box_union_empty_is_none_i32() {
         let boxes: Vec<BoundingBox<i32>> = Vec::new();
 
-        let bb = BoundingBox::union(&boxes);
+        let bb = BoundingBox::union(boxes);
 
         assert_eq!(bb, None);
     }
@@ -369,10 +362,9 @@ mod tests {
             &Point3::new(2_i32, 22_i32, 33_i32),
         );
 
-        let bb_union = BoundingBox::union(iter::once(&bb)).unwrap();
+        let bb_union = BoundingBox::union(iter::once(bb)).unwrap();
 
-        assert_eq!(bb_union.minimum_point, Point3::new(2_i32, 14_i32, 24_i32));
-        assert_eq!(bb_union.maximum_point, Point3::new(4_i32, 22_i32, 33_i32));
+        assert_eq!(bb_union, bb);
     }
 
     #[test]
@@ -386,7 +378,7 @@ mod tests {
             &Point3::new(1_i32, 15_i32, 40_i32),
         );
 
-        let bb_union = BoundingBox::union([bb1, bb2].iter()).unwrap();
+        let bb_union = BoundingBox::union([bb1, bb2].iter().copied()).unwrap();
 
         assert_eq!(bb_union.minimum_point, Point3::new(1_i32, 2_i32, 24_i32));
         assert_eq!(bb_union.maximum_point, Point3::new(5_i32, 22_i32, 40_i32));
@@ -396,7 +388,7 @@ mod tests {
     fn test_bounding_box_intersection_empty_is_none_i32() {
         let boxes: Vec<BoundingBox<i32>> = Vec::new();
 
-        let bb = BoundingBox::intersection(&boxes);
+        let bb = BoundingBox::intersection(boxes);
 
         assert_eq!(bb, None);
     }
@@ -408,16 +400,9 @@ mod tests {
             &Point3::new(2_i32, 22_i32, 33_i32),
         );
 
-        let bb_intersection = BoundingBox::intersection(iter::once(&bb)).unwrap();
+        let bb_intersection = BoundingBox::intersection(iter::once(bb)).unwrap();
 
-        assert_eq!(
-            bb_intersection.minimum_point,
-            Point3::new(2_i32, 14_i32, 24_i32)
-        );
-        assert_eq!(
-            bb_intersection.maximum_point,
-            Point3::new(4_i32, 22_i32, 33_i32)
-        );
+        assert_eq!(bb_intersection, bb);
     }
 
     #[test]
@@ -431,7 +416,7 @@ mod tests {
             &Point3::new(1_i32, 15_i32, 40_i32),
         );
 
-        let bb_intersection = BoundingBox::intersection([bb1, bb2].iter()).unwrap();
+        let bb_intersection = BoundingBox::intersection([bb1, bb2].iter().copied()).unwrap();
 
         assert_eq!(
             bb_intersection.minimum_point,
@@ -450,20 +435,13 @@ mod tests {
             &Point3::new(2_i32, 22_i32, 33_i32),
         );
         let bb2 = BoundingBox::new(
-            &Point3::new(5_i32, 2_i32, 28_i32),
+            &Point3::new(5_i32, 2_i32, 50_i32),
             &Point3::new(1_i32, 15_i32, 40_i32),
         );
 
-        let bb_intersection = BoundingBox::intersection([bb1, bb2].iter()).unwrap();
+        let bb_intersection = BoundingBox::intersection([bb1, bb2].iter().copied());
 
-        assert_eq!(
-            bb_intersection.minimum_point,
-            Point3::new(2_i32, 14_i32, 28_i32)
-        );
-        assert_eq!(
-            bb_intersection.maximum_point,
-            Point3::new(4_i32, 15_i32, 33_i32)
-        );
+        assert_eq!(bb_intersection, None);
     }
 
     #[test]
@@ -573,7 +551,7 @@ mod tests {
         );
 
         let diagonal = bb.diagonal();
-        let diagonal_correct = Vector3::new(3_u32, 4_u32, 5_u32);
+        let diagonal_correct = Vector3::new(2_i32, 3_i32, 4_i32);
 
         assert_eq!(diagonal, diagonal_correct);
     }

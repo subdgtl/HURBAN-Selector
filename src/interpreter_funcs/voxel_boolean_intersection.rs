@@ -13,13 +13,20 @@ use crate::mesh::voxel_cloud::VoxelCloud;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncBooleanIntersectionError {
-    EmptyMesh,
+    WeldFailed,
+    EmptyVoxelCloud,
 }
 
 impl fmt::Display for FuncBooleanIntersectionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FuncBooleanIntersectionError::EmptyMesh => write!(f, "The resulting mesh is empty"),
+            FuncBooleanIntersectionError::WeldFailed => write!(
+                f,
+                "Welding of separate voxels failed due to high welding proximity tolerance"
+            ),
+            FuncBooleanIntersectionError::EmptyVoxelCloud => {
+                write!(f, "The resulting voxel cloud is empty")
+            }
         }
     }
 }
@@ -77,7 +84,7 @@ impl Func for FuncBooleanIntersection {
                 optional: false,
             },
             ParamInfo {
-                name: "Fill closed volumes",
+                name: "Fill Closed Volumes",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -115,9 +122,15 @@ impl Func for FuncBooleanIntersection {
         }
 
         voxel_cloud1.boolean_intersection(&voxel_cloud2);
+        if !voxel_cloud1.contains_voxels() {
+            return Err(FuncError::new(
+                FuncBooleanIntersectionError::EmptyVoxelCloud,
+            ));
+        }
+
         match voxel_cloud1.to_mesh() {
             Some(value) => Ok(Value::Mesh(Arc::new(value))),
-            None => Err(FuncError::new(FuncBooleanIntersectionError::EmptyMesh)),
+            None => Err(FuncError::new(FuncBooleanIntersectionError::WeldFailed)),
         }
     }
 }

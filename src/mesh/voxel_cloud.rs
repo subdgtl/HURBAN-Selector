@@ -88,7 +88,7 @@ impl VoxelCloud {
             "One or more voxel dimensions are 0.0"
         );
         // Determine the needed block of voxel space.
-        let b_box = mesh.bounding_box().expect("The mesh is empty");
+        let b_box = mesh.bounding_box();
 
         let mut voxel_cloud = VoxelCloud::from_cartesian_bounding_box(&b_box, voxel_dimensions);
 
@@ -241,14 +241,21 @@ impl VoxelCloud {
         if let Some(self_volume_bounding_box) = self.volume_bounding_box() {
             if let Some(other_volume_bounding_box) = other.volume_bounding_box() {
                 if let Some(bounding_box) = BoundingBox::intersection(
-                    [self_volume_bounding_box, other_volume_bounding_box].iter(),
+                    [self_volume_bounding_box, other_volume_bounding_box]
+                        .iter()
+                        .copied(),
                 ) {
                     // Resize (keep or shrink) the existing voxel cloud so that that can
                     // possibly contain intersection voxels.
                     self.resize_to_voxel_space_bounding_box(&bounding_box);
 
                     let block_start = bounding_box.minimum_point();
-                    let block_dimensions = bounding_box.diagonal();
+                    let diagonal = bounding_box.diagonal();
+                    let block_dimensions = Vector3::new(
+                        cast_u32(diagonal.x),
+                        cast_u32(diagonal.y),
+                        cast_u32(diagonal.z),
+                    );
                     // Iterate through the block of space common to both voxel clouds.
                     for i in 0..self.voxel_map.len() {
                         let cartesian_coords = absolute_voxel_to_cartesian_coords(
@@ -274,8 +281,8 @@ impl VoxelCloud {
             }
         }
 
-        // If the two voxel clouds don't  or one of them is empty, then wipe
-        // the resulting voxel cloud.
+        // If the two voxel clouds don't intersect or one of them is empty, then
+        // wipe the resulting voxel cloud.
         self.wipe();
     }
 
@@ -287,19 +294,21 @@ impl VoxelCloud {
     /// If the input Voxel clouds are far apart, the resulting voxel cloud may
     /// be huge.
     pub fn boolean_union(&mut self, other: &VoxelCloud) {
-        let valid_bounding_boxes: Vec<_> =
-            [self.volume_bounding_box(), other.volume_bounding_box()]
-                .iter()
-                .filter_map(|b| *b)
-                .collect();
+        let bounding_boxes = [self.volume_bounding_box(), other.volume_bounding_box()];
 
-        if let Some(bounding_box) = BoundingBox::union(valid_bounding_boxes.iter()) {
+        let valid_bounding_boxes_iter = bounding_boxes.iter().filter_map(|b| *b);
+        if let Some(bounding_box) = BoundingBox::union(valid_bounding_boxes_iter) {
             // Resize (keep or grow) the existing voxel cloud to a block that can
             // possibly contain union voxels.
             self.resize_to_voxel_space_bounding_box(&bounding_box);
 
             let block_start = bounding_box.minimum_point();
-            let block_dimensions = bounding_box.diagonal();
+            let diagonal = bounding_box.diagonal();
+            let block_dimensions = Vector3::new(
+                cast_u32(diagonal.x),
+                cast_u32(diagonal.y),
+                cast_u32(diagonal.z),
+            );
             // Iterate through the block of space containing both voxel clouds.
             for i in 0..self.voxel_map.len() {
                 let cartesian_coords = absolute_voxel_to_cartesian_coords(
@@ -472,86 +481,17 @@ impl VoxelCloud {
     /// Resize the current voxel cloud to match the input bounding box in
     /// voxel-space units
     pub fn resize_to_voxel_space_bounding_box(&mut self, bounding_box: &BoundingBox<i32>) {
-        self.resize(&bounding_box.minimum_point(), &bounding_box.diagonal());
-    }
-
-    /// Computes boundaries of volumes contained in voxel cloud. Returns tuple
-    /// (block_start, block_dimensions). For empty voxel clouds returns the
-    /// original block start and zero block dimensions.
-    pub fn compute_volume_boundaries(&self) -> Option<(Point3<i32>, Vector3<u32>)> {
-        let mut min: Vector3<i32> =
-            Vector3::new(i32::max_value(), i32::max_value(), i32::max_value());
-        let mut max: Vector3<i32> =
-            Vector3::new(i32::min_value(), i32::min_value(), i32::min_value());
-        for (i, v) in self.voxel_map.iter().enumerate() {
-            if *v {
-                let relative_coords = one_dimensional_to_relative_three_dimensional_coordinate(
-                    i,
-                    &self.block_dimensions,
-                )
-                .expect("Out of bounds");
-                if relative_coords.x < min.x {
-                    min.x = relative_coords.x;
-                }
-                if relative_coords.x > max.x {
-                    max.x = relative_coords.x;
-                }
-                if relative_coords.y < min.y {
-                    min.y = relative_coords.y;
-                }
-                if relative_coords.y > max.y {
-                    max.y = relative_coords.y;
-                }
-                if relative_coords.z < min.z {
-                    min.z = relative_coords.z;
-                }
-                if relative_coords.z > max.z {
-                    max.z = relative_coords.z;
-                }
-            }
-        }
-        // It's enough to check one of the values because if anything is found,
-        // all the values would change.
-        if min.x == i32::max_value() {
-            assert_eq!(
-                min.y,
-                i32::max_value(),
-                "Voxel cloud emptiness check failed"
-            );
-            assert_eq!(
-                min.z,
-                i32::max_value(),
-                "Voxel cloud emptiness check failed"
-            );
-            assert_eq!(
-                max.x,
-                i32::min_value(),
-                "Voxel cloud emptiness check failed"
-            );
-            assert_eq!(
-                max.y,
-                i32::min_value(),
-                "Voxel cloud emptiness check failed"
-            );
-            assert_eq!(
-                max.z,
-                i32::min_value(),
-                "Voxel cloud emptiness check failed"
-            );
-            None
-        } else {
-            let block_dimensions = Vector3::new(
-                clamp_cast_i32_to_u32(max.x - min.x + 1),
-                clamp_cast_i32_to_u32(max.y - min.y + 1),
-                clamp_cast_i32_to_u32(max.z - min.z + 1),
-            );
-            Some(((self.block_start + min), block_dimensions))
-        }
+        let diagonal = bounding_box.diagonal();
+        let block_dimensions = Vector3::new(
+            cast_u32(diagonal.x),
+            cast_u32(diagonal.y),
+            cast_u32(diagonal.z),
+        );
+        self.resize(&bounding_box.minimum_point(), &block_dimensions);
     }
 
     /// Resize the voxel cloud block to exactly fit the volumetric geometry.
     /// Returns None for empty the voxel cloud.
-
     pub fn shrink_to_fit(&mut self) {
         if let Some((shrunk_block_start, shrunk_block_dimensions)) =
             self.compute_volume_boundaries()
@@ -788,7 +728,6 @@ impl VoxelCloud {
 
     /// Returns the bounding box in voxel units of the current voxel cloud after
     /// shrinking to fit just the nonempty voxels.
-    #[allow(dead_code)]
     pub fn volume_bounding_box(&self) -> Option<BoundingBox<i32>> {
         self.compute_volume_boundaries()
             .map(|(volume_start, volume_dimensions)| {
@@ -806,9 +745,9 @@ impl VoxelCloud {
     /// mutated. The method flood-fills the outer space with void voxels,
     /// leaving everything inside volume voxels filled.
     ///
-    /// The method prefills the voxel cloud with voxels. Then scans the entire
-    /// boundaries of the voxel cloud and starts flood-filling with void voxels
-    /// wherever there is a void voxel. The flood fill stops at volume voxels.
+    /// The method scans the entire boundaries of the voxel cloud and starts
+    /// flood-filling with void voxels wherever there is a void voxel. The flood
+    /// fill stops at volume voxels.
     pub fn fill_volumes(&mut self) {
         // Lookup table of neighbor coordinates
         let neighbor_offsets = [
@@ -863,7 +802,7 @@ impl VoxelCloud {
             )
             .expect("Coord out of bounds");
             // Check all the neighbors
-            for neighbor_offset in neighbor_offsets.iter() {
+            for neighbor_offset in &neighbor_offsets {
                 let neighbor_coord = coord + neighbor_offset;
                 // If the neighbor exists (is not out of bounds)
                 if let Some(false) = self.voxel_at_relative_coords(&neighbor_coord) {
@@ -889,6 +828,80 @@ impl VoxelCloud {
         // everything else is a filled volume.
         for (i, v) in self.voxel_map.iter_mut().enumerate() {
             *v = !discovered[i];
+        }
+    }
+
+    /// Computes boundaries of volumes contained in voxel cloud. Returns tuple
+    /// (block_start, block_dimensions). For empty voxel clouds returns the
+    /// original block start and zero block dimensions.
+    fn compute_volume_boundaries(&self) -> Option<(Point3<i32>, Vector3<u32>)> {
+        let mut min: Vector3<i32> =
+            Vector3::new(i32::max_value(), i32::max_value(), i32::max_value());
+        let mut max: Vector3<i32> =
+            Vector3::new(i32::min_value(), i32::min_value(), i32::min_value());
+        for (i, v) in self.voxel_map.iter().enumerate() {
+            if *v {
+                let relative_coords = one_dimensional_to_relative_three_dimensional_coordinate(
+                    i,
+                    &self.block_dimensions,
+                )
+                .expect("Out of bounds");
+                if relative_coords.x < min.x {
+                    min.x = relative_coords.x;
+                }
+                if relative_coords.x > max.x {
+                    max.x = relative_coords.x;
+                }
+                if relative_coords.y < min.y {
+                    min.y = relative_coords.y;
+                }
+                if relative_coords.y > max.y {
+                    max.y = relative_coords.y;
+                }
+                if relative_coords.z < min.z {
+                    min.z = relative_coords.z;
+                }
+                if relative_coords.z > max.z {
+                    max.z = relative_coords.z;
+                }
+            }
+        }
+        // It's enough to check one of the values because if anything is found,
+        // all the values would change.
+        if min.x == i32::max_value() {
+            assert_eq!(
+                min.y,
+                i32::max_value(),
+                "Voxel cloud emptiness check failed"
+            );
+            assert_eq!(
+                min.z,
+                i32::max_value(),
+                "Voxel cloud emptiness check failed"
+            );
+            assert_eq!(
+                max.x,
+                i32::min_value(),
+                "Voxel cloud emptiness check failed"
+            );
+            assert_eq!(
+                max.y,
+                i32::min_value(),
+                "Voxel cloud emptiness check failed"
+            );
+            assert_eq!(
+                max.z,
+                i32::min_value(),
+                "Voxel cloud emptiness check failed"
+            );
+            None
+        } else {
+            let block_dimensions = Vector3::new(
+                clamp_cast_i32_to_u32(max.x - min.x + 1),
+                clamp_cast_i32_to_u32(max.y - min.y + 1),
+                clamp_cast_i32_to_u32(max.z - min.z + 1),
+            );
+            Some(((self.block_start + min), block_dimensions))
         }
     }
 }
