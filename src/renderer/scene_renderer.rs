@@ -617,7 +617,7 @@ impl SceneRenderer {
         depth_attachment: &wgpu::TextureView,
         ids: I,
     ) where
-        I: IntoIterator<Item = &'a GpuMeshId> + Clone,
+        I: Iterator<Item = &'a GpuMeshId> + Clone,
     {
         let color_load_op = if clear_flags.contains(ClearFlags::COLOR) {
             wgpu::LoadOp::Clear
