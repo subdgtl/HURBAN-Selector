@@ -390,7 +390,7 @@ struct CameraInterpolation {
 impl CameraInterpolation {
     fn new<'a, I>(camera: &Camera, scene_meshes: I, time: Instant) -> Self
     where
-        I: IntoIterator<Item = &'a Mesh> + Clone,
+        I: Iterator<Item = &'a Mesh>,
     {
         let (source_origin, source_radius) = camera.visible_sphere();
         let bounding_box = BoundingBox::from_meshes(scene_meshes);
