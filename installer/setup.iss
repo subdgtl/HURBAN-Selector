@@ -30,7 +30,8 @@ Source: "..\target\release\{#AppExeName}"; DestDir: "{app}"; Check: IsX64
 
 [Icons]
 Name: "{userdesktop}\{#AppSetupName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
-Name: "{group}\{#AppSetupName}"; Filename: "{app}\{#AppExeName}"
+Name: "{group}\{#AppSetupName}\{#AppSetupName}"; Filename: "{app}\{#AppExeName}"
+Name: "{group}\{#AppSetupName}\Logs"; Filename: "{localappdata}\{#AppSetupName}\Logs"; Flags: foldershortcut
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
