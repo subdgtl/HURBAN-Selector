@@ -1,4 +1,3 @@
-use std::iter;
 use std::sync::Arc;
 
 use nalgebra::{Matrix4, Rotation, Vector3};
@@ -7,7 +6,6 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh::analysis::BoundingBox;
 use crate::mesh::Mesh;
 
 pub struct FuncTransform;
@@ -113,7 +111,7 @@ impl Func for FuncTransform {
         let value = if transform_around_local_center {
             // Move to the origin, scale and rotate, then move back and finally
             // move according to the user translation.
-            let b_box = BoundingBox::from_meshes(iter::once(mesh));
+            let b_box = mesh.bounding_box();
             let center = b_box.center();
             let vector_to_origin = Vector3::zeros() - center.coords;
 
