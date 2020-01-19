@@ -27,12 +27,13 @@ imgui-winit-support = { version = "0.2.0", default-features = false, features = 
 log = { version = "0.4.8" }
 nalgebra = { version = "0.19.0", features = ["serde-serialize"] }
 png = "0.15.0"
-serde = "1.0.102"
+serde = { version = "1.0.102", features = ["derive", "rc"] }
 smallvec = "0.6.10"
 tinyfiledialogs = "3.3.5"
 tobj = { version = "0.1.10", features = ["log"] }
 wgpu = { version = "0.4.0", features = ["vulkan"] }
 winit = "0.20.0-alpha5"
+ron = "0.5.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.8", features = ["combaseapi", "knownfolders", "shlobj", "winerror"] }

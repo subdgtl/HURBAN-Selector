@@ -33,6 +33,7 @@ mod math;
 mod mesh;
 mod plane;
 mod platform;
+mod project;
 mod pull;
 mod session;
 mod ui;
@@ -135,6 +136,8 @@ pub fn init_and_run(options: Options) -> ! {
     let mut input_manager = InputManager::new();
     let mut ui = Ui::new(&window, options.theme);
 
+    let mut project_path = None;
+
     let mut camera = Camera::new(
         window_size,
         5.0,
@@ -228,6 +231,35 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.rotate(rotate_x, rotate_y);
                 camera.zoom(input_state.camera_zoom);
                 camera.zoom_step(input_state.camera_zoom_steps);
+
+                let menu_bar_status = ui_frame.draw_menu_bar(project_path.clone());
+
+                if let Some(save_path) = menu_bar_status.save_path {
+                    let stmts = session.stmts().to_vec();
+                    let project = project::Project { stmts };
+
+                    project::save(&save_path, project);
+
+                    project_path = Some(save_path);
+                }
+
+                if let Some(open_path) = menu_bar_status.open_path {
+                    let project = project::open(&open_path);
+
+                    scene_meshes.clear();
+
+                    for (_, gpu_mesh_id) in scene_gpu_mesh_ids.drain() {
+                        renderer.remove_scene_mesh(gpu_mesh_id);
+                    }
+
+                    session = Session::new();
+
+                    for stmt in project.stmts {
+                        session.push_prog_stmt(stmt);
+                    }
+
+                    project_path = Some(open_path);
+                }
 
                 let ui_reset_viewport =
                     ui_frame.draw_viewport_settings_window(&mut renderer_draw_mesh_mode);

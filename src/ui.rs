@@ -43,6 +43,11 @@ struct ConsoleState {
     message_count: usize,
 }
 
+pub struct MainMenuBarStatus {
+    pub save_path: Option<String>,
+    pub open_path: Option<String>,
+}
+
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
 /// is to create UI frames which draw the UI itself.
 pub struct Ui {
@@ -610,6 +615,49 @@ impl<'a> UiFrame<'a> {
                 }
             }
         }
+    }
+
+    pub fn draw_menu_bar(&self, project_path: Option<String>) -> MainMenuBarStatus {
+        let ui = &self.imgui_ui;
+        let mut status = MainMenuBarStatus {
+            save_path: None,
+            open_path: None,
+        };
+
+        ui.main_menu_bar(|| {
+            ui.menu(imgui::im_str!("File"), true, || {
+                let ext_description = "HURBAN Selector project (.hs)";
+                let ext_filter = &["*.hs"];
+
+                if imgui::MenuItem::new(imgui::im_str!("Save project")).build(ui) {
+                    match project_path {
+                        Some(_) => status.save_path = project_path,
+                        None => {
+                            if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
+                                "Save project",
+                                "new_project.hs",
+                                ext_filter,
+                                ext_description,
+                            ) {
+                                status.save_path = Some(path);
+                            }
+                        }
+                    }
+                }
+
+                if imgui::MenuItem::new(imgui::im_str!("Open project...")).build(ui) {
+                    if let Some(path) = tinyfiledialogs::open_file_dialog(
+                        "Open project",
+                        "",
+                        Some((ext_filter, ext_description)),
+                    ) {
+                        status.open_path = Some(path);
+                    }
+                }
+            });
+        });
+
+        status
     }
 
     pub fn draw_operations_window(&self, session: &mut Session) {
