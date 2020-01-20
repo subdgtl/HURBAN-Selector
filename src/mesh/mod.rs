@@ -14,6 +14,7 @@ use crate::geometry;
 
 pub mod analysis;
 pub mod primitive;
+pub mod scalar_field;
 pub mod smoothing;
 pub mod tools;
 pub mod topology;
