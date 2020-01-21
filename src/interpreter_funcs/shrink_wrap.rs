@@ -1,13 +1,11 @@
-use std::iter;
 use std::sync::Arc;
 
-use nalgebra::{Rotation3, Vector3};
+use nalgebra::Rotation3;
 
 use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty,
     UintParamRefinement, Value,
 };
-use crate::mesh::analysis::BoundingBox;
 use crate::mesh::{analysis, primitive, NormalStrategy};
 
 pub struct FuncShrinkWrap;
@@ -55,15 +53,11 @@ impl Func for FuncShrinkWrap {
         let mesh = args[0].unwrap_mesh();
         let sphere_density = args[1].unwrap_uint();
 
-        let bounding_box = BoundingBox::from_meshes(iter::once(mesh));
+        let bounding_box = mesh.bounding_box();
         let mut value = primitive::create_uv_sphere(
             bounding_box.center().coords.into(),
             Rotation3::identity(),
-            Vector3::new(
-                bounding_box.diagonal_length() / 2.0,
-                bounding_box.diagonal_length() / 2.0,
-                bounding_box.diagonal_length() / 2.0,
-            ),
+            bounding_box.diagonal() / 2.0,
             sphere_density,
             sphere_density,
             NormalStrategy::Sharp,

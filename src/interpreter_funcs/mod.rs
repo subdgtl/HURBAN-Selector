@@ -18,6 +18,9 @@ use self::revert_mesh_faces::FuncRevertMeshFaces;
 use self::shrink_wrap::FuncShrinkWrap;
 use self::synchronize_mesh_faces::FuncSynchronizeMeshFaces;
 use self::transform::FuncTransform;
+use self::voxel_boolean_difference::FuncBooleanDifference;
+use self::voxel_boolean_intersection::FuncBooleanIntersection;
+use self::voxel_boolean_union::FuncBooleanUnion;
 use self::voxelize::FuncVoxelize;
 use self::weld::FuncWeld;
 
@@ -36,6 +39,9 @@ mod revert_mesh_faces;
 mod shrink_wrap;
 mod synchronize_mesh_faces;
 mod transform;
+mod voxel_boolean_difference;
+mod voxel_boolean_intersection;
+mod voxel_boolean_union;
 mod voxelize;
 mod weld;
 
@@ -70,6 +76,9 @@ pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(9004);
 pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(9005);
 pub const FUNC_ID_JOIN_GROUP: FuncIdent = FuncIdent(9006);
 pub const FUNC_ID_VOXELIZE: FuncIdent = FuncIdent(9007);
+pub const FUNC_ID_BOOLEAN_INTERSECTION: FuncIdent = FuncIdent(9008);
+pub const FUNC_ID_BOOLEAN_DIFFERENCE: FuncIdent = FuncIdent(9009);
+pub const FUNC_ID_BOOLEAN_UNION: FuncIdent = FuncIdent(9010);
 
 /// Returns the global set of function definitions available to the
 /// editor.
@@ -117,6 +126,12 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     );
     funcs.insert(FUNC_ID_JOIN_GROUP, Box::new(FuncJoinGroup));
     funcs.insert(FUNC_ID_VOXELIZE, Box::new(FuncVoxelize));
+    funcs.insert(
+        FUNC_ID_BOOLEAN_INTERSECTION,
+        Box::new(FuncBooleanIntersection),
+    );
+    funcs.insert(FUNC_ID_BOOLEAN_DIFFERENCE, Box::new(FuncBooleanDifference));
+    funcs.insert(FUNC_ID_BOOLEAN_UNION, Box::new(FuncBooleanUnion));
 
     funcs
 }

@@ -366,7 +366,7 @@ impl RenderPass<'_> {
     /// renderer.
     pub fn draw_mesh<'a, I>(&mut self, ids: I, mode: DrawMeshMode)
     where
-        I: IntoIterator<Item = &'a GpuMeshId> + Clone,
+        I: Iterator<Item = &'a GpuMeshId> + Clone,
     {
         let mut clear_flags = SceneRendererClearFlags::empty();
         if self.color_needs_clearing {

@@ -8,11 +8,11 @@ use std::time::{Duration, Instant};
 
 use nalgebra::Point3;
 
+use crate::bounding_box::BoundingBox;
 use crate::camera::{Camera, CameraOptions};
 use crate::convert::{cast_u8_color_to_f64, cast_usize};
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
-use crate::mesh::analysis::BoundingBox;
 use crate::mesh::Mesh;
 use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshId, Options as RendererOptions, Renderer};
 use crate::session::{PollInterpreterResponseNotification, Session};
@@ -22,6 +22,7 @@ pub mod geometry;
 pub mod importer;
 pub mod renderer;
 
+mod bounding_box;
 mod camera;
 mod convert;
 mod input;
@@ -62,7 +63,7 @@ pub struct Options {
 ///
 /// Since we support value arrays, there can be multiple geometries
 /// contained in a single value that all need to be treated separately
-/// for pusposes of scene geometry analysis and rendering.
+/// for purposes of scene geometry analysis and rendering.
 ///
 /// For simple values, the path is always `(var_ident, 0)`. For array
 /// element values, the path is `(var_ident, array_index)`.
@@ -390,16 +391,21 @@ struct CameraInterpolation {
 impl CameraInterpolation {
     fn new<'a, I>(camera: &Camera, scene_meshes: I, time: Instant) -> Self
     where
-        I: IntoIterator<Item = &'a Mesh> + Clone,
+        I: Iterator<Item = &'a Mesh>,
     {
         let (source_origin, source_radius) = camera.visible_sphere();
-        let bounding_box = BoundingBox::from_meshes(scene_meshes);
+        let bounding_box_iter = scene_meshes.map(|mesh| mesh.bounding_box());
+
+        let (target_origin, target_radius) = match BoundingBox::union(bounding_box_iter) {
+            Some(bounding_box) => (bounding_box.center(), bounding_box.diagonal().norm() / 2.0),
+            None => (Point3::origin(), 1.0),
+        };
 
         CameraInterpolation {
             source_origin,
             source_radius,
-            target_origin: bounding_box.center(),
-            target_radius: bounding_box.diagonal_length() / 2.0,
+            target_origin,
+            target_radius,
             target_time: time + CAMERA_INTERPOLATION_DURATION,
         }
     }
