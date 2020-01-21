@@ -20,6 +20,12 @@ pub mod ast;
 pub mod func;
 pub mod value;
 
+// FIXME: All of the `Display` impls below for the error types were changed to
+// be directly displayable on the UI, e.g. the word "stmt" was changed to
+// "input" and `stmt_index` is displayed as `stmt_index + 1`. Revert these impls
+// back to being developer centric once we have context-aware error message
+// construction mechanism.
+
 /// A name resolution error.
 #[derive(Debug, PartialEq)]
 pub enum ResolveError {
@@ -43,18 +49,21 @@ impl fmt::Display for ResolveError {
         match self {
             ResolveError::VarRedefinition { stmt_index, var } => write!(
                 f,
-                "Re-definition of already declared variable {} on stmt {}",
-                var, stmt_index,
+                "Re-definition of already declared variable {} on input {}",
+                var,
+                stmt_index + 1,
             ),
             ResolveError::UndeclaredVarUse { stmt_index, var } => write!(
                 f,
-                "Use of an undeclared variable {} on stmt {}",
-                var, stmt_index
+                "Use of an undeclared variable {} on input {}",
+                var,
+                stmt_index + 1,
             ),
             ResolveError::UndeclaredFuncUse { stmt_index, func } => write!(
                 f,
-                "Use of an undeclared function {} on stmt {}",
-                func, stmt_index
+                "Use of an undeclared function {} on input {}",
+                func,
+                stmt_index + 1,
             ),
         }
     }
@@ -140,11 +149,11 @@ impl fmt::Display for RuntimeError {
                 args_provided,
             } => write!(
                 f,
-                "Function {} declared with {} params, but provided with {} args on stmt {}",
+                "Function {} declared with {} params, but provided with {} args on input {}",
                 call.ident(),
                 args_expected,
                 args_provided,
-                stmt_index,
+                stmt_index + 1,
             ),
             RuntimeError::ArgTyMismatch {
                 stmt_index,
@@ -154,12 +163,12 @@ impl fmt::Display for RuntimeError {
                 ty_provided,
             } => write!(
                 f,
-                "Function {} declared to take param (optional={}) type {}, but given {} on stmt {}",
+                "Function {} declared to take param (optional={}) type {}, but given {} on input {}",
                 call.ident(),
                 optional,
                 ty_expected,
                 ty_provided,
-                stmt_index,
+                stmt_index + 1,
             ),
             RuntimeError::ReturnTyMismatch {
                 stmt_index,
@@ -168,11 +177,11 @@ impl fmt::Display for RuntimeError {
                 ty_provided,
             } => write!(
                 f,
-                "Function {} declared to return type {}, but returned {} on stmt {}",
+                "Function {} declared to return type {}, but returned {} on input {}",
                 call.ident(),
                 ty_expected,
                 ty_provided,
-                stmt_index,
+                stmt_index + 1,
             ),
             RuntimeError::Func {
                 stmt_index,
@@ -180,10 +189,10 @@ impl fmt::Display for RuntimeError {
                 func_error,
             } => write!(
                 f,
-                "Function {} errored with \"{}\" on stmt {}",
+                "Function {} errored with \"{}\" on input {}",
                 call.ident(),
                 func_error,
-                stmt_index,
+                stmt_index + 1,
             ),
         }
     }
