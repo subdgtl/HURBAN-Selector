@@ -174,8 +174,7 @@ impl ScalarFiled {
                     &voxel_dimensions,
                 );
 
-                for (one_dimensional, voxel) in target_scalar_field.values.iter_mut().enumerate()
-                {
+                for (one_dimensional, voxel) in target_scalar_field.values.iter_mut().enumerate() {
                     let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                         one_dimensional,
                         &target_scalar_field.block_start,
@@ -275,8 +274,7 @@ impl ScalarFiled {
                     .pseudo_inverse(f32::EPSILON)
                     .expect("No pseudo inverse matrix");
 
-                for (one_dimensional, voxel) in target_scalar_field.values.iter_mut().enumerate()
-                {
+                for (one_dimensional, voxel) in target_scalar_field.values.iter_mut().enumerate() {
                     let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                         one_dimensional,
                         &target_scalar_field.block_start,
