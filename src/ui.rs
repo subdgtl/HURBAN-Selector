@@ -6,6 +6,7 @@ use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
 use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
+use crate::notifications::{NotificationLevel, Notifications};
 use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
@@ -48,6 +49,11 @@ struct Colors {
 }
 
 #[derive(Debug, Default)]
+struct NotificationsState {
+    notifications_count: usize,
+}
+
+#[derive(Debug, Default)]
 struct ConsoleState {
     message_count: usize,
 }
@@ -59,6 +65,7 @@ pub struct Ui {
     imgui_winit_platform: WinitPlatform,
     font_ids: FontIds,
     colors: Colors,
+    notifications_state: RefCell<NotificationsState>,
     console_state: RefCell<Vec<ConsoleState>>,
 
     /// A preallocated string buffer used for imgui strings in the
@@ -207,6 +214,7 @@ impl Ui {
             },
             colors,
             console_state: RefCell::new(Vec::new()),
+            notifications_state: RefCell::new(NotificationsState::default()),
             global_imstring_buffer: RefCell::new(imgui::ImString::with_capacity(1024)),
         }
     }
@@ -235,6 +243,7 @@ impl Ui {
             font_ids: &self.font_ids,
             colors: &self.colors,
             console_state: &self.console_state,
+            notifications_state: &self.notifications_state,
             global_imstring_buffer: &self.global_imstring_buffer,
         }
     }
@@ -252,6 +261,7 @@ pub struct UiFrame<'a> {
     font_ids: &'a FontIds,
     colors: &'a Colors,
     console_state: &'a RefCell<Vec<ConsoleState>>,
+    notifications_state: &'a RefCell<NotificationsState>,
     global_imstring_buffer: &'a RefCell<imgui::ImString>,
 }
 
@@ -346,6 +356,76 @@ impl<'a> UiFrame<'a> {
         }
 
         take_screenshot_clicked
+    }
+
+    pub fn draw_notifications_window(&self, notifications: &Notifications) {
+        let notifications_count = notifications.iter().count();
+        if notifications_count == 0 {
+            self.notifications_state.borrow_mut().notifications_count = 0;
+            return;
+        }
+
+        let ui = &self.imgui_ui;
+
+        const NOTIFICATIONS_WINDOW_WIDTH: f32 = 400.0;
+        const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.2;
+
+        let window_logical_size = ui.io().display_size;
+        let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
+        let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
+
+        let notifications_window_height =
+            window_inner_height * NOTIFICATIONS_WINDOW_HEIGHT_MULT - MARGIN;
+        let notifications_window_vertical_position =
+            MARGIN * 2.0 + (1.0 - NOTIFICATIONS_WINDOW_HEIGHT_MULT) * window_inner_height;
+
+        let color_token = ui.push_style_colors(&[
+            (imgui::StyleColor::Border, [0.0, 0.0, 0.0, 0.1]),
+            (imgui::StyleColor::WindowBg, [0.0, 0.0, 0.0, 0.1]),
+        ]);
+
+        imgui::Window::new(imgui::im_str!("Notifications"))
+            .title_bar(false)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .size(
+                [NOTIFICATIONS_WINDOW_WIDTH, notifications_window_height],
+                imgui::Condition::Always,
+            )
+            .position(
+                [
+                    window_inner_width + MARGIN - NOTIFICATIONS_WINDOW_WIDTH,
+                    notifications_window_vertical_position,
+                ],
+                imgui::Condition::Always,
+            )
+            .build(ui, || {
+                for notification in notifications.iter() {
+                    let text_color_token = match notification.level {
+                        NotificationLevel::Info => ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_info,
+                        ),
+                        NotificationLevel::Warn => ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_warn,
+                        ),
+                    };
+
+                    ui.text_wrapped(&imgui::im_str!("{}", notification.text));
+
+                    text_color_token.pop(ui);
+                }
+
+                let mut notifications_state = self.notifications_state.borrow_mut();
+                if notifications_count != notifications_state.notifications_count {
+                    notifications_state.notifications_count = notifications_count;
+                    ui.set_scroll_here_y();
+                }
+            });
+
+        color_token.pop(ui);
     }
 
     pub fn draw_viewport_settings_window(

@@ -2,9 +2,11 @@ pub use crate::logger::LogLevel;
 pub use crate::renderer::{GpuBackend, Msaa};
 pub use crate::ui::Theme;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::mem;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -16,6 +18,7 @@ use crate::convert::{cast_u8_color_to_f64, cast_usize};
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
 use crate::mesh::Mesh;
+use crate::notifications::{NotificationLevel, Notifications};
 use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshHandle, Options as RendererOptions, Renderer};
 use crate::session::{PollInterpreterResponseNotification, Session};
 use crate::ui::{ScreenshotOptions, Ui};
@@ -34,6 +37,7 @@ mod interpreter_server;
 mod logger;
 mod math;
 mod mesh;
+mod notifications;
 mod plane;
 mod pull;
 mod session;
@@ -139,6 +143,10 @@ pub fn init_and_run(options: Options) -> ! {
 
     let mut session = Session::new();
     let mut input_manager = InputManager::new();
+
+    let notification_ttl = Duration::from_secs(5);
+    let notifications = Rc::new(RefCell::new(Notifications::with_ttl(notification_ttl)));
+
     let mut ui = Ui::new(&window, options.theme);
 
     let mut camera = Camera::new(
@@ -196,14 +204,13 @@ pub fn init_and_run(options: Options) -> ! {
 
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
 
-    let time_start = Instant::now();
-    let mut time = time_start;
-
     let mut camera_interpolation: Option<CameraInterpolation> = None;
-
     // Since input manager needs to process events separately after imgui
     // handles them, this buffer with copies of events is needed.
     let mut input_events: Vec<winit::event::Event<_>> = Vec::with_capacity(16);
+
+    let time_start = Instant::now();
+    let mut time = time_start;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -261,6 +268,7 @@ pub fn init_and_run(options: Options) -> ! {
                     window_size.width.round() as u32,
                     window_size.height.round() as u32,
                 );
+                ui_frame.draw_notifications_window(&notifications.borrow());
 
                 ui_frame.draw_pipeline_window(&mut session);
                 ui_frame.draw_operations_window(&mut session);
@@ -369,6 +377,7 @@ pub fn init_and_run(options: Options) -> ! {
                         camera_interpolation = None;
                     }
                 }
+                notifications.borrow_mut().update(time);
 
                 let imgui_draw_data = ui_frame.render(&window);
 
@@ -416,9 +425,10 @@ pub fn init_and_run(options: Options) -> ! {
                     );
                     screenshot_command_buffer.submit();
 
+                    let screenshot_notifications = Rc::clone(&notifications);
                     renderer.offscreen_render_target_data(
                         &screenshot_render_target,
-                        |width, height, data| {
+                        move |width, height, data| {
                             let actual_data_len = data.len();
                             let expected_data_len = cast_usize(width)
                                 * cast_usize(height)
@@ -449,8 +459,21 @@ pub fn init_and_run(options: Options) -> ! {
                                     .expect("Failed to write png header")
                                     .write_image_data(data)
                                     .expect("Failed to write png data");
+
+                                let path_str = path.to_string_lossy();
+                                log::info!("Screenshot saved in {}", path_str);
+                                screenshot_notifications.borrow_mut().push(
+                                    time,
+                                    NotificationLevel::Info,
+                                    format!("Screenshot saved in {}", path_str),
+                                );
                             } else {
                                 log::error!("Failed to find picture directory");
+                                screenshot_notifications.borrow_mut().push(
+                                    time,
+                                    NotificationLevel::Warn,
+                                    "Failed to find picture directory",
+                                );
                             }
                         },
                     );
