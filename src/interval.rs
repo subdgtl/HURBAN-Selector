@@ -1,6 +1,6 @@
-use std::ops::{Add, Div, Sub};
+use std::ops::{Add, Div, Mul, Sub};
 
-use num_traits::{Bounded, FromPrimitive};
+use num_traits::{Bounded, FromPrimitive, ToPrimitive};
 
 /// Interval is a set of real numbers lying between two numbers, the extremities
 /// (left and right) of the interval.
@@ -15,13 +15,15 @@ pub struct Interval<T> {
 }
 
 impl<
-        T: Bounded
+        T: Add<Output = T>
+            + Bounded
             + Copy
+            + Div<Output = T>
             + FromPrimitive
+            + Mul<Output = T>
             + PartialOrd
             + Sub<Output = T>
-            + Add<Output = T>
-            + Div<Output = T>,
+            + ToPrimitive,
     > Interval<T>
 {
     /// Creates a new interval from two extremities. Left and right extremity
@@ -115,7 +117,7 @@ impl<
             } else {
                 (self.right, self.left)
             };
-            Some((min + max) / T::from_u8(2).unwrap())
+            Some((min + max) / T::from_f32(2_f32).unwrap())
         }
     }
 
@@ -203,6 +205,30 @@ impl<
             (self.right, self.left)
         };
         value >= min && value < max
+    }
+
+    #[allow(dead_code)]
+    pub fn remap_to(&self, value: T, target_interval: Interval<T>) -> Option<T> {
+        if self.left_infinite
+            || self.right_infinite
+            || target_interval.left_infinite
+            || target_interval.right_infinite
+        {
+            None
+        } else {
+            let left1 = self.left.to_f64().expect("Can't convert to f64");
+            let right1 = self.right.to_f64().expect("Can't convert to f64");
+            let left2 = target_interval.left.to_f64().expect("Can't convert to f64");
+            let v = value.to_f64().expect("Can't convert to f64");
+            let right2 = target_interval
+                .right
+                .to_f64()
+                .expect("Can't convert to f64");
+
+            let remapped = left2 + ((v - left1) / (right1 - left1)) * (right2 - left2);
+
+            Some(T::from_f64(remapped).expect("Can't convert from f64"))
+        }
     }
 }
 
@@ -572,5 +598,165 @@ mod tests {
     fn test_interval_length_infinite_f32() {
         let interval = Interval::new_right_infinite(0_f32);
         assert_eq!(interval.length(), None);
+    }
+
+    #[test]
+    fn test_interval_remap_interpolated_f32() {
+        let interval_source = Interval::new(0_f32, 2_f32);
+        let interval_target = Interval::new(10_f32, 20_f32);
+        assert_eq!(
+            interval_source.remap_to(1_f32, interval_target).unwrap(),
+            15_f32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_interpolated_reverted_f32() {
+        let interval_source = Interval::new(0_f32, 2_f32);
+        let interval_target = Interval::new(20_f32, 10_f32);
+        assert_eq!(
+            interval_source.remap_to(1_f32, interval_target).unwrap(),
+            15_f32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_extrapolated_left_f32() {
+        let interval_source = Interval::new(10_f32, 20_f32);
+        let interval_target = Interval::new(10_f32, 30_f32);
+        assert_eq!(
+            interval_source.remap_to(9_f32, interval_target).unwrap(),
+            8_f32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_extrapolated_right_f32() {
+        let interval_source = Interval::new(10_f32, 20_f32);
+        let interval_target = Interval::new(10_f32, 30_f32);
+        assert_eq!(
+            interval_source.remap_to(21_f32, interval_target).unwrap(),
+            32_f32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_interpolated_i32() {
+        let interval_source = Interval::new(0_i32, 2_i32);
+        let interval_target = Interval::new(10_i32, 20_i32);
+        assert_eq!(
+            interval_source.remap_to(1_i32, interval_target).unwrap(),
+            15_i32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_interpolated_reverted_i32() {
+        let interval_source = Interval::new(0_i32, 2_i32);
+        let interval_target = Interval::new(20_i32, 10_i32);
+        assert_eq!(
+            interval_source.remap_to(1_i32, interval_target).unwrap(),
+            15_i32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_extrapolated_left_i32() {
+        let interval_source = Interval::new(10_i32, 20_i32);
+        let interval_target = Interval::new(10_i32, 30_i32);
+        assert_eq!(
+            interval_source.remap_to(9_i32, interval_target).unwrap(),
+            8_i32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_extrapolated_right_i32() {
+        let interval_source = Interval::new(10_i32, 20_i32);
+        let interval_target = Interval::new(10_i32, 30_i32);
+        assert_eq!(
+            interval_source.remap_to(21_i32, interval_target).unwrap(),
+            32_i32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_interpolated_u32() {
+        let interval_source = Interval::new(0_u32, 2_u32);
+        let interval_target = Interval::new(10_u32, 20_u32);
+        assert_eq!(
+            interval_source.remap_to(1_u32, interval_target).unwrap(),
+            15_u32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_interpolated_reverted_u32() {
+        let interval_source = Interval::new(0_u32, 2_u32);
+        let interval_target = Interval::new(20_u32, 10_u32);
+        assert_eq!(
+            interval_source.remap_to(1_u32, interval_target).unwrap(),
+            15_u32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_extrapolated_left_u32() {
+        let interval_source = Interval::new(10_u32, 20_u32);
+        let interval_target = Interval::new(10_u32, 30_u32);
+        assert_eq!(
+            interval_source.remap_to(9_u32, interval_target).unwrap(),
+            8_u32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_extrapolated_right_u32() {
+        let interval_source = Interval::new(10_u32, 20_u32);
+        let interval_target = Interval::new(10_u32, 30_u32);
+        assert_eq!(
+            interval_source.remap_to(21_u32, interval_target).unwrap(),
+            32_u32
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_interpolated_usize() {
+        let interval_source = Interval::new(0_usize, 2_usize);
+        let interval_target = Interval::new(10_usize, 20_usize);
+        assert_eq!(
+            interval_source.remap_to(1_usize, interval_target).unwrap(),
+            15_usize
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_interpolated_reverted_usize() {
+        let interval_source = Interval::new(0_usize, 2_usize);
+        let interval_target = Interval::new(20_usize, 10_usize);
+        assert_eq!(
+            interval_source.remap_to(1_usize, interval_target).unwrap(),
+            15_usize
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_extrapolated_left_usize() {
+        let interval_source = Interval::new(10_usize, 20_usize);
+        let interval_target = Interval::new(10_usize, 30_usize);
+        assert_eq!(
+            interval_source.remap_to(9_usize, interval_target).unwrap(),
+            8_usize
+        );
+    }
+
+    #[test]
+    fn test_interval_remap_extrapolated_right_usize() {
+        let interval_source = Interval::new(10_usize, 20_usize);
+        let interval_target = Interval::new(10_usize, 30_usize);
+        assert_eq!(
+            interval_source.remap_to(21_usize, interval_target).unwrap(),
+            32_usize
+        );
     }
 }

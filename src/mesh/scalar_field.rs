@@ -170,6 +170,7 @@ impl ScalarFiled {
     #[allow(dead_code)]
     pub fn from_scalar_field(
         source_scalar_field: &ScalarFiled,
+        volume_value_interval: Interval<i16>,
         voxel_dimensions: &Vector3<f32>,
     ) -> Option<Self> {
         assert!(
@@ -178,7 +179,7 @@ impl ScalarFiled {
         );
 
         source_scalar_field
-            .mesh_volume_bounding_box_cartesian()
+            .mesh_volume_bounding_box_cartesian(volume_value_interval)
             .map(|current_sf_bounding_box| {
                 // Make a bounding box of the source bounding box's mesh volume.
                 // This will be the volume to be scanned for any voxels.
@@ -221,6 +222,7 @@ impl ScalarFiled {
     #[allow(dead_code)]
     pub fn from_scalar_field_transformed(
         source_scalar_field: &ScalarFiled,
+        volume_value_interval: Interval<i16>,
         voxel_dimension: f32,
         cartesian_translation: &Vector3<f32>,
         rotation_degrees: &(f32, f32, f32),
@@ -236,6 +238,7 @@ impl ScalarFiled {
         {
             return ScalarFiled::from_scalar_field(
                 source_scalar_field,
+                volume_value_interval,
                 &Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension),
             );
         }
@@ -246,7 +249,7 @@ impl ScalarFiled {
         );
 
         source_scalar_field
-            .mesh_volume_bounding_box_cartesian()
+            .mesh_volume_bounding_box_cartesian(volume_value_interval)
             .map(|current_sf_bounding_box| {
                 // FIXME: Heterogenous voxels require non-trivial compensation
                 // of final voxel cloud position after rotating if the volume
@@ -369,12 +372,16 @@ impl ScalarFiled {
     #[allow(dead_code)]
     pub fn boolean_intersection(
         &mut self,
+        volume_value_interval_self: Interval<i16>,
         other: &ScalarFiled,
-        volume_value_interval: Interval<i16>,
+        volume_value_interval_other: Interval<i16>,
     ) {
         // Find volume common to both voxel clouds.
-        if let Some(self_volume_bounding_box) = self.volume_bounding_box() {
-            if let Some(other_volume_bounding_box) = other.volume_bounding_box() {
+        if let Some(self_volume_bounding_box) = self.volume_bounding_box(volume_value_interval_self)
+        {
+            if let Some(other_volume_bounding_box) =
+                other.volume_bounding_box(volume_value_interval_other)
+            {
                 if let Some(bounding_box) = BoundingBox::intersection(
                     [self_volume_bounding_box, other_volume_bounding_box]
                         .iter()
@@ -402,7 +409,7 @@ impl ScalarFiled {
                         .expect("The current voxel map out of bounds");
 
                         // Perform boolean AND on voxel states of both voxel clouds.
-                        if volume_value_interval.includes_closed(self.values[i]) {
+                        if volume_value_interval_self.includes_closed(self.values[i]) {
                             let absolute_coordinate = cartesian_to_absolute_voxel_coordinate(
                                 &cartesian_coordinate,
                                 &other.voxel_dimensions,
@@ -410,13 +417,13 @@ impl ScalarFiled {
                             if let Some(value) =
                                 other.value_at_absolute_voxel_coordinate(&absolute_coordinate)
                             {
-                                if !volume_value_interval.includes_closed(value) {
+                                if !volume_value_interval_other.includes_closed(value) {
                                     self.values[i] = EMPTY;
                                 }
                             }
                         }
                     }
-                    self.shrink_to_fit();
+                    self.shrink_to_fit(volume_value_interval_self);
                     // Return here because any other option needs to wipe the
                     // current voxel cloud.
                     return;
@@ -438,7 +445,10 @@ impl ScalarFiled {
     /// be huge.
     #[allow(dead_code)]
     pub fn boolean_union(&mut self, other: &ScalarFiled, volume_value_interval: Interval<i16>) {
-        let bounding_boxes = [self.volume_bounding_box(), other.volume_bounding_box()];
+        let bounding_boxes = [
+            self.volume_bounding_box(volume_value_interval),
+            other.volume_bounding_box(volume_value_interval),
+        ];
 
         let valid_bounding_boxes_iter = bounding_boxes.iter().filter_map(|b| *b);
         if let Some(bounding_box) = BoundingBox::union(valid_bounding_boxes_iter) {
@@ -476,7 +486,7 @@ impl ScalarFiled {
                     }
                 }
             }
-            self.shrink_to_fit();
+            self.shrink_to_fit(volume_value_interval);
         } else {
             self.wipe();
         }
@@ -517,7 +527,7 @@ impl ScalarFiled {
                 }
             }
         }
-        self.shrink_to_fit()
+        self.shrink_to_fit(volume_value_interval)
     }
 
     /// Gets the state of a voxel defined in absolute voxel coordinates
@@ -624,9 +634,9 @@ impl ScalarFiled {
 
     /// Resize the voxel cloud block to exactly fit the volumetric geometry.
     /// Returns None for empty the voxel cloud.
-    pub fn shrink_to_fit(&mut self) {
+    pub fn shrink_to_fit(&mut self, volume_value_interval: Interval<i16>) {
         if let Some((shrunk_block_start, shrunk_block_dimensions)) =
-            self.compute_volume_boundaries()
+            self.compute_volume_boundaries(volume_value_interval)
         {
             self.resize(&shrunk_block_start, &shrunk_block_dimensions);
         } else {
@@ -817,10 +827,13 @@ impl ScalarFiled {
 
     /// Returns the bounding box of the mesh produced by `ScalarFiled::to_mesh`
     /// for this voxel cloud in world space cartesian units.
-    pub fn mesh_volume_bounding_box_cartesian(&self) -> Option<BoundingBox<f32>> {
+    pub fn mesh_volume_bounding_box_cartesian(
+        &self,
+        volume_value_interval: Interval<i16>,
+    ) -> Option<BoundingBox<f32>> {
         let voxel_dimensions = self.voxel_dimensions;
-        self.compute_volume_boundaries()
-            .map(|(volume_start, volume_dimensions)| {
+        self.compute_volume_boundaries(volume_value_interval).map(
+            |(volume_start, volume_dimensions)| {
                 BoundingBox::new(
                     &Point3::new(
                         (volume_start.x as f32 - 0.5) * voxel_dimensions.x,
@@ -836,16 +849,20 @@ impl ScalarFiled {
                             * voxel_dimensions.z,
                     ),
                 )
-            })
+            },
+        )
     }
 
     /// Returns the bounding box in world space cartesian units of the current
     /// voxel cloud after shrinking to fit just the nonempty voxels.
     #[allow(dead_code)]
-    pub fn volume_bounding_box_cartesian(&self) -> Option<BoundingBox<f32>> {
+    pub fn volume_bounding_box_cartesian(
+        &self,
+        volume_value_interval: Interval<i16>,
+    ) -> Option<BoundingBox<f32>> {
         let voxel_dimensions = self.voxel_dimensions;
-        self.compute_volume_boundaries()
-            .map(|(volume_start, volume_dimensions)| {
+        self.compute_volume_boundaries(volume_value_interval).map(
+            |(volume_start, volume_dimensions)| {
                 BoundingBox::new(
                     &Point3::new(
                         (volume_start.x as f32) * voxel_dimensions.x,
@@ -858,14 +875,18 @@ impl ScalarFiled {
                         (volume_start.z as f32 + volume_dimensions.x as f32) * voxel_dimensions.z,
                     ),
                 )
-            })
+            },
+        )
     }
 
     /// Returns the bounding box in voxel units of the current voxel cloud after
     /// shrinking to fit just the nonempty voxels.
-    pub fn volume_bounding_box(&self) -> Option<BoundingBox<i32>> {
-        self.compute_volume_boundaries()
-            .map(|(volume_start, volume_dimensions)| {
+    pub fn volume_bounding_box(
+        &self,
+        volume_value_interval: Interval<i16>,
+    ) -> Option<BoundingBox<i32>> {
+        self.compute_volume_boundaries(volume_value_interval).map(
+            |(volume_start, volume_dimensions)| {
                 let volume_end = volume_start
                     + Vector3::new(
                         cast_i32(volume_dimensions.x),
@@ -873,7 +894,8 @@ impl ScalarFiled {
                         cast_i32(volume_dimensions.z),
                     );
                 BoundingBox::new(&volume_start, &volume_end)
-            })
+            },
+        )
     }
 
     /// Fill hollow volumes in voxel cloud. The original voxel cloud will be
@@ -972,13 +994,16 @@ impl ScalarFiled {
     /// Computes boundaries of volumes contained in voxel cloud. Returns tuple
     /// (block_start, block_dimensions). For empty voxel clouds returns the
     /// original block start and zero block dimensions.
-    fn compute_volume_boundaries(&self) -> Option<(Point3<i32>, Vector3<u32>)> {
+    fn compute_volume_boundaries(
+        &self,
+        volume_value_interval: Interval<i16>,
+    ) -> Option<(Point3<i32>, Vector3<u32>)> {
         let mut min: Vector3<i32> =
             Vector3::new(i32::max_value(), i32::max_value(), i32::max_value());
         let mut max: Vector3<i32> =
             Vector3::new(i32::min_value(), i32::min_value(), i32::min_value());
         for (i, v) in self.values.iter().enumerate() {
-            if *v != EMPTY {
+            if volume_value_interval.includes_closed(*v) {
                 let relative_coordinate =
                     one_dimensional_to_relative_voxel_coordinate(i, &self.block_dimensions)
                         .expect("Out of bounds");
@@ -1321,7 +1346,7 @@ mod tests {
         sf_b.fill_with(0);
         sf_correct.fill_with(0);
 
-        sf_a.boolean_intersection(&sf_b, Interval::new(0, 0));
+        sf_a.boolean_intersection(Interval::new(0, 0), &sf_b, Interval::new(0, 0));
 
         assert_eq!(sf_a, sf_correct);
     }
@@ -1350,7 +1375,7 @@ mod tests {
         sf_correct.fill_with(0);
         sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), EMPTY);
 
-        sf_a.boolean_intersection(&sf_b, Interval::new(0, 0));
+        sf_a.boolean_intersection(Interval::new(0, 0), &sf_b, Interval::new(0, 0));
 
         assert_eq!(sf_a, sf_correct);
     }
@@ -1564,7 +1589,7 @@ mod tests {
             &Vector3::new(1.0, 1.0, 1.0),
         );
         scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 1, 1), 0);
-        scalar_field.shrink_to_fit();
+        scalar_field.shrink_to_fit(Interval::new(0, 0));
 
         assert_eq!(scalar_field.block_start, Point3::new(1, 1, 1));
         assert_eq!(scalar_field.block_dimensions, Vector3::new(1, 1, 1));
@@ -1584,7 +1609,7 @@ mod tests {
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
         );
-        scalar_field.shrink_to_fit();
+        scalar_field.shrink_to_fit(Interval::new(0, 0));
 
         assert_eq!(scalar_field.block_start, Point3::origin());
         assert_eq!(scalar_field.block_dimensions, Vector3::new(0, 0, 0));
