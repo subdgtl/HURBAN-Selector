@@ -343,6 +343,11 @@ impl<'a> UiFrame<'a> {
                     &mut screenshot_options.transparent,
                 );
 
+                ui.text(imgui::im_str!(
+                    "Attempting to take screenshots may crash the program."
+                ));
+                ui.text(imgui::im_str!("Be sure to save your work."));
+
                 if ui.button(imgui::im_str!("Take Screenshot"), [0.0, 0.0]) {
                     take_screenshot_clicked = true;
                 }
