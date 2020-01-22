@@ -32,7 +32,7 @@ jobs:
       - script: choco install -y ninja
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: "3.8.0"
+          versionSpec: "3.8.1"
           addToPath: true
           architecture: "x64"
       - template: test-all-release.yml
