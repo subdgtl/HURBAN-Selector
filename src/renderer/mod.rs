@@ -591,7 +591,7 @@ impl CommandBuffer<'_> {
         mesh_handles: H,
         mode: DrawMeshMode,
     ) where
-        H: IntoIterator<Item = &'a GpuMeshHandle> + Clone,
+        H: Iterator<Item = &'a GpuMeshHandle> + Clone,
     {
         self.scene_renderer.draw_meshes(
             mode,
@@ -617,7 +617,7 @@ impl CommandBuffer<'_> {
         mesh_handles: H,
         mode: DrawMeshMode,
     ) where
-        H: IntoIterator<Item = &'a GpuMeshHandle> + Clone,
+        H: Iterator<Item = &'a GpuMeshHandle> + Clone,
     {
         let offscreen_render_target = &self.offscreen_render_targets[&render_target_handle.0];
         let offscreen_render_target_needs_clearing = self

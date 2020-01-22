@@ -642,7 +642,7 @@ impl SceneRenderer {
         depth_attachment: &wgpu::TextureView,
         handles: H,
     ) where
-        H: IntoIterator<Item = &'a GpuMeshHandle> + Clone,
+        H: Iterator<Item = &'a GpuMeshHandle> + Clone,
     {
         let load_op = if color_and_depth_need_clearing {
             wgpu::LoadOp::Clear
