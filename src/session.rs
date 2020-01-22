@@ -1,8 +1,9 @@
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::{BTreeMap, HashSet};
+use std::fmt;
 
 use crate::interpreter::ast::{FuncIdent, Prog, Stmt, VarIdent};
-use crate::interpreter::{Func, LogMessage, Ty, Value};
+use crate::interpreter::{Func, InterpretError, LogMessage, Ty, Value};
 use crate::interpreter_funcs;
 use crate::interpreter_server::{
     InterpreterRequest, InterpreterResponse, InterpreterServer, PollResponseError, RequestId,
@@ -32,6 +33,7 @@ pub struct Session {
 
     prog: Prog,
     log_messages: Vec<Vec<LogMessage>>,
+    error: Option<InterpretError>,
 
     unused_values: HashMap<VarIdent, Value>,
 
@@ -56,6 +58,7 @@ impl Session {
 
             prog: Prog::new(Vec::new()),
             log_messages: Vec::new(),
+            error: None,
 
             unused_values: HashMap::new(),
 
@@ -96,6 +99,7 @@ impl Session {
 
         self.prog.push_stmt(stmt.clone());
         self.log_messages.push(Vec::new());
+        self.error = None;
 
         let request_id = self
             .interpreter_server
@@ -125,6 +129,7 @@ impl Session {
 
         self.prog.pop_stmt();
         self.log_messages.pop();
+        self.error = None;
 
         let request_id = self
             .interpreter_server
@@ -144,7 +149,7 @@ impl Session {
     ///
     /// # Panics
     /// Panics if the interpreter is busy.
-    pub fn set_prog_stmt_at(&mut self, index: usize, stmt: Stmt) {
+    pub fn set_prog_stmt_at(&mut self, stmt_index: usize, stmt: Stmt) {
         // This is because the current session could want to report
         // errors and we would like to show them somewhere
         assert!(
@@ -155,20 +160,21 @@ impl Session {
         // If we are replacing one function call with a completely
         // different function call (as opposed to just updating
         // parameters), we want to clear the logs.
-        let current_stmt = &self.prog.stmts()[index];
+        let current_stmt = &self.prog.stmts()[stmt_index];
         match (current_stmt, &stmt) {
             (Stmt::VarDecl(current_var_decl), Stmt::VarDecl(new_var_decl)) => {
                 if current_var_decl.init_expr().ident() != new_var_decl.init_expr().ident() {
-                    self.log_messages[index].clear();
+                    self.log_messages[stmt_index].clear();
                 }
             }
         }
 
-        self.prog.set_stmt_at(index, stmt.clone());
+        self.prog.set_stmt_at(stmt_index, stmt.clone());
+        self.error = None;
 
         let request_id = self
             .interpreter_server
-            .submit_request(InterpreterRequest::SetProgStmtAt(index, stmt));
+            .submit_request(InterpreterRequest::SetProgStmtAt(stmt_index, stmt));
         let tracked = self
             .interpreter_edit_prog_requests_in_flight
             .insert(request_id);
@@ -224,7 +230,7 @@ impl Session {
     /// (index) in the program.
     pub fn visible_vars_at_stmt<'a>(
         &'a self,
-        index: usize,
+        stmt_index: usize,
         ty: Ty,
     ) -> impl Iterator<Item = VarIdent> + Clone + 'a {
         static EMPTY: Vec<Option<VarIdent>> = Vec::new();
@@ -234,14 +240,24 @@ impl Session {
             _ => &EMPTY,
         };
 
-        var_visibility[0..index]
+        var_visibility[0..stmt_index]
             .iter()
             .filter_map(|var_ident| var_ident.as_ref())
             .copied()
     }
 
-    pub fn log_messages_at_stmt(&self, index: usize) -> &[LogMessage] {
-        &self.log_messages[index]
+    pub fn log_messages_at_stmt(&self, stmt_index: usize) -> &[LogMessage] {
+        &self.log_messages[stmt_index]
+    }
+
+    pub fn error_at_stmt(&self, stmt_index: usize) -> Option<&impl fmt::Display> {
+        self.error.as_ref().and_then(|err| {
+            if stmt_index == err.stmt_index() {
+                Some(err)
+            } else {
+                None
+            }
+        })
     }
 
     /// Returns whether the interpreter is currently running. Program
@@ -394,13 +410,19 @@ impl Session {
                                             ));
                                         }
                                     }
+
+                                    // Impure funcs (think import) can sometimes succeed
+                                    // with the same parameters for which they previously
+                                    // failed. We want to clear the error in this case.
+                                    self.error = None;
                                 }
                                 Err(interpret_error) => {
-                                    // FIXME: Display error on UI
                                     log::error!(
                                         "Interpreter failed with error: {}",
                                         interpret_error
                                     );
+
+                                    self.error = Some(interpret_error);
                                 }
                             }
 
