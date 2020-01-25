@@ -5,11 +5,13 @@ use std::sync::Arc;
 
 use nalgebra::{Rotation, Vector3};
 
+use crate::convert::clamp_cast_u32_to_i16;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncError,
     FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::voxel_cloud::VoxelCloud;
+use crate::interval::Interval;
+use crate::mesh::scalar_field::ScalarField;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncVoxelTransformError {
@@ -147,23 +149,27 @@ impl Func for FuncVoxelTransform {
             return Err(FuncError::new(FuncVoxelTransformError::VoxelDimensionZero));
         }
 
-        let growth_iterations = args[2].unwrap_uint();
+        let growth_u32 = args[2].unwrap_uint();
+        let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[3].unwrap_boolean();
         let translate = Vector3::from(args[4].unwrap_float3());
         let rotate = args[5].unwrap_float3();
         let scale = args[6].unwrap_float3();
 
-        let mut voxel_cloud = VoxelCloud::from_mesh(
+        let mut scalar_field = ScalarField::from_mesh(
             mesh,
             &Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension),
+            0,
+            growth_u32,
         );
-        for _ in 0..growth_iterations {
-            voxel_cloud.grow_volume();
-        }
 
-        if fill {
-            voxel_cloud.fill_volumes();
-        }
+        scalar_field.compute_distance_filed(Interval::new(0, 0));
+
+        let meshing_interval = if fill {
+            Interval::new_left_infinite(growth_i16)
+        } else {
+            Interval::new(-growth_i16, growth_i16)
+        };
 
         let rotation = Rotation::from_euler_angles(
             rotate[0].to_radians(),
@@ -173,14 +179,15 @@ impl Func for FuncVoxelTransform {
 
         let scaling = Vector3::from(scale);
 
-        if let Some(transformed_vc) = VoxelCloud::from_voxel_cloud_transformed(
-            &voxel_cloud,
+        if let Some(transformed_vc) = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            Interval::new(0, 0),
             voxel_dimension,
             &translate,
             &rotation,
             &scaling,
         ) {
-            match transformed_vc.to_mesh() {
+            match transformed_vc.to_mesh(meshing_interval) {
                 Some(value) => Ok(Value::Mesh(Arc::new(value))),
                 None => Err(FuncError::new(FuncVoxelTransformError::WeldFailed)),
             }
