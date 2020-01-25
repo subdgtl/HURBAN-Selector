@@ -5,11 +5,13 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 
+use crate::convert::clamp_cast_u32_to_i16;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::voxel_cloud::VoxelCloud;
+use crate::interval::Interval;
+use crate::mesh::scalar_field::ScalarField;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncVoxelizeError {
@@ -97,23 +99,26 @@ impl Func for FuncVoxelize {
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let voxel_dimensions = args[1].unwrap_float3();
-        let growth_iterations = args[2].unwrap_uint();
+        let growth_u32 = args[2].unwrap_uint();
+        let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[3].unwrap_boolean();
 
-        let mut voxel_cloud = VoxelCloud::from_mesh(mesh, &Vector3::from(voxel_dimensions));
-        for _ in 0..growth_iterations {
-            voxel_cloud.grow_volume();
-        }
+        let mut scalar_field =
+            ScalarField::from_mesh(mesh, &Vector3::from(voxel_dimensions), 0, growth_u32);
 
-        if fill {
-            voxel_cloud.fill_volumes();
-        }
+        scalar_field.compute_distance_filed(Interval::new(0, 0));
 
-        if !voxel_cloud.contains_voxels() {
+        if !scalar_field.contains_voxels() {
             return Err(FuncError::new(FuncVoxelizeError::EmptyVoxelCloud));
         }
 
-        match voxel_cloud.to_mesh() {
+        let meshing_interval = if fill {
+            Interval::new_left_infinite(growth_i16)
+        } else {
+            Interval::new(-growth_i16, growth_i16)
+        };
+
+        match scalar_field.to_mesh(meshing_interval) {
             Some(value) => Ok(Value::Mesh(Arc::new(value))),
             None => Err(FuncError::new(FuncVoxelizeError::WeldFailed)),
         }

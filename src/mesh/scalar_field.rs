@@ -1146,17 +1146,18 @@ impl ScalarField {
                     {
                         // if they are void, add them to the processing queue
                         if !volume_value_interval.includes_closed(neighbor_value) {
-                            let one_dimensional_neighbor =
+                            if let Some(one_dimensional_neighbor) =
                                 absolute_voxel_to_one_dimensional_coordinate(
                                     &neighbor_absolute_coordinate,
                                     &self.block_start,
                                     &self.block_dimensions,
                                 )
-                                .expect("The neighbor coordinate doesn't exist");
-                            // with the current distance from the volume 1
-                            queue_to_compute_distance.push_back((one_dimensional_neighbor, 1));
-                            // and mark them discovered
-                            discovered_as_empty[one_dimensional_neighbor] = true;
+                            {
+                                // with the current distance from the volume 1
+                                queue_to_compute_distance.push_back((one_dimensional_neighbor, 1));
+                                // and mark them discovered
+                                discovered_as_empty[one_dimensional_neighbor] = true;
+                            }
                         }
                     }
                 }
@@ -1217,25 +1218,24 @@ impl ScalarField {
             // Check each neighbor
             for neighbor_offset in &neighbor_offsets {
                 let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
-                let one_dimensional_neighbor = absolute_voxel_to_one_dimensional_coordinate(
+                // If the neighbor does exist
+                if let Some(one_dimensional_neighbor) = absolute_voxel_to_one_dimensional_coordinate(
                     &neighbor_absolute_coordinate,
                     &self.block_start,
                     &self.block_dimensions,
-                )
-                .expect("The neighbor coordinate doesn't exist");
-                // If the neighbor hasn't been discovered yet
-                if !discovered_as_empty[one_dimensional_neighbor] {
-                    // And if it does exist
-                    if let Some(neighbor_value) =
-                        self.value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
-                    {
-                        // And if it is void
+                ) {
+                    // and hasn't been discovered yet
+                    if !discovered_as_empty[one_dimensional_neighbor] {
+                        let neighbor_value = self
+                            .value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
+                            .expect("The neighbor voxel doesn't exist");
+                        // and is void,
                         if !volume_value_interval.includes_closed(neighbor_value) {
-                            // Put it into the processing queue with the
+                            // put it into the processing queue with the
                             // distance one higher than the current
                             queue_to_compute_distance
                                 .push_back((one_dimensional_neighbor, distance + 1));
-                            // And mark it discovered
+                            // and mark it discovered.
                             discovered_as_empty[one_dimensional_neighbor] = true;
                         }
                     }
