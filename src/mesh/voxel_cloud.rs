@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::f32;
 
-use nalgebra::{Matrix4, Point3, Rotation, Vector2, Vector3};
+use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
 
 use crate::bounding_box::BoundingBox;
 use crate::convert::{cast_i32, cast_u32, cast_usize, clamp_cast_i32_to_u32};
@@ -144,6 +144,7 @@ impl VoxelCloud {
 
     /// Creates a new voxel cloud with arbitrary voxel dimensions from another
     /// voxel cloud.
+    ///
     /// # Panics
     /// Panics if any of the voxel dimensions is below or equal to zero.
     pub fn from_voxel_cloud(
@@ -155,16 +156,15 @@ impl VoxelCloud {
             "One mor more voxel dimensions is below or equal to zero"
         );
 
+        // New voxel cloud that can encompass the source voxel cloud's mesh.
         source_voxel_cloud
             .mesh_volume_bounding_box_cartesian()
-            .map(|current_vc_bounding_box| {
+            .map(|source_vc_bounding_box| {
                 // Make a bounding box of the source bounding box's mesh volume.
                 // This will be the volume to be scanned for any voxels.
 
-                // New voxel cloud that can encompass the source
-                // voxel cloud's mesh.
                 let mut target_voxel_cloud = VoxelCloud::from_cartesian_bounding_box(
-                    &current_vc_bounding_box,
+                    &source_vc_bounding_box,
                     &voxel_dimensions,
                 );
 
@@ -185,33 +185,50 @@ impl VoxelCloud {
                         .unwrap_or(false);
                 }
 
+                // FIXME: @Optimization Due to overly safe
+                // mesh_volume_bounding_box_cartesian, the voxel cloud may be
+                // unnecessarily big.
+                target_voxel_cloud.shrink_to_fit();
+
                 target_voxel_cloud
             })
     }
 
     /// Creates a new voxel cloud from another voxel cloud transformed (scaled,
     /// rotated, moved) in a cartesian space.
+    ///
     /// # Panics
     /// Panics if any of the voxel dimensions is below or equal to zero.
     pub fn from_voxel_cloud_transformed(
         source_voxel_cloud: &VoxelCloud,
         voxel_dimension: f32,
         cartesian_translation: &Vector3<f32>,
-        rotation_degrees: &(f32, f32, f32),
-        scale: &(f32, f32, f32),
+        rotation: &Rotation3<f32>,
+        scale: &Vector3<f32>,
     ) -> Option<Self> {
+        let euler_angles = rotation.euler_angles();
         if approx::relative_eq!(cartesian_translation, &Vector3::zeros())
-            && approx::relative_eq!(rotation_degrees.0, 0.0)
-            && approx::relative_eq!(rotation_degrees.1, 0.0)
-            && approx::relative_eq!(rotation_degrees.2, 0.0)
-            && approx::relative_eq!(scale.0, 1.0)
-            && approx::relative_eq!(scale.1, 1.0)
-            && approx::relative_eq!(scale.2, 1.0)
+            && approx::relative_eq!(euler_angles.0, 0.0)
+            && approx::relative_eq!(euler_angles.1, 0.0)
+            && approx::relative_eq!(euler_angles.2, 0.0)
+            && approx::relative_eq!(scale, &Vector3::new(1.0, 1.0, 1.0))
         {
-            return VoxelCloud::from_voxel_cloud(
-                source_voxel_cloud,
-                &Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension),
-            );
+            if approx::relative_eq!(voxel_dimension, source_voxel_cloud.voxel_dimensions.x)
+                && approx::relative_eq!(voxel_dimension, source_voxel_cloud.voxel_dimensions.y)
+                && approx::relative_eq!(voxel_dimension, source_voxel_cloud.voxel_dimensions.z)
+            {
+                return Some(VoxelCloud {
+                    block_start: source_voxel_cloud.block_start,
+                    block_dimensions: source_voxel_cloud.block_dimensions,
+                    voxel_dimensions: source_voxel_cloud.voxel_dimensions,
+                    voxel_map: source_voxel_cloud.voxel_map.to_vec(),
+                });
+            } else {
+                return VoxelCloud::from_voxel_cloud(
+                    source_voxel_cloud,
+                    &Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension),
+                );
+            }
         }
 
         assert!(
@@ -219,90 +236,93 @@ impl VoxelCloud {
             "Voxel dimension is below or equal to zero"
         );
 
-        source_voxel_cloud
-            .mesh_volume_bounding_box_cartesian()
-            .map(|current_vc_bounding_box| {
-                // FIXME: Heterogenous voxels require non-trivial compensation
-                // of final voxel cloud position after rotating if the volume
-                // equilibrium is not at the world origin.
-                let voxel_dimensions =
-                    Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension);
-                // Make a bounding box of the source bounding box's mesh volume.
-                // This will be the volume to be scanned for any voxels.
-                let user_rotation = Rotation::from_euler_angles(
-                    rotation_degrees.0.to_radians(),
-                    rotation_degrees.1.to_radians(),
-                    rotation_degrees.2.to_radians(),
-                );
-                let scaling_vector = Vector3::new(scale.0, scale.1, scale.2);
-                let vector_to_origin = Vector3::zeros() - current_vc_bounding_box.center().coords;
+        // Make a bounding box of the source bounding box's mesh volume. This
+        // will be the volume to be scanned for any voxels.
+        if let Some(source_vc_bounding_box) =
+            source_voxel_cloud.mesh_volume_bounding_box_cartesian()
+        {
+            // FIXME: Heterogenous voxels require non-trivial compensation
+            // of final voxel cloud position after rotating if the volume
+            // equilibrium is not at the world origin.
+            let voxel_dimensions = Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension);
 
-                // Transform the source mesh volume and calculate a new bounding
-                // box that will encompass the transformed source voxel cloud.
-                let transformation_to_origin = Matrix4::new_translation(&vector_to_origin);
-                let compound_transformation =
-                    Matrix4::from(user_rotation) * Matrix4::new_nonuniform_scaling(&scaling_vector);
+            let vector_to_origin = Vector3::zeros() - source_vc_bounding_box.center().coords;
 
-                let current_vc_bounding_box_corners = current_vc_bounding_box.corners();
-                let transformed_bounding_box_corners =
-                    current_vc_bounding_box_corners.iter().map(|v| {
-                        let v1 = transformation_to_origin.transform_point(v);
-                        compound_transformation.transform_point(&v1)
-                    });
+            // Transform the source mesh volume and calculate a new bounding
+            // box that will encompass the transformed source voxel cloud.
+            let transformation_to_origin = Matrix4::new_translation(&vector_to_origin);
+            let compound_transformation =
+                Matrix4::from(*rotation) * Matrix4::new_nonuniform_scaling(&scale);
 
-                let transformed_bounding_box =
-                    BoundingBox::from_points(transformed_bounding_box_corners)
-                        .expect("No input bounding box");
+            let source_vc_bounding_box_corners = source_vc_bounding_box.corners();
+            let transformed_bounding_box_corners = source_vc_bounding_box_corners.iter().map(|v| {
+                let v1 = transformation_to_origin.transform_point(v);
+                compound_transformation.transform_point(&v1)
+            });
 
-                // New voxel cloud that can encompass the transformed source
-                // voxel cloud's mesh.
-                let mut target_voxel_cloud = VoxelCloud::from_cartesian_bounding_box(
-                    &transformed_bounding_box,
-                    &voxel_dimensions,
-                );
+            let transformed_bounding_box =
+                BoundingBox::from_points(transformed_bounding_box_corners)
+                    .expect("No input bounding box");
 
-                // Transform the target voxels inverse to the user
-                // transformation so that it is possible to sample the source
-                // voxel cloud.
-                let reversed_user_transformation = compound_transformation
-                    .pseudo_inverse(f32::EPSILON)
-                    .expect("No pseudo inverse matrix");
+            // New voxel cloud that can encompass the transformed source
+            // voxel cloud's mesh.
+            let mut target_voxel_cloud = VoxelCloud::from_cartesian_bounding_box(
+                &transformed_bounding_box,
+                &voxel_dimensions,
+            );
 
-                for (one_dimensional, voxel) in target_voxel_cloud.voxel_map.iter_mut().enumerate()
-                {
-                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                        one_dimensional,
-                        &target_voxel_cloud.block_start,
-                        &target_voxel_cloud.block_dimensions,
-                        &target_voxel_cloud.voxel_dimensions,
+            // Transform the target voxels inverse to the user
+            // transformation so that it is possible to sample the source
+            // voxel cloud.
+            match compound_transformation.pseudo_inverse(f32::EPSILON) {
+                Ok(reversed_user_transformation) => {
+                    for (one_dimensional, voxel) in
+                        target_voxel_cloud.voxel_map.iter_mut().enumerate()
+                    {
+                        let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                            one_dimensional,
+                            &target_voxel_cloud.block_start,
+                            &target_voxel_cloud.block_dimensions,
+                            &target_voxel_cloud.voxel_dimensions,
+                        )
+                        .expect("Index out of bounds");
+
+                        // Transform each new voxel inverse to the user
+                        // transformation.
+                        let transformed_voxel_center_cartesian = reversed_user_transformation
+                            .transform_point(&cartesian_coordinate)
+                            - vector_to_origin;
+
+                        // Set the new voxel state according to a sampled value from
+                        // the source voxel cloud.
+                        *voxel = source_voxel_cloud
+                            .voxel_at_cartesian_coords(&transformed_voxel_center_cartesian)
+                            .unwrap_or(false);
+                    }
+
+                    let cartesian_final_translation_vector =
+                        cartesian_translation - vector_to_origin;
+
+                    let voxel_final_translation_vector = cartesian_to_absolute_voxel_coordinate(
+                        &Point3::from(cartesian_final_translation_vector),
+                        &voxel_dimensions,
                     )
-                    .expect("Index out of bounds");
+                    .coords;
 
-                    // Transform each new voxel inverse to the user
-                    // transformation.
-                    let transformed_voxel_center_cartesian = reversed_user_transformation
-                        .transform_point(&cartesian_coordinate)
-                        - vector_to_origin;
+                    target_voxel_cloud.block_start += voxel_final_translation_vector;
 
-                    // Set the new voxel state according to a sampled value from
-                    // the source voxel cloud.
-                    *voxel = source_voxel_cloud
-                        .voxel_at_cartesian_coords(&transformed_voxel_center_cartesian)
-                        .unwrap_or(false);
+                    // FIXME: @Optimization Due to overly safe
+                    // mesh_volume_bounding_box_cartesian, the voxel cloud may
+                    // be unnecessarily big.
+                    target_voxel_cloud.shrink_to_fit();
+
+                    Some(target_voxel_cloud)
                 }
-
-                let cartesian_final_translation_vector =
-                    (-1.0 * vector_to_origin) + cartesian_translation;
-
-                let voxel_final_translation_vector = cartesian_to_absolute_voxel_coordinate(
-                    &Point3::from(cartesian_final_translation_vector),
-                    &voxel_dimensions,
-                )
-                .coords;
-
-                target_voxel_cloud.block_start += voxel_final_translation_vector;
-                target_voxel_cloud
-            })
+                _ => None,
+            }
+        } else {
+            None
+        }
     }
 
     /// Clears the voxel cloud, sets its block dimensions to zero.
@@ -846,9 +866,9 @@ impl VoxelCloud {
                     &Point3::new(
                         (volume_start.x as f32 + volume_dimensions.x as f32 + 0.5)
                             * voxel_dimensions.x,
-                        (volume_start.y as f32 + volume_dimensions.x as f32 + 0.5)
+                        (volume_start.y as f32 + volume_dimensions.y as f32 + 0.5)
                             * voxel_dimensions.y,
-                        (volume_start.z as f32 + volume_dimensions.x as f32 + 0.5)
+                        (volume_start.z as f32 + volume_dimensions.z as f32 + 0.5)
                             * voxel_dimensions.z,
                     ),
                 )
@@ -1580,5 +1600,157 @@ mod tests {
         assert_eq!(voxel_cloud.block_start, Point3::origin());
         assert_eq!(voxel_cloud.block_dimensions, Vector3::new(0, 0, 0));
         assert_eq!(voxel_cloud.voxel_map.len(), 0);
+    }
+
+    #[test]
+    fn test_voxel_cloud_transform_box_at_origin_identity() {
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25));
+        let transformed_voxel_cloud = VoxelCloud::from_voxel_cloud_transformed(
+            &voxel_cloud,
+            0.25,
+            &Vector3::zeros(),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        assert_eq!(transformed_voxel_cloud, voxel_cloud);
+    }
+
+    #[test]
+    fn test_voxel_cloud_transform_box_at_random_location_identity() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25));
+        let transformed_voxel_cloud = VoxelCloud::from_voxel_cloud_transformed(
+            &voxel_cloud,
+            0.25,
+            &Vector3::zeros(),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        assert_eq!(transformed_voxel_cloud, voxel_cloud);
+    }
+
+    #[test]
+    fn test_voxel_cloud_transform_box_at_random_location_rotated_identity() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25));
+        let transformed_voxel_cloud = VoxelCloud::from_voxel_cloud_transformed(
+            &voxel_cloud,
+            0.25,
+            &Vector3::zeros(),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        assert_eq!(transformed_voxel_cloud, voxel_cloud);
+    }
+
+    #[test]
+    fn test_voxel_cloud_transform_sub_voxel_translation() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25));
+        let transformed_voxel_cloud = VoxelCloud::from_voxel_cloud_transformed(
+            &voxel_cloud,
+            0.25,
+            &Vector3::new(0.1, 0.1, 0.1),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        insta::assert_json_snapshot!(
+            "voxel_cloud, transform_sub_voxel_translation",
+            &transformed_voxel_cloud
+        );
+    }
+
+    #[test]
+    fn test_voxel_cloud_transform_voxel_size_translation() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25));
+        let transformed_voxel_cloud = VoxelCloud::from_voxel_cloud_transformed(
+            &voxel_cloud,
+            0.25,
+            &Vector3::new(0.0, 0.0, 0.25),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        insta::assert_json_snapshot!(
+            "voxel_cloud_transform_voxel_size_translation",
+            &transformed_voxel_cloud
+        );
+    }
+
+    #[test]
+    fn test_voxel_cloud_transform_arbitrary_translation() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25));
+        let transformed_voxel_cloud = VoxelCloud::from_voxel_cloud_transformed(
+            &voxel_cloud,
+            0.25,
+            &Vector3::new(0.4, 0.6, 0.7),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        insta::assert_json_snapshot!(
+            "voxel_cloud_transform_arbitrary_translation",
+            &transformed_voxel_cloud
+        );
+    }
+
+    #[test]
+    fn test_voxel_cloud_arbitrary_transform() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let voxel_cloud = VoxelCloud::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25));
+        let transformed_voxel_cloud = VoxelCloud::from_voxel_cloud_transformed(
+            &voxel_cloud,
+            0.25,
+            &Vector3::new(0.4, 0.6, 0.7),
+            &Rotation3::from_euler_angles(25.0, 37.0, 42.0),
+            &Vector3::new(1.5, 1.76, 0.5),
+        )
+        .unwrap();
+
+        insta::assert_json_snapshot!(
+            "voxel_cloud_arbitrary_transform",
+            &transformed_voxel_cloud
+        );
     }
 }

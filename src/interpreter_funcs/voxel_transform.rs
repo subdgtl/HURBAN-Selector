@@ -3,7 +3,7 @@ use std::f32;
 use std::fmt;
 use std::sync::Arc;
 
-use nalgebra::Vector3;
+use nalgebra::{Rotation, Vector3};
 
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncError,
@@ -165,9 +165,13 @@ impl Func for FuncVoxelTransform {
             voxel_cloud.fill_volumes();
         }
 
-        let rotation = (rotate[0], rotate[1], rotate[2]);
+        let rotation = Rotation::from_euler_angles(
+            rotate[0].to_radians(),
+            rotate[1].to_radians(),
+            rotate[2].to_radians(),
+        );
 
-        let scaling = (scale[0], scale[1], scale[2]);
+        let scaling = Vector3::from(scale);
 
         if let Some(transformed_vc) = VoxelCloud::from_voxel_cloud_transformed(
             &voxel_cloud,
