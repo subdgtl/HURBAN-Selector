@@ -1,5 +1,4 @@
 use std::fmt;
-use std::sync::Arc;
 
 /// A unique function identifier.
 ///
@@ -167,7 +166,7 @@ pub enum LitExpr {
     Float(f32),
     Float2([f32; 2]),
     Float3([f32; 3]),
-    String(Arc<String>),
+    String(String),
 }
 
 impl LitExpr {

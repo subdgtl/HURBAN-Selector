@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::f32;
-use std::sync::Arc;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
@@ -496,7 +495,6 @@ impl<'a> UiFrame<'a> {
                                                     &mut imstring_buffer,
                                                 ) {
                                                     let string_value = format!("{}", imstring_buffer);
-                                                    let string_value = Arc::new(string_value);
                                                     change = Some((
                                                         stmt_index,
                                                         arg_index,
@@ -508,7 +506,6 @@ impl<'a> UiFrame<'a> {
                                                 .read_only(interpreter_busy)
                                                 .build() {
                                                     let string_value = format!("{}", imstring_buffer);
-                                                    let string_value = Arc::new(string_value);
                                                     change = Some((
                                                         stmt_index,
                                                         arg_index,
@@ -807,7 +804,7 @@ impl<'a> UiFrame<'a> {
                     }
                     ParamRefinement::String(string_param_refinement) => {
                         let initial_value = String::from(string_param_refinement.default_value);
-                        ast::Expr::Lit(ast::LitExpr::String(Arc::new(initial_value)))
+                        ast::Expr::Lit(ast::LitExpr::String(initial_value))
                     }
                     ParamRefinement::Mesh => {
                         let one_past_last_stmt = session.stmts().len();
