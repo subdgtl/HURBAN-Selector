@@ -50,7 +50,6 @@ impl ScalarField {
     /// `block_start`(in discrete voxel units), has dimensions
     /// `block_dimensions` (in discrete voxel units) and contains voxels sized
     /// `voxel_dimensions` (in model space units).
-    #[allow(dead_code)]
     pub fn new(
         block_start: &Point3<i32>,
         block_dimensions: &Vector3<u32>,
@@ -74,7 +73,6 @@ impl ScalarField {
     ///
     /// # Panics
     /// Panics if any of the voxel dimensions is below or equal to zero.
-    #[allow(dead_code)]
     pub fn from_cartesian_bounding_box(
         bounding_box: &BoundingBox<f32>,
         voxel_dimensions: &Vector3<f32>,
@@ -113,7 +111,6 @@ impl ScalarField {
     /// the void voxels.
     ///
     /// Panics if any of the voxel dimensions is below or equal to zero.
-    #[allow(dead_code)]
     pub fn from_mesh(
         mesh: &Mesh,
         voxel_dimensions: &Vector3<f32>,
@@ -205,7 +202,6 @@ impl ScalarField {
     ///
     /// # Panics
     /// Panics if any of the voxel dimensions is below or equal to zero.
-    #[allow(dead_code)]
     pub fn from_scalar_field(
         source_scalar_field: &ScalarField,
         volume_value_interval: Interval<i16>,
@@ -263,7 +259,6 @@ impl ScalarField {
     ///
     /// # Panics
     /// Panics if the voxel dimension is below or equal to zero.
-    #[allow(dead_code)]
     pub fn from_scalar_field_transformed(
         source_scalar_field: &ScalarField,
         volume_value_interval: Interval<i16>,
@@ -400,6 +395,7 @@ impl ScalarField {
     }
 
     /// Returns scalar field block end in absolute voxel coordinates.
+    #[allow(dead_code)]
     fn block_end(&self) -> Point3<i32> {
         Point3::new(
             self.block_start.x + cast_i32(self.block_dimensions.x) - 1,
@@ -409,7 +405,6 @@ impl ScalarField {
     }
 
     /// Returns single voxel dimensions in cartesian units.
-    #[allow(dead_code)]
     pub fn voxel_dimensions(&self) -> Vector3<f32> {
         self.voxel_dimensions
     }
@@ -422,7 +417,6 @@ impl ScalarField {
 
     /// Checks if the scalar field contains any voxel with a value from the
     /// given interval.
-    #[allow(dead_code)]
     pub fn contains_voxels_within_interval(&self, volume_value_interval: Interval<i16>) -> bool {
         self.values
             .iter()
@@ -433,7 +427,6 @@ impl ScalarField {
     /// another scalar field. The current scalar field will be mutated and
     /// resized to the size and position of an intersection of the two scalar
     /// fields' volumes.
-    #[allow(dead_code)]
     pub fn boolean_intersection(
         &mut self,
         volume_value_interval_self: Interval<i16>,
@@ -507,7 +500,6 @@ impl ScalarField {
     /// # Warning
     /// If the input scalar fields are far apart, the resulting scalar field may
     /// be huge.
-    #[allow(dead_code)]
     pub fn boolean_union(
         &mut self,
         volume_value_interval_self: Interval<i16>,
@@ -567,7 +559,6 @@ impl ScalarField {
     /// scalar field. The current scalar field will be modified so that voxels,
     /// that are on in both scalar fields will be turned off, while the rest
     /// remains intact.
-    #[allow(dead_code)]
     pub fn boolean_difference(
         &mut self,
         volume_value_interval_self: Interval<i16>,
@@ -724,7 +715,6 @@ impl ScalarField {
     /// For watertight meshes this creates both, outer and inner boundary mesh.
     /// There is also a high risk of generating a non-manifold mesh if some
     /// voxels touch only diagonally.
-    #[allow(dead_code)]
     pub fn to_mesh(&self, volume_value_interval: Interval<i16>) -> Option<Mesh> {
         if self.block_dimensions.x == 0
             || self.block_dimensions.y == 0
@@ -884,32 +874,6 @@ impl ScalarField {
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
-    /// Returns the bounding box of this scalar field in cartesian units.
-    #[allow(dead_code)]
-    pub fn bounding_box_cartesian(&self) -> BoundingBox<f32> {
-        let voxel_dimensions = self.voxel_dimensions;
-        let block_start = self.block_start;
-        let block_end = self.block_end();
-        BoundingBox::new(
-            &Point3::new(
-                block_start.x as f32 * voxel_dimensions.x,
-                block_start.y as f32 * voxel_dimensions.y,
-                block_start.z as f32 * voxel_dimensions.z,
-            ),
-            &Point3::new(
-                block_end.x as f32 * voxel_dimensions.x,
-                block_end.y as f32 * voxel_dimensions.y,
-                block_end.z as f32 * voxel_dimensions.z,
-            ),
-        )
-    }
-
-    /// Returns the bounding box of this scalar field in voxel units.
-    #[allow(dead_code)]
-    pub fn bounding_box(&self) -> BoundingBox<i32> {
-        BoundingBox::new(&self.block_start, &self.block_end())
-    }
-
     /// Returns the bounding box of the mesh produced by `ScalarField::to_mesh`
     /// for this scalar field in world space cartesian units.
     pub fn mesh_volume_bounding_box_cartesian(
@@ -987,7 +951,6 @@ impl ScalarField {
     /// its distance from the original volume. The voxels that were originally
     /// volume voxels, will be set to value 0. Voxels inside the closed volumes
     /// will have a value with a negative sign.
-    #[allow(dead_code)]
     pub fn compute_distance_filed(&mut self, volume_value_interval: Interval<i16>) {
         // Lookup table of neighbor coordinates
         let neighbor_offsets = [

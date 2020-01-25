@@ -28,7 +28,7 @@ impl fmt::Display for FuncVoxelTransformError {
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
             FuncVoxelTransformError::TransformFailed => {
-                write!(f, "Voxel cloud transformation failed")
+                write!(f, "Scalar field transformation failed")
             }
             FuncVoxelTransformError::VoxelDimensionZero => {
                 write!(f, "Voxel dimension is not larger than zero")

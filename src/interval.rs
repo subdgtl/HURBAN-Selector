@@ -28,7 +28,6 @@ impl<
 {
     /// Creates a new interval from two extremities. Left and right extremity
     /// don't need to be ordered.
-    #[allow(dead_code)]
     pub fn new(left: T, right: T) -> Self {
         Interval {
             left,
@@ -40,7 +39,6 @@ impl<
 
     /// Creates a new interval from right extremity, with left extremity
     /// infinite.
-    #[allow(dead_code)]
     pub fn new_left_infinite(right: T) -> Self {
         Interval {
             left: T::min_value(),
@@ -106,6 +104,7 @@ impl<
     }
 
     /// Returns the left limit of the interval or None if left is infinite.
+    #[allow(dead_code)]
     pub fn left(&self) -> Option<T> {
         if self.left_infinite {
             None
@@ -115,6 +114,7 @@ impl<
     }
 
     /// Returns the right limit of the interval or None if right is infinite.
+    #[allow(dead_code)]
     pub fn right(&self) -> Option<T> {
         if self.right_infinite {
             None
@@ -125,7 +125,6 @@ impl<
 
     /// Computes the length of the interval. Returns none if any of the bounds
     /// are infinite.
-    #[allow(dead_code)]
     pub fn centre(&self) -> Option<T> {
         if self.left_infinite || self.right_infinite {
             None
@@ -162,7 +161,6 @@ impl<
 
     /// Checks if the closed interval includes the input value. If the value
     /// equals any of the extremities, it is considered included.
-    #[allow(dead_code)]
     pub fn includes_closed(&self, value: T) -> bool {
         if self.left_infinite && self.right_infinite {
             return true;
@@ -225,7 +223,8 @@ impl<
         value >= min && value < max
     }
 
-    #[allow(dead_code)]
+    /// Remaps the value from one interval to another. Return None if one of the
+    /// intervals is infinite.
     pub fn remap_to(&self, value: T, target_interval: Interval<T>) -> Option<T> {
         if self.left_infinite
             || self.right_infinite
@@ -242,7 +241,6 @@ impl<
                 .right
                 .to_f64()
                 .expect("Can't convert to f64");
-
             let length_source = right_source - left_source;
             if approx::relative_eq!(length_source, 0.0) {
                 return target_interval.centre();
