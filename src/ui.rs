@@ -36,6 +36,8 @@ struct Colors {
     log_message_info: [f32; 4],
     log_message_warn: [f32; 4],
     log_message_error: [f32; 4],
+    header_error: [f32; 4],
+    header_error_hovered: [f32; 4],
 }
 
 #[derive(Debug, Default)]
@@ -74,6 +76,8 @@ impl Ui {
             log_message_info: [0.70, 0.70, 0.70, 1.0],
             log_message_warn: [0.80, 0.80, 0.05, 1.0],
             log_message_error: [1.0, 0.15, 0.05, 1.0],
+            header_error: [0.85, 0.15, 0.05, 0.4],
+            header_error_hovered: [1.00, 0.15, 0.05, 0.4],
         };
 
         style.window_padding = [4.0, 4.0];
@@ -156,6 +160,9 @@ impl Ui {
             colors.combo_box_selected_item_active = orange_dark;
 
             colors.log_message_warn = [0.90, 0.75, 0.05, 1.0];
+
+            colors.header_error = [0.9, 0.0, 0.0, 0.2];
+            colors.header_error_hovered = [1.0, 0.0, 0.0, 0.3];
         }
 
         imgui_context.set_ini_filename(None);
@@ -304,6 +311,10 @@ impl<'a> UiFrame<'a> {
         reset_viewport_clicked
     }
 
+    // FIXME: @Refactoring Refactor this once we have full-featured
+    // functionality. Until then, this is exploratory code and we
+    // don't care.
+    #[allow(clippy::cognitive_complexity)]
     pub fn draw_pipeline_window(&self, session: &mut Session) {
         let ui = &self.imgui_ui;
         self.console_state
@@ -339,7 +350,18 @@ impl<'a> UiFrame<'a> {
                             let func_ident = call_expr.ident();
                             let func = &function_table[&func_ident];
 
-                            if ui
+                            let error = session.error_at_stmt(stmt_index);
+                            let error_color_token = if error.is_some() {
+                                Some(ui.push_style_colors(&[
+                                    (imgui::StyleColor::Header, self.colors.header_error),
+                                    (imgui::StyleColor::HeaderHovered, self.colors.header_error_hovered),
+                                    (imgui::StyleColor::HeaderActive, self.colors.header_error_hovered),
+                                ]))
+                            } else {
+                                None
+                            };
+
+                            let collapsing_header_open = ui
                                 .collapsing_header(&imgui::im_str!(
                                     "#{} {} ##{}",
                                     stmt_index + 1,
@@ -347,8 +369,35 @@ impl<'a> UiFrame<'a> {
                                     stmt_index
                                 ))
                                 .default_open(true)
-                                .build()
-                            {
+                                .build();
+
+                            if ui.is_item_hovered() {
+                                if let Some(error) = error {
+                                    ui.tooltip(|| {
+                                        let mut imstring_buffer = self.global_imstring_buffer
+                                            .borrow_mut();
+
+                                        // FIXME: @Optimization don't allocate intermediate
+                                        // string and use `write!` once imgui-rs implements
+                                        // `io::Write` for `ImString`.
+                                        // https://github.com/Gekkio/imgui-rs/issues/290
+                                        imstring_buffer.push_str(&error.to_string());
+
+                                        ui.text_colored(
+                                            [1.0, 0.0, 0.0, 1.0],
+                                            &*imstring_buffer,
+                                        );
+
+                                        imstring_buffer.clear();
+                                    });
+                                }
+                            }
+
+                            if let Some(color_token) = error_color_token {
+                                color_token.pop(ui);
+                            }
+
+                            if collapsing_header_open {
                                 ui.indent();
 
                                 assert_eq!(
