@@ -1,13 +1,13 @@
 use std::fmt;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-
 /// A unique function identifier.
 ///
 /// Has to stay stable for the lifetime of the interpreter and program
 /// using it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct FuncIdent(pub(crate) u64);
 
 impl fmt::Display for FuncIdent {
@@ -20,7 +20,7 @@ impl fmt::Display for FuncIdent {
 ///
 /// Has to stay stable for the lifetime of the interpreter and program
 /// using it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct VarIdent(pub(crate) u64);
 
 impl fmt::Display for VarIdent {
@@ -30,7 +30,7 @@ impl fmt::Display for VarIdent {
 }
 
 /// A program consisting of a list of statements.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Prog {
     stmts: Vec<Stmt>,
 }
@@ -71,7 +71,7 @@ impl fmt::Display for Prog {
 ///
 /// Statements describe things to do, like execute code or declare a
 /// variable.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Stmt {
     VarDecl(VarDeclStmt),
 }
@@ -88,7 +88,7 @@ impl fmt::Display for Stmt {
 ///
 /// Declares a variable with a known identifier, and uses provided
 /// initializer expression to produce a value for that variable.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VarDeclStmt {
     // Note that values for variables can only come from calls, so we
     // use `CallExpr` directly.
@@ -126,7 +126,7 @@ impl fmt::Display for VarDeclStmt {
 /// A program expression.
 ///
 /// Expressions evaluate to values.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Expr {
     // Note that `CallExpr` is missing here. That is because it is
     // impossible for the frontend to produce a program where a func
@@ -156,7 +156,7 @@ impl fmt::Display for Expr {
 }
 
 /// An expression that evaluates to a constant, literal value.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LitExpr {
     Nil,
     #[allow(dead_code)]
@@ -268,7 +268,7 @@ impl fmt::Display for LitExpr {
 
 /// An expression that evaluates to a value by extracting the value
 /// from a variable.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct VarExpr {
     ident: VarIdent,
 }
@@ -291,7 +291,7 @@ impl fmt::Display for VarExpr {
 }
 
 /// An expression that evaluates to a value by calling a function.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallExpr {
     ident: FuncIdent,
     args: Vec<Expr>,
