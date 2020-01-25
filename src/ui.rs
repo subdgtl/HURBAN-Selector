@@ -614,7 +614,7 @@ impl<'a> UiFrame<'a> {
         }
     }
 
-    pub fn draw_menu_bar(&self, project_path: Option<String>) -> MainMenuBarStatus {
+    pub fn draw_menu_bar(&self, project_path: Option<&str>) -> MainMenuBarStatus {
         let ui = &self.imgui_ui;
         let mut status = MainMenuBarStatus {
             save_path: None,
@@ -628,7 +628,9 @@ impl<'a> UiFrame<'a> {
 
                 if imgui::MenuItem::new(imgui::im_str!("Save project")).build(ui) {
                     match project_path {
-                        Some(_) => status.save_path = project_path,
+                        Some(project_path_str) => {
+                            status.save_path = Some(project_path_str.to_string())
+                        }
                         None => {
                             if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
                                 "Save project",

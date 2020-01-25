@@ -136,7 +136,7 @@ pub fn init_and_run(options: Options) -> ! {
     let mut input_manager = InputManager::new();
     let mut ui = Ui::new(&window, options.theme);
 
-    let mut project_path = None;
+    let mut project_path: Option<String> = None;
 
     let mut camera = Camera::new(
         window_size,
@@ -232,7 +232,8 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.zoom(input_state.camera_zoom);
                 camera.zoom_step(input_state.camera_zoom_steps);
 
-                let menu_bar_status = ui_frame.draw_menu_bar(project_path.clone());
+                let menu_bar_status =
+                    ui_frame.draw_menu_bar(project_path.as_ref().map(|p| p.as_str()));
 
                 if let Some(save_path) = menu_bar_status.save_path {
                     let stmts = session.stmts().to_vec();
