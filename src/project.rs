@@ -14,7 +14,9 @@ pub struct Project {
 }
 
 pub fn save<P: AsRef<Path>>(path: P, project: Project) {
-    let contents = ron::ser::to_string(&project).expect("Failed to serialize project");
+    let pretty_config = ron::ser::PrettyConfig::default();
+    let contents =
+        ron::ser::to_string_pretty(&project, pretty_config).expect("Failed to serialize project");
     let mut file = File::create(path).expect("Failed to create project file");
 
     file.write_all(contents.as_bytes())
