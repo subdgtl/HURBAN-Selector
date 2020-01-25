@@ -276,55 +276,52 @@ impl VoxelCloud {
             // Transform the target voxels inverse to the user
             // transformation so that it is possible to sample the source
             // voxel cloud.
-            match compound_transformation.pseudo_inverse(f32::EPSILON) {
-                Ok(reversed_user_transformation) => {
-                    for (one_dimensional, voxel) in
-                        target_voxel_cloud.voxel_map.iter_mut().enumerate()
-                    {
-                        let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                            one_dimensional,
-                            &target_voxel_cloud.block_start,
-                            &target_voxel_cloud.block_dimensions,
-                            &target_voxel_cloud.voxel_dimensions,
-                        )
-                        .expect("Index out of bounds");
-
-                        // Transform each new voxel inverse to the user
-                        // transformation.
-                        let transformed_voxel_center_cartesian = reversed_user_transformation
-                            .transform_point(&cartesian_coordinate)
-                            - vector_to_origin;
-
-                        // Set the new voxel state according to a sampled value from
-                        // the source voxel cloud.
-                        *voxel = source_voxel_cloud
-                            .voxel_at_cartesian_coords(&transformed_voxel_center_cartesian)
-                            .unwrap_or(false);
-                    }
-
-                    let cartesian_final_translation_vector =
-                        cartesian_translation - vector_to_origin;
-
-                    let voxel_final_translation_vector = cartesian_to_absolute_voxel_coordinate(
-                        &Point3::from(cartesian_final_translation_vector),
-                        &voxel_dimensions,
+            if let Ok(reversed_user_transformation) =
+                compound_transformation.pseudo_inverse(f32::EPSILON)
+            {
+                for (one_dimensional, voxel) in target_voxel_cloud.voxel_map.iter_mut().enumerate()
+                {
+                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                        one_dimensional,
+                        &target_voxel_cloud.block_start,
+                        &target_voxel_cloud.block_dimensions,
+                        &target_voxel_cloud.voxel_dimensions,
                     )
-                    .coords;
+                    .expect("Index out of bounds");
 
-                    target_voxel_cloud.block_start += voxel_final_translation_vector;
+                    // Transform each new voxel inverse to the user
+                    // transformation.
+                    let transformed_voxel_center_cartesian = reversed_user_transformation
+                        .transform_point(&cartesian_coordinate)
+                        - vector_to_origin;
 
-                    // FIXME: @Optimization Due to overly safe
-                    // mesh_volume_bounding_box_cartesian, the voxel cloud may
-                    // be unnecessarily big.
-                    target_voxel_cloud.shrink_to_fit();
-
-                    Some(target_voxel_cloud)
+                    // Set the new voxel state according to a sampled value from
+                    // the source voxel cloud.
+                    *voxel = source_voxel_cloud
+                        .voxel_at_cartesian_coords(&transformed_voxel_center_cartesian)
+                        .unwrap_or(false);
                 }
-                _ => None,
+
+                let cartesian_final_translation_vector = cartesian_translation - vector_to_origin;
+
+                let voxel_final_translation_vector = cartesian_to_absolute_voxel_coordinate(
+                    &Point3::from(cartesian_final_translation_vector),
+                    &voxel_dimensions,
+                )
+                .coords;
+
+                target_voxel_cloud.block_start += voxel_final_translation_vector;
+
+                // FIXME: @Optimization Due to overly safe
+                // mesh_volume_bounding_box_cartesian, the voxel cloud may
+                // be unnecessarily big.
+                target_voxel_cloud.shrink_to_fit();
+
+                return Some(target_voxel_cloud);
             }
-        } else {
-            None
         }
+
+        None
     }
 
     /// Clears the voxel cloud, sets its block dimensions to zero.
