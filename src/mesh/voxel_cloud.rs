@@ -1748,9 +1748,6 @@ mod tests {
         )
         .unwrap();
 
-        insta::assert_json_snapshot!(
-            "voxel_cloud_arbitrary_transform",
-            &transformed_voxel_cloud
-        );
+        insta::assert_json_snapshot!("voxel_cloud_arbitrary_transform", &transformed_voxel_cloud);
     }
 }
