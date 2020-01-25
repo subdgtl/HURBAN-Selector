@@ -948,11 +948,8 @@ impl ScalarField {
     }
 
     /// Fill hollow volumes in scalar field. The original scalar field will be
-    /// mutated. The method flood-fills the outer space with void voxels,
-    /// leaving everything inside volume voxels filled.
-    ///
-    /// The method scans the entire boundaries of the scalar field and starts
-    /// flood-filling with void voxels
+    /// mutated. 
+    // TODO: remove
     #[allow(dead_code)]
     pub fn fill_hollow_volumes(&mut self, volume_value_interval: Interval<i16>) {
         // Lookup table of neighbor coordinates
@@ -968,7 +965,7 @@ impl ScalarField {
         // Contains indices into the voxel map
         let mut queue_to_process: VecDeque<usize> = VecDeque::new();
         // Matches the voxel map length
-        let mut discovered_as_empty = vec![false; self.values.len()];
+        let mut discovered_as_outer_and_empty = vec![false; self.values.len()];
 
         // Scan for void voxels at the boundaries of the scalar field. For
         // optimization and readability reasons this scans the entire voxel
@@ -988,14 +985,12 @@ impl ScalarField {
                 || relative_coordinate.y == cast_i32(self.block_dimensions.y) - 1
                 || relative_coordinate.z == cast_i32(self.block_dimensions.z) - 1
             {
-                // If the voxel is void and hasn't been discovered yet
-                if volume_value_interval.includes_closed(*voxel_value)
-                    && !discovered_as_empty[one_dimensional]
-                {
+                // If the voxel is void
+                if !volume_value_interval.includes_closed(*voxel_value) {
                     // put it into the processing queue
                     queue_to_process.push_back(one_dimensional);
                     // and mark it discovered.
-                    discovered_as_empty[one_dimensional] = true;
+                    discovered_as_outer_and_empty[one_dimensional] = true;
                 }
             }
         }
@@ -1027,11 +1022,11 @@ impl ScalarField {
                             )
                             .expect("Coord out of bounds");
                         // Check if it is void and hasn't been discovered yet
-                        if !discovered_as_empty[neighbor_one_dimensional] {
+                        if !discovered_as_outer_and_empty[neighbor_one_dimensional] {
                             // Put it to the processing queue
                             queue_to_process.push_back(neighbor_one_dimensional);
                             // and mark it discovered.
-                            discovered_as_empty[neighbor_one_dimensional] = true;
+                            discovered_as_outer_and_empty[neighbor_one_dimensional] = true;
                         }
                     }
                 }
@@ -1052,8 +1047,187 @@ impl ScalarField {
         // cloud boundaries. Therefore they are part of the outer void space and
         // everything else is a filled volume.
         for (i, v) in self.values.iter_mut().enumerate() {
-            if !discovered_as_empty[i] && !volume_value_interval.includes_closed(*v) {
+            if !discovered_as_outer_and_empty[i] && !volume_value_interval.includes_closed(*v) {
                 *v = internal_voxel_value;
+            }
+        }
+    }
+
+    /// Compute discrete distance field. Each voxel will be set a value equal to
+    /// its distance from the original volume. The voxels that were originally a
+    /// volume, will be set to 0. Voxels inside the closed volumes will have a
+    /// negative sign.
+    #[allow(dead_code)]
+    pub fn compute_distance_filed(&mut self, volume_value_interval: Interval<i16>) {
+        // Lookup table of neighbor coordinates
+        let neighbor_offsets = [
+            Vector3::new(-1, 0, 0),
+            Vector3::new(1, 0, 0),
+            Vector3::new(0, -1, 0),
+            Vector3::new(0, 1, 0),
+            Vector3::new(0, 0, -1),
+            Vector3::new(0, 0, 1),
+        ];
+
+        // Contains indices into the voxel map
+        let mut queue_to_find_outer: VecDeque<usize> = VecDeque::new();
+        // Contains indices to the voxel map and their distance value
+        let mut queue_to_compute_distance: VecDeque<(usize, i16)> = VecDeque::new();
+        // Match the voxel map length
+        let mut discovered_as_outer_and_empty = vec![false; self.values.len()];
+        let mut discovered_as_empty = vec![false; self.values.len()];
+
+        // Scan for void voxels at the boundaries of the scalar field and for
+        // volume voxels anywhere.
+        for (one_dimensional, voxel_value) in self.values.iter().enumerate() {
+            let relative_coordinate = one_dimensional_to_relative_voxel_coordinate(
+                one_dimensional,
+                &self.block_dimensions,
+            )
+            .expect("Coord out of bounds");
+            // If the voxel is void
+            if !volume_value_interval.includes_closed(*voxel_value) {
+                // If any of these is true, the coordinate is at the boundary of the
+                // scalar field block
+                if relative_coordinate.x == 0
+                    || relative_coordinate.y == 0
+                    || relative_coordinate.z == 0
+                    || relative_coordinate.x == cast_i32(self.block_dimensions.x) - 1
+                    || relative_coordinate.y == cast_i32(self.block_dimensions.y) - 1
+                    || relative_coordinate.z == cast_i32(self.block_dimensions.z) - 1
+                {
+                    // put it into the queue for finding outer empty voxels
+                    queue_to_find_outer.push_back(one_dimensional);
+                    // and mark it discovered.
+                    discovered_as_outer_and_empty[one_dimensional] = true;
+                }
+            } else {
+                // If the voxel is a part of the volume
+                let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                    one_dimensional,
+                    &self.block_start,
+                    &self.block_dimensions,
+                )
+                .expect("Coord out of bounds");
+
+                // Check if any of his neighbors are void
+                for neighbor_offset in &neighbor_offsets {
+                    let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
+                    if let Some(neighbor_value) =
+                        self.value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
+                    {
+                        // if they are void, add them to the processing queue
+                        if !volume_value_interval.includes_closed(neighbor_value) {
+                            let one_dimensional_neighbor =
+                                absolute_voxel_to_one_dimensional_coordinate(
+                                    &neighbor_absolute_coordinate,
+                                    &self.block_start,
+                                    &self.block_dimensions,
+                                )
+                                .expect("The neighbor coordinate doesn't exist");
+                            // with the current distance from the volume 1
+                            queue_to_compute_distance.push_back((one_dimensional_neighbor, 1));
+                            // and mark them discovered
+                            discovered_as_empty[one_dimensional_neighbor] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process the queue to find the outer void voxels
+        while let Some(one_dimensional) = queue_to_find_outer.pop_front() {
+            // Calculate the absolute coord of the currently processed voxel.
+            // It will be needed to calculate its neighbors.
+            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+            )
+            .expect("Coord out of bounds");
+
+            // Check all the neighbors
+            for neighbor_offset in &neighbor_offsets {
+                let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
+                // If the neighbor exists (is not out of bounds)
+                if let Some(neighbor_value) =
+                    self.value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
+                {
+                    // and doesn't contain any volume
+                    if !volume_value_interval.includes_closed(neighbor_value) {
+                        let neighbor_one_dimensional =
+                            absolute_voxel_to_one_dimensional_coordinate(
+                                &neighbor_absolute_coordinate,
+                                &self.block_start,
+                                &self.block_dimensions,
+                            )
+                            .expect("Coord out of bounds");
+                        // Check if it hasn't been discovered yet
+                        if !discovered_as_outer_and_empty[neighbor_one_dimensional] {
+                            // Put it to the processing queue
+                            queue_to_find_outer.push_back(neighbor_one_dimensional);
+                            // and mark it discovered.
+                            discovered_as_outer_and_empty[neighbor_one_dimensional] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Now when we know which voxels are outside, let's scan for distance.
+
+        // Process the queue to set the voxel distance from the volume
+        while let Some((one_dimensional, distance)) = queue_to_compute_distance.pop_front() {
+            // Needed to calculate neighbors' coordinates
+            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+            )
+            .expect("Coord out of bounds");
+
+            // Check each neighbor
+            for neighbor_offset in &neighbor_offsets {
+                let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
+                let one_dimensional_neighbor = absolute_voxel_to_one_dimensional_coordinate(
+                    &neighbor_absolute_coordinate,
+                    &self.block_start,
+                    &self.block_dimensions,
+                )
+                .expect("The neighbor coordinate doesn't exist");
+                // If the neighbor hasn't been discovered yet
+                if !discovered_as_empty[one_dimensional_neighbor] {
+                    // And if it does exist
+                    if let Some(neighbor_value) =
+                        self.value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
+                    {
+                        // And if it is void
+                        if !volume_value_interval.includes_closed(neighbor_value) {
+                            // Put it into the processing queue with the
+                            // distance one higher than the current
+                            queue_to_compute_distance
+                                .push_back((one_dimensional_neighbor, distance + 1));
+                            // And mark it discovered
+                            discovered_as_empty[one_dimensional_neighbor] = true;
+                        }
+                    }
+                }
+            }
+
+            // Process the current voxel. If it is outside the volumes, set its
+            // value to be positive, if it's inside, set it to negative.
+            self.values[one_dimensional] = if discovered_as_outer_and_empty[one_dimensional] {
+                distance
+            } else {
+                -distance
+            };
+        }
+
+        // The actual volume voxels remained intact. Scan the scalar field and
+        // set the volume voxel distance to 0.
+        for (one_dimensional, voxel_value) in self.values.iter_mut().enumerate() {
+            if !discovered_as_empty[one_dimensional] {
+                *voxel_value = 0;
             }
         }
     }
