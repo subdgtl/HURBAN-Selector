@@ -89,13 +89,15 @@ impl ScalarField {
         ScalarField::new(&block_start, &block_dimensions, voxel_dimensions)
     }
 
-    /// Creates a scalar field from an existing mesh with computed
-    /// occupied voxels.
+    /// Creates a scalar field from an existing mesh. The `growth_offset`
+    /// defines how much bigger will the scalar field be. This is useful if the
+    /// distance field is about to be calculated.
     #[allow(dead_code)]
     pub fn from_mesh(
         mesh: &Mesh,
         voxel_dimensions: &Vector3<f32>,
         value_on_mesh_surface: i16,
+        growth_offset: u32,
     ) -> Self {
         assert!(
             value_on_mesh_surface != ScalarField::empty_value(),
@@ -105,12 +107,23 @@ impl ScalarField {
             voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
             "One or more voxel dimensions are 0.0."
         );
+
         // Determine the needed block of voxel space.
-        let b_box = mesh.bounding_box();
+        let bounding_box_tight = mesh.bounding_box();
+        let growth_offset_vector_in_cartesian_coordinates = Vector3::new(
+            voxel_dimensions.x * growth_offset as f32,
+            voxel_dimensions.y * growth_offset as f32,
+            voxel_dimensions.z * growth_offset as f32,
+        );
+        let bounding_box_offset =
+            bounding_box_tight.offset(growth_offset_vector_in_cartesian_coordinates);
 
-        let mut scalar_field = ScalarField::from_cartesian_bounding_box(&b_box, voxel_dimensions);
+        // Target scalar field to be marked with points on the mesh.
+        let mut scalar_field =
+            ScalarField::from_cartesian_bounding_box(&bounding_box_offset, voxel_dimensions);
 
-        // Going to populate the mesh with points as dense as the smallest voxel dimension.
+        // Going to populate the mesh with points as dense as the smallest voxel
+        // dimension.
         let shortest_voxel_dimension = voxel_dimensions
             .x
             .min(voxel_dimensions.y.min(voxel_dimensions.z));
@@ -948,7 +961,7 @@ impl ScalarField {
     }
 
     /// Fill hollow volumes in scalar field. The original scalar field will be
-    /// mutated. 
+    /// mutated.
     // TODO: remove
     #[allow(dead_code)]
     pub fn fill_hollow_volumes(&mut self, volume_value_interval: Interval<i16>) {
@@ -1517,7 +1530,7 @@ mod tests {
             vertices,
             NormalStrategy::Sharp,
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(1.0, 1.0, 1.0), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(1.0, 1.0, 1.0), 0, 0);
 
         insta::assert_json_snapshot!("torus_after_voxelization_into_scalar_field", &scalar_field);
     }
@@ -1533,7 +1546,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5), 0, 0);
 
         insta::assert_json_snapshot!("sphere_after_voxelization_into_scalar_field", &scalar_field);
     }
@@ -1927,7 +1940,7 @@ mod tests {
             Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1948,7 +1961,7 @@ mod tests {
             Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1969,7 +1982,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1990,7 +2003,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -2015,7 +2028,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -2040,7 +2053,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -2065,7 +2078,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),

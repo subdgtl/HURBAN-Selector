@@ -1,3 +1,5 @@
+use std::ops::{Add, Sub};
+
 use arrayvec::ArrayVec;
 use nalgebra::{Point3, Scalar, Vector3};
 use num_traits::{Bounded, Zero};
@@ -14,7 +16,7 @@ where
     maximum_point: Point3<T>,
 }
 
-impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
+impl<T: Add<Output = T> + Bounded + Scalar + Sub<Output = T> + PartialOrd + Zero> BoundingBox<T> {
     /// Creates a new bounding box. The two input points will be deconstructed
     /// and a new couple of points will be created: minimum point with minimum
     /// values of x, y, z and maximum point with maximum values of x, y, z. The
@@ -118,6 +120,23 @@ impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
             .into_iter()
             .flat_map(|b_box| ArrayVec::from(b_box.corners()).into_iter());
         BoundingBox::from_points(points)
+    }
+
+    /// Grows (or shrinks for negative values) the bounding box by the given
+    /// offset distance.
+    pub fn offset(&self, offset: Vector3<T>) -> Self {
+        BoundingBox::new(
+            &Point3::new(
+                self.minimum_point.x - offset.x,
+                self.minimum_point.y - offset.y,
+                self.minimum_point.z - offset.z,
+            ),
+            &Point3::new(
+                self.maximum_point.x + offset.x,
+                self.maximum_point.y + offset.y,
+                self.maximum_point.z + offset.z,
+            ),
+        )
     }
 
     /// Creates a new bounding box so that it encloses the block of space
