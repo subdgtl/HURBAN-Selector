@@ -105,6 +105,24 @@ impl<
         }
     }
 
+    /// Returns the left limit of the interval or None if left is infinite.
+    pub fn left(&self) -> Option<T> {
+        if self.left_infinite {
+            None
+        } else {
+            Some(self.left)
+        }
+    }
+
+    /// Returns the right limit of the interval or None if right is infinite.
+    pub fn right(&self) -> Option<T> {
+        if self.right_infinite {
+            None
+        } else {
+            Some(self.right)
+        }
+    }
+
     /// Computes the length of the interval. Returns none if any of the bounds
     /// are infinite.
     #[allow(dead_code)]
