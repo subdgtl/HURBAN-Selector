@@ -163,6 +163,8 @@ impl VoxelCloud {
                 // Make a bounding box of the source bounding box's mesh volume.
                 // This will be the volume to be scanned for any voxels.
 
+                // New voxel cloud that can encompass the source
+                // voxel cloud's mesh.
                 let mut target_voxel_cloud = VoxelCloud::from_cartesian_bounding_box(
                     &source_vc_bounding_box,
                     &voxel_dimensions,
@@ -252,7 +254,7 @@ impl VoxelCloud {
             // box that will encompass the transformed source voxel cloud.
             let transformation_to_origin = Matrix4::new_translation(&vector_to_origin);
             let compound_transformation =
-                Matrix4::from(*rotation) * Matrix4::new_nonuniform_scaling(&scale);
+                Matrix4::from(*rotation) * Matrix4::new_nonuniform_scaling(scale);
 
             let source_vc_bounding_box_corners = source_vc_bounding_box.corners();
             let transformed_bounding_box_corners = source_vc_bounding_box_corners.iter().map(|v| {
@@ -890,8 +892,8 @@ impl VoxelCloud {
                     ),
                     &Point3::new(
                         (volume_start.x as f32 + volume_dimensions.x as f32) * voxel_dimensions.x,
-                        (volume_start.y as f32 + volume_dimensions.x as f32) * voxel_dimensions.y,
-                        (volume_start.z as f32 + volume_dimensions.x as f32) * voxel_dimensions.z,
+                        (volume_start.y as f32 + volume_dimensions.y as f32) * voxel_dimensions.y,
+                        (volume_start.z as f32 + volume_dimensions.z as f32) * voxel_dimensions.z,
                     ),
                 )
             })

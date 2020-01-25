@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::f32;
 
-use nalgebra::{Matrix4, Point3, Rotation, Vector2, Vector3};
+use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
 
 use crate::bounding_box::BoundingBox;
 use crate::convert::{cast_i32, cast_u32, cast_usize, clamp_cast_i32_to_u32};
@@ -25,14 +25,14 @@ const EMPTY: i16 = i16::max_value();
 /// origin with voxel coordinates 0, 0, 0. Voxel clouds with the same voxel size
 /// are compatible and collateral operations be performed on them.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-pub struct ScalarFiled {
+pub struct ScalarField {
     block_start: Point3<i32>,
     block_dimensions: Vector3<u32>,
     voxel_dimensions: Vector3<f32>,
     values: Vec<i16>,
 }
 
-impl ScalarFiled {
+impl ScalarField {
     /// Define a new empty block of voxel space, which begins at
     /// `block_start`(in discrete voxel units), has dimensions
     /// `block_dimensions` (in discrete voxel units) and contains voxels sized
@@ -48,7 +48,7 @@ impl ScalarFiled {
             "One or more voxel dimensions are 0.0"
         );
         let map_length = block_dimensions.x * block_dimensions.y * block_dimensions.z;
-        ScalarFiled {
+        ScalarField {
             block_start: *block_start,
             block_dimensions: *block_dimensions,
             voxel_dimensions: *voxel_dimensions,
@@ -83,7 +83,7 @@ impl ScalarFiled {
             cast_u32(max_z_index - min_z_index) + 1,
         );
 
-        ScalarFiled::new(&block_start, &block_dimensions, voxel_dimensions)
+        ScalarField::new(&block_start, &block_dimensions, voxel_dimensions)
     }
 
     /// Creates a voxel cloud from an existing mesh with computed
@@ -105,7 +105,7 @@ impl ScalarFiled {
         // Determine the needed block of voxel space.
         let b_box = mesh.bounding_box();
 
-        let mut scalar_field = ScalarFiled::from_cartesian_bounding_box(&b_box, voxel_dimensions);
+        let mut scalar_field = ScalarField::from_cartesian_bounding_box(&b_box, voxel_dimensions);
 
         // Going to populate the mesh with points as dense as the smallest voxel dimension.
         let shortest_voxel_dimension = voxel_dimensions
@@ -169,7 +169,7 @@ impl ScalarFiled {
     /// Panics if any of the voxel dimensions is below or equal to zero.
     #[allow(dead_code)]
     pub fn from_scalar_field(
-        source_scalar_field: &ScalarFiled,
+        source_scalar_field: &ScalarField,
         volume_value_interval: Interval<i16>,
         voxel_dimensions: &Vector3<f32>,
     ) -> Option<Self> {
@@ -186,7 +186,7 @@ impl ScalarFiled {
 
                 // New voxel cloud that can encompass the source
                 // voxel cloud's mesh.
-                let mut target_scalar_field = ScalarFiled::from_cartesian_bounding_box(
+                let mut target_scalar_field = ScalarField::from_cartesian_bounding_box(
                     &current_sf_bounding_box,
                     &voxel_dimensions,
                 );
@@ -211,6 +211,11 @@ impl ScalarFiled {
                         .unwrap_or(EMPTY);
                 }
 
+                // FIXME: @Optimization Due to overly safe
+                // mesh_volume_bounding_box_cartesian, the voxel cloud may be
+                // unnecessarily big.
+                target_scalar_field.shrink_to_fit(volume_value_interval);
+
                 target_scalar_field
             })
     }
@@ -221,26 +226,37 @@ impl ScalarFiled {
     /// Panics if any of the voxel dimensions is below or equal to zero.
     #[allow(dead_code)]
     pub fn from_scalar_field_transformed(
-        source_scalar_field: &ScalarFiled,
+        source_scalar_field: &ScalarField,
         volume_value_interval: Interval<i16>,
         voxel_dimension: f32,
         cartesian_translation: &Vector3<f32>,
-        rotation_degrees: &(f32, f32, f32),
-        scale: &(f32, f32, f32),
+        rotation: &Rotation3<f32>,
+        scale: &Vector3<f32>,
     ) -> Option<Self> {
+        let euler_angles = rotation.euler_angles();
         if approx::relative_eq!(cartesian_translation, &Vector3::zeros())
-            && approx::relative_eq!(rotation_degrees.0, 0.0)
-            && approx::relative_eq!(rotation_degrees.1, 0.0)
-            && approx::relative_eq!(rotation_degrees.2, 0.0)
-            && approx::relative_eq!(scale.0, 1.0)
-            && approx::relative_eq!(scale.1, 1.0)
-            && approx::relative_eq!(scale.2, 1.0)
+            && approx::relative_eq!(euler_angles.0, 0.0)
+            && approx::relative_eq!(euler_angles.1, 0.0)
+            && approx::relative_eq!(euler_angles.2, 0.0)
+            && approx::relative_eq!(scale, &Vector3::new(1.0, 1.0, 1.0))
         {
-            return ScalarFiled::from_scalar_field(
-                source_scalar_field,
-                volume_value_interval,
-                &Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension),
-            );
+            if approx::relative_eq!(voxel_dimension, source_scalar_field.voxel_dimensions.x)
+                && approx::relative_eq!(voxel_dimension, source_scalar_field.voxel_dimensions.y)
+                && approx::relative_eq!(voxel_dimension, source_scalar_field.voxel_dimensions.z)
+            {
+                return Some(ScalarField {
+                    block_start: source_scalar_field.block_start,
+                    block_dimensions: source_scalar_field.block_dimensions,
+                    voxel_dimensions: source_scalar_field.voxel_dimensions,
+                    values: source_scalar_field.values.to_vec(),
+                });
+            } else {
+                return ScalarField::from_scalar_field(
+                    source_scalar_field,
+                    volume_value_interval,
+                    &Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension),
+                );
+            }
         }
 
         assert!(
@@ -248,93 +264,97 @@ impl ScalarFiled {
             "Voxel dimension is below or equal to zero"
         );
 
-        source_scalar_field
-            .mesh_volume_bounding_box_cartesian(volume_value_interval)
-            .map(|current_sf_bounding_box| {
-                // FIXME: Heterogenous voxels require non-trivial compensation
-                // of final voxel cloud position after rotating if the volume
-                // equilibrium is not at the world origin.
-                let voxel_dimensions =
-                    Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension);
-                // Make a bounding box of the source bounding box's mesh volume.
-                // This will be the volume to be scanned for any voxels.
-                let user_rotation = Rotation::from_euler_angles(
-                    rotation_degrees.0.to_radians(),
-                    rotation_degrees.1.to_radians(),
-                    rotation_degrees.2.to_radians(),
-                );
-                let scaling_vector = Vector3::new(scale.0, scale.1, scale.2);
-                let vector_to_origin = Vector3::zeros() - current_sf_bounding_box.center().coords;
+        // Make a bounding box of the source bounding box's mesh volume.
+        // This will be the volume to be scanned for any voxels.
+        if let Some(source_sf_bounding_box) =
+            source_scalar_field.mesh_volume_bounding_box_cartesian(volume_value_interval)
+        {
+            // FIXME: Heterogenous voxels require non-trivial compensation
+            // of final voxel cloud position after rotating if the volume
+            // equilibrium is not at the world origin.
+            let voxel_dimensions = Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension);
 
-                // Transform the source mesh volume and calculate a new bounding
-                // box that will encompass the transformed source voxel cloud.
-                let transformation_to_origin = Matrix4::new_translation(&vector_to_origin);
-                let compound_transformation =
-                    Matrix4::from(user_rotation) * Matrix4::new_nonuniform_scaling(&scaling_vector);
+            let vector_to_origin = Vector3::zeros() - source_sf_bounding_box.center().coords;
 
-                let current_sf_bounding_box_corners = current_sf_bounding_box.corners();
-                let transformed_bounding_box_corners =
-                    current_sf_bounding_box_corners.iter().map(|v| {
-                        let v1 = transformation_to_origin.transform_point(v);
-                        compound_transformation.transform_point(&v1)
-                    });
+            // Transform the source mesh volume and calculate a new bounding
+            // box that will encompass the transformed source voxel cloud.
+            let transformation_to_origin = Matrix4::new_translation(&vector_to_origin);
+            let compound_transformation =
+                Matrix4::from(*rotation) * Matrix4::new_nonuniform_scaling(scale);
 
-                let transformed_bounding_box =
-                    BoundingBox::from_points(transformed_bounding_box_corners)
-                        .expect("No input bounding box");
+            let source_sf_bounding_box_corners = source_sf_bounding_box.corners();
+            let transformed_bounding_box_corners = source_sf_bounding_box_corners.iter().map(|v| {
+                let v1 = transformation_to_origin.transform_point(v);
+                compound_transformation.transform_point(&v1)
+            });
 
-                // New voxel cloud that can encompass the transformed source
-                // voxel cloud's mesh.
-                let mut target_scalar_field = ScalarFiled::from_cartesian_bounding_box(
-                    &transformed_bounding_box,
-                    &voxel_dimensions,
-                );
+            let transformed_bounding_box =
+                BoundingBox::from_points(transformed_bounding_box_corners)
+                    .expect("No input bounding box");
 
-                // Transform the target voxels inverse to the user
-                // transformation so that it is possible to sample the source
-                // voxel cloud.
-                let reversed_user_transformation = compound_transformation
-                    .pseudo_inverse(f32::EPSILON)
-                    .expect("No pseudo inverse matrix");
+            // New voxel cloud that can encompass the transformed source
+            // voxel cloud's mesh.
+            let mut target_scalar_field = ScalarField::from_cartesian_bounding_box(
+                &transformed_bounding_box,
+                &voxel_dimensions,
+            );
 
-                for (one_dimensional, voxel) in target_scalar_field.values.iter_mut().enumerate() {
-                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                        one_dimensional,
-                        &target_scalar_field.block_start,
-                        &target_scalar_field.block_dimensions,
-                        &target_scalar_field.voxel_dimensions,
-                    )
-                    .expect("Index out of bounds");
+            // Transform the target voxels inverse to the user
+            // transformation so that it is possible to sample the source
+            // voxel cloud.
+            match compound_transformation.pseudo_inverse(f32::EPSILON) {
+                Ok(reversed_user_transformation) => {
+                    for (one_dimensional, voxel) in
+                        target_scalar_field.values.iter_mut().enumerate()
+                    {
+                        let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                            one_dimensional,
+                            &target_scalar_field.block_start,
+                            &target_scalar_field.block_dimensions,
+                            &target_scalar_field.voxel_dimensions,
+                        )
+                        .expect("Index out of bounds");
 
-                    // Transform each new voxel inverse to the user
-                    // transformation.
-                    let transformed_voxel_center_cartesian = reversed_user_transformation
-                        .transform_point(&cartesian_coordinate)
-                        - vector_to_origin;
+                        // Transform each new voxel inverse to the user
+                        // transformation.
+                        let transformed_voxel_center_cartesian = reversed_user_transformation
+                            .transform_point(&cartesian_coordinate)
+                            - vector_to_origin;
 
-                    // Set the new voxel state according to a sampled value from
-                    // the source voxel cloud.
-                    let absolute_coordinate = cartesian_to_absolute_voxel_coordinate(
-                        &transformed_voxel_center_cartesian,
+                        // Set the new voxel state according to a sampled value from
+                        // the source voxel cloud.
+                        let absolute_coordinate = cartesian_to_absolute_voxel_coordinate(
+                            &transformed_voxel_center_cartesian,
+                            &voxel_dimensions,
+                        );
+                        *voxel = source_scalar_field
+                            .value_at_absolute_voxel_coordinate(&absolute_coordinate)
+                            .unwrap_or(EMPTY);
+                    }
+
+                    let cartesian_final_translation_vector =
+                        cartesian_translation - vector_to_origin;
+
+                    let voxel_final_translation_vector = cartesian_to_absolute_voxel_coordinate(
+                        &Point3::from(cartesian_final_translation_vector),
                         &voxel_dimensions,
-                    );
-                    *voxel = source_scalar_field
-                        .value_at_absolute_voxel_coordinate(&absolute_coordinate)
-                        .unwrap_or(EMPTY);
+                    )
+                    .coords;
+
+                    target_scalar_field.block_start += voxel_final_translation_vector;
+
+                    // FIXME: @Optimization Due to overly safe
+                    // mesh_volume_bounding_box_cartesian, the voxel cloud may
+                    // be unnecessarily big.
+                    target_scalar_field.shrink_to_fit(volume_value_interval);
+
+                    Some(target_scalar_field)
                 }
-
-                let cartesian_final_translation_vector =
-                    (-1.0 * vector_to_origin) + cartesian_translation;
-
-                let voxel_final_translation_vector = cartesian_to_absolute_voxel_coordinate(
-                    &Point3::from(cartesian_final_translation_vector),
-                    &voxel_dimensions,
-                )
-                .coords;
-
-                target_scalar_field.block_start += voxel_final_translation_vector;
-                target_scalar_field
-            })
+                _ => None,
+            }
+        } else {
+            None
+        }
     }
 
     /// Clears the voxel cloud, sets its block dimensions to zero.
@@ -373,7 +393,7 @@ impl ScalarFiled {
     pub fn boolean_intersection(
         &mut self,
         volume_value_interval_self: Interval<i16>,
-        other: &ScalarFiled,
+        other: &ScalarField,
         volume_value_interval_other: Interval<i16>,
     ) {
         // Find volume common to both voxel clouds.
@@ -444,7 +464,7 @@ impl ScalarFiled {
     /// If the input Voxel clouds are far apart, the resulting voxel cloud may
     /// be huge.
     #[allow(dead_code)]
-    pub fn boolean_union(&mut self, other: &ScalarFiled, volume_value_interval: Interval<i16>) {
+    pub fn boolean_union(&mut self, other: &ScalarField, volume_value_interval: Interval<i16>) {
         let bounding_boxes = [
             self.volume_bounding_box(volume_value_interval),
             other.volume_bounding_box(volume_value_interval),
@@ -499,7 +519,7 @@ impl ScalarFiled {
     #[allow(dead_code)]
     pub fn boolean_difference(
         &mut self,
-        other: &ScalarFiled,
+        other: &ScalarField,
         volume_value_interval: Interval<i16>,
     ) {
         // Iterate through the target voxel cloud
@@ -825,7 +845,7 @@ impl ScalarFiled {
         BoundingBox::new(&self.block_start, &self.block_end())
     }
 
-    /// Returns the bounding box of the mesh produced by `ScalarFiled::to_mesh`
+    /// Returns the bounding box of the mesh produced by `ScalarField::to_mesh`
     /// for this voxel cloud in world space cartesian units.
     pub fn mesh_volume_bounding_box_cartesian(
         &self,
@@ -843,9 +863,9 @@ impl ScalarFiled {
                     &Point3::new(
                         (volume_start.x as f32 + volume_dimensions.x as f32 + 0.5)
                             * voxel_dimensions.x,
-                        (volume_start.y as f32 + volume_dimensions.x as f32 + 0.5)
+                        (volume_start.y as f32 + volume_dimensions.y as f32 + 0.5)
                             * voxel_dimensions.y,
-                        (volume_start.z as f32 + volume_dimensions.x as f32 + 0.5)
+                        (volume_start.z as f32 + volume_dimensions.z as f32 + 0.5)
                             * voxel_dimensions.z,
                     ),
                 )
@@ -871,8 +891,8 @@ impl ScalarFiled {
                     ),
                     &Point3::new(
                         (volume_start.x as f32 + volume_dimensions.x as f32) * voxel_dimensions.x,
-                        (volume_start.y as f32 + volume_dimensions.x as f32) * voxel_dimensions.y,
-                        (volume_start.z as f32 + volume_dimensions.x as f32) * voxel_dimensions.z,
+                        (volume_start.y as f32 + volume_dimensions.y as f32) * voxel_dimensions.y,
+                        (volume_start.z as f32 + volume_dimensions.z as f32) * voxel_dimensions.z,
                     ),
                 )
             },
@@ -1276,7 +1296,7 @@ mod tests {
             vertices,
             NormalStrategy::Sharp,
         );
-        let scalar_field = ScalarFiled::from_mesh(&mesh, &Vector3::new(1.0, 1.0, 1.0), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(1.0, 1.0, 1.0), 0);
 
         insta::assert_json_snapshot!("torus_after_voxelization_into_scalar_field", &scalar_field);
     }
@@ -1292,14 +1312,14 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
-        let scalar_field = ScalarFiled::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5), 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5), 0);
 
         insta::assert_json_snapshot!("sphere_after_voxelization_into_scalar_field", &scalar_field);
     }
 
     #[test]
     fn test_scalar_field_three_dimensional_to_one_dimensional_and_back_relative() {
-        let scalar_field = ScalarFiled::new(
+        let scalar_field = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(3, 4, 5),
             &Vector3::new(1.5, 2.5, 3.5),
@@ -1326,17 +1346,17 @@ mod tests {
 
     #[test]
     fn test_scalar_field_boolean_intersection_all_true() {
-        let mut sf_a = ScalarFiled::new(
+        let mut sf_a = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(3, 3, 3),
             &Vector3::new(0.5, 0.5, 0.5),
         );
-        let mut sf_b = ScalarFiled::new(
+        let mut sf_b = ScalarField::new(
             &Point3::new(2, 1, 1),
             &Vector3::new(3, 3, 3),
             &Vector3::new(0.5, 0.5, 0.5),
         );
-        let mut sf_correct = ScalarFiled::new(
+        let mut sf_correct = ScalarField::new(
             &Point3::new(2, 1, 1),
             &Vector3::new(1, 2, 2),
             &Vector3::new(0.5, 0.5, 0.5),
@@ -1353,17 +1373,17 @@ mod tests {
 
     #[test]
     fn test_scalar_field_boolean_intersection_one_false() {
-        let mut sf_a = ScalarFiled::new(
+        let mut sf_a = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(3, 3, 3),
             &Vector3::new(0.5, 0.5, 0.5),
         );
-        let mut sf_b = ScalarFiled::new(
+        let mut sf_b = ScalarField::new(
             &Point3::new(1, 1, 1),
             &Vector3::new(3, 3, 3),
             &Vector3::new(0.5, 0.5, 0.5),
         );
-        let mut sf_correct = ScalarFiled::new(
+        let mut sf_correct = ScalarField::new(
             &Point3::new(1, 1, 1),
             &Vector3::new(2, 2, 2),
             &Vector3::new(0.5, 0.5, 0.5),
@@ -1382,17 +1402,17 @@ mod tests {
 
     #[test]
     fn test_scalar_field_boolean_union_one_false() {
-        let mut sf_a = ScalarFiled::new(
+        let mut sf_a = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(3, 3, 3),
             &Vector3::new(0.5, 0.5, 0.5),
         );
-        let mut sf_b = ScalarFiled::new(
+        let mut sf_b = ScalarField::new(
             &Point3::new(1, 1, 1),
             &Vector3::new(3, 3, 3),
             &Vector3::new(0.5, 0.5, 0.5),
         );
-        let mut sf_correct = ScalarFiled::new(
+        let mut sf_correct = ScalarField::new(
             &Point3::new(0, 0, 0),
             &Vector3::new(4, 4, 4),
             &Vector3::new(0.5, 0.5, 0.5),
@@ -1428,7 +1448,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_get_set_for_single_voxel() {
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(1, 1, 1),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1446,7 +1466,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_single_voxel_to_mesh_produces_synchronized_mesh() {
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(1, 1, 1),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1464,7 +1484,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_resize_zero_to_nonzero_all_false() {
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &Point3::origin(),
             &Vector3::zeros(),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1480,7 +1500,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_resize_zero_to_nonzero_correct_start_and_dimensions() {
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &Point3::origin(),
             &Vector3::zeros(),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1496,7 +1516,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_resize_nonzero_to_zero_correct_start_and_dimensions() {
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &Point3::new(1, 2, 3),
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1512,7 +1532,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_resize_nonzero_to_smaller_nonzero_correct_start_and_dimensions() {
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1528,7 +1548,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_resize_nonzero_to_larger_nonzero_correct_start_and_dimensions() {
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(1, 2, 3),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1546,7 +1566,7 @@ mod tests {
     fn test_scalar_field_resize_nonzero_to_larger_nonzero_grown_contains_false_rest_original() {
         let original_origin = Point3::new(0i32, 0i32, 0i32);
         let original_block_dimensions = Vector3::new(1u32, 10u32, 3u32);
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &original_origin,
             &original_block_dimensions,
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1583,7 +1603,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_shrink_to_volume() {
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1604,7 +1624,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_shrink_to_empty() {
-        let mut scalar_field = ScalarFiled::new(
+        let mut scalar_field = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1614,5 +1634,168 @@ mod tests {
         assert_eq!(scalar_field.block_start, Point3::origin());
         assert_eq!(scalar_field.block_dimensions, Vector3::new(0, 0, 0));
         assert_eq!(scalar_field.values.len(), 0);
+    }
+
+    #[test]
+    fn test_scalar_field_transform_box_at_origin_identity() {
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            Interval::new(0, 0),
+            0.25,
+            &Vector3::zeros(),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        assert_eq!(transformed_scalar_field, scalar_field);
+    }
+
+    #[test]
+    fn test_scalar_field_transform_box_at_random_location_identity() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            Interval::new(0, 0),
+            0.25,
+            &Vector3::zeros(),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        assert_eq!(transformed_scalar_field, scalar_field);
+    }
+
+    #[test]
+    fn test_scalar_field_transform_box_at_random_location_rotated_identity() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            Interval::new(0, 0),
+            0.25,
+            &Vector3::zeros(),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        assert_eq!(transformed_scalar_field, scalar_field);
+    }
+
+    #[test]
+    fn test_scalar_field_transform_sub_voxel_translation() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            Interval::new(0, 0),
+            0.25,
+            &Vector3::new(0.1, 0.1, 0.1),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        // TODO: test visually!!!
+        insta::assert_json_snapshot!(
+            "scalar_field, transform_sub_voxel_translation",
+            &transformed_scalar_field
+        );
+    }
+
+    #[test]
+    fn test_scalar_field_transform_voxel_size_translation() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            Interval::new(0, 0),
+            0.25,
+            &Vector3::new(0.0, 0.0, 0.25),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        // TODO: test visually!!!
+        insta::assert_json_snapshot!(
+            "scalar_field_transform_voxel_size_translation",
+            &transformed_scalar_field
+        );
+    }
+
+    #[test]
+    fn test_scalar_field_transform_arbitrary_translation() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            Interval::new(0, 0),
+            0.25,
+            &Vector3::new(0.4, 0.6, 0.7),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        // TODO: test visually!!!
+        insta::assert_json_snapshot!(
+            "scalar_field_transform_arbitrary_translation",
+            &transformed_scalar_field
+        );
+    }
+
+    #[test]
+    fn test_scalar_field_arbitrary_transform() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            Interval::new(0, 0),
+            0.25,
+            &Vector3::new(0.4, 0.6, 0.7),
+            &Rotation3::from_euler_angles(25.0, 37.0, 42.0),
+            &Vector3::new(1.5, 1.76, 0.5),
+        )
+        .unwrap();
+
+        // TODO: test visually!!!
+        insta::assert_json_snapshot!(
+            "scalar_field_arbitrary_transform",
+            &transformed_scalar_field
+        );
     }
 }
