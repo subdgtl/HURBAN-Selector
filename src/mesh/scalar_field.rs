@@ -508,10 +508,15 @@ impl ScalarField {
     /// If the input scalar fields are far apart, the resulting scalar field may
     /// be huge.
     #[allow(dead_code)]
-    pub fn boolean_union(&mut self, other: &ScalarField, volume_value_interval: Interval<i16>) {
+    pub fn boolean_union(
+        &mut self,
+        volume_value_interval_self: Interval<i16>,
+        other: &ScalarField,
+        volume_value_interval_other: Interval<i16>,
+    ) {
         let bounding_boxes = [
-            self.volume_bounding_box(volume_value_interval),
-            other.volume_bounding_box(volume_value_interval),
+            self.volume_bounding_box(volume_value_interval_self),
+            other.volume_bounding_box(volume_value_interval_other),
         ];
 
         let valid_bounding_boxes_iter = bounding_boxes.iter().filter_map(|b| *b);
@@ -545,12 +550,14 @@ impl ScalarField {
                 );
                 if let Some(value) = other.value_at_absolute_voxel_coordinate(&absolute_coordinate)
                 {
-                    if volume_value_interval.includes_closed(value) {
-                        self.values[i] = value;
+                    if volume_value_interval_other.includes_closed(value) {
+                        self.values[i] = volume_value_interval_other
+                            .remap_to(value, volume_value_interval_self)
+                            .expect("One of the intervals is infinite.");
                     }
                 }
             }
-            self.shrink_to_fit(volume_value_interval);
+            self.shrink_to_fit(volume_value_interval_self);
         } else {
             self.wipe();
         }
@@ -563,8 +570,9 @@ impl ScalarField {
     #[allow(dead_code)]
     pub fn boolean_difference(
         &mut self,
+        volume_value_interval_self: Interval<i16>,
         other: &ScalarField,
-        volume_value_interval: Interval<i16>,
+        volume_value_interval_other: Interval<i16>,
     ) {
         // Iterate through the target scalar field
         for i in 0..self.values.len() {
@@ -585,13 +593,13 @@ impl ScalarField {
                 // If the other scalar fields contains a voxel at the position,
                 // remove the existing voxel from the target scalar field
                 if let Some(value) = other.values.get(other_one_dimensional) {
-                    if volume_value_interval.includes_closed(*value) {
+                    if volume_value_interval_other.includes_closed(*value) {
                         self.values[i] = ScalarField::empty_value();
                     }
                 }
             }
         }
-        self.shrink_to_fit(volume_value_interval)
+        self.shrink_to_fit(volume_value_interval_self)
     }
 
     /// Gets the state of a voxel defined in absolute voxel coordinates
@@ -973,112 +981,6 @@ impl ScalarField {
                 BoundingBox::new(&volume_start, &volume_end)
             },
         )
-    }
-
-    /// Fill hollow volumes in scalar field. The original scalar field will be
-    /// mutated.
-    // TODO: remove
-    #[allow(dead_code)]
-    pub fn fill_hollow_volumes(&mut self, volume_value_interval: Interval<i16>) {
-        // Lookup table of neighbor coordinates
-        let neighbor_offsets = [
-            Vector3::new(-1, 0, 0),
-            Vector3::new(1, 0, 0),
-            Vector3::new(0, -1, 0),
-            Vector3::new(0, 1, 0),
-            Vector3::new(0, 0, -1),
-            Vector3::new(0, 0, 1),
-        ];
-
-        // Contains indices into the voxel map
-        let mut queue_to_process: VecDeque<usize> = VecDeque::new();
-        // Matches the voxel map length
-        let mut discovered_as_outer_and_empty = vec![false; self.values.len()];
-
-        // Scan for void voxels at the boundaries of the scalar field. For
-        // optimization and readability reasons this scans the entire voxel
-        // cloud and filters out coordinates inside the scalar field block.
-        for (one_dimensional, voxel_value) in self.values.iter().enumerate() {
-            let relative_coordinate = one_dimensional_to_relative_voxel_coordinate(
-                one_dimensional,
-                &self.block_dimensions,
-            )
-            .expect("Coord out of bounds");
-            // If any of these is true, the coordinate is at the boundary of the
-            // scalar field block
-            if relative_coordinate.x == 0
-                || relative_coordinate.y == 0
-                || relative_coordinate.z == 0
-                || relative_coordinate.x == cast_i32(self.block_dimensions.x) - 1
-                || relative_coordinate.y == cast_i32(self.block_dimensions.y) - 1
-                || relative_coordinate.z == cast_i32(self.block_dimensions.z) - 1
-            {
-                // If the voxel is void
-                if !volume_value_interval.includes_closed(*voxel_value) {
-                    // put it into the processing queue
-                    queue_to_process.push_back(one_dimensional);
-                    // and mark it discovered.
-                    discovered_as_outer_and_empty[one_dimensional] = true;
-                }
-            }
-        }
-
-        // Process the queue
-        while let Some(one_dimensional) = queue_to_process.pop_front() {
-            // Calculate the relative coord of the currently processed voxel.
-            // Will be needed to calculate its neighbors.
-            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
-                one_dimensional,
-                &self.block_start,
-                &self.block_dimensions,
-            )
-            .expect("Coord out of bounds");
-            // Check all the neighbors
-            for neighbor_offset in &neighbor_offsets {
-                let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
-                // If the neighbor exists (is not out of bounds)
-                if let Some(neighbor_value) =
-                    self.value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
-                {
-                    // and doesn't contain any volume
-                    if !volume_value_interval.includes_closed(neighbor_value) {
-                        let neighbor_one_dimensional =
-                            absolute_voxel_to_one_dimensional_coordinate(
-                                &neighbor_absolute_coordinate,
-                                &self.block_start,
-                                &self.block_dimensions,
-                            )
-                            .expect("Coord out of bounds");
-                        // Check if it is void and hasn't been discovered yet
-                        if !discovered_as_outer_and_empty[neighbor_one_dimensional] {
-                            // Put it to the processing queue
-                            queue_to_process.push_back(neighbor_one_dimensional);
-                            // and mark it discovered.
-                            discovered_as_outer_and_empty[neighbor_one_dimensional] = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        // The volume value will be the lowest value of the source interval
-        // because it is expected that the internal surface of the volume will
-        // also have the lowest value. For intervals with infinite left bound,
-        // the right bound will be used. Intervals with both bounds infinite
-        // don't exist.
-        let internal_voxel_value = volume_value_interval.left().unwrap_or(
-            volume_value_interval
-                .right()
-                .expect("Both interval bounds are infinite"),
-        );
-        // All the discovered voxels were empty and connected with the voxel
-        // cloud boundaries. Therefore they are part of the outer void space and
-        // everything else is a filled volume.
-        for (i, v) in self.values.iter_mut().enumerate() {
-            if !discovered_as_outer_and_empty[i] && !volume_value_interval.includes_closed(*v) {
-                *v = internal_voxel_value;
-            }
-        }
     }
 
     /// Compute discrete distance field. Each voxel will be set a value equal to
@@ -1753,7 +1655,7 @@ mod tests {
             ScalarField::empty_value(),
         );
 
-        sf_a.boolean_union(&sf_b, Interval::new(0, 0));
+        sf_a.boolean_union(Interval::new(0, 0), &sf_b, Interval::new(0, 0));
 
         assert_eq!(sf_a, sf_correct);
     }

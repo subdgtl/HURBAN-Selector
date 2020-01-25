@@ -16,7 +16,7 @@ use crate::mesh::scalar_field::ScalarField;
 #[derive(Debug, PartialEq)]
 pub enum FuncVoxelizeError {
     WeldFailed,
-    EmptyVoxelCloud,
+    EmptyScalarField,
 }
 
 impl fmt::Display for FuncVoxelizeError {
@@ -26,7 +26,7 @@ impl fmt::Display for FuncVoxelizeError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncVoxelizeError::EmptyVoxelCloud => write!(f, "The resulting voxel cloud is empty"),
+            FuncVoxelizeError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
         }
     }
 }
@@ -108,15 +108,16 @@ impl Func for FuncVoxelize {
 
         scalar_field.compute_distance_filed(Interval::new(0, 0));
 
-        if !scalar_field.contains_voxels() {
-            return Err(FuncError::new(FuncVoxelizeError::EmptyVoxelCloud));
-        }
-
+        
         let meshing_interval = if fill {
             Interval::new_left_infinite(growth_i16)
         } else {
             Interval::new(-growth_i16, growth_i16)
         };
+        
+        if !scalar_field.contains_voxels_within_interval(meshing_interval) {
+            return Err(FuncError::new(FuncVoxelizeError::EmptyScalarField));
+        }
 
         match scalar_field.to_mesh(meshing_interval) {
             Some(value) => Ok(Value::Mesh(Arc::new(value))),

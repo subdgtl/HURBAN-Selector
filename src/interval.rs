@@ -234,16 +234,21 @@ impl<
         {
             None
         } else {
-            let left1 = self.left.to_f64().expect("Can't convert to f64");
-            let right1 = self.right.to_f64().expect("Can't convert to f64");
-            let left2 = target_interval.left.to_f64().expect("Can't convert to f64");
             let v = value.to_f64().expect("Can't convert to f64");
-            let right2 = target_interval
+            let left_source = self.left.to_f64().expect("Can't convert to f64");
+            let right_source = self.right.to_f64().expect("Can't convert to f64");
+            let left_target = target_interval.left.to_f64().expect("Can't convert to f64");
+            let right_target = target_interval
                 .right
                 .to_f64()
                 .expect("Can't convert to f64");
 
-            let remapped = left2 + ((v - left1) / (right1 - left1)) * (right2 - left2);
+            let length_source = right_source - left_source;
+            if approx::relative_eq!(length_source, 0.0) {
+                return target_interval.centre();
+            }
+            let length_target = right_target - left_target;
+            let remapped = left_target + ((v - left_source) / length_source) * length_target;
 
             Some(T::from_f64(remapped).expect("Can't convert from f64"))
         }

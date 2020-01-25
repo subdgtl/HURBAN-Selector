@@ -5,16 +5,18 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 
+use crate::convert::clamp_cast_u32_to_i16;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::voxel_cloud::VoxelCloud;
+use crate::interval::Interval;
+use crate::mesh::scalar_field::ScalarField;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncBooleanDifferenceError {
     WeldFailed,
-    EmptyVoxelCloud,
+    EmptyScalarField,
 }
 
 impl fmt::Display for FuncBooleanDifferenceError {
@@ -24,8 +26,8 @@ impl fmt::Display for FuncBooleanDifferenceError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncBooleanDifferenceError::EmptyVoxelCloud => {
-                write!(f, "The resulting voxel cloud is empty")
+            FuncBooleanDifferenceError::EmptyScalarField => {
+                write!(f, "The resulting scalar field is empty")
             }
         }
     }
@@ -105,28 +107,31 @@ impl Func for FuncBooleanDifference {
         let mesh1 = args[0].unwrap_mesh();
         let mesh2 = args[1].unwrap_mesh();
         let voxel_dimensions = args[2].unwrap_float3();
-        let growth_iterations = args[3].unwrap_uint();
+        let growth_u32 = args[3].unwrap_uint();
+        let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[4].unwrap_boolean();
 
-        let mut voxel_cloud1 = VoxelCloud::from_mesh(mesh1, &Vector3::from(voxel_dimensions));
-        let mut voxel_cloud2 = VoxelCloud::from_mesh(mesh2, &Vector3::from(voxel_dimensions));
+        let mut scalar_field1 =
+            ScalarField::from_mesh(mesh1, &Vector3::from(voxel_dimensions), 0, growth_u32);
+        let mut scalar_field2 =
+            ScalarField::from_mesh(mesh2, &Vector3::from(voxel_dimensions), 0, growth_u32);
 
-        for _ in 0..growth_iterations {
-            voxel_cloud1.grow_volume();
-            voxel_cloud2.grow_volume();
+        scalar_field1.compute_distance_filed(Interval::new(0, 0));
+        scalar_field2.compute_distance_filed(Interval::new(0, 0));
+
+        let meshing_interval = if fill {
+            Interval::new_left_infinite(growth_i16)
+        } else {
+            Interval::new(-growth_i16, growth_i16)
+        };
+
+        scalar_field1.boolean_difference(meshing_interval, &scalar_field2, meshing_interval);
+
+        if !scalar_field1.contains_voxels_within_interval(meshing_interval) {
+            return Err(FuncError::new(FuncBooleanDifferenceError::EmptyScalarField));
         }
 
-        if fill {
-            voxel_cloud1.fill_volumes();
-            voxel_cloud2.fill_volumes();
-        }
-
-        voxel_cloud1.boolean_difference(&voxel_cloud2);
-        if !voxel_cloud1.contains_voxels() {
-            return Err(FuncError::new(FuncBooleanDifferenceError::EmptyVoxelCloud));
-        }
-
-        match voxel_cloud1.to_mesh() {
+        match scalar_field1.to_mesh(meshing_interval) {
             Some(value) => Ok(Value::Mesh(Arc::new(value))),
             None => Err(FuncError::new(FuncBooleanDifferenceError::WeldFailed)),
         }
