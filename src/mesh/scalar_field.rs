@@ -269,7 +269,7 @@ impl<
                     );
                     *voxel = source_scalar_field
                         .value_at_absolute_voxel_coordinate(&absolute_coordinate)
-                        .unwrap_or_else(ScalarField::empty_value;
+                        .unwrap_or_else(ScalarField::empty_value);
                 }
 
                 // FIXME: @Optimization Due to overly safe
