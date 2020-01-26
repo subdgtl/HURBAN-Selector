@@ -159,7 +159,7 @@ impl Func for FuncVoxelTransform {
         let mut scalar_field = ScalarField::from_mesh(
             mesh,
             &Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension),
-            0,
+            0_i16,
             growth_u32,
         );
 

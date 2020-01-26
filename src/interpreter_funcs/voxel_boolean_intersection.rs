@@ -112,9 +112,9 @@ impl Func for FuncBooleanIntersection {
         let fill = args[4].unwrap_boolean();
 
         let mut scalar_field1 =
-            ScalarField::from_mesh(mesh1, &Vector3::from(voxel_dimensions), 0, growth_u32);
+            ScalarField::from_mesh(mesh1, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);
         let mut scalar_field2 =
-            ScalarField::from_mesh(mesh2, &Vector3::from(voxel_dimensions), 0, growth_u32);
+            ScalarField::from_mesh(mesh2, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);
 
         scalar_field1.compute_distance_filed(Interval::new(0, 0));
         scalar_field2.compute_distance_filed(Interval::new(0, 0));

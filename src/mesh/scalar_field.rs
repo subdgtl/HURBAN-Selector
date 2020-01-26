@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
 use std::f32;
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
+use num_traits::{Bounded, FromPrimitive, ToPrimitive};
 
 use crate::bounding_box::BoundingBox;
 use crate::convert::{cast_i32, cast_u32, cast_usize, clamp_cast_i32_to_u32};
@@ -32,18 +34,41 @@ use super::{primitive, tools, Face, Mesh};
 /// voxel-space coordinates. The voxel space starts at the cartesian space
 /// origin with voxel coordinates 0, 0, 0.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-pub struct ScalarField {
+pub struct ScalarField<T> {
     block_start: Point3<i32>,
     block_dimensions: Vector3<u32>,
     voxel_dimensions: Vector3<f32>,
-    values: Vec<i16>,
+    values: Vec<T>,
 }
 
-impl ScalarField {
+impl<
+        T: Add<Output = T>
+            + Bounded
+            + Copy
+            + Div<Output = T>
+            + FromPrimitive
+            + Mul<Output = T>
+            + Neg<Output = T>
+            + PartialOrd
+            + Sub<Output = T>
+            + ToPrimitive,
+    > ScalarField<T>
+{
     /// Gets the internal value for an empty voxel in the current scalar field.
-    // FIXME: Will make more sense once the scalar field becomes generic.
-    pub fn empty_value() -> i16 {
-        i16::max_value()
+    pub fn empty_value<U>() -> U
+    where
+        U: Add<Output = T>
+            + Bounded
+            + Copy
+            + Div<Output = T>
+            + FromPrimitive
+            + Mul<Output = T>
+            + Neg<Output = T>
+            + PartialOrd
+            + Sub<Output = T>
+            + ToPrimitive,
+    {
+        U::max_value()
     }
 
     /// Define a new empty block of voxel space, which begins at
@@ -60,11 +85,13 @@ impl ScalarField {
             "One or more voxel dimensions are 0.0"
         );
         let map_length = block_dimensions.x * block_dimensions.y * block_dimensions.z;
+        let values: Vec<T> = vec![ScalarField::empty_value(); cast_usize(map_length)];
+
         ScalarField {
             block_start: *block_start,
             block_dimensions: *block_dimensions,
             voxel_dimensions: *voxel_dimensions,
-            values: vec![ScalarField::empty_value(); cast_usize(map_length)],
+            values,
         }
     }
 
@@ -114,7 +141,7 @@ impl ScalarField {
     pub fn from_mesh(
         mesh: &Mesh,
         voxel_dimensions: &Vector3<f32>,
-        value_on_mesh_surface: i16,
+        value_on_mesh_surface: T,
         growth_offset: u32,
     ) -> Self {
         assert!(
@@ -203,8 +230,8 @@ impl ScalarField {
     /// # Panics
     /// Panics if any of the voxel dimensions is below or equal to zero.
     pub fn from_scalar_field(
-        source_scalar_field: &ScalarField,
-        volume_value_interval: Interval<i16>,
+        source_scalar_field: &ScalarField<T>,
+        volume_value_interval: Interval<T>,
         voxel_dimensions: &Vector3<f32>,
     ) -> Option<Self> {
         assert!(
@@ -260,8 +287,8 @@ impl ScalarField {
     /// # Panics
     /// Panics if the voxel dimension is below or equal to zero.
     pub fn from_scalar_field_transformed(
-        source_scalar_field: &ScalarField,
-        volume_value_interval: Interval<i16>,
+        source_scalar_field: &ScalarField<T>,
+        volume_value_interval: Interval<T>,
         voxel_dimension: f32,
         cartesian_translation: &Vector3<f32>,
         rotation: &Rotation3<f32>,
@@ -417,7 +444,7 @@ impl ScalarField {
 
     /// Checks if the scalar field contains any voxel with a value from the
     /// given interval.
-    pub fn contains_voxels_within_interval(&self, volume_value_interval: Interval<i16>) -> bool {
+    pub fn contains_voxels_within_interval(&self, volume_value_interval: Interval<T>) -> bool {
         self.values
             .iter()
             .any(|v| volume_value_interval.includes_closed(*v))
@@ -429,9 +456,9 @@ impl ScalarField {
     /// fields' volumes.
     pub fn boolean_intersection(
         &mut self,
-        volume_value_interval_self: Interval<i16>,
-        other: &ScalarField,
-        volume_value_interval_other: Interval<i16>,
+        volume_value_interval_self: Interval<T>,
+        other: &ScalarField<T>,
+        volume_value_interval_other: Interval<T>,
     ) {
         // Find volume common to both scalar fields.
         if let Some(self_volume_bounding_box) = self.volume_bounding_box(volume_value_interval_self)
@@ -502,9 +529,9 @@ impl ScalarField {
     /// be huge.
     pub fn boolean_union(
         &mut self,
-        volume_value_interval_self: Interval<i16>,
-        other: &ScalarField,
-        volume_value_interval_other: Interval<i16>,
+        volume_value_interval_self: Interval<T>,
+        other: &ScalarField<T>,
+        volume_value_interval_other: Interval<T>,
     ) {
         let bounding_boxes = [
             self.volume_bounding_box(volume_value_interval_self),
@@ -561,9 +588,9 @@ impl ScalarField {
     /// remains intact.
     pub fn boolean_difference(
         &mut self,
-        volume_value_interval_self: Interval<i16>,
-        other: &ScalarField,
-        volume_value_interval_other: Interval<i16>,
+        volume_value_interval_self: Interval<T>,
+        other: &ScalarField<T>,
+        volume_value_interval_other: Interval<T>,
     ) {
         // Iterate through the target scalar field
         for i in 0..self.values.len() {
@@ -598,7 +625,7 @@ impl ScalarField {
     pub fn value_at_absolute_voxel_coordinate(
         &self,
         absolute_coordinate: &Point3<i32>,
-    ) -> Option<i16> {
+    ) -> Option<T> {
         absolute_voxel_to_one_dimensional_coordinate(
             absolute_coordinate,
             &self.block_start,
@@ -612,7 +639,7 @@ impl ScalarField {
     pub fn set_value_at_absolute_voxel_coordinate(
         &mut self,
         absolute_coordinate: &Point3<i32>,
-        state: i16,
+        state: T,
     ) {
         let index = absolute_voxel_to_one_dimensional_coordinate(
             absolute_coordinate,
@@ -625,7 +652,7 @@ impl ScalarField {
 
     /// Fills the current scalar field with the given value.
     #[allow(dead_code)]
-    pub fn fill_with(&mut self, value: i16) {
+    pub fn fill_with(&mut self, value: T) {
         for v in self.values.iter_mut() {
             *v = value;
         }
@@ -699,7 +726,7 @@ impl ScalarField {
 
     /// Resize the scalar field block to exactly fit the volumetric geometry.
     /// Returns None for empty the scalar field.
-    pub fn shrink_to_fit(&mut self, volume_value_interval: Interval<i16>) {
+    pub fn shrink_to_fit(&mut self, volume_value_interval: Interval<T>) {
         if let Some((shrunk_block_start, shrunk_block_dimensions)) =
             self.compute_volume_boundaries(volume_value_interval)
         {
@@ -715,7 +742,7 @@ impl ScalarField {
     /// For watertight meshes this creates both, outer and inner boundary mesh.
     /// There is also a high risk of generating a non-manifold mesh if some
     /// voxels touch only diagonally.
-    pub fn to_mesh(&self, volume_value_interval: Interval<i16>) -> Option<Mesh> {
+    pub fn to_mesh(&self, volume_value_interval: Interval<T>) -> Option<Mesh> {
         if self.block_dimensions.x == 0
             || self.block_dimensions.y == 0
             || self.block_dimensions.z == 0
@@ -878,7 +905,7 @@ impl ScalarField {
     /// for this scalar field in world space cartesian units.
     pub fn mesh_volume_bounding_box_cartesian(
         &self,
-        volume_value_interval: Interval<i16>,
+        volume_value_interval: Interval<T>,
     ) -> Option<BoundingBox<f32>> {
         let voxel_dimensions = self.voxel_dimensions;
         self.compute_volume_boundaries(volume_value_interval).map(
@@ -907,7 +934,7 @@ impl ScalarField {
     #[allow(dead_code)]
     pub fn volume_bounding_box_cartesian(
         &self,
-        volume_value_interval: Interval<i16>,
+        volume_value_interval: Interval<T>,
     ) -> Option<BoundingBox<f32>> {
         let voxel_dimensions = self.voxel_dimensions;
         self.compute_volume_boundaries(volume_value_interval).map(
@@ -932,7 +959,7 @@ impl ScalarField {
     /// after shrinking to fit just the nonempty voxels.
     pub fn volume_bounding_box(
         &self,
-        volume_value_interval: Interval<i16>,
+        volume_value_interval: Interval<T>,
     ) -> Option<BoundingBox<i32>> {
         self.compute_volume_boundaries(volume_value_interval).map(
             |(volume_start, volume_dimensions)| {
@@ -951,7 +978,7 @@ impl ScalarField {
     /// its distance from the original volume. The voxels that were originally
     /// volume voxels, will be set to value 0. Voxels inside the closed volumes
     /// will have a value with a negative sign.
-    pub fn compute_distance_filed(&mut self, volume_value_interval: Interval<i16>) {
+    pub fn compute_distance_filed(&mut self, volume_value_interval: Interval<T>) {
         // Lookup table of neighbor coordinates
         let neighbor_offsets = [
             Vector3::new(-1, 0, 0),
@@ -965,7 +992,7 @@ impl ScalarField {
         // Contains indices into the voxel map
         let mut queue_to_find_outer: VecDeque<usize> = VecDeque::new();
         // Contains indices to the voxel map and their distance value
-        let mut queue_to_compute_distance: VecDeque<(usize, i16)> = VecDeque::new();
+        let mut queue_to_compute_distance: VecDeque<(usize, T)> = VecDeque::new();
         // Match the voxel map length
         let mut discovered_as_outer_and_empty = vec![false; self.values.len()];
         let mut discovered_as_empty = vec![false; self.values.len()];
@@ -1019,7 +1046,10 @@ impl ScalarField {
                                 )
                             {
                                 // with the current distance from the volume 1
-                                queue_to_compute_distance.push_back((one_dimensional_neighbor, 1));
+                                queue_to_compute_distance.push_back((
+                                    one_dimensional_neighbor,
+                                    T::from_u32(1).expect("Conversion from u32 failed"),
+                                ));
                                 // and mark them discovered
                                 discovered_as_empty[one_dimensional_neighbor] = true;
                             }
@@ -1098,8 +1128,10 @@ impl ScalarField {
                         if !volume_value_interval.includes_closed(neighbor_value) {
                             // put it into the processing queue with the
                             // distance one higher than the current
-                            queue_to_compute_distance
-                                .push_back((one_dimensional_neighbor, distance + 1));
+                            queue_to_compute_distance.push_back((
+                                one_dimensional_neighbor,
+                                distance + T::from_u32(1).expect("Conversion from u32 failed."),
+                            ));
                             // and mark it discovered.
                             discovered_as_empty[one_dimensional_neighbor] = true;
                         }
@@ -1120,7 +1152,7 @@ impl ScalarField {
         // set the volume voxel distance to 0.
         for (one_dimensional, voxel_value) in self.values.iter_mut().enumerate() {
             if !discovered_as_empty[one_dimensional] {
-                *voxel_value = 0;
+                *voxel_value = T::from_u32(0).expect("Conversion from u32 failed");
             }
         }
     }
@@ -1130,7 +1162,7 @@ impl ScalarField {
     /// original block start and zero block dimensions.
     fn compute_volume_boundaries(
         &self,
-        volume_value_interval: Interval<i16>,
+        volume_value_interval: Interval<T>,
     ) -> Option<(Point3<i32>, Vector3<u32>)> {
         let mut min: Vector3<i32> =
             Vector3::new(i32::max_value(), i32::max_value(), i32::max_value());
@@ -1433,7 +1465,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_three_dimensional_to_one_dimensional_and_back_relative() {
-        let scalar_field = ScalarField::new(
+        let scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(3, 4, 5),
             &Vector3::new(1.5, 2.5, 3.5),
@@ -1625,7 +1657,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_get_set_for_single_voxel() {
-        let mut scalar_field = ScalarField::new(
+        let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(1, 1, 1),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1637,7 +1669,8 @@ mod tests {
         let after = scalar_field
             .value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0))
             .unwrap();
-        assert_eq!(before, ScalarField::empty_value());
+        let empty: i16 = ScalarField::empty_value();
+        assert_eq!(before, empty);
         assert_eq!(after, 0);
     }
 
@@ -1661,7 +1694,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_resize_zero_to_nonzero_all_false() {
-        let mut scalar_field = ScalarField::new(
+        let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::origin(),
             &Vector3::zeros(),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1672,12 +1705,13 @@ mod tests {
             .value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0))
             .unwrap();
 
-        assert_eq!(voxel, ScalarField::empty_value());
+        let empty: i16 = ScalarField::empty_value();
+        assert_eq!(voxel, empty);
     }
 
     #[test]
     fn test_scalar_field_resize_zero_to_nonzero_correct_start_and_dimensions() {
-        let mut scalar_field = ScalarField::new(
+        let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::origin(),
             &Vector3::zeros(),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1693,7 +1727,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_resize_nonzero_to_zero_correct_start_and_dimensions() {
-        let mut scalar_field = ScalarField::new(
+        let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::new(1, 2, 3),
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1709,7 +1743,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_resize_nonzero_to_smaller_nonzero_correct_start_and_dimensions() {
-        let mut scalar_field = ScalarField::new(
+        let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1725,7 +1759,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_resize_nonzero_to_larger_nonzero_correct_start_and_dimensions() {
-        let mut scalar_field = ScalarField::new(
+        let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(1, 2, 3),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1743,7 +1777,7 @@ mod tests {
     fn test_scalar_field_resize_nonzero_to_larger_nonzero_grown_contains_false_rest_original() {
         let original_origin = Point3::new(0i32, 0i32, 0i32);
         let original_block_dimensions = Vector3::new(1u32, 10u32, 3u32);
-        let mut scalar_field = ScalarField::new(
+        let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &original_origin,
             &original_block_dimensions,
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1756,6 +1790,8 @@ mod tests {
         let new_block_dimensions = Vector3::new(4, 5, 6);
         scalar_field.resize(&new_origin, &new_block_dimensions);
 
+        let empty: i16 = ScalarField::empty_value();
+        
         for (i, v) in scalar_field.values.iter().enumerate() {
             let coordinate = one_dimensional_to_absolute_voxel_coordinate(
                 i,
@@ -1771,7 +1807,7 @@ mod tests {
                 || coordinate.y > original_block_end.y
                 || coordinate.z > original_block_end.z
             {
-                assert_eq!(*v, ScalarField::empty_value());
+                assert_eq!(*v, empty);
             } else {
                 assert_eq!(*v, 0);
             }
@@ -1780,7 +1816,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_shrink_to_volume() {
-        let mut scalar_field = ScalarField::new(
+        let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1801,7 +1837,7 @@ mod tests {
 
     #[test]
     fn test_scalar_field_shrink_to_empty() {
-        let mut scalar_field = ScalarField::new(
+        let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -1820,7 +1856,7 @@ mod tests {
             Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1841,7 +1877,7 @@ mod tests {
             Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1862,7 +1898,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1883,7 +1919,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1894,7 +1930,6 @@ mod tests {
         )
         .unwrap();
 
-        // TODO: test visually!!!
         insta::assert_json_snapshot!(
             "scalar_field, transform_sub_voxel_translation",
             &transformed_scalar_field
@@ -1908,7 +1943,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1919,7 +1954,6 @@ mod tests {
         )
         .unwrap();
 
-        // TODO: test visually!!!
         insta::assert_json_snapshot!(
             "scalar_field_transform_voxel_size_translation",
             &transformed_scalar_field
@@ -1933,7 +1967,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1944,7 +1978,6 @@ mod tests {
         )
         .unwrap();
 
-        // TODO: test visually!!!
         insta::assert_json_snapshot!(
             "scalar_field_transform_arbitrary_translation",
             &transformed_scalar_field
@@ -1958,7 +1991,7 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1969,7 +2002,6 @@ mod tests {
         )
         .unwrap();
 
-        // TODO: test visually!!!
         insta::assert_json_snapshot!(
             "scalar_field_arbitrary_transform",
             &transformed_scalar_field

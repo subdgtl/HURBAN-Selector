@@ -104,17 +104,16 @@ impl Func for FuncVoxelize {
         let fill = args[3].unwrap_boolean();
 
         let mut scalar_field =
-            ScalarField::from_mesh(mesh, &Vector3::from(voxel_dimensions), 0, growth_u32);
+            ScalarField::from_mesh(mesh, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);
 
         scalar_field.compute_distance_filed(Interval::new(0, 0));
 
-        
         let meshing_interval = if fill {
             Interval::new_left_infinite(growth_i16)
         } else {
             Interval::new(-growth_i16, growth_i16)
         };
-        
+
         if !scalar_field.contains_voxels_within_interval(meshing_interval) {
             return Err(FuncError::new(FuncVoxelizeError::EmptyScalarField));
         }
