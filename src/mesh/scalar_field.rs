@@ -55,20 +55,8 @@ impl<
     > ScalarField<T>
 {
     /// Gets the internal value for an empty voxel in the current scalar field.
-    pub fn empty_value<U>() -> U
-    where
-        U: Add<Output = T>
-            + Bounded
-            + Copy
-            + Div<Output = T>
-            + FromPrimitive
-            + Mul<Output = T>
-            + Neg<Output = T>
-            + PartialOrd
-            + Sub<Output = T>
-            + ToPrimitive,
-    {
-        U::max_value()
+    pub fn empty_value() -> T {
+        T::max_value()
     }
 
     /// Define a new empty block of voxel space, which begins at
@@ -1442,7 +1430,7 @@ mod tests {
             vertices,
             NormalStrategy::Sharp,
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(1.0, 1.0, 1.0), 0, 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(1.0, 1.0, 1.0), 0_i16, 0);
 
         insta::assert_json_snapshot!("torus_after_voxelization_into_scalar_field", &scalar_field);
     }
@@ -1458,7 +1446,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5), 0, 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5), 0_i16, 0);
 
         insta::assert_json_snapshot!("sphere_after_voxelization_into_scalar_field", &scalar_field);
     }
