@@ -1791,7 +1791,7 @@ mod tests {
         scalar_field.resize(&new_origin, &new_block_dimensions);
 
         let empty: i16 = ScalarField::empty_value();
-        
+
         for (i, v) in scalar_field.values.iter().enumerate() {
             let coordinate = one_dimensional_to_absolute_voxel_coordinate(
                 i,
@@ -1856,7 +1856,8 @@ mod tests {
             Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1877,7 +1878,8 @@ mod tests {
             Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1898,7 +1900,8 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1919,7 +1922,8 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1943,7 +1947,8 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1967,7 +1972,8 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
@@ -1991,7 +1997,8 @@ mod tests {
             Rotation3::from_euler_angles(1.1, 2.2, 3.3),
             Vector3::new(1.0, 2.0, 3.0),
         );
-        let scalar_field: ScalarField<i16> = ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
+        let scalar_field: ScalarField<i16> =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0, 0);
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             Interval::new(0, 0),
