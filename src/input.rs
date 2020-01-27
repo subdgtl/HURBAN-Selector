@@ -8,6 +8,8 @@ pub struct InputState {
     pub camera_zoom: f32,
     pub camera_zoom_steps: i32,
     pub camera_reset_viewport: bool,
+    #[cfg(not(feature = "dist"))]
+    pub debug_view_cycle: bool,
     pub close_requested: bool,
     pub open_screenshot_options: bool,
     pub window_resized: Option<winit::dpi::LogicalSize>,
@@ -126,6 +128,14 @@ impl InputManager {
                                 &MODIFIERS_NONE,
                             ) => {
                                 self.input_state.camera_reset_viewport = true;
+                            }
+                            #[cfg(not(feature = "dist"))]
+                            (
+                                Some(winit::event::VirtualKeyCode::D),
+                                winit::event::ElementState::Pressed,
+                                &MODIFIERS_NONE,
+                            ) => {
+                                self.input_state.debug_view_cycle = true;
                             }
                             (
                                 Some(winit::event::VirtualKeyCode::P),

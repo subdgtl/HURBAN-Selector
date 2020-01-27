@@ -5,12 +5,13 @@ pub use crate::ui::Theme;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
+use std::iter;
 use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use nalgebra::Point3;
+use nalgebra::{Point3, Vector2, Vector3};
 
 use crate::bounding_box::BoundingBox;
 use crate::camera::{Camera, CameraOptions};
@@ -19,7 +20,10 @@ use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
 use crate::mesh::Mesh;
 use crate::notifications::{NotificationLevel, Notifications};
-use crate::renderer::{DrawMeshMode, GpuMesh, GpuMeshHandle, Options as RendererOptions, Renderer};
+use crate::plane::Plane;
+use crate::renderer::{
+    DirectionalLight, DrawMeshMode, GpuMesh, GpuMeshHandle, Options as RendererOptions, Renderer,
+};
 use crate::session::{PollInterpreterResponseNotification, Session};
 use crate::ui::{ScreenshotOptions, Ui};
 
@@ -74,6 +78,23 @@ pub struct Options {
 /// element values, the path is `(var_ident, array_index)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ValuePath(VarIdent, usize);
+
+#[cfg(not(feature = "dist"))]
+#[derive(Debug, Clone, Copy)]
+enum RendererDebugView {
+    Off,
+    ShadowMap,
+}
+
+#[cfg(not(feature = "dist"))]
+impl RendererDebugView {
+    pub fn cycle(self) -> Self {
+        match self {
+            RendererDebugView::Off => RendererDebugView::ShadowMap,
+            RendererDebugView::ShadowMap => RendererDebugView::Off,
+        }
+    }
+}
 
 /// Initialize the window and run in infinite loop.
 ///
@@ -152,17 +173,17 @@ pub fn init_and_run(options: Options) -> ! {
     let mut camera = Camera::new(
         initial_window_aspect_ratio,
         5.0,
-        45f32.to_radians(),
-        60f32.to_radians(),
+        270_f32.to_radians(),
+        60_f32.to_radians(),
         CameraOptions {
             radius_min: 1.0,
             radius_max: 10000.0,
-            polar_angle_distance_min: 1f32.to_radians(),
+            polar_angle_distance_min: 1_f32.to_radians(),
             speed_pan: 10.0,
             speed_rotate: 0.005,
             speed_zoom: 0.01,
             speed_zoom_step: 1.0,
-            fovy: 45f32.to_radians(),
+            fovy: 45_f32.to_radians(),
             znear: 0.01,
             zfar: 1000.0,
         },
@@ -179,13 +200,14 @@ pub fn init_and_run(options: Options) -> ! {
         Theme::Dark => [0.1, 0.1, 0.1, 1.0],
         Theme::Funky => cast_u8_color_to_f64([0xea, 0xe7, 0xe1, 0xff]),
     };
+
+    #[cfg(not(feature = "dist"))]
+    let mut renderer_debug_view = RendererDebugView::Off;
     let mut renderer_draw_mesh_mode = DrawMeshMode::Shaded;
     let mut renderer = Renderer::new(
         &window,
         initial_window_width,
         initial_window_height,
-        &camera.projection_matrix(),
-        &camera.view_matrix(),
         ui.fonts(),
         RendererOptions {
             // FIXME: @Correctness Msaa X4 is the only value currently
@@ -196,14 +218,28 @@ pub fn init_and_run(options: Options) -> ! {
             msaa: options.msaa,
             vsync: options.vsync,
             gpu_backend: options.gpu_backend,
+            flat_shading_color: clear_color,
         },
     );
 
+    let ground_plane_mesh = mesh::primitive::create_mesh_plane(
+        Plane::new(
+            &Point3::origin(),
+            &Vector3::new(1.0, 0.0, 0.0),
+            &Vector3::new(0.0, 1.0, 0.0),
+        ),
+        Vector2::new(1000.0, 1000.0),
+    );
+    let ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+    let ground_plane_gpu_mesh_handle = renderer
+        .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
+        .expect("Failed to add ground plane mesh");
+
+    let mut scene_bounding_box: BoundingBox<f32> = BoundingBox::unit();
     let mut scene_meshes: HashMap<ValuePath, Arc<Mesh>> = HashMap::new();
     let mut scene_gpu_mesh_handles: HashMap<ValuePath, GpuMeshHandle> = HashMap::new();
 
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
-
     let mut camera_interpolation: Option<CameraInterpolation> = None;
     // Since input manager needs to process events separately after imgui
     // handles them, this buffer with copies of events is needed.
@@ -241,6 +277,14 @@ pub fn init_and_run(options: Options) -> ! {
 
                 let input_state = input_manager.input_state();
 
+                #[cfg(not(feature = "dist"))]
+                {
+                    if input_state.debug_view_cycle {
+                        renderer_debug_view = renderer_debug_view.cycle();
+                        log::debug!("Cycled debug view to {:?}", renderer_debug_view);
+                    }
+                }
+
                 if input_state.open_screenshot_options {
                     screenshot_modal_open = true;
                 }
@@ -274,11 +318,8 @@ pub fn init_and_run(options: Options) -> ! {
                 ui_frame.draw_operations_window(&mut session);
 
                 if reset_viewport {
-                    camera_interpolation = Some(CameraInterpolation::new(
-                        &camera,
-                        scene_meshes.values().map(Arc::as_ref),
-                        time,
-                    ));
+                    camera_interpolation =
+                        Some(CameraInterpolation::new(&camera, &scene_bounding_box, time));
                 }
 
                 let screenshot_render_target = if take_screenshot {
@@ -324,6 +365,11 @@ pub fn init_and_run(options: Options) -> ! {
 
                             scene_meshes.insert(path, mesh);
                             scene_gpu_mesh_handles.insert(path, gpu_mesh_id);
+
+                            scene_bounding_box = BoundingBox::union(
+                                scene_meshes.values().map(|mesh| mesh.bounding_box()),
+                            )
+                            .unwrap_or_else(BoundingBox::unit);
                         }
                         Value::MeshArray(mesh_array) => {
                             for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
@@ -337,6 +383,11 @@ pub fn init_and_run(options: Options) -> ! {
                                 scene_meshes.insert(path, mesh);
                                 scene_gpu_mesh_handles.insert(path, gpu_mesh_id);
                             }
+
+                            scene_bounding_box = BoundingBox::union(
+                                scene_meshes.values().map(|mesh| mesh.bounding_box()),
+                            )
+                            .unwrap_or_else(BoundingBox::unit);
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
@@ -350,6 +401,11 @@ pub fn init_and_run(options: Options) -> ! {
                                 .expect("Gpu mesh ID was not tracked");
 
                             renderer.remove_scene_mesh(gpu_mesh_id);
+
+                            scene_bounding_box = BoundingBox::union(
+                                scene_meshes.values().map(|mesh| mesh.bounding_box()),
+                            )
+                            .unwrap_or_else(BoundingBox::unit);
                         }
                         Value::MeshArray(mesh_array) => {
                             for index in 0..mesh_array.len() {
@@ -362,6 +418,11 @@ pub fn init_and_run(options: Options) -> ! {
 
                                 renderer.remove_scene_mesh(gpu_mesh_id);
                             }
+
+                            scene_bounding_box = BoundingBox::union(
+                                scene_meshes.values().map(|mesh| mesh.bounding_box()),
+                            )
+                            .unwrap_or_else(BoundingBox::unit);
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
@@ -382,13 +443,55 @@ pub fn init_and_run(options: Options) -> ! {
                 let imgui_draw_data = ui_frame.render(&window);
 
                 let mut window_command_buffer = renderer.begin_command_buffer(clear_color);
+                window_command_buffer.set_light(&compute_light(
+                    &ground_plane_mesh_bounding_box,
+                    &scene_bounding_box,
+                    &camera,
+                ));
                 window_command_buffer
                     .set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
-                window_command_buffer.draw_meshes_to_primary_render_target(
-                    scene_gpu_mesh_handles.values(),
-                    renderer_draw_mesh_mode,
-                );
+
+                // FIXME: @Correctness The renderer does not support
+                // transparency via depth sorting. Edges are transparent and
+                // don't write their depth, meaning the ground would always
+                // overwrite them, whether it was behind or in front of them.
+                if renderer_draw_mesh_mode == DrawMeshMode::Edges {
+                    window_command_buffer.draw_meshes_to_primary_render_target(
+                        iter::once(&ground_plane_gpu_mesh_handle),
+                        DrawMeshMode::FlatWithShadows,
+                        false,
+                    );
+                    window_command_buffer.draw_meshes_to_primary_render_target(
+                        scene_gpu_mesh_handles.values(),
+                        renderer_draw_mesh_mode,
+                        false,
+                    );
+                } else {
+                    window_command_buffer.draw_meshes_to_primary_render_target(
+                        scene_gpu_mesh_handles.values(),
+                        renderer_draw_mesh_mode,
+                        true,
+                    );
+                    window_command_buffer.draw_meshes_to_primary_render_target(
+                        iter::once(&ground_plane_gpu_mesh_handle),
+                        DrawMeshMode::FlatWithShadows,
+                        false,
+                    );
+                }
+
+                #[cfg(not(feature = "dist"))]
+                match renderer_debug_view {
+                    RendererDebugView::Off => {
+                        window_command_buffer.blit_primary_render_target_to_backbuffer();
+                    }
+                    RendererDebugView::ShadowMap => {
+                        window_command_buffer.blit_shadow_map_to_backbuffer();
+                    }
+                }
+
+                #[cfg(feature = "dist")]
                 window_command_buffer.blit_primary_render_target_to_backbuffer();
+
                 window_command_buffer.draw_ui_to_backbuffer(imgui_draw_data);
                 window_command_buffer.submit();
 
@@ -414,15 +517,45 @@ pub fn init_and_run(options: Options) -> ! {
 
                     let mut screenshot_command_buffer =
                         renderer.begin_command_buffer(screenshot_clear_color);
+                    screenshot_command_buffer.set_light(&compute_light(
+                        &ground_plane_mesh_bounding_box,
+                        &scene_bounding_box,
+                        &camera,
+                    ));
                     screenshot_command_buffer.set_camera_matrices(
                         &screenshot_camera.projection_matrix(),
                         &screenshot_camera.view_matrix(),
                     );
-                    screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                        &screenshot_render_target,
-                        scene_gpu_mesh_handles.values(),
-                        renderer_draw_mesh_mode,
-                    );
+
+                    if renderer_draw_mesh_mode == DrawMeshMode::Edges {
+                        screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                            &screenshot_render_target,
+                            iter::once(&ground_plane_gpu_mesh_handle),
+                            DrawMeshMode::FlatWithShadows,
+                            false,
+                        );
+                        screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                            &screenshot_render_target,
+                            scene_gpu_mesh_handles.values(),
+                            renderer_draw_mesh_mode,
+                            false,
+                        );
+                    } else {
+                        screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                            &screenshot_render_target,
+                            scene_gpu_mesh_handles.values(),
+                            renderer_draw_mesh_mode,
+                            true,
+                        );
+                        screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                            &screenshot_render_target,
+                            iter::once(&ground_plane_gpu_mesh_handle),
+                            DrawMeshMode::FlatWithShadows,
+                            false,
+                        );
+                    }
+
+
                     screenshot_command_buffer.submit();
 
                     let screenshot_notifications = Rc::clone(&notifications);
@@ -528,17 +661,14 @@ struct CameraInterpolation {
 }
 
 impl CameraInterpolation {
-    fn new<'a, I>(camera: &Camera, scene_meshes: I, time: Instant) -> Self
-    where
-        I: Iterator<Item = &'a Mesh>,
-    {
+    fn new(camera: &Camera, bounding_box: &BoundingBox<f32>, time: Instant) -> Self {
         let (source_origin, source_radius) = camera.visible_sphere();
-        let bounding_box_iter = scene_meshes.map(|mesh| mesh.bounding_box());
-
-        let (target_origin, target_radius) = match BoundingBox::union(bounding_box_iter) {
-            Some(bounding_box) => (bounding_box.center(), bounding_box.diagonal().norm() / 2.0),
-            None => (Point3::origin(), 1.0),
-        };
+        let (target_origin, target_radius) =
+            if approx::relative_eq!(bounding_box.minimum_point(), bounding_box.maximum_point()) {
+                (Point3::origin(), 1.0)
+            } else {
+                (bounding_box.center(), bounding_box.diagonal().norm() / 2.0)
+            };
 
         CameraInterpolation {
             source_origin,
@@ -560,7 +690,43 @@ impl CameraInterpolation {
                 .lerp(&self.target_origin.coords, t),
         );
         let sphere_radius = math::lerp(self.source_radius, self.target_radius, t);
-
         (sphere_origin, sphere_radius)
+    }
+}
+
+fn compute_light(
+    ground_plane_bounding_box: &BoundingBox<f32>,
+    scene_bounding_box: &BoundingBox<f32>,
+    camera: &Camera,
+) -> DirectionalLight {
+    let (camera_origin, camera_radius) = camera.visible_sphere();
+    let camera_radius_vector = Vector3::new(camera_radius, camera_radius, camera_radius) * 5.0;
+    let camera_bounding_box = BoundingBox::new(
+        &(camera_origin - camera_radius_vector),
+        &(camera_origin + camera_radius_vector),
+    );
+    let bounding_box = BoundingBox::intersection(
+        [
+            *ground_plane_bounding_box,
+            *scene_bounding_box,
+            camera_bounding_box,
+        ]
+        .iter()
+        .copied(),
+    )
+    .unwrap_or(camera_bounding_box);
+
+    let diagonal_length = bounding_box.diagonal().norm() * 1.2;
+    // We need to skew the directional vector so that it is never equal to the Z
+    // axis and it is possible to compute a view matrix from it. The decision is
+    // arbitrary as long as it is consistent, but we skew it in the Y axis only
+    // so that the light looks slightly in the positive Y direction.
+    let skew = diagonal_length * 0.01;
+    DirectionalLight {
+        position: bounding_box.center() + Vector3::new(0.0, 0.0, diagonal_length / 2.0),
+        direction: Vector3::new(0.0, skew, -diagonal_length).normalize(),
+        min_range: 0.1,
+        max_range: diagonal_length,
+        width: diagonal_length,
     }
 }

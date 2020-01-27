@@ -13,16 +13,18 @@ use crate::mesh::{Face, Mesh};
 
 use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
 
-static SHADER_VIEWPORT_VERT: &[u8] = include_shader!("viewport.vert.spv");
-static SHADER_VIEWPORT_FRAG: &[u8] = include_shader!("viewport.frag.spv");
+static SHADER_COLOR_PASS_VERT: &[u8] = include_shader!("scene_color_pass.vert.spv");
+static SHADER_COLOR_PASS_FRAG: &[u8] = include_shader!("scene_color_pass.frag.spv");
 
-static MATCAP_TEXTURE_BYTES: &[u8] = include_bytes!("../../resources/matcap.png");
+static SHADER_SHADOW_PASS_VERT: &[u8] = include_shader!("scene_shadow_pass.vert.spv");
+
+static TEXTURE_MATCAP: &[u8] = include_bytes!("../../resources/matcap.png");
 
 /// The mesh containing index and vertex data in same-length
 /// format as will be uploaded on the GPU.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GpuMesh {
-    indices: Option<Vec<GpuMeshIndex>>,
+    indices: Option<Vec<u32>>,
     vertex_data: Vec<GpuMeshVertex>,
 }
 
@@ -147,9 +149,8 @@ impl GpuMesh {
     /// Create indexed mesh from vectors of positions and normals
     /// of same length. Does not run any validations except for length
     /// checking.
-    #[allow(dead_code)]
     pub fn from_positions_and_normals_indexed(
-        indices: Vec<GpuMeshIndex>,
+        indices: Vec<u32>,
         vertex_positions: Vec<Point3<f32>>,
         vertex_normals: Vec<Vector3<f32>>,
     ) -> Self {
@@ -228,6 +229,16 @@ pub struct Options {
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
     pub output_depth_attachment_format: wgpu::TextureFormat,
+    pub flat_shading_color: [f64; 4],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DirectionalLight {
+    pub position: Point3<f32>,
+    pub direction: Vector3<f32>,
+    pub min_range: f32,
+    pub max_range: f32,
+    pub width: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,6 +247,7 @@ pub enum DrawMeshMode {
     Edges,
     ShadedEdges,
     ShadedEdgesXray,
+    FlatWithShadows,
 }
 
 /// 3D renderer of the editor scene.
@@ -248,12 +260,21 @@ pub struct SceneRenderer {
     mesh_resources_next_handle: u64,
     matrix_buffer: wgpu::Buffer,
     matrix_bind_group: wgpu::BindGroup,
-    shading_bind_group_shaded: wgpu::BindGroup,
-    shading_bind_group_edges: wgpu::BindGroup,
-    shading_bind_group_shaded_edges: wgpu::BindGroup,
-    matcap_texture_bind_group: wgpu::BindGroup,
-    render_pipeline_opaque: wgpu::RenderPipeline,
-    render_pipeline_transparent: wgpu::RenderPipeline,
+    sampler_bind_group: wgpu::BindGroup,
+    sampler_bind_group_layout: wgpu::BindGroupLayout,
+    sampled_texture_bind_group_layout: wgpu::BindGroupLayout,
+    color_pass_bind_group_shaded: wgpu::BindGroup,
+    color_pass_bind_group_edges: wgpu::BindGroup,
+    color_pass_bind_group_shaded_edges: wgpu::BindGroup,
+    color_pass_bind_group_flat_with_shadows: wgpu::BindGroup,
+    color_pass_matcap_texture_bind_group: wgpu::BindGroup,
+    color_pass_opaque_render_pipeline: wgpu::RenderPipeline,
+    color_pass_transparent_render_pipeline: wgpu::RenderPipeline,
+    shadow_map_texture_view: wgpu::TextureView,
+    shadow_map_texture_bind_group: wgpu::BindGroup,
+    shadow_pass_buffer: wgpu::Buffer,
+    shadow_pass_bind_group: wgpu::BindGroup,
+    shadow_pass_render_pipeline: wgpu::RenderPipeline,
 }
 
 impl SceneRenderer {
@@ -261,19 +282,17 @@ impl SceneRenderer {
     ///
     /// Initializes GPU resources and the rendering pipeline to draw
     /// to a texture of `output_color_attachment_format`.
-    pub fn new(
-        device: &wgpu::Device,
-        queue: &mut wgpu::Queue,
-        projection_matrix: &Matrix4<f32>,
-        view_matrix: &Matrix4<f32>,
-        options: Options,
-    ) -> Self {
-        let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_VIEWPORT_VERT))
+    pub fn new(device: &wgpu::Device, queue: &mut wgpu::Queue, options: Options) -> Self {
+        let color_pass_vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_COLOR_PASS_VERT))
             .expect("Couldn't read pre-built SPIR-V");
-        let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_VIEWPORT_FRAG))
+        let color_pass_fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_COLOR_PASS_FRAG))
             .expect("Couldn't read pre-built SPIR-V");
-        let vs_module = device.create_shader_module(&vs_words);
-        let fs_module = device.create_shader_module(&fs_words);
+        let color_pass_vs_module = device.create_shader_module(&color_pass_vs_words);
+        let color_pass_fs_module = device.create_shader_module(&color_pass_fs_words);
+
+        let shadow_pass_vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_SHADOW_PASS_VERT))
+            .expect("Couldn't read pre-build SPIR-V");
+        let shadow_pass_vs_module = device.create_shader_module(&shadow_pass_vs_words);
 
         let matrix_buffer_size = wgpu_size_of::<MatrixUniforms>();
         let matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -300,21 +319,49 @@ impl SceneRenderer {
             }],
         });
 
-        let shading_buffer_size = wgpu_size_of::<ShadingUniforms>();
-        let shading_buffer_shaded = device.create_buffer(&wgpu::BufferDescriptor {
-            size: shading_buffer_size,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        });
-        let shading_buffer_edges = device.create_buffer(&wgpu::BufferDescriptor {
-            size: shading_buffer_size,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        });
-        let shading_buffer_shaded_edges = device.create_buffer(&wgpu::BufferDescriptor {
-            size: shading_buffer_size,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        });
+        let color_pass_buffer_size = wgpu_size_of::<ColorPassUniforms>();
+        let color_pass_buffer_shaded = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .fill_from_slice(&[ColorPassUniforms {
+                shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
+                shading_mode_edges_color: [0.0, 0.0, 0.0],
+                shading_mode: ShadingMode::SHADED,
+                collect_shadows: false,
+            }]);
 
-        let shading_bind_group_layout =
+        let color_pass_buffer_edges = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .fill_from_slice(&[ColorPassUniforms {
+                shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
+                shading_mode_edges_color: [0.239, 0.306, 0.400],
+                shading_mode: ShadingMode::EDGES,
+                collect_shadows: false,
+            }]);
+
+        let color_pass_buffer_shaded_edges = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .fill_from_slice(&[ColorPassUniforms {
+                shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
+                shading_mode_edges_color: [0.239, 0.306, 0.400],
+                shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
+                collect_shadows: false,
+            }]);
+
+        let color_pass_buffer_flat_with_shadows = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .fill_from_slice(&[ColorPassUniforms {
+                shading_mode_flat_color: [
+                    options.flat_shading_color[0] as f32,
+                    options.flat_shading_color[1] as f32,
+                    options.flat_shading_color[2] as f32,
+                    options.flat_shading_color[3] as f32,
+                ],
+                shading_mode_edges_color: [0.0, 0.0, 0.0],
+                shading_mode: ShadingMode::FLAT,
+                collect_shadows: true,
+            }]);
+
+        let color_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 bindings: &[wgpu::BindGroupLayoutBinding {
                     binding: 0,
@@ -322,93 +369,55 @@ impl SceneRenderer {
                     ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                 }],
             });
-        let shading_bind_group_shaded = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &shading_bind_group_layout,
+
+        let color_pass_bind_group_shaded = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &color_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer {
-                    buffer: &shading_buffer_shaded,
-                    range: 0..shading_buffer_size,
+                    buffer: &color_pass_buffer_shaded,
+                    range: 0..color_pass_buffer_size,
                 },
             }],
         });
-        let shading_bind_group_edges = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &shading_bind_group_layout,
+
+        let color_pass_bind_group_edges = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &color_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer {
-                    buffer: &shading_buffer_edges,
-                    range: 0..shading_buffer_size,
+                    buffer: &color_pass_buffer_edges,
+                    range: 0..color_pass_buffer_size,
                 },
             }],
         });
-        let shading_bind_group_shaded_edges =
+
+        let color_pass_bind_group_shaded_edges =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &shading_bind_group_layout,
+                layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer {
-                        buffer: &shading_buffer_shaded_edges,
-                        range: 0..shading_buffer_size,
+                        buffer: &color_pass_buffer_shaded_edges,
+                        range: 0..color_pass_buffer_size,
                     },
                 }],
             });
 
-        {
-            let matrix_uniforms_size = wgpu_size_of::<MatrixUniforms>();
-            let matrix_uniforms = MatrixUniforms {
-                projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
-                view_matrix: view_matrix.clone().into(),
-            };
-
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-
-            let transfer_buffer = device
-                .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-                .fill_from_slice(&[matrix_uniforms]);
-
-            encoder.copy_buffer_to_buffer(
-                &transfer_buffer,
-                0,
-                &matrix_buffer,
-                0,
-                matrix_uniforms_size,
-            );
-
-            queue.submit(&[encoder.finish()]);
-        }
-
-        upload_shading_buffer(
-            device,
-            queue,
-            &shading_buffer_shaded,
-            ShadingUniforms {
-                edge_color_and_face_alpha: [0.0, 0.0, 0.0, 1.0],
-                shading_mode: ShadingMode::SHADED,
-            },
-        );
-        upload_shading_buffer(
-            device,
-            queue,
-            &shading_buffer_edges,
-            ShadingUniforms {
-                edge_color_and_face_alpha: [0.239, 0.306, 0.400, 1.0],
-                shading_mode: ShadingMode::EDGES,
-            },
-        );
-        upload_shading_buffer(
-            device,
-            queue,
-            &shading_buffer_shaded_edges,
-            ShadingUniforms {
-                edge_color_and_face_alpha: [0.239, 0.306, 0.400, 1.0],
-                shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
-            },
-        );
+        let color_pass_bind_group_flat_with_shadows =
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &color_pass_bind_group_layout,
+                bindings: &[wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &color_pass_buffer_flat_with_shadows,
+                        range: 0..color_pass_buffer_size,
+                    },
+                }],
+            });
 
         let (matcap_texture_width, matcap_texture_height, matcap_texture_data) = {
-            let cursor = io::Cursor::new(MATCAP_TEXTURE_BYTES);
+            let cursor = io::Cursor::new(TEXTURE_MATCAP);
             let decoder = png::Decoder::new(cursor);
             let (info, mut reader) = decoder
                 .read_info()
@@ -428,7 +437,7 @@ impl SceneRenderer {
             (info.width, info.height, buffer)
         };
 
-        let matcap_texture = device.create_texture(&wgpu::TextureDescriptor {
+        let color_pass_matcap_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
                 width: matcap_texture_width,
                 height: matcap_texture_height,
@@ -442,7 +451,7 @@ impl SceneRenderer {
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
-        let matcap_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -454,16 +463,25 @@ impl SceneRenderer {
             compare_function: wgpu::CompareFunction::Always,
         });
 
-        let matcap_texture_bind_group_layout =
+        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            lod_min_clamp: -100.0,
+            lod_max_clamp: 100.0,
+            compare_function: wgpu::CompareFunction::Greater,
+        });
+
+        let sampler_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 bindings: &[
                     wgpu::BindGroupLayoutBinding {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::SampledTexture {
-                            multisampled: false,
-                            dimension: wgpu::TextureViewDimension::D2,
-                        },
+                        ty: wgpu::BindingType::Sampler,
                     },
                     wgpu::BindGroupLayoutBinding {
                         binding: 1,
@@ -472,67 +490,272 @@ impl SceneRenderer {
                     },
                 ],
             });
-        let matcap_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &matcap_texture_bind_group_layout,
+
+        let sampled_texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                bindings: &[wgpu::BindGroupLayoutBinding {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::SampledTexture {
+                        multisampled: false,
+                        dimension: wgpu::TextureViewDimension::D2,
+                    },
+                }],
+            });
+
+        let sampler_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &sampler_bind_group_layout,
             bindings: &[
                 wgpu::Binding {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &matcap_texture.create_default_view(),
-                    ),
+                    resource: wgpu::BindingResource::Sampler(&sampler),
                 },
                 wgpu::Binding {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&matcap_sampler),
+                    resource: wgpu::BindingResource::Sampler(&shadow_sampler),
                 },
             ],
         });
 
+        let color_pass_matcap_texture_bind_group =
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &sampled_texture_bind_group_layout,
+                bindings: &[wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &color_pass_matcap_texture.create_default_view(),
+                    ),
+                }],
+            });
+
         upload_texture_rgba8_unorm(
             device,
             queue,
-            &matcap_texture,
+            &color_pass_matcap_texture,
             matcap_texture_width,
             matcap_texture_height,
             &matcap_texture_data,
         );
 
-        let render_pipeline_opaque = create_pipeline(
+        let shadow_pass_buffer_size = wgpu_size_of::<ShadowPassUniforms>();
+        let shadow_pass_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            size: shadow_pass_buffer_size,
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        });
+
+        let shadow_map_texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: 2048,
+                height: 2048,
+                depth: 1,
+            },
+            array_layer_count: 1,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
+        });
+        let shadow_map_texture_view = shadow_map_texture.create_default_view();
+
+        let shadow_map_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &sampled_texture_bind_group_layout,
+            bindings: &[wgpu::Binding {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&shadow_map_texture_view),
+            }],
+        });
+
+        let shadow_pass_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                bindings: &[wgpu::BindGroupLayoutBinding {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::VERTEX,
+                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                }],
+            });
+        let shadow_pass_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &shadow_pass_bind_group_layout,
+            bindings: &[wgpu::Binding {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer {
+                    buffer: &shadow_pass_buffer,
+                    range: 0..shadow_pass_buffer_size,
+                },
+            }],
+        });
+
+        let color_pass_opaque_render_pipeline = create_color_pass_pipeline(
             device,
-            &vs_module,
-            &fs_module,
+            &color_pass_vs_module,
+            &color_pass_fs_module,
             &matrix_bind_group_layout,
-            &shading_bind_group_layout,
-            &matcap_texture_bind_group_layout,
+            &sampler_bind_group_layout,
+            &sampled_texture_bind_group_layout,
+            &color_pass_bind_group_layout,
+            &shadow_pass_bind_group_layout,
             false,
             options,
         );
-        let render_pipeline_transparent = create_pipeline(
+        let color_pass_transparent_render_pipeline = create_color_pass_pipeline(
             device,
-            &vs_module,
-            &fs_module,
+            &color_pass_vs_module,
+            &color_pass_fs_module,
             &matrix_bind_group_layout,
-            &shading_bind_group_layout,
-            &matcap_texture_bind_group_layout,
+            &sampler_bind_group_layout,
+            &sampled_texture_bind_group_layout,
+            &color_pass_bind_group_layout,
+            &shadow_pass_bind_group_layout,
             true,
             options,
         );
+
+        let shadow_pass_render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                bind_group_layouts: &[&shadow_pass_bind_group_layout],
+            });
+
+        let shadow_pass_render_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                layout: &shadow_pass_render_pipeline_layout,
+                vertex_stage: wgpu::ProgrammableStageDescriptor {
+                    module: &shadow_pass_vs_module,
+                    entry_point: "main",
+                },
+                fragment_stage: None,
+                rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+                    front_face: wgpu::FrontFace::Ccw,
+                    // Do not cull, our objects are not necessarily watertight
+                    cull_mode: wgpu::CullMode::None,
+                    // Depth bias (and slope) are used to avoid shadowing artefacts:
+                    // - Constant depth bias factor (always applied)
+                    // - Slope depth bias factor, applied depending on polygon's slope
+                    //
+                    // https://docs.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias?redirectedfrom=MSDN
+                    depth_bias: 5,
+                    depth_bias_slope_scale: 5.0,
+                    depth_bias_clamp: 0.0,
+                }),
+                primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+                color_states: &[],
+                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                    format: options.output_depth_attachment_format,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_read_mask: 0,
+                    stencil_write_mask: 0,
+                }),
+                index_format: wgpu::IndexFormat::Uint32,
+                vertex_buffers: &[wgpu::VertexBufferDescriptor {
+                    stride: wgpu_size_of::<GpuMeshVertex>(),
+                    step_mode: wgpu::InputStepMode::Vertex,
+                    attributes: &[
+                        wgpu::VertexAttributeDescriptor {
+                            offset: 0,
+                            format: wgpu::VertexFormat::Float4,
+                            shader_location: 0,
+                        },
+                        // Note: We don't use other data from `GpuMeshVertex`,
+                        // just the position, we just stride over them.
+                    ],
+                }],
+                sample_count: 1,
+                sample_mask: !0,
+                alpha_to_coverage_enabled: false,
+            });
 
         Self {
             mesh_resources: HashMap::new(),
             mesh_resources_next_handle: 0,
             matrix_buffer,
             matrix_bind_group,
-            shading_bind_group_shaded,
-            shading_bind_group_edges,
-            shading_bind_group_shaded_edges,
-            matcap_texture_bind_group,
-            render_pipeline_opaque,
-            render_pipeline_transparent,
+            sampler_bind_group,
+            sampler_bind_group_layout,
+            sampled_texture_bind_group_layout,
+            color_pass_bind_group_shaded,
+            color_pass_bind_group_edges,
+            color_pass_bind_group_shaded_edges,
+            color_pass_bind_group_flat_with_shadows,
+            color_pass_matcap_texture_bind_group,
+            color_pass_opaque_render_pipeline,
+            color_pass_transparent_render_pipeline,
+            shadow_map_texture_view,
+            shadow_map_texture_bind_group,
+            shadow_pass_buffer,
+            shadow_pass_bind_group,
+            shadow_pass_render_pipeline,
         }
     }
 
-    /// Update camera matrices (projection matrix and view matrix).
+    // FIXME: These bind group layouts and bind groups are exposed because in
+    // the 0.4 version of wgpu, BGLs are only compatible if they have the same
+    // ID. If 2 BGs are to be compatible, they have to have the *same* BGL. The
+    // `shadow_map_texture_bind_group` below was created using the
+    // `sampled_texture_bind_group_layout` and that layout must be propagated
+    // upwards if anything wants to use these bind groups in their pipeline or
+    // swap in a different bind group that is structurally equal, but not
+    // identical. This restriction is lifted in wgpu master already, so we can
+    // perhaps go back to using structurally equal BGLs. But should we?
+
+    pub fn sampler_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.sampler_bind_group_layout
+    }
+
+    pub fn sampler_bind_group(&self) -> &wgpu::BindGroup {
+        &self.sampler_bind_group
+    }
+
+    pub fn sampled_texture_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.sampled_texture_bind_group_layout
+    }
+
+    #[cfg(not(feature = "dist"))]
+    pub fn shadow_map_texture_bind_group(&self) -> &wgpu::BindGroup {
+        &self.shadow_map_texture_bind_group
+    }
+
+    /// Update properties of the shadow casting light.
+    pub fn set_light(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        light: &DirectionalLight,
+    ) {
+        let light_projection_matrix = Matrix4::new_orthographic(
+            -light.width / 2.0,
+            light.width / 2.0,
+            -light.width / 2.0,
+            light.width / 2.0,
+            light.min_range,
+            light.max_range,
+        );
+        let light_view_matrix = Matrix4::look_at_rh(
+            &light.position,
+            &(light.position + light.direction.normalize() * light.max_range),
+            &Vector3::z(),
+        );
+
+        let shadow_pass_uniforms_size = wgpu_size_of::<ShadowPassUniforms>();
+        let shadow_pass_uniforms = ShadowPassUniforms {
+            light_space_matrix: (light_projection_matrix * light_view_matrix).into(),
+        };
+
+        let transfer_buffer = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+            .fill_from_slice(&[shadow_pass_uniforms]);
+
+        encoder.copy_buffer_to_buffer(
+            &transfer_buffer,
+            0,
+            &self.shadow_pass_buffer,
+            0,
+            shadow_pass_uniforms_size,
+        );
+    }
+
+    /// Update camera matrices (projection and view).
     pub fn set_camera_matrices(
         &self,
         device: &wgpu::Device,
@@ -542,7 +765,7 @@ impl SceneRenderer {
     ) {
         let matrix_uniforms_size = wgpu_size_of::<MatrixUniforms>();
         let matrix_uniforms = MatrixUniforms {
-            projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
+            projection_matrix: (wgpu_correction_matrix() * projection_matrix).into(),
             view_matrix: view_matrix.clone().into(),
         };
 
@@ -634,6 +857,7 @@ impl SceneRenderer {
     pub fn draw_meshes<'a, H>(
         &self,
         mode: DrawMeshMode,
+        cast_shadows: bool,
         color_and_depth_need_clearing: bool,
         clear_color: [f64; 4],
         encoder: &mut wgpu::CommandEncoder,
@@ -650,7 +874,32 @@ impl SceneRenderer {
             wgpu::LoadOp::Load
         };
 
-        let rpass_color_attachment_descriptor = if let Some(msaa_attachment) = msaa_attachment {
+        {
+            // Even if we don't want to cast shadows, we should still clear the
+            // shadow map once per command buffer, otherwise there will be
+            // leftovers.
+            let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                    attachment: &self.shadow_map_texture_view,
+                    depth_load_op: load_op,
+                    depth_store_op: wgpu::StoreOp::Store,
+                    stencil_load_op: wgpu::LoadOp::Clear,
+                    stencil_store_op: wgpu::StoreOp::Store,
+                    clear_depth: 1.0,
+                    clear_stencil: 0,
+                }),
+            });
+
+            if cast_shadows {
+                shadow_pass.set_pipeline(&self.shadow_pass_render_pipeline);
+                shadow_pass.set_bind_group(0, &self.shadow_pass_bind_group, &[]);
+                self.record_drawing(&mut shadow_pass, handles.clone());
+            }
+        }
+
+        let color_pass_color_attachment_descriptor = if let Some(msaa_attachment) = msaa_attachment
+        {
             wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: msaa_attachment,
                 resolve_target: Some(color_attachment),
@@ -678,8 +927,8 @@ impl SceneRenderer {
             }
         };
 
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[rpass_color_attachment_descriptor],
+        let mut color_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[color_pass_color_attachment_descriptor],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
                 attachment: depth_attachment,
                 depth_load_op: load_op,
@@ -717,46 +966,69 @@ impl SceneRenderer {
 
         match mode {
             DrawMeshMode::Shaded => {
-                rpass.set_pipeline(&self.render_pipeline_opaque);
-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
+                color_pass.set_pipeline(&self.color_pass_opaque_render_pipeline);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record(&mut rpass, handles);
+                self.record_drawing(&mut color_pass, handles);
             }
             DrawMeshMode::Edges => {
-                rpass.set_pipeline(&self.render_pipeline_transparent);
-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
+                color_pass.set_pipeline(&self.color_pass_transparent_render_pipeline);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_edges, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record(&mut rpass, handles);
+                self.record_drawing(&mut color_pass, handles);
             }
             DrawMeshMode::ShadedEdges => {
-                rpass.set_pipeline(&self.render_pipeline_opaque);
-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                rpass.set_bind_group(1, &self.shading_bind_group_shaded_edges, &[]);
-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
+                color_pass.set_pipeline(&self.color_pass_opaque_render_pipeline);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded_edges, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record(&mut rpass, handles);
+                self.record_drawing(&mut color_pass, handles);
             }
             DrawMeshMode::ShadedEdgesXray => {
-                rpass.set_pipeline(&self.render_pipeline_opaque);
-                rpass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
-                rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
+                color_pass.set_pipeline(&self.color_pass_opaque_render_pipeline);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record(&mut rpass, handles.clone());
+                self.record_drawing(&mut color_pass, handles.clone());
 
-                rpass.set_pipeline(&self.render_pipeline_transparent);
-                rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
+                color_pass.set_pipeline(&self.color_pass_transparent_render_pipeline);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_edges, &[]);
 
-                self.record(&mut rpass, handles);
+                self.record_drawing(&mut color_pass, handles);
+            }
+            DrawMeshMode::FlatWithShadows => {
+                color_pass.set_pipeline(&self.color_pass_opaque_render_pipeline);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_flat_with_shadows, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+
+                self.record_drawing(&mut color_pass, handles);
             }
         }
     }
 
-    fn record<'a, H>(&self, rpass: &mut wgpu::RenderPass, handles: H)
+    fn record_drawing<'a, H>(&self, rpass: &mut wgpu::RenderPass, handles: H)
     where
         H: IntoIterator<Item = &'a GpuMeshHandle>,
     {
@@ -788,20 +1060,16 @@ struct MeshResource {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct GpuMeshVertex {
     /// The position of the vertex in world-space. Last component is 1.
-    pub position: [f32; 4],
+    position: [f32; 4],
 
     /// The normal of the vertex in world-space. Last component is 0.
-    pub normal: [f32; 4],
+    normal: [f32; 4],
 
     /// Barycentric coordinates of the current vertex within the
     /// triangle primitive. First bit means `(1, 0, 0)`, second `(0,
     /// 1, 0)`, and the third `(0, 0, 1)`. The rest of the bits are 0.
-    pub barycentric: u32,
+    barycentric: u32,
 }
-
-// FIXME: @Optimization Determine u16/u32 dynamically per mesh to
-// save memory
-type GpuMeshIndex = u32;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -812,44 +1080,30 @@ struct MatrixUniforms {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct ShadingUniforms {
-    edge_color_and_face_alpha: [f32; 4],
+struct ColorPassUniforms {
+    shading_mode_flat_color: [f32; 4],
+    shading_mode_edges_color: [f32; 3],
     shading_mode: ShadingMode,
+    collect_shadows: bool,
 }
 
 bitflags! {
-    pub struct ShadingMode: u32 {
-        const SHADED = 0x01;
-        const EDGES = 0x02;
+    struct ShadingMode: u32 {
+        const FLAT = 0x01;
+        const SHADED = 0x02;
+        const EDGES = 0x04;
     }
 }
 
-fn upload_shading_buffer(
-    device: &wgpu::Device,
-    queue: &mut wgpu::Queue,
-    shading_buffer: &wgpu::Buffer,
-    shading_uniforms: ShadingUniforms,
-) {
-    let shading_uniforms_size = wgpu_size_of::<ShadingUniforms>();
-
-    let transfer_buffer = device
-        .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-        .fill_from_slice(&[shading_uniforms]);
-
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-    encoder.copy_buffer_to_buffer(
-        &transfer_buffer,
-        0,
-        shading_buffer,
-        0,
-        shading_uniforms_size,
-    );
-
-    queue.submit(&[encoder.finish()]);
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ShadowPassUniforms {
+    light_space_matrix: [[f32; 4]; 4],
 }
 
-/// Applies vulkan/wgpu correction matrix to the projection matrix.
-fn apply_wgpu_correction_matrix(projection_matrix: &Matrix4<f32>) -> Matrix4<f32> {
+/// Returns Vulkan (and currently wgpu-rs) correction matrix to the projection
+/// matrix.
+fn wgpu_correction_matrix() -> Matrix4<f32> {
     // WebGPU does have a freshly specified NDC coordinate system, but
     // wgpu-rs still uses Vulkan's. Vulkan (and therefore wgpu-rs) has
     // different NDC and clip-space semantics than OpenGL: Vulkan is
@@ -871,7 +1125,7 @@ fn apply_wgpu_correction_matrix(projection_matrix: &Matrix4<f32>) -> Matrix4<f32
         0.0,  0.0,  0.5,  1.0,
     );
 
-    wgpu_correction_matrix * projection_matrix
+    wgpu_correction_matrix
 }
 
 /// Produces an infinite iterator over bit-packed barycentric
@@ -892,21 +1146,26 @@ fn barycentric_sequence_iter() -> impl Iterator<Item = u32> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn create_pipeline(
+fn create_color_pass_pipeline(
     device: &wgpu::Device,
     vs_module: &wgpu::ShaderModule,
     fs_module: &wgpu::ShaderModule,
     matrix_bind_group_layout: &wgpu::BindGroupLayout,
-    shading_bind_group_layout: &wgpu::BindGroupLayout,
-    matcap_texture_bind_group_layout: &wgpu::BindGroupLayout,
+    sampler_bind_group_layout: &wgpu::BindGroupLayout,
+    sampled_texture_bind_group_layout: &wgpu::BindGroupLayout,
+    color_pass_bind_group_layout: &wgpu::BindGroupLayout,
+    shadow_pass_bind_group_layout: &wgpu::BindGroupLayout,
     support_transparency: bool,
     options: Options,
 ) -> wgpu::RenderPipeline {
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         bind_group_layouts: &[
             &matrix_bind_group_layout,
-            &shading_bind_group_layout,
-            &matcap_texture_bind_group_layout,
+            &sampler_bind_group_layout,
+            &sampled_texture_bind_group_layout, // matcap
+            &sampled_texture_bind_group_layout, // shadow map
+            &color_pass_bind_group_layout,
+            &shadow_pass_bind_group_layout,
         ],
     });
 
@@ -1015,7 +1274,7 @@ mod tests {
         (vertex_positions, vertex_normals)
     }
 
-    fn triangle_indexed() -> (Vec<GpuMeshIndex>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
+    fn triangle_indexed() -> (Vec<u32>, Vec<Point3<f32>>, Vec<Vector3<f32>>) {
         let (vertex_positions, vertex_normals) = triangle();
         let indices = vec![0, 1, 2];
 

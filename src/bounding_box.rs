@@ -1,6 +1,6 @@
 use arrayvec::ArrayVec;
 use nalgebra::{Point3, Scalar, Vector3};
-use num_traits::{Bounded, Zero};
+use num_traits::{Bounded, Num};
 
 /// World-origin-based axis-aligned bounding box contains the entire given
 /// geometry and defines an envelope aligned to the world (euclidean) coordinate
@@ -14,7 +14,7 @@ where
     maximum_point: Point3<T>,
 }
 
-impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
+impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
     /// Creates a new bounding box. The two input points will be deconstructed
     /// and a new couple of points will be created: minimum point with minimum
     /// values of x, y, z and maximum point with maximum values of x, y, z. The
@@ -55,6 +55,32 @@ impl<T: Bounded + Scalar + Zero + PartialOrd> BoundingBox<T> {
                     box_corner2.z
                 },
             ),
+        }
+    }
+
+    /// Creates a new bounding box with all dimensions equal to zero and center
+    /// in `[0,0,0]`.
+    pub fn zero() -> Self {
+        BoundingBox {
+            minimum_point: Point3::new(T::zero(), T::zero(), T::zero()),
+            maximum_point: Point3::new(T::zero(), T::zero(), T::zero()),
+        }
+    }
+
+    /// Creates a new unit bounding box.
+    ///
+    /// All distances from the center to the planes are one and the center is
+    /// `[0,0,0]`.
+    pub fn unit() -> Self {
+        BoundingBox {
+            // Implemented this way because `ops::Sub` is implemented for
+            // `num_traits::NumOps` while `ops::Neg` is not.
+            minimum_point: Point3::new(
+                T::zero() - T::one(),
+                T::zero() - T::one(),
+                T::zero() - T::one(),
+            ),
+            maximum_point: Point3::new(T::one(), T::one(), T::one()),
         }
     }
 
