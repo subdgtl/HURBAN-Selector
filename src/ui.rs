@@ -373,7 +373,7 @@ impl<'a> UiFrame<'a> {
         let ui = &self.imgui_ui;
 
         const NOTIFICATIONS_WINDOW_WIDTH: f32 = 400.0;
-        const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.2;
+        const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.12;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
