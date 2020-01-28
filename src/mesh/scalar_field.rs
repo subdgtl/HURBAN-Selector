@@ -38,7 +38,7 @@ pub struct ScalarField<T> {
     block_start: Point3<i32>,
     block_dimensions: Vector3<u32>,
     voxel_dimensions: Vector3<f32>,
-    values: Vec<T>,
+    voxels: Vec<Option<T>>,
 }
 
 impl<
@@ -54,11 +54,6 @@ impl<
             + ToPrimitive,
     > ScalarField<T>
 {
-    /// Gets the internal value for an empty voxel in the current scalar field.
-    pub fn empty_value() -> T {
-        T::max_value()
-    }
-
     /// Define a new empty block of voxel space, which begins at
     /// `block_start`(in discrete voxel units), has dimensions
     /// `block_dimensions` (in discrete voxel units) and contains voxels sized
@@ -73,13 +68,13 @@ impl<
             "One or more voxel dimensions are 0.0"
         );
         let map_length = block_dimensions.x * block_dimensions.y * block_dimensions.z;
-        let values: Vec<T> = vec![ScalarField::empty_value(); cast_usize(map_length)];
+        let voxels: Vec<Option<T>> = vec![None; cast_usize(map_length)];
 
         ScalarField {
             block_start: *block_start,
             block_dimensions: *block_dimensions,
             voxel_dimensions: *voxel_dimensions,
-            values,
+            voxels,
         }
     }
 
@@ -122,9 +117,6 @@ impl<
     /// is useful if the distance field is about to be calculated.
     ///
     /// # Panics
-    /// Panics if the value of volume voxels is equal to the value reserved for
-    /// the void voxels.
-    ///
     /// Panics if any of the voxel dimensions is below or equal to zero.
     pub fn from_mesh(
         mesh: &Mesh,
@@ -132,10 +124,6 @@ impl<
         value_on_mesh_surface: T,
         growth_offset: u32,
     ) -> Self {
-        assert!(
-            value_on_mesh_surface != ScalarField::empty_value(),
-            "The value on mesh surface is equal to the empty marker."
-        );
         assert!(
             voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
             "One or more voxel dimensions are 0.0."
@@ -200,7 +188,7 @@ impl<
                                 );
                                 scalar_field.set_value_at_absolute_voxel_coordinate(
                                     &absolute_coordinate,
-                                    value_on_mesh_surface,
+                                    Some(value_on_mesh_surface),
                                 );
                             }
                         }
@@ -240,24 +228,22 @@ impl<
                     &voxel_dimensions,
                 );
 
-                for (one_dimensional, voxel) in target_scalar_field.values.iter_mut().enumerate() {
-                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                for (one_dimensional, voxel) in target_scalar_field.voxels.iter_mut().enumerate() {
+                    let cartesian_coordinate_target = one_dimensional_to_cartesian_coordinate(
                         one_dimensional,
                         &target_scalar_field.block_start,
                         &target_scalar_field.block_dimensions,
                         &target_scalar_field.voxel_dimensions,
-                    )
-                    .expect("Index out of bounds");
+                    );
 
                     // Set the new voxel state according to a sampled value from
                     // the source scalar field.
-                    let absolute_coordinate = cartesian_to_absolute_voxel_coordinate(
-                        &cartesian_coordinate,
-                        voxel_dimensions,
+                    let absolute_coordinate_source = cartesian_to_absolute_voxel_coordinate(
+                        &cartesian_coordinate_target,
+                        &source_scalar_field.voxel_dimensions,
                     );
                     *voxel = source_scalar_field
-                        .value_at_absolute_voxel_coordinate(&absolute_coordinate)
-                        .unwrap_or_else(ScalarField::empty_value);
+                        .value_at_absolute_voxel_coordinate(&absolute_coordinate_source);
                 }
 
                 // FIXME: @Optimization Due to overly safe
@@ -297,7 +283,7 @@ impl<
                     block_start: source_scalar_field.block_start,
                     block_dimensions: source_scalar_field.block_dimensions,
                     voxel_dimensions: source_scalar_field.voxel_dimensions,
-                    values: source_scalar_field.values.to_vec(),
+                    voxels: source_scalar_field.voxels.to_vec(),
                 });
             } else {
                 return ScalarField::from_scalar_field(
@@ -354,37 +340,35 @@ impl<
             if let Ok(reversed_user_transformation) =
                 compound_transformation.pseudo_inverse(f32::EPSILON)
             {
-                for (one_dimensional, voxel) in target_scalar_field.values.iter_mut().enumerate() {
-                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                for (one_dimensional, voxel) in target_scalar_field.voxels.iter_mut().enumerate() {
+                    let cartesian_coordinate_target = one_dimensional_to_cartesian_coordinate(
                         one_dimensional,
                         &target_scalar_field.block_start,
                         &target_scalar_field.block_dimensions,
                         &target_scalar_field.voxel_dimensions,
-                    )
-                    .expect("Index out of bounds");
+                    );
 
                     // Transform each new voxel inverse to the user
                     // transformation.
                     let transformed_voxel_center_cartesian = reversed_user_transformation
-                        .transform_point(&cartesian_coordinate)
+                        .transform_point(&cartesian_coordinate_target)
                         - vector_to_origin;
 
                     // Set the new voxel state according to a sampled value from
                     // the source scalar field.
                     let absolute_coordinate = cartesian_to_absolute_voxel_coordinate(
                         &transformed_voxel_center_cartesian,
-                        &voxel_dimensions,
+                        &source_scalar_field.voxel_dimensions,
                     );
                     *voxel = source_scalar_field
-                        .value_at_absolute_voxel_coordinate(&absolute_coordinate)
-                        .unwrap_or_else(ScalarField::empty_value);
+                        .value_at_absolute_voxel_coordinate(&absolute_coordinate);
                 }
 
                 let cartesian_final_translation_vector = cartesian_translation - vector_to_origin;
 
                 let voxel_final_translation_vector = cartesian_to_absolute_voxel_coordinate(
                     &Point3::from(cartesian_final_translation_vector),
-                    &voxel_dimensions,
+                    &target_scalar_field.voxel_dimensions,
                 )
                 .coords;
 
@@ -406,7 +390,7 @@ impl<
     pub fn wipe(&mut self) {
         self.block_start = Point3::origin();
         self.block_dimensions = Vector3::zeros();
-        self.values.resize(0, ScalarField::empty_value());
+        self.voxels.resize(0, None);
     }
 
     /// Returns scalar field block end in absolute voxel coordinates.
@@ -420,6 +404,7 @@ impl<
     }
 
     /// Returns single voxel dimensions in cartesian units.
+    #[allow(dead_code)]
     pub fn voxel_dimensions(&self) -> Vector3<f32> {
         self.voxel_dimensions
     }
@@ -427,15 +412,19 @@ impl<
     /// Checks if the scalar field contains any volume (non-empty) voxel.
     #[allow(dead_code)]
     pub fn contains_voxels(&self) -> bool {
-        self.values.iter().any(|v| *v != ScalarField::empty_value())
+        self.voxels.iter().any(|v| *v != None)
     }
 
     /// Checks if the scalar field contains any voxel with a value from the
     /// given interval.
     pub fn contains_voxels_within_interval(&self, volume_value_interval: Interval<T>) -> bool {
-        self.values
-            .iter()
-            .any(|v| volume_value_interval.includes_closed(*v))
+        self.voxels.iter().any(|voxel| {
+            if let Some(value) = voxel {
+                volume_value_interval.includes_closed(*value)
+            } else {
+                false
+            }
+        })
     }
 
     /// Computes boolean intersection (logical AND operation) of the current and
@@ -471,28 +460,24 @@ impl<
                         cast_u32(diagonal.z),
                     );
                     // Iterate through the block of space common to both scalar fields.
-                    for i in 0..self.values.len() {
+                    for (i, v) in self.voxels.iter_mut().enumerate() {
+                        // Perform boolean AND on voxel states of both scalar fields.
                         let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                             i,
                             &block_start,
                             &block_dimensions,
                             &self.voxel_dimensions,
-                        )
-                        .expect("The current voxel map out of bounds");
+                        );
+                        let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                            &cartesian_coordinate,
+                            &other.voxel_dimensions,
+                        );
 
-                        // Perform boolean AND on voxel states of both scalar fields.
-                        if volume_value_interval_self.includes_closed(self.values[i]) {
-                            let absolute_coordinate = cartesian_to_absolute_voxel_coordinate(
-                                &cartesian_coordinate,
-                                &other.voxel_dimensions,
-                            );
-                            if let Some(value) =
-                                other.value_at_absolute_voxel_coordinate(&absolute_coordinate)
-                            {
-                                if !volume_value_interval_other.includes_closed(value) {
-                                    self.values[i] = ScalarField::empty_value();
-                                }
-                            }
+                        if !other.is_value_at_absolute_voxel_coordinate_within_closed_interval(
+                            &absolute_coordinate_other,
+                            volume_value_interval_other,
+                        ) {
+                            *v = None;
                         }
                     }
                     self.shrink_to_fit(volume_value_interval_self);
@@ -540,27 +525,36 @@ impl<
                 cast_u32(diagonal.z),
             );
             // Iterate through the block of space containing both scalar fields.
-            for i in 0..self.values.len() {
-                let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                    i,
-                    &block_start,
-                    &block_dimensions,
-                    &self.voxel_dimensions,
-                )
-                .expect("The current voxel map out of bounds");
-                // If the other scalar field exists on the current absolute
-                // coordinate, perform boolean OR, otherwise don't change the
-                // existing voxel.
-                let absolute_coordinate = cartesian_to_absolute_voxel_coordinate(
-                    &cartesian_coordinate,
-                    &other.voxel_dimensions,
-                );
-                if let Some(value) = other.value_at_absolute_voxel_coordinate(&absolute_coordinate)
-                {
-                    if volume_value_interval_other.includes_closed(value) {
-                        self.values[i] = volume_value_interval_other
-                            .remap_to(value, volume_value_interval_self)
-                            .expect("One of the intervals is infinite.");
+            for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+                // If the current scalar field doesn't contain a volume voxel at
+                // the current position
+                if !is_voxel_within_closed_interval(voxel, volume_value_interval_self) {
+                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                        one_dimensional,
+                        &block_start,
+                        &block_dimensions,
+                        &self.voxel_dimensions,
+                    );
+                    let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                        &cartesian_coordinate,
+                        &other.voxel_dimensions,
+                    );
+
+                    // If the other scalar field contains a voxel on the cartesian
+                    // coordinate of the current self voxel, then remap the other
+                    // value to the volume value interval of the current scalar
+                    // field and set the voxel to the value.
+                    if let Some(value_other) =
+                        other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
+                    {
+                        if volume_value_interval_other.includes_closed(value_other) {
+                            // If the remap fails, the program should panic
+                            *voxel = Some(
+                                volume_value_interval_other
+                                    .remap_to(value_other, volume_value_interval_self)
+                                    .expect("One of the intervals is infinite."),
+                            );
+                        }
                     }
                 }
             }
@@ -581,53 +575,76 @@ impl<
         volume_value_interval_other: Interval<T>,
     ) {
         // Iterate through the target scalar field
-        for i in 0..self.values.len() {
-            let self_cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                i,
-                &self.block_start,
-                &self.block_dimensions,
-                &self.voxel_dimensions,
-            )
-            .expect("The current voxel map out of bounds");
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            // If the current scalar field contains a volume voxel at the
+            // current position
+            if is_voxel_within_closed_interval(voxel, volume_value_interval_self) {
+                let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                    one_dimensional,
+                    &self.block_start,
+                    &self.block_dimensions,
+                    &self.voxel_dimensions,
+                );
 
-            if let Some(other_one_dimensional) = cartesian_to_one_dimensional_coordinate(
-                &self_cartesian_coordinate,
-                &other.block_start,
-                &other.block_dimensions,
-                &other.voxel_dimensions(),
-            ) {
-                // If the other scalar fields contains a voxel at the position,
-                // remove the existing voxel from the target scalar field
-                if let Some(value) = other.values.get(other_one_dimensional) {
-                    if volume_value_interval_other.includes_closed(*value) {
-                        self.values[i] = ScalarField::empty_value();
-                    }
+                let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                    &cartesian_coordinate,
+                    &other.voxel_dimensions,
+                );
+                // and so does the other scalar field
+                if other.is_value_at_absolute_voxel_coordinate_within_closed_interval(
+                    &absolute_coordinate_other,
+                    volume_value_interval_other,
+                ) {
+                    // then remove the voxel from the current scalar field
+                    *voxel = None;
                 }
             }
         }
         self.shrink_to_fit(volume_value_interval_self)
     }
 
-    /// Gets the state of a voxel defined in absolute voxel coordinates
-    /// (relative to the voxel space origin).
+    /// Gets the value of a voxel on absolute voxel coordinates (relative to the
+    /// voxel space origin).
+    ///
+    /// Returns None if voxel is empty or out of bounds
     pub fn value_at_absolute_voxel_coordinate(
         &self,
         absolute_coordinate: &Point3<i32>,
     ) -> Option<T> {
-        absolute_voxel_to_one_dimensional_coordinate(
+        match absolute_voxel_to_one_dimensional_coordinate(
             absolute_coordinate,
             &self.block_start,
             &self.block_dimensions,
-        )
-        .map(|index| self.values[index])
+        ) {
+            Some(index) => self.voxels[index],
+            _ => None,
+        }
     }
 
-    /// Sets the state of a voxel defined in absolute voxel coordinates
+    /// Returns true if the value of a voxel on absolute voxel coordinates
+    /// (relative to the voxel space origin) is within given interval.
+    pub fn is_value_at_absolute_voxel_coordinate_within_closed_interval(
+        &self,
+        absolute_coordinate: &Point3<i32>,
+        volume_value_interval: Interval<T>,
+    ) -> bool {
+        is_voxel_within_closed_interval(
+            &self.value_at_absolute_voxel_coordinate(absolute_coordinate),
+            volume_value_interval,
+        )
+    }
+
+    /// Sets the value of a voxel defined in absolute voxel coordinates
     /// (relative to the voxel space origin).
+    ///
+    /// # Panics
+    /// Panics if absolute coordinate out of bounds
+    // FIXME: Consider growing the scalar field to contain
+    // the newly added voxel
     pub fn set_value_at_absolute_voxel_coordinate(
         &mut self,
         absolute_coordinate: &Point3<i32>,
-        state: T,
+        value: Option<T>,
     ) {
         let index = absolute_voxel_to_one_dimensional_coordinate(
             absolute_coordinate,
@@ -635,13 +652,13 @@ impl<
             &self.block_dimensions,
         )
         .expect("Coordinates out of bounds");
-        self.values[cast_usize(index)] = state;
+        self.voxels[index] = value;
     }
 
     /// Fills the current scalar field with the given value.
     #[allow(dead_code)]
-    pub fn fill_with(&mut self, value: T) {
-        for v in self.values.iter_mut() {
+    pub fn fill_with(&mut self, value: Option<T>) {
+        for v in self.voxels.iter_mut() {
             *v = value;
         }
     }
@@ -664,7 +681,7 @@ impl<
                 return;
             }
 
-            let original_values = self.values.clone();
+            let original_values = self.voxels.clone();
             let original_block_start = self.block_start;
             let original_block_dimensions = self.block_dimensions;
 
@@ -677,24 +694,22 @@ impl<
                     * resized_block_dimensions.z,
             );
 
-            self.values
-                .resize(resized_values_len, ScalarField::empty_value());
+            self.voxels.resize(resized_values_len, None);
 
-            for resized_index in 0..self.values.len() {
+            for resized_index in 0..self.voxels.len() {
                 let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                     resized_index,
                     resized_block_start,
                     resized_block_dimensions,
-                )
-                .expect("Index out of bounds");
+                );
 
-                self.values[resized_index] = match absolute_voxel_to_one_dimensional_coordinate(
+                self.voxels[resized_index] = match absolute_voxel_to_one_dimensional_coordinate(
                     &absolute_coordinate,
                     &original_block_start,
                     &original_block_dimensions,
                 ) {
                     Some(original_index) => original_values[original_index],
-                    _ => ScalarField::empty_value(),
+                    _ => None,
                 }
             }
         }
@@ -820,60 +835,45 @@ impl<
         ];
 
         // Iterate through the scalar field
-        for (one_dimensional_coordinate, voxel) in self.values.iter().enumerate() {
+        for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
             // If the current voxel is a volume voxel
-            if volume_value_interval.includes_closed(*voxel) {
-                let voxel_coordinate = one_dimensional_to_relative_voxel_coordinate(
-                    one_dimensional_coordinate,
-                    &self.block_dimensions,
-                )
-                .expect("Out of bounds");
-                // compute the position of its center in model space coordinates
-                let voxel_center = relative_voxel_to_cartesian_coordinate(
-                    &voxel_coordinate,
+            if is_voxel_within_closed_interval(voxel, volume_value_interval) {
+                let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                    one_dimensional,
                     &self.block_start,
+                    &self.block_dimensions,
+                );
+
+                // compute the position of its center in model space coordinates
+                let voxel_center_cartesian = one_dimensional_to_cartesian_coordinate(
+                    one_dimensional,
+                    &self.block_start,
+                    &self.block_dimensions,
                     &self.voxel_dimensions,
                 );
                 // and check if there is any voxel around it.
                 for helper in &neighbor_helpers {
-                    let absolute_neighbor_coordinate = relative_voxel_to_absolute_voxel_coordinate(
-                        &(voxel_coordinate + helper.direction_to_neighbor),
-                        &self.block_start,
-                    );
-                    match self.value_at_absolute_voxel_coordinate(&absolute_neighbor_coordinate) {
-                        Some(neighbor_value) => {
-                            // If there is a neighbor next to the current voxel,
-                            // and it is not within the volume interval, the
-                            // boundary side of the voxel box should be
-                            // materialized.
-                            if !volume_value_interval.includes_closed(neighbor_value) {
-                                // Add a rectangle
-                                plane_meshes.push(primitive::create_mesh_plane(
-                                    Plane::from_origin_and_plane(
-                                        // around the voxel center half way the
-                                        // respective dimension of the voxel,
-                                        &(voxel_center + helper.direction_to_wall),
-                                        // align it properly
-                                        &helper.plane,
-                                    ),
-                                    // and set its size to match the dimensions
-                                    // of the respective side of a voxel.
-                                    helper.voxel_dimensions,
-                                ));
-                            }
-                        }
-                        // Also materialize the boundary side of the voxel box
-                        // if there is no neighbor - it means the current voxel
-                        // is at the boundary of the scalar field.
-                        None => {
-                            plane_meshes.push(primitive::create_mesh_plane(
-                                Plane::from_origin_and_plane(
-                                    &(voxel_center + helper.direction_to_wall),
-                                    &helper.plane,
-                                ),
-                                helper.voxel_dimensions,
-                            ));
-                        }
+                    let absolute_neighbor_coordinate =
+                        absolute_coordinate + helper.direction_to_neighbor;
+                    let neighbor_voxel =
+                        self.value_at_absolute_voxel_coordinate(&absolute_neighbor_coordinate);
+                    // If the neighbor voxel is not within the volume interval,
+                    // the boundary side of the voxel box should be
+                    // materialized.
+                    if !is_voxel_within_closed_interval(&neighbor_voxel, volume_value_interval) {
+                        // Add a rectangle
+                        plane_meshes.push(primitive::create_mesh_plane(
+                            Plane::from_origin_and_plane(
+                                // around the voxel center half way the
+                                // respective dimension of the voxel,
+                                &(voxel_center_cartesian + helper.direction_to_wall),
+                                // align it properly
+                                &helper.plane,
+                            ),
+                            // and set its size to match the dimensions
+                            // of the respective side of a voxel.
+                            helper.voxel_dimensions,
+                        ));
                     }
                 }
             }
@@ -911,32 +911,6 @@ impl<
                             * voxel_dimensions.y,
                         (volume_start.z as f32 + volume_dimensions.z as f32 + 0.5)
                             * voxel_dimensions.z,
-                    ),
-                )
-            },
-        )
-    }
-
-    /// Returns the bounding box in cartesian units of the current scalar field
-    /// after shrinking to fit just the nonempty voxels.
-    #[allow(dead_code)]
-    pub fn volume_bounding_box_cartesian(
-        &self,
-        volume_value_interval: Interval<T>,
-    ) -> Option<BoundingBox<f32>> {
-        let voxel_dimensions = self.voxel_dimensions;
-        self.compute_volume_boundaries(volume_value_interval).map(
-            |(volume_start, volume_dimensions)| {
-                BoundingBox::new(
-                    &Point3::new(
-                        (volume_start.x as f32) * voxel_dimensions.x,
-                        (volume_start.y as f32) * voxel_dimensions.y,
-                        (volume_start.z as f32) * voxel_dimensions.z,
-                    ),
-                    &Point3::new(
-                        (volume_start.x as f32 + volume_dimensions.x as f32) * voxel_dimensions.x,
-                        (volume_start.y as f32 + volume_dimensions.y as f32) * voxel_dimensions.y,
-                        (volume_start.z as f32 + volume_dimensions.z as f32) * voxel_dimensions.z,
                     ),
                 )
             },
@@ -982,19 +956,19 @@ impl<
         // Contains indices to the voxel map and their distance value
         let mut queue_to_compute_distance: VecDeque<(usize, T)> = VecDeque::new();
         // Match the voxel map length
-        let mut discovered_as_outer_and_empty = vec![false; self.values.len()];
-        let mut discovered_as_empty = vec![false; self.values.len()];
+        let mut discovered_as_outer_and_empty = vec![false; self.voxels.len()];
+        let mut discovered_as_empty = vec![false; self.voxels.len()];
 
         // Scan for void voxels at the boundaries of the scalar field and for
         // volume voxels anywhere.
-        for (one_dimensional, voxel_value) in self.values.iter().enumerate() {
+        for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
             let relative_coordinate = one_dimensional_to_relative_voxel_coordinate(
                 one_dimensional,
                 &self.block_dimensions,
-            )
-            .expect("Coord out of bounds");
+            );
+
             // If the voxel is void
-            if !volume_value_interval.includes_closed(*voxel_value) {
+            if !is_voxel_within_closed_interval(voxel, volume_value_interval) {
                 // If any of these is true, the coordinate is at the boundary of the
                 // scalar field block
                 if relative_coordinate.x == 0
@@ -1015,32 +989,32 @@ impl<
                     one_dimensional,
                     &self.block_start,
                     &self.block_dimensions,
-                )
-                .expect("Coord out of bounds");
+                );
 
                 // Check if any of his neighbors are void
                 for neighbor_offset in &neighbor_offsets {
                     let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
-                    if let Some(neighbor_value) =
-                        self.value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
-                    {
-                        // if they are void, add them to the processing queue
-                        if !volume_value_interval.includes_closed(neighbor_value) {
-                            if let Some(one_dimensional_neighbor) =
-                                absolute_voxel_to_one_dimensional_coordinate(
-                                    &neighbor_absolute_coordinate,
-                                    &self.block_start,
-                                    &self.block_dimensions,
-                                )
-                            {
-                                // with the current distance from the volume 1
-                                queue_to_compute_distance.push_back((
-                                    one_dimensional_neighbor,
-                                    T::from_u32(1).expect("Conversion from u32 failed"),
-                                ));
-                                // and mark them discovered
-                                discovered_as_empty[one_dimensional_neighbor] = true;
-                            }
+                    // If the neighbor is void, add it to the processing queue
+                    if !self.is_value_at_absolute_voxel_coordinate_within_closed_interval(
+                        &neighbor_absolute_coordinate,
+                        volume_value_interval,
+                    ) {
+                        // and if the neighbor's voxel exists within the current
+                        // block of scalar field
+                        if let Some(one_dimensional_neighbor) =
+                            absolute_voxel_to_one_dimensional_coordinate(
+                                &neighbor_absolute_coordinate,
+                                &self.block_start,
+                                &self.block_dimensions,
+                            )
+                        {
+                            // with the current distance from the volume 1
+                            queue_to_compute_distance.push_back((
+                                one_dimensional_neighbor,
+                                T::from_u32(1).expect("Conversion from u32 failed"),
+                            ));
+                            // and mark them discovered
+                            discovered_as_empty[one_dimensional_neighbor] = true;
                         }
                     }
                 }
@@ -1055,25 +1029,24 @@ impl<
                 one_dimensional,
                 &self.block_start,
                 &self.block_dimensions,
-            )
-            .expect("Coord out of bounds");
+            );
 
             // Check all the neighbors
             for neighbor_offset in &neighbor_offsets {
                 let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
-                // If the neighbor exists (is not out of bounds)
-                if let Some(neighbor_value) =
-                    self.value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
-                {
-                    // and doesn't contain any volume
-                    if !volume_value_interval.includes_closed(neighbor_value) {
-                        let neighbor_one_dimensional =
-                            absolute_voxel_to_one_dimensional_coordinate(
-                                &neighbor_absolute_coordinate,
-                                &self.block_start,
-                                &self.block_dimensions,
-                            )
-                            .expect("Coord out of bounds");
+                // If the neighbor doesn't contain any volume
+                if !self.is_value_at_absolute_voxel_coordinate_within_closed_interval(
+                    &neighbor_absolute_coordinate,
+                    volume_value_interval,
+                ) {
+                    // and is not out of bounds
+                    if let Some(neighbor_one_dimensional) =
+                        absolute_voxel_to_one_dimensional_coordinate(
+                            &neighbor_absolute_coordinate,
+                            &self.block_start,
+                            &self.block_dimensions,
+                        )
+                    {
                         // Check if it hasn't been discovered yet
                         if !discovered_as_outer_and_empty[neighbor_one_dimensional] {
                             // Put it to the processing queue
@@ -1095,8 +1068,7 @@ impl<
                 one_dimensional,
                 &self.block_start,
                 &self.block_dimensions,
-            )
-            .expect("Coord out of bounds");
+            );
 
             // Check each neighbor
             for neighbor_offset in &neighbor_offsets {
@@ -1107,40 +1079,41 @@ impl<
                     &self.block_start,
                     &self.block_dimensions,
                 ) {
-                    // and hasn't been discovered yet
-                    if !discovered_as_empty[one_dimensional_neighbor] {
-                        let neighbor_value = self
-                            .value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
-                            .expect("The neighbor voxel doesn't exist");
-                        // and is void,
-                        if !volume_value_interval.includes_closed(neighbor_value) {
-                            // put it into the processing queue with the
-                            // distance one higher than the current
-                            queue_to_compute_distance.push_back((
-                                one_dimensional_neighbor,
-                                distance + T::from_u32(1).expect("Conversion from u32 failed."),
-                            ));
-                            // and mark it discovered.
-                            discovered_as_empty[one_dimensional_neighbor] = true;
-                        }
+                    // and hasn't been discovered yet and is void,
+                    if !discovered_as_empty[one_dimensional_neighbor]
+                        && !self.is_value_at_absolute_voxel_coordinate_within_closed_interval(
+                            &absolute_coordinate,
+                            volume_value_interval,
+                        )
+                    {
+                        // put it into the processing queue with the
+                        // distance one higher than the current
+                        queue_to_compute_distance.push_back((
+                            one_dimensional_neighbor,
+                            distance + T::from_u32(1).expect("Conversion from u32 failed."),
+                        ));
+                        // and mark it discovered.
+                        discovered_as_empty[one_dimensional_neighbor] = true;
                     }
                 }
             }
 
             // Process the current voxel. If it is outside the volumes, set its
             // value to be positive, if it's inside, set it to negative.
-            self.values[one_dimensional] = if discovered_as_outer_and_empty[one_dimensional] {
-                distance
+            self.voxels[one_dimensional] = if discovered_as_outer_and_empty[one_dimensional] {
+                Some(distance)
             } else {
-                -distance
+                Some(-distance)
             };
         }
 
+        let zero = T::from_u32(0).expect("Conversion from u32 failed");
+
         // The actual volume voxels remained intact. Scan the scalar field and
         // set the volume voxel distance to 0.
-        for (one_dimensional, voxel_value) in self.values.iter_mut().enumerate() {
+        for (one_dimensional, voxel_value) in self.voxels.iter_mut().enumerate() {
             if !discovered_as_empty[one_dimensional] {
-                *voxel_value = T::from_u32(0).expect("Conversion from u32 failed");
+                *voxel_value = Some(zero);
             }
         }
     }
@@ -1156,11 +1129,13 @@ impl<
             Vector3::new(i32::max_value(), i32::max_value(), i32::max_value());
         let mut max: Vector3<i32> =
             Vector3::new(i32::min_value(), i32::min_value(), i32::min_value());
-        for (i, v) in self.values.iter().enumerate() {
-            if volume_value_interval.includes_closed(*v) {
-                let relative_coordinate =
-                    one_dimensional_to_relative_voxel_coordinate(i, &self.block_dimensions)
-                        .expect("Out of bounds");
+        for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
+            if is_voxel_within_closed_interval(voxel, volume_value_interval) {
+                let relative_coordinate = one_dimensional_to_relative_voxel_coordinate(
+                    one_dimensional,
+                    &self.block_dimensions,
+                );
+
                 if relative_coordinate.x < min.x {
                     min.x = relative_coordinate.x;
                 }
@@ -1181,8 +1156,8 @@ impl<
                 }
             }
         }
-        // It's enough to check one of the values because if anything is found,
-        // all the values would change.
+        // It's enough to check one of the voxels because if anything is found,
+        // all the voxels would change.
         if min.x == i32::max_value() {
             assert_eq!(
                 min.y,
@@ -1221,6 +1196,26 @@ impl<
     }
 }
 
+/// Returns true if the value of a voxel is within given interval.
+fn is_voxel_within_closed_interval<T>(voxel: &Option<T>, volume_value_interval: Interval<T>) -> bool
+where
+    T: Add<Output = T>
+        + Bounded
+        + Copy
+        + Div<Output = T>
+        + FromPrimitive
+        + Mul<Output = T>
+        + Neg<Output = T>
+        + PartialOrd
+        + Sub<Output = T>
+        + ToPrimitive,
+{
+    match voxel {
+        Some(value) => volume_value_interval.includes_closed(*value),
+        None => false,
+    }
+}
+
 /// Computes a voxel position relative to the block start (relative coordinate)
 /// from an index to the linear representation of the voxel block.
 ///
@@ -1228,19 +1223,14 @@ impl<
 fn one_dimensional_to_relative_voxel_coordinate(
     one_dimensional_coordinate: usize,
     block_dimensions: &Vector3<u32>,
-) -> Option<Point3<i32>> {
-    let values_len = cast_usize(block_dimensions.x * block_dimensions.y * block_dimensions.z);
-    if one_dimensional_coordinate < values_len {
-        let one_dimensional_i32 = cast_i32(one_dimensional_coordinate);
-        let horizontal_area_i32 = cast_i32(block_dimensions.x * block_dimensions.y);
-        let x_dimension_i32 = cast_i32(block_dimensions.x);
-        let z = one_dimensional_i32 / horizontal_area_i32;
-        let y = (one_dimensional_i32 % horizontal_area_i32) / x_dimension_i32;
-        let x = one_dimensional_i32 % x_dimension_i32;
-        Some(Point3::new(x, y, z))
-    } else {
-        None
-    }
+) -> Point3<i32> {
+    let one_dimensional_i32 = cast_i32(one_dimensional_coordinate);
+    let horizontal_area_i32 = cast_i32(block_dimensions.x * block_dimensions.y);
+    let x_dimension_i32 = cast_i32(block_dimensions.x);
+    let z = one_dimensional_i32 / horizontal_area_i32;
+    let y = (one_dimensional_i32 % horizontal_area_i32) / x_dimension_i32;
+    let x = one_dimensional_i32 % x_dimension_i32;
+    Point3::new(x, y, z)
 }
 
 /// Computes a voxel position relative to the model space origin (absolute
@@ -1251,9 +1241,10 @@ fn one_dimensional_to_absolute_voxel_coordinate(
     one_dimensional_coordinate: usize,
     block_start: &Point3<i32>,
     block_dimensions: &Vector3<u32>,
-) -> Option<Point3<i32>> {
-    one_dimensional_to_relative_voxel_coordinate(one_dimensional_coordinate, block_dimensions)
-        .map(|relative| relative_voxel_to_absolute_voxel_coordinate(&relative, block_start))
+) -> Point3<i32> {
+    let relative =
+        one_dimensional_to_relative_voxel_coordinate(one_dimensional_coordinate, block_dimensions);
+    relative_voxel_to_absolute_voxel_coordinate(&relative, block_start)
 }
 
 /// Computes a voxel position in world space cartesian units from an index to
@@ -1265,33 +1256,10 @@ fn one_dimensional_to_cartesian_coordinate(
     block_start: &Point3<i32>,
     block_dimensions: &Vector3<u32>,
     voxel_dimensions: &Vector3<f32>,
-) -> Option<Point3<f32>> {
-    one_dimensional_to_relative_voxel_coordinate(one_dimensional_coordinate, block_dimensions).map(
-        |relative| relative_voxel_to_cartesian_coordinate(&relative, block_start, voxel_dimensions),
-    )
-}
-
-/// Computes an index to the linear representation of the voxel block from
-/// voxel coordinates relative to the voxel space block start.
-///
-/// Returns None if out of bounds.
-fn relative_voxel_to_one_dimensional_coordinate(
-    relative_coordinate: &Point3<i32>,
-    block_dimensions: &Vector3<u32>,
-) -> Option<usize> {
-    if relative_coordinate
-        .iter()
-        .enumerate()
-        .all(|(i, coordinate)| *coordinate >= 0 && *coordinate < cast_i32(block_dimensions[i]))
-    {
-        let index =
-            relative_coordinate.z * cast_i32(block_dimensions.x) * cast_i32(block_dimensions.y)
-                + relative_coordinate.y * cast_i32(block_dimensions.x)
-                + relative_coordinate.x;
-        Some(cast_usize(index))
-    } else {
-        None
-    }
+) -> Point3<f32> {
+    let relative =
+        one_dimensional_to_relative_voxel_coordinate(one_dimensional_coordinate, block_dimensions);
+    relative_voxel_to_cartesian_coordinate(&relative, block_start, voxel_dimensions)
 }
 
 /// Computes the center of a voxel in absolute voxel units from voxel
@@ -1346,22 +1314,27 @@ fn cartesian_to_absolute_voxel_coordinate(
     )
 }
 
-/// Computes an index to the linear representation of the voxel block from a
-/// cartesian coordinate.
+/// Computes an index to the linear representation of the voxel block from
+/// voxel coordinates relative to the voxel space block start.
 ///
-/// # Panics
-/// Panics if any of the voxel dimensions is equal or below zero.
-fn cartesian_to_one_dimensional_coordinate(
-    point: &Point3<f32>,
-    block_start: &Point3<i32>,
+/// Returns None if out of bounds.
+fn relative_voxel_to_one_dimensional_coordinate(
+    relative_coordinate: &Point3<i32>,
     block_dimensions: &Vector3<u32>,
-    voxel_dimensions: &Vector3<f32>,
 ) -> Option<usize> {
-    absolute_voxel_to_one_dimensional_coordinate(
-        &cartesian_to_absolute_voxel_coordinate(point, voxel_dimensions),
-        block_start,
-        block_dimensions,
-    )
+    if relative_coordinate
+        .iter()
+        .enumerate()
+        .all(|(i, coordinate)| *coordinate >= 0 && *coordinate < cast_i32(block_dimensions[i]))
+    {
+        let index =
+            relative_coordinate.z * cast_i32(block_dimensions.x) * cast_i32(block_dimensions.y)
+                + relative_coordinate.y * cast_i32(block_dimensions.x)
+                + relative_coordinate.x;
+        Some(cast_usize(index))
+    } else {
+        None
+    }
 }
 
 /// Computes an index to the linear representation of the voxel block from
@@ -1470,8 +1443,8 @@ mod tests {
                     let three_dimensional = one_dimensional_to_relative_voxel_coordinate(
                         one_dimensional,
                         &scalar_field.block_dimensions,
-                    )
-                    .unwrap();
+                    );
+
                     assert_eq!(relative_position, three_dimensional);
                 }
             }
@@ -1496,9 +1469,9 @@ mod tests {
             &Vector3::new(0.5, 0.5, 0.5),
         );
 
-        sf_a.fill_with(0);
-        sf_b.fill_with(0);
-        sf_correct.fill_with(0);
+        sf_a.fill_with(Some(0));
+        sf_b.fill_with(Some(0));
+        sf_correct.fill_with(Some(0));
 
         sf_a.boolean_intersection(Interval::new(0, 0), &sf_b, Interval::new(0, 0));
 
@@ -1523,17 +1496,11 @@ mod tests {
             &Vector3::new(0.5, 0.5, 0.5),
         );
 
-        sf_a.fill_with(0);
-        sf_b.fill_with(0);
-        sf_b.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(2, 2, 2),
-            ScalarField::empty_value(),
-        );
-        sf_correct.fill_with(0);
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(2, 2, 2),
-            ScalarField::empty_value(),
-        );
+        sf_a.fill_with(Some(0));
+        sf_b.fill_with(Some(0));
+        sf_b.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
+        sf_correct.fill_with(Some(0));
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
 
         sf_a.boolean_intersection(Interval::new(0, 0), &sf_b, Interval::new(0, 0));
 
@@ -1558,85 +1525,28 @@ mod tests {
             &Vector3::new(0.5, 0.5, 0.5),
         );
 
-        sf_a.fill_with(0);
-        sf_b.fill_with(0);
-        sf_b.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(2, 2, 2),
-            ScalarField::empty_value(),
-        );
-        sf_correct.fill_with(0);
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(3, 0, 0),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(3, 1, 0),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(3, 2, 0),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(3, 3, 0),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(3, 0, 1),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(3, 0, 2),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(3, 0, 3),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(2, 0, 3),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(1, 0, 3),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(0, 0, 3),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(0, 1, 3),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(0, 2, 3),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(0, 3, 3),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(0, 3, 2),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(0, 3, 1),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(0, 3, 0),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(1, 3, 0),
-            ScalarField::empty_value(),
-        );
-        sf_correct.set_value_at_absolute_voxel_coordinate(
-            &Point3::new(2, 3, 0),
-            ScalarField::empty_value(),
-        );
+        sf_a.fill_with(Some(0));
+        sf_b.fill_with(Some(0));
+        sf_b.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
+        sf_correct.fill_with(Some(0));
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 1, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 2, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 3, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 1), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 2), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 0, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 0, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 1, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 2, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 2), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 1), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 3, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 3, 0), None);
 
         sf_a.boolean_union(Interval::new(0, 0), &sf_b, Interval::new(0, 0));
 
@@ -1650,15 +1560,13 @@ mod tests {
             &Vector3::new(1, 1, 1),
             &Vector3::new(1.0, 1.0, 1.0),
         );
-        let before = scalar_field
-            .value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0))
-            .unwrap();
-        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0), 0);
+        let before = scalar_field.value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0));
+        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0), Some(0));
         let after = scalar_field
             .value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0))
             .unwrap();
-        let empty: i16 = ScalarField::empty_value();
-        assert_eq!(before, empty);
+
+        assert_eq!(before, None);
         assert_eq!(after, 0);
     }
 
@@ -1669,7 +1577,7 @@ mod tests {
             &Vector3::new(1, 1, 1),
             &Vector3::new(1.0, 1.0, 1.0),
         );
-        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0), 0);
+        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0), Some(0));
 
         let voxel_mesh = scalar_field.to_mesh(Interval::new(0, 0)).unwrap();
 
@@ -1689,12 +1597,9 @@ mod tests {
         );
         scalar_field.resize(&Point3::origin(), &Vector3::new(1, 1, 1));
 
-        let voxel = scalar_field
-            .value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0))
-            .unwrap();
+        let voxel = scalar_field.value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0));
 
-        let empty: i16 = ScalarField::empty_value();
-        assert_eq!(voxel, empty);
+        assert_eq!(voxel, None);
     }
 
     #[test]
@@ -1710,7 +1615,7 @@ mod tests {
 
         assert_eq!(scalar_field.block_start, new_origin);
         assert_eq!(scalar_field.block_dimensions, new_block_dimensions);
-        assert_eq!(scalar_field.values.len(), 4 * 5 * 6);
+        assert_eq!(scalar_field.voxels.len(), 4 * 5 * 6);
     }
 
     #[test]
@@ -1726,7 +1631,7 @@ mod tests {
 
         assert_eq!(scalar_field.block_start, new_origin);
         assert_eq!(scalar_field.block_dimensions, new_block_dimensions);
-        assert_eq!(scalar_field.values.len(), 0);
+        assert_eq!(scalar_field.voxels.len(), 0);
     }
 
     #[test]
@@ -1742,7 +1647,7 @@ mod tests {
 
         assert_eq!(scalar_field.block_start, new_origin);
         assert_eq!(scalar_field.block_dimensions, new_block_dimensions);
-        assert_eq!(scalar_field.values.len(), 1 * 2 * 3);
+        assert_eq!(scalar_field.voxels.len(), 1 * 2 * 3);
     }
 
     #[test]
@@ -1758,7 +1663,7 @@ mod tests {
 
         assert_eq!(scalar_field.block_start, new_origin);
         assert_eq!(scalar_field.block_dimensions, new_block_dimensions);
-        assert_eq!(scalar_field.values.len(), 4 * 5 * 6);
+        assert_eq!(scalar_field.voxels.len(), 4 * 5 * 6);
     }
 
     #[test]
@@ -1772,21 +1677,18 @@ mod tests {
         );
         let original_block_end = scalar_field.block_end();
 
-        scalar_field.fill_with(0);
+        scalar_field.fill_with(Some(0));
 
         let new_origin = Point3::new(-1, 2, 3);
         let new_block_dimensions = Vector3::new(4, 5, 6);
         scalar_field.resize(&new_origin, &new_block_dimensions);
 
-        let empty: i16 = ScalarField::empty_value();
-
-        for (i, v) in scalar_field.values.iter().enumerate() {
+        for (i, v) in scalar_field.voxels.iter().enumerate() {
             let coordinate = one_dimensional_to_absolute_voxel_coordinate(
                 i,
                 &scalar_field.block_start,
                 &scalar_field.block_dimensions,
-            )
-            .unwrap();
+            );
 
             if coordinate.x < original_origin.x
                 || coordinate.y < original_origin.y
@@ -1795,9 +1697,10 @@ mod tests {
                 || coordinate.y > original_block_end.y
                 || coordinate.z > original_block_end.z
             {
-                assert_eq!(*v, empty);
+                assert_eq!(*v, None);
             } else {
-                assert_eq!(*v, 0);
+                let value = v.unwrap();
+                assert_eq!(value, 0);
             }
         }
     }
@@ -1809,12 +1712,12 @@ mod tests {
             &Vector3::new(4, 5, 6),
             &Vector3::new(1.0, 1.0, 1.0),
         );
-        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 1, 1), 0);
+        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 1, 1), Some(0));
         scalar_field.shrink_to_fit(Interval::new(0, 0));
 
         assert_eq!(scalar_field.block_start, Point3::new(1, 1, 1));
         assert_eq!(scalar_field.block_dimensions, Vector3::new(1, 1, 1));
-        assert_eq!(scalar_field.values.len(), 1);
+        assert_eq!(scalar_field.voxels.len(), 1);
         assert_eq!(
             scalar_field
                 .value_at_absolute_voxel_coordinate(&Point3::new(1, 1, 1))
@@ -1834,7 +1737,7 @@ mod tests {
 
         assert_eq!(scalar_field.block_start, Point3::origin());
         assert_eq!(scalar_field.block_dimensions, Vector3::new(0, 0, 0));
-        assert_eq!(scalar_field.values.len(), 0);
+        assert_eq!(scalar_field.voxels.len(), 0);
     }
 
     #[test]

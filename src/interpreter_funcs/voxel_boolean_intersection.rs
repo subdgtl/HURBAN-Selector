@@ -79,7 +79,7 @@ impl Func for FuncBooleanIntersection {
             ParamInfo {
                 name: "Grow",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
-                    default_value: Some(1),
+                    default_value: Some(0),
                     min_value: None,
                     max_value: None,
                 }),
