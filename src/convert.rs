@@ -37,7 +37,7 @@ where
     n.try_into().expect("Expected N to fit in usize")
 }
 
-/// Convert u32 to i32 clamping to max value of i16 if necessary.
+/// Convert u32 to i16 clamping to max value of i16 if necessary.
 pub fn clamp_cast_u32_to_i16(n: u32) -> i16 {
     if n > i16::max_value() as u32 {
         i16::max_value()
