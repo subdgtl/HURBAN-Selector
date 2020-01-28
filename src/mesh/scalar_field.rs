@@ -950,6 +950,8 @@ impl<
             Vector3::new(0, 0, -1),
             Vector3::new(0, 0, 1),
         ];
+        let zero_t = T::from_u32(0).expect("Conversion from u32 failed");
+        let one_t = T::from_u32(1).expect("Conversion from u32 failed");
 
         // Contains indices into the voxel map
         let mut queue_to_find_outer: VecDeque<usize> = VecDeque::new();
@@ -957,10 +959,10 @@ impl<
         let mut queue_to_compute_distance: VecDeque<(usize, T)> = VecDeque::new();
         // Match the voxel map length
         let mut discovered_as_outer_and_empty = vec![false; self.voxels.len()];
-        let mut discovered_as_empty = vec![false; self.voxels.len()];
+        let mut discovered_for_distance_field = vec![false; self.voxels.len()];
 
-        // Scan for void voxels at the boundaries of the scalar field and for
-        // volume voxels anywhere.
+        // Scan for void voxels at the boundaries of the scalar field
+        // and at the same time for volume voxels anywhere.
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
             let relative_coordinate = one_dimensional_to_relative_voxel_coordinate(
                 one_dimensional,
@@ -984,40 +986,11 @@ impl<
                     discovered_as_outer_and_empty[one_dimensional] = true;
                 }
             } else {
-                // If the voxel is a part of the volume
-                let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
-                    one_dimensional,
-                    &self.block_start,
-                    &self.block_dimensions,
-                );
-
-                // Check if any of his neighbors are void
-                for neighbor_offset in &neighbor_offsets {
-                    let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
-                    // If the neighbor is void, add it to the processing queue
-                    if !self.is_value_at_absolute_voxel_coordinate_within_closed_interval(
-                        &neighbor_absolute_coordinate,
-                        volume_value_interval,
-                    ) {
-                        // and if the neighbor's voxel exists within the current
-                        // block of scalar field
-                        if let Some(one_dimensional_neighbor) =
-                            absolute_voxel_to_one_dimensional_coordinate(
-                                &neighbor_absolute_coordinate,
-                                &self.block_start,
-                                &self.block_dimensions,
-                            )
-                        {
-                            // with the current distance from the volume 1
-                            queue_to_compute_distance.push_back((
-                                one_dimensional_neighbor,
-                                T::from_u32(1).expect("Conversion from u32 failed"),
-                            ));
-                            // and mark them discovered
-                            discovered_as_empty[one_dimensional_neighbor] = true;
-                        }
-                    }
-                }
+                // Add the current voxel to the queue for distance field
+                // processing
+                queue_to_compute_distance.push_back((one_dimensional, zero_t));
+                // and mark it discovered.
+                discovered_for_distance_field[one_dimensional] = true;
             }
         }
 
@@ -1080,20 +1053,18 @@ impl<
                     &self.block_dimensions,
                 ) {
                     // and hasn't been discovered yet and is void,
-                    if !discovered_as_empty[one_dimensional_neighbor]
+                    if !discovered_for_distance_field[one_dimensional_neighbor]
                         && !self.is_value_at_absolute_voxel_coordinate_within_closed_interval(
-                            &absolute_coordinate,
+                            &neighbor_absolute_coordinate,
                             volume_value_interval,
                         )
                     {
-                        // put it into the processing queue with the
-                        // distance one higher than the current
-                        queue_to_compute_distance.push_back((
-                            one_dimensional_neighbor,
-                            distance + T::from_u32(1).expect("Conversion from u32 failed."),
-                        ));
+                        // put it into the processing queue with the distance
+                        // one higher than the current
+                        queue_to_compute_distance
+                            .push_back((one_dimensional_neighbor, distance + one_t));
                         // and mark it discovered.
-                        discovered_as_empty[one_dimensional_neighbor] = true;
+                        discovered_for_distance_field[one_dimensional_neighbor] = true;
                     }
                 }
             }
@@ -1105,16 +1076,6 @@ impl<
             } else {
                 Some(-distance)
             };
-        }
-
-        let zero = T::from_u32(0).expect("Conversion from u32 failed");
-
-        // The actual volume voxels remained intact. Scan the scalar field and
-        // set the volume voxel distance to 0.
-        for (one_dimensional, voxel_value) in self.voxels.iter_mut().enumerate() {
-            if !discovered_as_empty[one_dimensional] {
-                *voxel_value = Some(zero);
-            }
         }
     }
 
