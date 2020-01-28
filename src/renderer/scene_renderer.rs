@@ -190,9 +190,11 @@ impl GpuMesh {
     }
 }
 
-/// Opaque handle to mesh stored in scene renderer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GpuMeshId(u64);
+/// Opaque handle to mesh stored in scene renderer. Does not implement
+/// `Clone` on purpose. The handle is acquired by uploading the mesh
+/// and has to be relinquished to destroy it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct GpuMeshHandle(u64);
 
 #[derive(Debug)]
 pub enum AddMeshError {
@@ -223,17 +225,9 @@ impl error::Error for AddMeshError {}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
-    pub clear_color: [f64; 4],
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
     pub output_depth_attachment_format: wgpu::TextureFormat,
-}
-
-bitflags! {
-    pub struct ClearFlags: u8 {
-        const COLOR = 0b_0000_0001;
-        const DEPTH = 0b_0000_0010;
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -251,7 +245,7 @@ pub enum DrawMeshMode {
 /// rendering, and their combinations.
 pub struct SceneRenderer {
     mesh_resources: HashMap<u64, MeshResource>,
-    mesh_resources_next_id: u64,
+    mesh_resources_next_handle: u64,
     matrix_buffer: wgpu::Buffer,
     matrix_bind_group: wgpu::BindGroup,
     shading_bind_group_shaded: wgpu::BindGroup,
@@ -260,7 +254,6 @@ pub struct SceneRenderer {
     matcap_texture_bind_group: wgpu::BindGroup,
     render_pipeline_opaque: wgpu::RenderPipeline,
     render_pipeline_transparent: wgpu::RenderPipeline,
-    options: Options,
 }
 
 impl SceneRenderer {
@@ -306,10 +299,6 @@ impl SceneRenderer {
                 },
             }],
         });
-        let matrix_uniforms = MatrixUniforms {
-            projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
-            view_matrix: view_matrix.clone().into(),
-        };
 
         let shading_buffer_size = wgpu_size_of::<ShadingUniforms>();
         let shading_buffer_shaded = device.create_buffer(&wgpu::BufferDescriptor {
@@ -365,7 +354,31 @@ impl SceneRenderer {
                 }],
             });
 
-        upload_matrix_buffer(device, queue, &matrix_buffer, matrix_uniforms);
+        {
+            let matrix_uniforms_size = wgpu_size_of::<MatrixUniforms>();
+            let matrix_uniforms = MatrixUniforms {
+                projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
+                view_matrix: view_matrix.clone().into(),
+            };
+
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+
+            let transfer_buffer = device
+                .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+                .fill_from_slice(&[matrix_uniforms]);
+
+            encoder.copy_buffer_to_buffer(
+                &transfer_buffer,
+                0,
+                &matrix_buffer,
+                0,
+                matrix_uniforms_size,
+            );
+
+            queue.submit(&[encoder.finish()]);
+        }
+
         upload_shading_buffer(
             device,
             queue,
@@ -507,7 +520,7 @@ impl SceneRenderer {
 
         Self {
             mesh_resources: HashMap::new(),
-            mesh_resources_next_id: 0,
+            mesh_resources_next_handle: 0,
             matrix_buffer,
             matrix_bind_group,
             shading_bind_group_shaded,
@@ -516,48 +529,58 @@ impl SceneRenderer {
             matcap_texture_bind_group,
             render_pipeline_opaque,
             render_pipeline_transparent,
-            options,
         }
     }
 
     /// Update camera matrices (projection matrix and view matrix).
     pub fn set_camera_matrices(
-        &mut self,
+        &self,
         device: &wgpu::Device,
-        queue: &mut wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
     ) {
+        let matrix_uniforms_size = wgpu_size_of::<MatrixUniforms>();
         let matrix_uniforms = MatrixUniforms {
             projection_matrix: apply_wgpu_correction_matrix(projection_matrix).into(),
             view_matrix: view_matrix.clone().into(),
         };
-        upload_matrix_buffer(device, queue, &self.matrix_buffer, matrix_uniforms);
+
+        let transfer_buffer = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+            .fill_from_slice(&[matrix_uniforms]);
+
+        encoder.copy_buffer_to_buffer(
+            &transfer_buffer,
+            0,
+            &self.matrix_buffer,
+            0,
+            matrix_uniforms_size,
+        );
     }
 
-    /// Upload mesh on the GPU.
+    /// Uploads mesh on the GPU.
     ///
     /// Whether indexed or not, the data must be in the
-    /// `TRIANGLE_LIST` format. The returned id can be used to draw
+    /// `TRIANGLE_LIST` format. The returned handle can be used to draw
     /// the mesh, or remove it.
     pub fn add_mesh(
         &mut self,
         device: &wgpu::Device,
         mesh: &GpuMesh,
-    ) -> Result<GpuMeshId, AddMeshError> {
-        let id = GpuMeshId(self.mesh_resources_next_id);
+    ) -> Result<GpuMeshHandle, AddMeshError> {
+        let handle = GpuMeshHandle(self.mesh_resources_next_handle);
 
         let vertex_data = &mesh.vertex_data[..];
         let vertex_data_count = u32::try_from(vertex_data.len())
             .map_err(|_| AddMeshError::TooManyVertices(vertex_data.len()))?;
-
         let mesh_descriptor = if let Some(indices) = &mesh.indices {
             let index_count = u32::try_from(indices.len())
                 .map_err(|_| AddMeshError::TooManyIndices(indices.len()))?;
 
             log::debug!(
-                "Adding mesh with ID {}, {} vertices and {} indices",
-                id.0,
+                "Adding mesh {} with {} vertices and {} indices",
+                handle.0,
                 vertex_data_count,
                 index_count,
             );
@@ -576,8 +599,8 @@ impl SceneRenderer {
             }
         } else {
             log::debug!(
-                "Adding mesh with ID {} and {} vertices",
-                id.0,
+                "Adding mesh {} with {} vertices",
+                handle.0,
                 vertex_data_count
             );
 
@@ -591,41 +614,37 @@ impl SceneRenderer {
             }
         };
 
-        self.mesh_resources.insert(id.0, mesh_descriptor);
-        self.mesh_resources_next_id += 1;
-        Ok(id)
+        self.mesh_resources.insert(handle.0, mesh_descriptor);
+        self.mesh_resources_next_handle += 1;
+
+        Ok(handle)
     }
 
     /// Remove a previously uploaded mesh from the GPU.
-    pub fn remove_mesh(&mut self, id: GpuMeshId) {
-        log::debug!("Removing mesh with ID {}", id.0);
+    pub fn remove_mesh(&mut self, handle: GpuMeshHandle) {
+        log::debug!("Removing mesh {}", handle.0);
         // Dropping the mesh descriptor here unstreams the buffers from device memory
-        self.mesh_resources.remove(&id.0);
+        self.mesh_resources.remove(&handle.0);
     }
 
     /// Optionally clear color and depth and draw previously uploaded
     /// meshes as one of the commands executed with the `encoder`
     /// to the `color_attachment`.
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_mesh<'a, I>(
+    pub fn draw_meshes<'a, H>(
         &self,
         mode: DrawMeshMode,
-        clear_flags: ClearFlags,
+        color_and_depth_need_clearing: bool,
+        clear_color: [f64; 4],
         encoder: &mut wgpu::CommandEncoder,
-        color_attachment: &wgpu::TextureView,
         msaa_attachment: Option<&wgpu::TextureView>,
+        color_attachment: &wgpu::TextureView,
         depth_attachment: &wgpu::TextureView,
-        ids: I,
+        handles: H,
     ) where
-        I: Iterator<Item = &'a GpuMeshId> + Clone,
+        H: Iterator<Item = &'a GpuMeshHandle> + Clone,
     {
-        let color_load_op = if clear_flags.contains(ClearFlags::COLOR) {
-            wgpu::LoadOp::Clear
-        } else {
-            wgpu::LoadOp::Load
-        };
-
-        let depth_load_op = if clear_flags.contains(ClearFlags::DEPTH) {
+        let load_op = if color_and_depth_need_clearing {
             wgpu::LoadOp::Clear
         } else {
             wgpu::LoadOp::Load
@@ -635,26 +654,26 @@ impl SceneRenderer {
             wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: msaa_attachment,
                 resolve_target: Some(color_attachment),
-                load_op: color_load_op,
+                load_op,
                 store_op: wgpu::StoreOp::Store,
                 clear_color: wgpu::Color {
-                    r: self.options.clear_color[0],
-                    g: self.options.clear_color[1],
-                    b: self.options.clear_color[2],
-                    a: self.options.clear_color[3],
+                    r: clear_color[0],
+                    g: clear_color[1],
+                    b: clear_color[2],
+                    a: clear_color[3],
                 },
             }
         } else {
             wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: color_attachment,
                 resolve_target: None,
-                load_op: color_load_op,
+                load_op,
                 store_op: wgpu::StoreOp::Store,
                 clear_color: wgpu::Color {
-                    r: self.options.clear_color[0],
-                    g: self.options.clear_color[1],
-                    b: self.options.clear_color[2],
-                    a: self.options.clear_color[3],
+                    r: clear_color[0],
+                    g: clear_color[1],
+                    b: clear_color[2],
+                    a: clear_color[3],
                 },
             }
         };
@@ -663,7 +682,7 @@ impl SceneRenderer {
             color_attachments: &[rpass_color_attachment_descriptor],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
                 attachment: depth_attachment,
-                depth_load_op,
+                depth_load_op: load_op,
                 depth_store_op: wgpu::StoreOp::Store,
                 stencil_load_op: wgpu::LoadOp::Clear,
                 stencil_store_op: wgpu::StoreOp::Store,
@@ -671,11 +690,6 @@ impl SceneRenderer {
                 clear_stencil: 0,
             }),
         });
-
-        // This needs to be set for vulkan, oterwise the validation
-        // layers complain about the stencil reference not being
-        // set... Not sure if this is a bug or not.
-        rpass.set_stencil_reference(0);
 
         // FIXME: The current renderer architecture is enough for our
         // current needs, but has some serious downsides.
@@ -708,7 +722,7 @@ impl SceneRenderer {
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
                 rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
 
-                self.record(&mut rpass, ids);
+                self.record(&mut rpass, handles);
             }
             DrawMeshMode::Edges => {
                 rpass.set_pipeline(&self.render_pipeline_transparent);
@@ -716,7 +730,7 @@ impl SceneRenderer {
                 rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
                 rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
 
-                self.record(&mut rpass, ids);
+                self.record(&mut rpass, handles);
             }
             DrawMeshMode::ShadedEdges => {
                 rpass.set_pipeline(&self.render_pipeline_opaque);
@@ -724,7 +738,7 @@ impl SceneRenderer {
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded_edges, &[]);
                 rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
 
-                self.record(&mut rpass, ids);
+                self.record(&mut rpass, handles);
             }
             DrawMeshMode::ShadedEdgesXray => {
                 rpass.set_pipeline(&self.render_pipeline_opaque);
@@ -732,32 +746,29 @@ impl SceneRenderer {
                 rpass.set_bind_group(1, &self.shading_bind_group_shaded, &[]);
                 rpass.set_bind_group(2, &self.matcap_texture_bind_group, &[]);
 
-                self.record(&mut rpass, ids.clone());
+                self.record(&mut rpass, handles.clone());
 
                 rpass.set_pipeline(&self.render_pipeline_transparent);
                 rpass.set_bind_group(1, &self.shading_bind_group_edges, &[]);
 
-                self.record(&mut rpass, ids);
+                self.record(&mut rpass, handles);
             }
         }
     }
 
-    fn record<'a, I>(&self, rpass: &mut wgpu::RenderPass, ids: I)
+    fn record<'a, H>(&self, rpass: &mut wgpu::RenderPass, handles: H)
     where
-        I: IntoIterator<Item = &'a GpuMeshId>,
+        H: IntoIterator<Item = &'a GpuMeshHandle>,
     {
-        for id in ids {
-            if let Some(mesh) = &self.mesh_resources.get(&id.0) {
-                let (vertex_buffer, vertex_count) = &mesh.vertices;
-                rpass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
-                if let Some((index_buffer, index_count)) = &mesh.indices {
-                    rpass.set_index_buffer(&index_buffer, 0);
-                    rpass.draw_indexed(0..*index_count, 0, 0..1);
-                } else {
-                    rpass.draw(0..*vertex_count, 0..1);
-                }
+        for handle in handles {
+            let mesh = &self.mesh_resources[&handle.0];
+            let (vertex_buffer, vertex_count) = &mesh.vertices;
+            rpass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
+            if let Some((index_buffer, index_count)) = &mesh.indices {
+                rpass.set_index_buffer(&index_buffer, 0);
+                rpass.draw_indexed(0..*index_count, 0, 0..1);
             } else {
-                log::warn!("Mesh with id {} does not exist in this renderer.", id.0);
+                rpass.draw(0..*vertex_count, 0..1);
             }
         }
     }
@@ -813,24 +824,6 @@ bitflags! {
     }
 }
 
-fn upload_matrix_buffer(
-    device: &wgpu::Device,
-    queue: &mut wgpu::Queue,
-    matrix_buffer: &wgpu::Buffer,
-    matrix_uniforms: MatrixUniforms,
-) {
-    let matrix_uniforms_size = wgpu_size_of::<MatrixUniforms>();
-
-    let transfer_buffer = device
-        .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-        .fill_from_slice(&[matrix_uniforms]);
-
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-    encoder.copy_buffer_to_buffer(&transfer_buffer, 0, matrix_buffer, 0, matrix_uniforms_size);
-
-    queue.submit(&[encoder.finish()]);
-}
-
 fn upload_shading_buffer(
     device: &wgpu::Device,
     queue: &mut wgpu::Queue,
@@ -857,14 +850,19 @@ fn upload_shading_buffer(
 
 /// Applies vulkan/wgpu correction matrix to the projection matrix.
 fn apply_wgpu_correction_matrix(projection_matrix: &Matrix4<f32>) -> Matrix4<f32> {
-    // Vulkan (and therefore wgpu) has different NDC and
-    // clip-space semantics than OpenGL: Vulkan is right-handed, Y
-    // grows downwards. The easiest way to keep everything working
-    // as before and use all the libraries that assume OpenGL is
-    // to apply a correction to the projection matrix which
-    // normally changes the right-handed OpenGL world-space to
+    // WebGPU does have a freshly specified NDC coordinate system, but
+    // wgpu-rs still uses Vulkan's. Vulkan (and therefore wgpu-rs) has
+    // different NDC and clip-space semantics than OpenGL: Vulkan is
+    // right-handed, Y grows downwards. The easiest way to keep
+    // everything working as before and use all the libraries that
+    // assume OpenGL is to apply a correction to the projection matrix
+    // which normally changes the right-handed OpenGL world-space to
     // left-handed OpenGL clip-space.
     // https://matthewwellings.com/blog/the-new-vulkan-coordinate-system/
+
+    // FIXME: Fix this correction matrix once wgpu-rs uses coordinate
+    // systems as specified by WebGPU.
+
     #[rustfmt::skip]
     let wgpu_correction_matrix = Matrix4::new(
         1.0,  0.0,  0.0,  0.0,
@@ -932,7 +930,7 @@ fn create_pipeline(
         primitive_topology: wgpu::PrimitiveTopology::TriangleList,
         color_states: &[wgpu::ColorStateDescriptor {
             format: options.output_color_attachment_format,
-            color_blend: if support_transparency {
+            alpha_blend: if support_transparency {
                 wgpu::BlendDescriptor {
                     src_factor: wgpu::BlendFactor::SrcAlpha,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
@@ -941,7 +939,7 @@ fn create_pipeline(
             } else {
                 wgpu::BlendDescriptor::REPLACE
             },
-            alpha_blend: if support_transparency {
+            color_blend: if support_transparency {
                 wgpu::BlendDescriptor {
                     src_factor: wgpu::BlendFactor::SrcAlpha,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
