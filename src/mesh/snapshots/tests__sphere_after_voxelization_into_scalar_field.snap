@@ -18,7 +18,7 @@ expression: "&scalar_field"
     0.5,
     0.5
   ],
-  "values": [
+  "voxels": [
     null,
     0,
     null,
