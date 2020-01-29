@@ -14,7 +14,7 @@ use nalgebra::Point3;
 
 use crate::bounding_box::BoundingBox;
 use crate::camera::{Camera, CameraOptions};
-use crate::convert::{cast_u8_color_to_f64, cast_usize};
+use crate::convert::cast_usize;
 use crate::input::InputManager;
 use crate::interpreter::{Value, VarIdent};
 use crate::mesh::Mesh;
@@ -177,7 +177,7 @@ pub fn init_and_run(options: Options) -> ! {
 
     let clear_color = match options.theme {
         Theme::Dark => [0.1, 0.1, 0.1, 1.0],
-        Theme::Funky => cast_u8_color_to_f64([0xea, 0xe7, 0xe1, 0xff]),
+        Theme::Funky => [1.0, 1.0, 1.0, 1.0],
     };
     let mut renderer_draw_mesh_mode = DrawMeshMode::Shaded;
     let mut renderer = Renderer::new(
