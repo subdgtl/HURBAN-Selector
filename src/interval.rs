@@ -225,6 +225,8 @@ impl<
 
     /// Remaps the value from one interval to another. Return None if one of the
     /// intervals is infinite.
+    // FIXME: Consider remapping also infinite intervals
+    // as T is bounded and therefore has always some maximum value.
     pub fn remap_to(&self, value: T, target_interval: Interval<T>) -> Option<T> {
         if self.left_infinite
             || self.right_infinite
