@@ -632,6 +632,76 @@ impl<
         self.shrink_to_fit(volume_value_interval_self)
     }
 
+    #[allow(dead_code)]
+    pub fn interpolated_union(
+        &mut self,
+        volume_value_interval_self: Interval<T>,
+        other: &ScalarField<T>,
+        volume_value_interval_other: Interval<T>,
+        factor: f32,
+    ) {
+        let bounding_box_self = self.bounding_box_cartesian();
+        let bounding_box_other = other.bounding_box_cartesian();
+        
+        // TODO: only done up till here
+
+        let bounding_boxes = [bounding_box_self, bounding_box_other];
+
+        // Unwrap the bounding box options. the other bounding box must be valid
+        // at this point and the self can be None. In that case, all the volume
+        // voxels from the other scalar field will be remapped to the current
+        // scalar field.
+        let valid_bounding_boxes_iter = bounding_boxes.iter().filter_map(|b| *b);
+
+        if let Some(bounding_box) = BoundingBox::union(valid_bounding_boxes_iter) {
+            // Resize (keep or grow) the current scalar field to a block that
+            // will contain union voxels.
+            self.resize_to_voxel_space_bounding_box(&bounding_box);
+
+            // Iterate through the block of space containing volume voxels from
+            // both scalar fields. Iterate through the units of the current
+            // scalar field.
+            for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+                // If the current scalar field doesn't contain a volume voxel at
+                // the current position
+                if !is_voxel_within_closed_interval(voxel, volume_value_interval_self) {
+                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                        one_dimensional,
+                        &self.block_start,
+                        &self.block_dimensions,
+                        &self.voxel_dimensions,
+                    );
+                    let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                        &cartesian_coordinate,
+                        &other.voxel_dimensions,
+                    );
+
+                    // If the other scalar field contains a voxel on the
+                    // cartesian coordinate of the current voxel, then remap the
+                    // other value to the volume value interval of the current
+                    // scalar field and set the voxel to the value.
+                    if let Some(value_other) =
+                        other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
+                    {
+                        if volume_value_interval_other.includes_closed(value_other) {
+                            // If the remap fails, the program should panic.
+                            *voxel = Some(
+                                volume_value_interval_other
+                                    .remap_to(value_other, volume_value_interval_self)
+                                    .expect("One of the intervals is infinite."),
+                            );
+                        }
+                    }
+                }
+            }
+            self.shrink_to_fit(volume_value_interval_self);
+        } else {
+            // Wipe the current scalar field if none of the scalar fields
+            // contained any volume voxels.
+            self.wipe();
+        }
+    }
+
     /// Gets the value of a voxel on absolute voxel coordinates (relative to the
     /// voxel space origin).
     ///
@@ -917,6 +987,25 @@ impl<
             .min(self.voxel_dimensions.y.min(self.voxel_dimensions.z));
         // and weld naked edges.
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
+    }
+
+    pub fn bounding_box(&self) -> BoundingBox<i32> {
+        BoundingBox::new(&self.block_start, &self.block_end())
+    }
+
+    pub fn bounding_box_cartesian(&self) -> BoundingBox<f32> {
+        let block_start_cartesian = Point3::new(
+            self.block_start.x as f32 * self.voxel_dimensions.x,
+            self.block_start.y as f32 * self.voxel_dimensions.y,
+            self.block_start.z as f32 * self.voxel_dimensions.z,
+        );
+        let block_end = self.block_end();
+        let block_end_cartesian = Point3::new(
+            block_end.x as f32 * self.voxel_dimensions.x,
+            block_end.y as f32 * self.voxel_dimensions.y,
+            block_end.z as f32 * self.voxel_dimensions.z,
+        );
+        BoundingBox::new(&block_start_cartesian, &block_end_cartesian)
     }
 
     /// Returns the bounding box of the mesh produced by `ScalarField::to_mesh`
