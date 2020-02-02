@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::error;
 use std::fmt;
 use std::ptr;
+use std::sync::Arc;
 use std::time::Instant;
 
 pub use self::ast::{FuncIdent, VarIdent};
@@ -774,7 +775,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
         ast::LitExpr::Float(float) => Value::Float(*float),
         ast::LitExpr::Float2(float2) => Value::Float2(*float2),
         ast::LitExpr::Float3(float3) => Value::Float3(*float3),
-        ast::LitExpr::String(string) => Value::String(string.clone()),
+        ast::LitExpr::String(string) => Value::String(Arc::new(string.clone())),
         ast::LitExpr::Nil => Value::Nil,
     };
 
