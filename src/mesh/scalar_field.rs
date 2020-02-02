@@ -642,22 +642,17 @@ impl<
     ) {
         let bounding_box_self = self.bounding_box_cartesian();
         let bounding_box_other = other.bounding_box_cartesian();
+
         
-        // TODO: only done up till here
-
-        let bounding_boxes = [bounding_box_self, bounding_box_other];
-
-        // Unwrap the bounding box options. the other bounding box must be valid
-        // at this point and the self can be None. In that case, all the volume
-        // voxels from the other scalar field will be remapped to the current
-        // scalar field.
-        let valid_bounding_boxes_iter = bounding_boxes.iter().filter_map(|b| *b);
-
-        if let Some(bounding_box) = BoundingBox::union(valid_bounding_boxes_iter) {
+        let bounding_boxes = vec![bounding_box_self, bounding_box_other];
+        
+        if let Some(bounding_box) = BoundingBox::union(bounding_boxes) {
             // Resize (keep or grow) the current scalar field to a block that
             // will contain union voxels.
-            self.resize_to_voxel_space_bounding_box(&bounding_box);
-
+            self.resize_to_cartesian_bounding_box(&bounding_box);
+            
+            // TODO: only done up till here
+            
             // Iterate through the block of space containing volume voxels from
             // both scalar fields. Iterate through the units of the current
             // scalar field.
@@ -825,6 +820,24 @@ impl<
             cast_u32(diagonal.z),
         );
         self.resize(&bounding_box.minimum_point(), &block_dimensions);
+    }
+
+    /// Resize the current scalar field to match the input bounding box in
+    /// voxel-space units
+    pub fn resize_to_cartesian_bounding_box(&mut self, bounding_box: &BoundingBox<f32>) {
+        let minimum_point = cartesian_to_absolute_voxel_coordinate(
+            &bounding_box.minimum_point(),
+            &self.voxel_dimensions,
+        );
+        let diagonal = bounding_box.diagonal();
+        let block_dimensions_i32 =
+            cartesian_to_absolute_voxel_coordinate(&Point3::from(diagonal), &self.voxel_dimensions);
+        let block_dimensions_u32 = Vector3::new(
+            cast_u32(block_dimensions_i32.x),
+            cast_u32(block_dimensions_i32.y),
+            cast_u32(block_dimensions_i32.z),
+        );
+        self.resize(&minimum_point, &block_dimensions_u32);
     }
 
     /// Resize the scalar field block to exactly fit the volumetric geometry.
