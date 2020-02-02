@@ -7,7 +7,7 @@ An Inno Setup Windows installer.
 To add an icon to binary follow these steps:
 
 - Install [rcedit](https://github.com/electron/rcedit),
-- Add icon to binary: `rcedit-x86.exe "C:\path\to\release\hurban_selector.exe" --set-icon "C:\path\to\installer\icons\64x64.ico"`
+- Add icon to binary: `rcedit-x86.exe "C:\path\to\release\hurban_selector.exe" --set-icon "C:\path\to\icons\64x64.ico"`
 
 ## Installer
 
