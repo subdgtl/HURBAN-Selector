@@ -74,13 +74,9 @@ pub fn init_env_specific(
     use std::path::Path;
 
     #[cfg(target_os = "windows")]
-    let path = {
-        use crate::platform::windows::localappdata_path;
-
-        match localappdata_path() {
-            Ok(appdata) => Path::new(&appdata).join("HURBAN Selector/Logs"),
-            Err(_) => return base_logger,
-        }
+    let path = match dirs::data_local_dir() {
+        Ok(appdata_local) => Path::new(&appdata_local).join("HURBAN Selector/Logs"),
+        Err(_) => return base_logger,
     };
 
     #[cfg(target_os = "macos")]

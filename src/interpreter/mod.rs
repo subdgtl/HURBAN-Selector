@@ -20,6 +20,12 @@ pub mod ast;
 pub mod func;
 pub mod value;
 
+// FIXME: All of the `Display` impls below for the error types were changed to
+// be directly displayable on the UI, e.g. the word "stmt" was changed to
+// "input" and `stmt_index` is displayed as `stmt_index + 1`. Revert these impls
+// back to being developer centric once we have context-aware error message
+// construction mechanism.
+
 /// A name resolution error.
 #[derive(Debug, PartialEq)]
 pub enum ResolveError {
@@ -28,41 +34,42 @@ pub enum ResolveError {
     UndeclaredFuncUse { stmt_index: usize, func: FuncIdent },
 }
 
+impl ResolveError {
+    pub fn stmt_index(&self) -> usize {
+        match self {
+            ResolveError::VarRedefinition { stmt_index, .. } => *stmt_index,
+            ResolveError::UndeclaredVarUse { stmt_index, .. } => *stmt_index,
+            ResolveError::UndeclaredFuncUse { stmt_index, .. } => *stmt_index,
+        }
+    }
+}
+
 impl fmt::Display for ResolveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ResolveError::VarRedefinition { stmt_index, var } => write!(
                 f,
-                "Re-definition of already declared variable {} on stmt {}",
-                var, stmt_index,
+                "Re-definition of already declared variable {} on input {}",
+                var,
+                stmt_index + 1,
             ),
             ResolveError::UndeclaredVarUse { stmt_index, var } => write!(
                 f,
-                "Use of an undeclared variable {} on stmt {}",
-                var, stmt_index
+                "Use of an undeclared variable {} on input {}",
+                var,
+                stmt_index + 1,
             ),
             ResolveError::UndeclaredFuncUse { stmt_index, func } => write!(
                 f,
-                "Use of an undeclared function {} on stmt {}",
-                func, stmt_index
+                "Use of an undeclared function {} on input {}",
+                func,
+                stmt_index + 1,
             ),
         }
     }
 }
 
 impl error::Error for ResolveError {}
-
-/// A type-checking error.
-#[derive(Debug, PartialEq)]
-pub enum TypecheckError {}
-
-impl fmt::Display for TypecheckError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TypecheckError")
-    }
-}
-
-impl error::Error for TypecheckError {}
 
 /// A dynamic func error.
 #[derive(Debug)]
@@ -121,6 +128,17 @@ pub enum RuntimeError {
     },
 }
 
+impl RuntimeError {
+    pub fn stmt_index(&self) -> usize {
+        match self {
+            RuntimeError::ArgCountMismatch { stmt_index, .. } => *stmt_index,
+            RuntimeError::ArgTyMismatch { stmt_index, .. } => *stmt_index,
+            RuntimeError::ReturnTyMismatch { stmt_index, .. } => *stmt_index,
+            RuntimeError::Func { stmt_index, .. } => *stmt_index,
+        }
+    }
+}
+
 impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -131,11 +149,11 @@ impl fmt::Display for RuntimeError {
                 args_provided,
             } => write!(
                 f,
-                "Function {} declared with {} params, but provided with {} args on stmt {}",
+                "Function {} declared with {} params, but provided with {} args on input {}",
                 call.ident(),
                 args_expected,
                 args_provided,
-                stmt_index,
+                stmt_index + 1,
             ),
             RuntimeError::ArgTyMismatch {
                 stmt_index,
@@ -145,12 +163,12 @@ impl fmt::Display for RuntimeError {
                 ty_provided,
             } => write!(
                 f,
-                "Function {} declared to take param (optional={}) type {}, but given {} on stmt {}",
+                "Function {} declared to take param (optional={}) type {}, but given {} on input {}",
                 call.ident(),
                 optional,
                 ty_expected,
                 ty_provided,
-                stmt_index,
+                stmt_index + 1,
             ),
             RuntimeError::ReturnTyMismatch {
                 stmt_index,
@@ -159,11 +177,11 @@ impl fmt::Display for RuntimeError {
                 ty_provided,
             } => write!(
                 f,
-                "Function {} declared to return type {}, but returned {} on stmt {}",
+                "Function {} declared to return type {}, but returned {} on input {}",
                 call.ident(),
                 ty_expected,
                 ty_provided,
-                stmt_index,
+                stmt_index + 1,
             ),
             RuntimeError::Func {
                 stmt_index,
@@ -171,10 +189,10 @@ impl fmt::Display for RuntimeError {
                 func_error,
             } => write!(
                 f,
-                "Function {} errored with \"{}\" on stmt {}",
+                "Function {} errored with \"{}\" on input {}",
                 call.ident(),
                 func_error,
-                stmt_index,
+                stmt_index + 1,
             ),
         }
     }
@@ -186,15 +204,22 @@ impl error::Error for RuntimeError {}
 #[derive(Debug, PartialEq)]
 pub enum InterpretError {
     Resolve(ResolveError),
-    Typecheck(TypecheckError),
     Runtime(RuntimeError),
+}
+
+impl InterpretError {
+    pub fn stmt_index(&self) -> usize {
+        match self {
+            InterpretError::Resolve(resolve_error) => resolve_error.stmt_index(),
+            InterpretError::Runtime(runtime_error) => runtime_error.stmt_index(),
+        }
+    }
 }
 
 impl fmt::Display for InterpretError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             InterpretError::Resolve(resolve_error) => f.write_str(&resolve_error.to_string()),
-            InterpretError::Typecheck(typecheck_error) => f.write_str(&typecheck_error.to_string()),
             InterpretError::Runtime(runtime_error) => f.write_str(&runtime_error.to_string()),
         }
     }
@@ -205,12 +230,6 @@ impl error::Error for InterpretError {}
 impl From<ResolveError> for InterpretError {
     fn from(resolve_error: ResolveError) -> InterpretError {
         InterpretError::Resolve(resolve_error)
-    }
-}
-
-impl From<TypecheckError> for InterpretError {
-    fn from(typecheck_error: TypecheckError) -> InterpretError {
-        InterpretError::Typecheck(typecheck_error)
     }
 }
 
@@ -446,12 +465,6 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn typecheck(&mut self) -> Result<(), TypecheckError> {
-        // FIXME: @Diagnostics Implement type-checking
-
-        Ok(())
-    }
-
     /// Interprets the whole currently set program and returns the
     /// used/unused values after the last statement.
     pub fn interpret(&mut self) -> InterpretOutcome {
@@ -485,13 +498,7 @@ impl Interpreter {
             };
         }
 
-        if let Err(err) = self.typecheck() {
-            return InterpretOutcome {
-                result: Err(InterpretError::from(err)),
-                pc: 0,
-                log_messages: vec![Vec::new(); self.log_messages.len()],
-            };
-        }
+        // FIXME: @Diagnostics Implement type-checking
 
         index = cmp::min(index, self.prog.stmts().len().saturating_sub(1));
 
