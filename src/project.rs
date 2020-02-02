@@ -9,6 +9,7 @@ use crate::interpreter::ast;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Project {
+    pub version: u32,
     pub stmts: Vec<ast::Stmt>,
 }
 

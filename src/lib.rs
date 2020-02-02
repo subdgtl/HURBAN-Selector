@@ -237,7 +237,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                 if let Some(save_path) = menu_bar_status.save_path {
                     let stmts = session.stmts().to_vec();
-                    let project = project::Project { stmts };
+                    let project = project::Project { version: 1, stmts };
 
                     project::save(&save_path, project);
 
