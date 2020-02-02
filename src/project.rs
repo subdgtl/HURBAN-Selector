@@ -4,11 +4,10 @@ use std::io::BufReader;
 use std::path::Path;
 
 use ron;
-use serde::{Deserialize, Serialize};
 
 use crate::interpreter::ast;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Project {
     pub stmts: Vec<ast::Stmt>,
 }
