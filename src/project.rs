@@ -4,6 +4,7 @@ use std::io::BufReader;
 use std::path::Path;
 
 use ron;
+use serde::Serialize;
 
 use crate::interpreter::ast;
 
@@ -15,8 +16,12 @@ pub struct Project {
 
 pub fn save<P: AsRef<Path>>(path: P, project: Project) {
     let pretty_config = ron::ser::PrettyConfig::default();
-    let contents =
-        ron::ser::to_string_pretty(&project, pretty_config).expect("Failed to serialize project");
+    let mut serializer = ron::ser::Serializer::new(Some(pretty_config), true);
+    project
+        .serialize(&mut serializer)
+        .expect("Failed to serialize project");
+
+    let contents = serializer.into_output_string();
     let mut file = File::create(path).expect("Failed to create project file");
 
     file.write_all(contents.as_bytes())
