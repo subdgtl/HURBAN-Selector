@@ -21,6 +21,7 @@ use self::transform::FuncTransform;
 use self::voxel_boolean_difference::FuncBooleanDifference;
 use self::voxel_boolean_intersection::FuncBooleanIntersection;
 use self::voxel_boolean_union::FuncBooleanUnion;
+use self::voxel_interpolated_union::FuncInterpolatedUnion;
 use self::voxel_transform::FuncVoxelTransform;
 use self::voxelize::FuncVoxelize;
 use self::weld::FuncWeld;
@@ -43,6 +44,7 @@ mod transform;
 mod voxel_boolean_difference;
 mod voxel_boolean_intersection;
 mod voxel_boolean_union;
+mod voxel_interpolated_union;
 mod voxel_transform;
 mod voxelize;
 mod weld;
@@ -82,6 +84,7 @@ pub const FUNC_ID_BOOLEAN_INTERSECTION: FuncIdent = FuncIdent(9008);
 pub const FUNC_ID_BOOLEAN_DIFFERENCE: FuncIdent = FuncIdent(9009);
 pub const FUNC_ID_BOOLEAN_UNION: FuncIdent = FuncIdent(9010);
 pub const FUNC_ID_VOXEL_TRANSFORM: FuncIdent = FuncIdent(9011);
+pub const FUNC_ID_INTERPOLATED_UNION: FuncIdent = FuncIdent(9012);
 
 /// Returns the global set of function definitions available to the
 /// editor.
@@ -136,6 +139,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_BOOLEAN_DIFFERENCE, Box::new(FuncBooleanDifference));
     funcs.insert(FUNC_ID_BOOLEAN_UNION, Box::new(FuncBooleanUnion));
     funcs.insert(FUNC_ID_VOXEL_TRANSFORM, Box::new(FuncVoxelTransform));
+    funcs.insert(FUNC_ID_INTERPOLATED_UNION, Box::new(FuncInterpolatedUnion));
 
     funcs
 }

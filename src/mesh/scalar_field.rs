@@ -633,67 +633,64 @@ impl<
     }
 
     #[allow(dead_code)]
-    pub fn interpolated_union(
+    pub fn interpolated_union_of_distance_fields(
         &mut self,
         volume_value_interval_self: Interval<T>,
         other: &ScalarField<T>,
         volume_value_interval_other: Interval<T>,
         factor: f32,
     ) {
+        let mut other_clone = other.clone();
         let bounding_box_self = self.bounding_box_cartesian();
-        let bounding_box_other = other.bounding_box_cartesian();
+        let bounding_box_other = other_clone.bounding_box_cartesian();
 
-        
-        let bounding_boxes = vec![bounding_box_self, bounding_box_other];
-        
-        if let Some(bounding_box) = BoundingBox::union(bounding_boxes) {
-            // Resize (keep or grow) the current scalar field to a block that
-            // will contain union voxels.
+        if let Some(bounding_box) = BoundingBox::union(vec![bounding_box_self, bounding_box_other]) {
             self.resize_to_cartesian_bounding_box(&bounding_box);
-            
-            // TODO: only done up till here
-            
-            // Iterate through the block of space containing volume voxels from
-            // both scalar fields. Iterate through the units of the current
-            // scalar field.
-            for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
-                // If the current scalar field doesn't contain a volume voxel at
-                // the current position
-                if !is_voxel_within_closed_interval(voxel, volume_value_interval_self) {
-                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                        one_dimensional,
-                        &self.block_start,
-                        &self.block_dimensions,
-                        &self.voxel_dimensions,
-                    );
-                    let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
-                        &cartesian_coordinate,
-                        &other.voxel_dimensions,
-                    );
+            other_clone.resize_to_cartesian_bounding_box(&bounding_box);
+            self.compute_distance_filed(volume_value_interval_self);
+            other_clone.compute_distance_filed(volume_value_interval_other);
 
-                    // If the other scalar field contains a voxel on the
-                    // cartesian coordinate of the current voxel, then remap the
-                    // other value to the volume value interval of the current
-                    // scalar field and set the voxel to the value.
-                    if let Some(value_other) =
-                        other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
-                    {
-                        if volume_value_interval_other.includes_closed(value_other) {
-                            // If the remap fails, the program should panic.
-                            *voxel = Some(
-                                volume_value_interval_other
-                                    .remap_to(value_other, volume_value_interval_self)
-                                    .expect("One of the intervals is infinite."),
-                            );
-                        }
-                    }
-                }
-            }
-            self.shrink_to_fit(volume_value_interval_self);
+            self.interpolate_to(&other_clone, factor);
         } else {
             // Wipe the current scalar field if none of the scalar fields
             // contained any volume voxels.
             self.wipe();
+        }
+    }
+
+    pub fn interpolate_to(&mut self, other: &ScalarField<T>, factor: f32) {
+        let unit_interval = Interval::new(0.0, 1.0);
+
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+                &self.voxel_dimensions,
+            );
+            let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                &cartesian_coordinate,
+                &other.voxel_dimensions,
+            );
+
+            let value_self = voxel.expect("The value is None");
+
+            *voxel = other
+                .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
+                .map(|value_other| {
+                    T::from_f32(
+                        unit_interval
+                            .remap_to(
+                                factor,
+                                Interval::new(
+                                    value_self.to_f32().expect("Conversion to f32 failed"),
+                                    value_other.to_f32().expect("Conversion to f32 failed"),
+                                ),
+                            )
+                            .expect("The target interval is infinite"),
+                    )
+                    .expect("Conversion from f32 failed")
+                });
         }
     }
 
@@ -1002,6 +999,7 @@ impl<
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
+    #[allow(dead_code)]
     pub fn bounding_box(&self) -> BoundingBox<i32> {
         BoundingBox::new(&self.block_start, &self.block_end())
     }
