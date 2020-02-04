@@ -222,7 +222,7 @@ pub fn init_and_run(options: Options) -> ! {
             vsync: options.vsync,
             backend: options.gpu_backend,
             power_preference: options.gpu_power_preference,
-            flat_shading_color: clear_color,
+            flat_shading_color: [0.0, 0.0, 0.0, 0.0],
         },
     );
 
@@ -236,7 +236,7 @@ pub fn init_and_run(options: Options) -> ! {
     );
     let ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
     let ground_plane_gpu_mesh_handle = renderer
-        .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
+        .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
         .expect("Failed to add ground plane mesh");
 
     let mut scene_bounding_box: BoundingBox<f32> = BoundingBox::unit();
@@ -370,7 +370,7 @@ pub fn init_and_run(options: Options) -> ! {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
-                                .add_scene_mesh(&gpu_mesh)
+                                .add_scene_mesh(&gpu_mesh, false)
                                 .expect("Failed to upload scene mesh");
 
                             let path = ValuePath(var_ident, 0);
@@ -387,7 +387,7 @@ pub fn init_and_run(options: Options) -> ! {
                             for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
                                 let gpu_mesh = GpuMesh::from_mesh(&mesh);
                                 let gpu_mesh_id = renderer
-                                    .add_scene_mesh(&gpu_mesh)
+                                    .add_scene_mesh(&gpu_mesh, false)
                                     .expect("Failed to upload scene mesh");
 
                                 let path = ValuePath(var_ident, index);
@@ -463,33 +463,16 @@ pub fn init_and_run(options: Options) -> ! {
                 window_command_buffer
                     .set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
 
-                // FIXME: @Correctness The renderer does not support
-                // transparency via depth sorting. Edges are transparent and
-                // don't write their depth, meaning the ground would always
-                // overwrite them, whether it was behind or in front of them.
-                if renderer_draw_mesh_mode == DrawMeshMode::Edges {
-                    window_command_buffer.draw_meshes_to_primary_render_target(
-                        iter::once(&ground_plane_gpu_mesh_handle),
-                        DrawMeshMode::FlatWithShadows,
-                        false,
-                    );
-                    window_command_buffer.draw_meshes_to_primary_render_target(
-                        scene_gpu_mesh_handles.values(),
-                        renderer_draw_mesh_mode,
-                        false,
-                    );
-                } else {
-                    window_command_buffer.draw_meshes_to_primary_render_target(
-                        scene_gpu_mesh_handles.values(),
-                        renderer_draw_mesh_mode,
-                        true,
-                    );
-                    window_command_buffer.draw_meshes_to_primary_render_target(
-                        iter::once(&ground_plane_gpu_mesh_handle),
-                        DrawMeshMode::FlatWithShadows,
-                        false,
-                    );
-                }
+                window_command_buffer.draw_meshes_to_primary_render_target(
+                    scene_gpu_mesh_handles.values(),
+                    renderer_draw_mesh_mode,
+                    true,
+                );
+                window_command_buffer.draw_meshes_to_primary_render_target(
+                    iter::once(&ground_plane_gpu_mesh_handle),
+                    DrawMeshMode::FlatWithShadows,
+                    false,
+                );
 
                 #[cfg(not(feature = "dist"))]
                 match renderer_debug_view {
@@ -539,33 +522,18 @@ pub fn init_and_run(options: Options) -> ! {
                         &screenshot_camera.view_matrix(),
                     );
 
-                    if renderer_draw_mesh_mode == DrawMeshMode::Edges {
-                        screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                            &screenshot_render_target,
-                            iter::once(&ground_plane_gpu_mesh_handle),
-                            DrawMeshMode::FlatWithShadows,
-                            false,
-                        );
-                        screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                            &screenshot_render_target,
-                            scene_gpu_mesh_handles.values(),
-                            renderer_draw_mesh_mode,
-                            false,
-                        );
-                    } else {
-                        screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                            &screenshot_render_target,
-                            scene_gpu_mesh_handles.values(),
-                            renderer_draw_mesh_mode,
-                            true,
-                        );
-                        screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                            &screenshot_render_target,
-                            iter::once(&ground_plane_gpu_mesh_handle),
-                            DrawMeshMode::FlatWithShadows,
-                            false,
-                        );
-                    }
+                    screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                        &screenshot_render_target,
+                        scene_gpu_mesh_handles.values(),
+                        renderer_draw_mesh_mode,
+                        true,
+                    );
+                    screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                        &screenshot_render_target,
+                        iter::once(&ground_plane_gpu_mesh_handle),
+                        DrawMeshMode::FlatWithShadows,
+                        false,
+                    );
 
                     screenshot_command_buffer.submit();
 

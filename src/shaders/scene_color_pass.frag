@@ -101,7 +101,8 @@ void main() {
     }
 
     // Apply shadows
-    f_color *= (1.0 - shadow * SHADOW_INTENSITY);
+    f_color.rgb *= (1.0 - shadow * SHADOW_INTENSITY);
+    f_color.a = mix(f_color.a, 1.0, shadow * SHADOW_INTENSITY);
 
     // Alpha blend edge color
     if (bool(u_shading_mode & SHADING_MODE_EDGES)) {

@@ -24,6 +24,7 @@ static TEXTURE_MATCAP: &[u8] = include_bytes!("../../resources/matcap.png");
 /// format as will be uploaded on the GPU.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GpuMesh {
+    centroid: Point3<f32>,
     indices: Option<Vec<u32>>,
     vertex_data: Vec<GpuMeshVertex>,
 }
@@ -106,6 +107,7 @@ impl GpuMesh {
         vertex_data.shrink_to_fit();
 
         GpuMesh {
+            centroid: Self::centroid(mesh.vertices()),
             indices: Some(indices),
             vertex_data,
         }
@@ -134,13 +136,15 @@ impl GpuMesh {
         );
 
         let vertex_data = vertex_positions
-            .into_iter()
+            .iter()
+            .copied()
             .zip(vertex_normals.into_iter())
             .zip(barycentric_sequence_iter())
             .map(|((position, normal), barycentric)| Self::vertex(position, normal, barycentric))
             .collect();
 
         Self {
+            centroid: Self::centroid(&vertex_positions),
             indices: None,
             vertex_data,
         }
@@ -170,13 +174,15 @@ impl GpuMesh {
         );
 
         let vertex_data = vertex_positions
-            .into_iter()
+            .iter()
+            .copied()
             .zip(vertex_normals.into_iter())
             .zip(barycentric_sequence_iter())
             .map(|((position, normal), barycentric)| Self::vertex(position, normal, barycentric))
             .collect();
 
         Self {
+            centroid: Self::centroid(&vertex_positions),
             indices: Some(indices),
             vertex_data,
         }
@@ -188,6 +194,12 @@ impl GpuMesh {
             normal: [normal[0], normal[1], normal[2], 0.0],
             barycentric,
         }
+    }
+
+    fn centroid(points: &[Point3<f32>]) -> Point3<f32> {
+        points.iter().fold(Point3::origin(), |centroid, vertex| {
+            centroid + vertex.coords
+        }) / points.len() as f32
     }
 }
 
@@ -258,6 +270,12 @@ pub enum DrawMeshMode {
 pub struct SceneRenderer {
     mesh_resources: HashMap<u64, MeshResource>,
     mesh_resources_next_handle: u64,
+    /// Working memory for sorting opaque meshes by the projected z coord of
+    /// their centroid
+    mesh_render_list_opaque: Vec<(u64, Point3<f32>)>,
+    /// Working memory for sorting transparent meshes by the projected z coord
+    /// of their centroid
+    mesh_render_list_transparent: Vec<(u64, Point3<f32>)>,
     matrix_buffer: wgpu::Buffer,
     matrix_bind_group: wgpu::BindGroup,
     sampler_bind_group: wgpu::BindGroup,
@@ -268,13 +286,14 @@ pub struct SceneRenderer {
     color_pass_bind_group_shaded_edges: wgpu::BindGroup,
     color_pass_bind_group_flat_with_shadows: wgpu::BindGroup,
     color_pass_matcap_texture_bind_group: wgpu::BindGroup,
-    color_pass_opaque_render_pipeline: wgpu::RenderPipeline,
-    color_pass_transparent_render_pipeline: wgpu::RenderPipeline,
+    color_pass_pipeline_opaque_depth_read_write: wgpu::RenderPipeline,
+    color_pass_pipeline_transparent_depth_read_only: wgpu::RenderPipeline,
+    color_pass_pipeline_transparent_depth_always_pass: wgpu::RenderPipeline,
     shadow_map_texture_view: wgpu::TextureView,
     shadow_map_texture_bind_group: wgpu::BindGroup,
     shadow_pass_buffer: wgpu::Buffer,
     shadow_pass_bind_group: wgpu::BindGroup,
-    shadow_pass_render_pipeline: wgpu::RenderPipeline,
+    shadow_pass_pipeline: wgpu::RenderPipeline,
 }
 
 impl SceneRenderer {
@@ -585,7 +604,7 @@ impl SceneRenderer {
             }],
         });
 
-        let color_pass_opaque_render_pipeline = create_color_pass_pipeline(
+        let color_pass_pipeline_opaque_depth_read_write = create_color_pass_pipeline(
             device,
             &color_pass_vs_module,
             &color_pass_fs_module,
@@ -595,9 +614,11 @@ impl SceneRenderer {
             &color_pass_bind_group_layout,
             &shadow_pass_bind_group_layout,
             false,
+            true,
+            true,
             options,
         );
-        let color_pass_transparent_render_pipeline = create_color_pass_pipeline(
+        let color_pass_pipeline_transparent_depth_read_only = create_color_pass_pipeline(
             device,
             &color_pass_vs_module,
             &color_pass_fs_module,
@@ -607,68 +628,85 @@ impl SceneRenderer {
             &color_pass_bind_group_layout,
             &shadow_pass_bind_group_layout,
             true,
+            true,
+            false,
+            options,
+        );
+        let color_pass_pipeline_transparent_depth_always_pass = create_color_pass_pipeline(
+            device,
+            &color_pass_vs_module,
+            &color_pass_fs_module,
+            &matrix_bind_group_layout,
+            &sampler_bind_group_layout,
+            &sampled_texture_bind_group_layout,
+            &color_pass_bind_group_layout,
+            &shadow_pass_bind_group_layout,
+            true,
+            false,
+            false,
             options,
         );
 
-        let shadow_pass_render_pipeline_layout =
+        let shadow_pass_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 bind_group_layouts: &[&shadow_pass_bind_group_layout],
             });
 
-        let shadow_pass_render_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                layout: &shadow_pass_render_pipeline_layout,
-                vertex_stage: wgpu::ProgrammableStageDescriptor {
-                    module: &shadow_pass_vs_module,
-                    entry_point: "main",
-                },
-                fragment_stage: None,
-                rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-                    front_face: wgpu::FrontFace::Ccw,
-                    // Do not cull, our objects are not necessarily watertight
-                    cull_mode: wgpu::CullMode::None,
-                    // Depth bias (and slope) are used to avoid shadowing artefacts:
-                    // - Constant depth bias factor (always applied)
-                    // - Slope depth bias factor, applied depending on polygon's slope
-                    //
-                    // https://docs.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias?redirectedfrom=MSDN
-                    depth_bias: 5,
-                    depth_bias_slope_scale: 5.0,
-                    depth_bias_clamp: 0.0,
-                }),
-                primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-                color_states: &[],
-                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
-                    format: options.output_depth_attachment_format,
-                    depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::Less,
-                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-                    stencil_read_mask: 0,
-                    stencil_write_mask: 0,
-                }),
-                index_format: wgpu::IndexFormat::Uint32,
-                vertex_buffers: &[wgpu::VertexBufferDescriptor {
-                    stride: wgpu_size_of::<GpuMeshVertex>(),
-                    step_mode: wgpu::InputStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttributeDescriptor {
-                            offset: 0,
-                            format: wgpu::VertexFormat::Float4,
-                            shader_location: 0,
-                        },
-                        // Note: We don't use other data from `GpuMeshVertex`,
-                        // just the position, we just stride over them.
-                    ],
-                }],
-                sample_count: 1,
-                sample_mask: !0,
-                alpha_to_coverage_enabled: false,
-            });
+        let shadow_pass_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            layout: &shadow_pass_pipeline_layout,
+            vertex_stage: wgpu::ProgrammableStageDescriptor {
+                module: &shadow_pass_vs_module,
+                entry_point: "main",
+            },
+            fragment_stage: None,
+            rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+                front_face: wgpu::FrontFace::Ccw,
+                // Do not cull, our objects are not necessarily watertight
+                cull_mode: wgpu::CullMode::None,
+                // Depth bias (and slope) are used to avoid shadowing artefacts:
+                // - Constant depth bias factor (always applied)
+                // - Slope depth bias factor, applied depending on polygon's slope
+                //
+                // https://docs.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias
+                depth_bias: 5,
+                depth_bias_slope_scale: 5.0,
+                depth_bias_clamp: 0.0,
+            }),
+            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+            color_states: &[],
+            depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                format: options.output_depth_attachment_format,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                stencil_read_mask: 0,
+                stencil_write_mask: 0,
+            }),
+            index_format: wgpu::IndexFormat::Uint32,
+            vertex_buffers: &[wgpu::VertexBufferDescriptor {
+                stride: wgpu_size_of::<GpuMeshVertex>(),
+                step_mode: wgpu::InputStepMode::Vertex,
+                attributes: &[
+                    wgpu::VertexAttributeDescriptor {
+                        offset: 0,
+                        format: wgpu::VertexFormat::Float4,
+                        shader_location: 0,
+                    },
+                    // Note: We don't use other data from `GpuMeshVertex`,
+                    // just the position, we just stride over them.
+                ],
+            }],
+            sample_count: 1,
+            sample_mask: !0,
+            alpha_to_coverage_enabled: false,
+        });
 
         Self {
             mesh_resources: HashMap::new(),
             mesh_resources_next_handle: 0,
+            mesh_render_list_opaque: Vec::new(),
+            mesh_render_list_transparent: Vec::new(),
             matrix_buffer,
             matrix_bind_group,
             sampler_bind_group,
@@ -679,13 +717,14 @@ impl SceneRenderer {
             color_pass_bind_group_shaded_edges,
             color_pass_bind_group_flat_with_shadows,
             color_pass_matcap_texture_bind_group,
-            color_pass_opaque_render_pipeline,
-            color_pass_transparent_render_pipeline,
+            color_pass_pipeline_opaque_depth_read_write,
+            color_pass_pipeline_transparent_depth_read_only,
+            color_pass_pipeline_transparent_depth_always_pass,
             shadow_map_texture_view,
             shadow_map_texture_bind_group,
             shadow_pass_buffer,
             shadow_pass_bind_group,
-            shadow_pass_render_pipeline,
+            shadow_pass_pipeline,
         }
     }
 
@@ -791,13 +830,14 @@ impl SceneRenderer {
         &mut self,
         device: &wgpu::Device,
         mesh: &GpuMesh,
+        transparent: bool,
     ) -> Result<GpuMeshHandle, AddMeshError> {
         let handle = GpuMeshHandle(self.mesh_resources_next_handle);
 
         let vertex_data = &mesh.vertex_data[..];
         let vertex_data_count = u32::try_from(vertex_data.len())
             .map_err(|_| AddMeshError::TooManyVertices(vertex_data.len()))?;
-        let mesh_descriptor = if let Some(indices) = &mesh.indices {
+        let mesh_resource = if let Some(indices) = &mesh.indices {
             let index_count = u32::try_from(indices.len())
                 .map_err(|_| AddMeshError::TooManyIndices(indices.len()))?;
 
@@ -817,6 +857,8 @@ impl SceneRenderer {
                 .fill_from_slice(indices);
 
             MeshResource {
+                transparent,
+                centroid: mesh.centroid,
                 vertices: (vertex_buffer, vertex_data_count),
                 indices: Some((index_buffer, index_count)),
             }
@@ -832,12 +874,14 @@ impl SceneRenderer {
                 .fill_from_slice(vertex_data);
 
             MeshResource {
+                transparent,
+                centroid: mesh.centroid,
                 vertices: (vertex_buffer, vertex_data_count),
                 indices: None,
             }
         };
 
-        self.mesh_resources.insert(handle.0, mesh_descriptor);
+        self.mesh_resources.insert(handle.0, mesh_resource);
         self.mesh_resources_next_handle += 1;
 
         Ok(handle)
@@ -855,7 +899,7 @@ impl SceneRenderer {
     /// to the `color_attachment`.
     #[allow(clippy::too_many_arguments)]
     pub fn draw_meshes<'a, H>(
-        &self,
+        &mut self,
         mode: DrawMeshMode,
         cast_shadows: bool,
         color_and_depth_need_clearing: bool,
@@ -868,6 +912,39 @@ impl SceneRenderer {
     ) where
         H: Iterator<Item = &'a GpuMeshHandle> + Clone,
     {
+        // TODO(yanchith): The sorting doesn't need to happen for ShadingMode::Edges
+        self.mesh_render_list_opaque.clear();
+        self.mesh_render_list_transparent.clear();
+
+        for handle in handles.clone() {
+            let mesh_resource = &self.mesh_resources[&handle.0];
+            if mesh_resource.transparent {
+                self.mesh_render_list_transparent
+                    .push((handle.0, mesh_resource.centroid));
+            } else {
+                self.mesh_render_list_opaque
+                    .push((handle.0, mesh_resource.centroid));
+            }
+        }
+
+        // TODO(yanchith): Incomplete! Need to sort by z after projecting.
+        // TODO(yanchith): Do NaN checking sooner?
+        self.mesh_render_list_transparent
+            .sort_unstable_by(|left, right| {
+                left.1
+                    .z
+                    .partial_cmp(&right.1.z)
+                    .expect("Failed to compare floats")
+            });
+        self.mesh_render_list_opaque
+            .sort_unstable_by(|left, right| {
+                right
+                    .1
+                    .z
+                    .partial_cmp(&left.1.z)
+                    .expect("Failed to compare floats")
+            });
+
         let load_op = if color_and_depth_need_clearing {
             wgpu::LoadOp::Clear
         } else {
@@ -892,9 +969,20 @@ impl SceneRenderer {
             });
 
             if cast_shadows {
-                shadow_pass.set_pipeline(&self.shadow_pass_render_pipeline);
+                shadow_pass.set_pipeline(&self.shadow_pass_pipeline);
                 shadow_pass.set_bind_group(0, &self.shadow_pass_bind_group, &[]);
-                self.record_drawing(&mut shadow_pass, handles.clone());
+
+                for handle in handles.clone() {
+                    let mesh = &self.mesh_resources[&handle.0];
+                    let (vertex_buffer, vertex_count) = &mesh.vertices;
+                    shadow_pass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
+                    if let Some((index_buffer, index_count)) = &mesh.indices {
+                        shadow_pass.set_index_buffer(&index_buffer, 0);
+                        shadow_pass.draw_indexed(0..*index_count, 0, 0..1);
+                    } else {
+                        shadow_pass.draw(0..*vertex_count, 0..1);
+                    }
+                }
             }
         }
 
@@ -966,7 +1054,7 @@ impl SceneRenderer {
 
         match mode {
             DrawMeshMode::Shaded => {
-                color_pass.set_pipeline(&self.color_pass_opaque_render_pipeline);
+                color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
                 color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
                 color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
@@ -974,10 +1062,31 @@ impl SceneRenderer {
                 color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
                 color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record_drawing(&mut color_pass, handles);
+                record_drawing(
+                    &self.mesh_resources,
+                    self.mesh_render_list_opaque.iter().map(|(h, _)| h).copied(),
+                    &mut color_pass,
+                );
+
+                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+
+                record_drawing(
+                    &self.mesh_resources,
+                    self.mesh_render_list_transparent
+                        .iter()
+                        .map(|(h, _)| h)
+                        .copied(),
+                    &mut color_pass,
+                );
             }
             DrawMeshMode::Edges => {
-                color_pass.set_pipeline(&self.color_pass_transparent_render_pipeline);
+                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_always_pass);
                 color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
                 color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
@@ -985,10 +1094,10 @@ impl SceneRenderer {
                 color_pass.set_bind_group(4, &self.color_pass_bind_group_edges, &[]);
                 color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record_drawing(&mut color_pass, handles);
+                record_drawing(&self.mesh_resources, handles.map(|h| h.0), &mut color_pass);
             }
             DrawMeshMode::ShadedEdges => {
-                color_pass.set_pipeline(&self.color_pass_opaque_render_pipeline);
+                color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
                 color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
                 color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
@@ -996,10 +1105,31 @@ impl SceneRenderer {
                 color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded_edges, &[]);
                 color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record_drawing(&mut color_pass, handles);
+                record_drawing(
+                    &self.mesh_resources,
+                    self.mesh_render_list_opaque.iter().map(|(h, _)| h).copied(),
+                    &mut color_pass,
+                );
+
+                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded_edges, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+
+                record_drawing(
+                    &self.mesh_resources,
+                    self.mesh_render_list_transparent
+                        .iter()
+                        .map(|(h, _)| h)
+                        .copied(),
+                    &mut color_pass,
+                );
             }
             DrawMeshMode::ShadedEdgesXray => {
-                color_pass.set_pipeline(&self.color_pass_opaque_render_pipeline);
+                color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
                 color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
                 color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
@@ -1007,15 +1137,41 @@ impl SceneRenderer {
                 color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
                 color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record_drawing(&mut color_pass, handles.clone());
+                record_drawing(
+                    &self.mesh_resources,
+                    self.mesh_render_list_opaque.iter().map(|(h, _)| h).copied(),
+                    &mut color_pass,
+                );
 
-                color_pass.set_pipeline(&self.color_pass_transparent_render_pipeline);
+                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+
+                record_drawing(
+                    &self.mesh_resources,
+                    self.mesh_render_list_transparent
+                        .iter()
+                        .map(|(h, _)| h)
+                        .copied(),
+                    &mut color_pass,
+                );
+
+                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_always_pass);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
                 color_pass.set_bind_group(4, &self.color_pass_bind_group_edges, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record_drawing(&mut color_pass, handles);
+                record_drawing(&self.mesh_resources, handles.map(|h| h.0), &mut color_pass);
             }
             DrawMeshMode::FlatWithShadows => {
-                color_pass.set_pipeline(&self.color_pass_opaque_render_pipeline);
+                color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
                 color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
                 color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
                 color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
@@ -1023,30 +1179,56 @@ impl SceneRenderer {
                 color_pass.set_bind_group(4, &self.color_pass_bind_group_flat_with_shadows, &[]);
                 color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                self.record_drawing(&mut color_pass, handles);
-            }
-        }
-    }
+                record_drawing(
+                    &self.mesh_resources,
+                    self.mesh_render_list_opaque.iter().map(|(h, _)| h).copied(),
+                    &mut color_pass,
+                );
 
-    fn record_drawing<'a, H>(&self, rpass: &mut wgpu::RenderPass, handles: H)
-    where
-        H: IntoIterator<Item = &'a GpuMeshHandle>,
-    {
-        for handle in handles {
-            let mesh = &self.mesh_resources[&handle.0];
-            let (vertex_buffer, vertex_count) = &mesh.vertices;
-            rpass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
-            if let Some((index_buffer, index_count)) = &mesh.indices {
-                rpass.set_index_buffer(&index_buffer, 0);
-                rpass.draw_indexed(0..*index_count, 0, 0..1);
-            } else {
-                rpass.draw(0..*vertex_count, 0..1);
+                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
+                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                color_pass.set_bind_group(4, &self.color_pass_bind_group_flat_with_shadows, &[]);
+                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+
+                record_drawing(
+                    &self.mesh_resources,
+                    self.mesh_render_list_transparent
+                        .iter()
+                        .map(|(h, _)| h)
+                        .copied(),
+                    &mut color_pass,
+                );
             }
         }
     }
 }
 
+fn record_drawing<I>(
+    mesh_resources: &HashMap<u64, MeshResource>,
+    render_list: I,
+    rpass: &mut wgpu::RenderPass,
+) where
+    I: Iterator<Item = u64>,
+{
+    for raw_handle in render_list {
+        let mesh_resource = &mesh_resources[&raw_handle];
+        let (vertex_buffer, vertex_count) = &mesh_resource.vertices;
+        rpass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
+        if let Some((index_buffer, index_count)) = &mesh_resource.indices {
+            rpass.set_index_buffer(&index_buffer, 0);
+            rpass.draw_indexed(0..*index_count, 0, 0..1);
+        } else {
+            rpass.draw(0..*vertex_count, 0..1);
+        }
+    }
+}
+
 struct MeshResource {
+    transparent: bool,
+    centroid: Point3<f32>,
     vertices: (wgpu::Buffer, u32),
     indices: Option<(wgpu::Buffer, u32)>,
 }
@@ -1155,7 +1337,9 @@ fn create_color_pass_pipeline(
     sampled_texture_bind_group_layout: &wgpu::BindGroupLayout,
     color_pass_bind_group_layout: &wgpu::BindGroupLayout,
     shadow_pass_bind_group_layout: &wgpu::BindGroupLayout,
-    support_transparency: bool,
+    transparency: bool,
+    depth_read: bool,
+    depth_write: bool,
     options: Options,
 ) -> wgpu::RenderPipeline {
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1189,7 +1373,7 @@ fn create_color_pass_pipeline(
         primitive_topology: wgpu::PrimitiveTopology::TriangleList,
         color_states: &[wgpu::ColorStateDescriptor {
             format: options.output_color_attachment_format,
-            alpha_blend: if support_transparency {
+            alpha_blend: if transparency {
                 wgpu::BlendDescriptor {
                     src_factor: wgpu::BlendFactor::SrcAlpha,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
@@ -1198,7 +1382,7 @@ fn create_color_pass_pipeline(
             } else {
                 wgpu::BlendDescriptor::REPLACE
             },
-            color_blend: if support_transparency {
+            color_blend: if transparency {
                 wgpu::BlendDescriptor {
                     src_factor: wgpu::BlendFactor::SrcAlpha,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
@@ -1211,11 +1395,11 @@ fn create_color_pass_pipeline(
         }],
         depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
             format: options.output_depth_attachment_format,
-            depth_write_enabled: !support_transparency,
-            depth_compare: if support_transparency {
-                wgpu::CompareFunction::Always
-            } else {
+            depth_write_enabled: depth_write,
+            depth_compare: if depth_read {
                 wgpu::CompareFunction::Less
+            } else {
+                wgpu::CompareFunction::Always
             },
             stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
             stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,

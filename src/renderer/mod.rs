@@ -48,7 +48,7 @@ pub struct Options {
     /// Whether to select an explicit power preference profile for the renderer
     /// to use when choosing a GPU.
     pub power_preference: Option<GpuPowerPreference>,
-    /// The color with which to render surfaces in `DrawMEshMode::Flat`.
+    /// The color with which to render surfaces in `DrawMeshMode::Flat`.
     pub flat_shading_color: [f64; 4],
 }
 
@@ -527,8 +527,13 @@ impl Renderer {
     ///
     /// The mesh will be available for drawing in subsequent render
     /// passes.
-    pub fn add_scene_mesh(&mut self, mesh: &GpuMesh) -> Result<GpuMeshHandle, AddMeshError> {
-        self.scene_renderer.add_mesh(&self.device, mesh)
+    pub fn add_scene_mesh(
+        &mut self,
+        mesh: &GpuMesh,
+        transparent: bool,
+    ) -> Result<GpuMeshHandle, AddMeshError> {
+        self.scene_renderer
+            .add_mesh(&self.device, mesh, transparent)
     }
 
     /// Removes mesh from the GPU.
@@ -597,7 +602,7 @@ impl Renderer {
             blit_pass_bind_group_depth: &self.blit_pass_bind_group_depth,
             blit_texture_bind_group: &self.blit_texture_bind_group,
             blit_render_pipeline: &self.blit_render_pipeline,
-            scene_renderer: &self.scene_renderer,
+            scene_renderer: &mut self.scene_renderer,
             imgui_renderer: &self.imgui_renderer,
         }
     }
@@ -623,7 +628,7 @@ pub struct CommandBuffer<'a> {
     blit_pass_bind_group_depth: &'a wgpu::BindGroup,
     blit_texture_bind_group: &'a wgpu::BindGroup,
     blit_render_pipeline: &'a wgpu::RenderPipeline,
-    scene_renderer: &'a SceneRenderer,
+    scene_renderer: &'a mut SceneRenderer,
     imgui_renderer: &'a ImguiRenderer,
 }
 
