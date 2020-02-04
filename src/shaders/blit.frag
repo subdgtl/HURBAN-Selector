@@ -12,13 +12,13 @@ layout(location = 0) in vec2 v_tex_coord;
 
 layout(location = 0) out vec4 f_color;
 
-const uint BLIT_SAMPLER_COLOR = 0x01;
-const uint BLIT_SAMPLER_DEPTH = 0x02;
+const uint BLIT_SAMPLER_COLOR = 0;
+const uint BLIT_SAMPLER_DEPTH = 1;
 
 void main() {
-    if (bool(u_blit_sampler & BLIT_SAMPLER_COLOR)) {
+    if (u_blit_sampler == BLIT_SAMPLER_COLOR) {
         f_color = texture(sampler2D(u_blit_texture, u_sampler), v_tex_coord);
-    } else if (bool(u_blit_sampler & BLIT_SAMPLER_DEPTH)) {
+    } else if (u_blit_sampler == BLIT_SAMPLER_DEPTH) {
         // float depth = texture(sampler2DShadow(u_blit_texture, u_shadow_sampler), vec3(v_tex_coord, 0));
         float depth = texture(sampler2D(u_blit_texture, u_sampler), v_tex_coord).r;
         f_color = vec4(vec3(depth), 1);

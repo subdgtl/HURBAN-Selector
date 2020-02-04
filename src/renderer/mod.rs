@@ -8,7 +8,6 @@ use std::io;
 use std::mem;
 use std::thread;
 
-use bitflags::bitflags;
 use nalgebra::Matrix4;
 
 use crate::convert::{cast_u32, cast_u64};
@@ -262,14 +261,14 @@ impl Renderer {
         let blit_pass_buffer_color = device
             .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
             .fill_from_slice(&[BlitPassUniforms {
-                blit_sampler: BlitSampler::COLOR,
+                blit_sampler: BlitSampler::Color,
             }]);
 
         #[cfg(not(feature = "dist"))]
         let blit_pass_buffer_depth = device
             .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
             .fill_from_slice(&[BlitPassUniforms {
-                blit_sampler: BlitSampler::DEPTH,
+                blit_sampler: BlitSampler::Depth,
             }]);
 
         let blit_pass_bind_group_layout =
@@ -874,11 +873,11 @@ struct BlitPassUniforms {
     blit_sampler: BlitSampler,
 }
 
-bitflags! {
-    struct BlitSampler: u32 {
-        const COLOR = 0x01;
-        const DEPTH = 0x02;
-    }
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlitSampler {
+    Color = 0,
+    Depth = 1,
 }
 
 struct OffscreenRenderTarget {
