@@ -16,7 +16,7 @@ strategies for mesh models, allowing designers to smoothly interpolate
 between multiple mesh geometries and select the result with the most
 desired features.
 
-_Screenshots coming soon™!_
+![Screenshot](./hurban_selector-2020-02-03-15-20-24.png)
 
 ## Getting the software
 
