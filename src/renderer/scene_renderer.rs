@@ -272,10 +272,11 @@ pub struct SceneRenderer {
     mesh_resources_next_handle: u64,
     /// Working memory for sorting opaque meshes by the projected z coord of
     /// their centroid
-    mesh_render_list_opaque: Vec<(u64, Point3<f32>)>,
+    render_list_opaque: Vec<(u64, Point3<f32>)>,
     /// Working memory for sorting transparent meshes by the projected z coord
     /// of their centroid
-    mesh_render_list_transparent: Vec<(u64, Point3<f32>)>,
+    render_list_transparent: Vec<(u64, Point3<f32>)>,
+    render_list_sort_matrix: Matrix4<f32>,
     matrix_buffer: wgpu::Buffer,
     matrix_bind_group: wgpu::BindGroup,
     sampler_bind_group: wgpu::BindGroup,
@@ -701,8 +702,9 @@ impl SceneRenderer {
         Self {
             mesh_resources: HashMap::new(),
             mesh_resources_next_handle: 0,
-            mesh_render_list_opaque: Vec::new(),
-            mesh_render_list_transparent: Vec::new(),
+            render_list_opaque: Vec::new(),
+            render_list_transparent: Vec::new(),
+            render_list_sort_matrix: Matrix4::identity(),
             matrix_buffer,
             matrix_bind_group,
             sampler_bind_group,
@@ -792,7 +794,7 @@ impl SceneRenderer {
 
     /// Update camera matrices (projection and view).
     pub fn set_camera_matrices(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         projection_matrix: &Matrix4<f32>,
@@ -815,6 +817,8 @@ impl SceneRenderer {
             0,
             matrix_uniforms_size,
         );
+
+        self.render_list_sort_matrix = *view_matrix;
     }
 
     /// Uploads mesh on the GPU.
@@ -908,38 +912,38 @@ impl SceneRenderer {
     ) where
         H: Iterator<Item = &'a GpuMeshHandle> + Clone,
     {
-        // TODO(yanchith): The sorting doesn't need to happen for ShadingMode::Edges
-        self.mesh_render_list_opaque.clear();
-        self.mesh_render_list_transparent.clear();
+        self.render_list_opaque.clear();
+        self.render_list_transparent.clear();
 
         for handle in handles.clone() {
             let mesh_resource = &self.mesh_resources[&handle.0];
             if mesh_resource.transparent {
-                self.mesh_render_list_transparent
+                self.render_list_transparent
                     .push((handle.0, mesh_resource.centroid));
             } else {
-                self.mesh_render_list_opaque
+                self.render_list_opaque
                     .push((handle.0, mesh_resource.centroid));
             }
         }
 
-        // TODO(yanchith): Incomplete! Need to sort by z after projecting.
-        // TODO(yanchith): Do NaN checking sooner?
-        self.mesh_render_list_transparent
+        let render_list_sort_matrix = self.render_list_sort_matrix;
+        self.render_list_transparent
             .sort_unstable_by(|left, right| {
-                left.1
+                let left_point = render_list_sort_matrix.transform_point(&left.1);
+                let right_point = render_list_sort_matrix.transform_point(&right.1);
+                left_point
                     .z
-                    .partial_cmp(&right.1.z)
+                    .partial_cmp(&right_point.z)
                     .expect("Failed to compare floats")
             });
-        self.mesh_render_list_opaque
-            .sort_unstable_by(|left, right| {
-                right
-                    .1
-                    .z
-                    .partial_cmp(&left.1.z)
-                    .expect("Failed to compare floats")
-            });
+        self.render_list_opaque.sort_unstable_by(|left, right| {
+            let left_point = render_list_sort_matrix.transform_point(&left.1);
+            let right_point = render_list_sort_matrix.transform_point(&right.1);
+            right_point
+                .z
+                .partial_cmp(&left_point.z)
+                .expect("Failed to compare floats")
+        });
 
         let load_op = if color_and_depth_need_clearing {
             wgpu::LoadOp::Clear
@@ -968,17 +972,11 @@ impl SceneRenderer {
                 shadow_pass.set_pipeline(&self.shadow_pass_pipeline);
                 shadow_pass.set_bind_group(0, &self.shadow_pass_bind_group, &[]);
 
-                for handle in handles.clone() {
-                    let mesh = &self.mesh_resources[&handle.0];
-                    let (vertex_buffer, vertex_count) = &mesh.vertices;
-                    shadow_pass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
-                    if let Some((index_buffer, index_count)) = &mesh.indices {
-                        shadow_pass.set_index_buffer(&index_buffer, 0);
-                        shadow_pass.draw_indexed(0..*index_count, 0, 0..1);
-                    } else {
-                        shadow_pass.draw(0..*vertex_count, 0..1);
-                    }
-                }
+                record_drawing(
+                    &self.mesh_resources,
+                    handles.clone().map(|h| h.0),
+                    &mut shadow_pass,
+                );
             }
         }
 
@@ -1060,7 +1058,7 @@ impl SceneRenderer {
 
                 record_drawing(
                     &self.mesh_resources,
-                    self.mesh_render_list_opaque.iter().map(|(h, _)| h).copied(),
+                    self.render_list_opaque.iter().map(|(h, _)| h).copied(),
                     &mut color_pass,
                 );
 
@@ -1074,10 +1072,7 @@ impl SceneRenderer {
 
                 record_drawing(
                     &self.mesh_resources,
-                    self.mesh_render_list_transparent
-                        .iter()
-                        .map(|(h, _)| h)
-                        .copied(),
+                    self.render_list_transparent.iter().map(|(h, _)| h).copied(),
                     &mut color_pass,
                 );
             }
@@ -1103,7 +1098,7 @@ impl SceneRenderer {
 
                 record_drawing(
                     &self.mesh_resources,
-                    self.mesh_render_list_opaque.iter().map(|(h, _)| h).copied(),
+                    self.render_list_opaque.iter().map(|(h, _)| h).copied(),
                     &mut color_pass,
                 );
 
@@ -1117,10 +1112,7 @@ impl SceneRenderer {
 
                 record_drawing(
                     &self.mesh_resources,
-                    self.mesh_render_list_transparent
-                        .iter()
-                        .map(|(h, _)| h)
-                        .copied(),
+                    self.render_list_transparent.iter().map(|(h, _)| h).copied(),
                     &mut color_pass,
                 );
             }
@@ -1135,7 +1127,7 @@ impl SceneRenderer {
 
                 record_drawing(
                     &self.mesh_resources,
-                    self.mesh_render_list_opaque.iter().map(|(h, _)| h).copied(),
+                    self.render_list_opaque.iter().map(|(h, _)| h).copied(),
                     &mut color_pass,
                 );
 
@@ -1149,10 +1141,7 @@ impl SceneRenderer {
 
                 record_drawing(
                     &self.mesh_resources,
-                    self.mesh_render_list_transparent
-                        .iter()
-                        .map(|(h, _)| h)
-                        .copied(),
+                    self.render_list_transparent.iter().map(|(h, _)| h).copied(),
                     &mut color_pass,
                 );
 
@@ -1177,7 +1166,7 @@ impl SceneRenderer {
 
                 record_drawing(
                     &self.mesh_resources,
-                    self.mesh_render_list_opaque.iter().map(|(h, _)| h).copied(),
+                    self.render_list_opaque.iter().map(|(h, _)| h).copied(),
                     &mut color_pass,
                 );
 
@@ -1191,10 +1180,7 @@ impl SceneRenderer {
 
                 record_drawing(
                     &self.mesh_resources,
-                    self.mesh_render_list_transparent
-                        .iter()
-                        .map(|(h, _)| h)
-                        .copied(),
+                    self.render_list_transparent.iter().map(|(h, _)| h).copied(),
                     &mut color_pass,
                 );
             }
