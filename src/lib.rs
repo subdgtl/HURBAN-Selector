@@ -1,5 +1,5 @@
 pub use crate::logger::LogLevel;
-pub use crate::renderer::{GpuBackend, Msaa};
+pub use crate::renderer::{GpuBackend, GpuPowerPreference, Msaa};
 pub use crate::ui::Theme;
 
 use std::cell::RefCell;
@@ -57,6 +57,9 @@ pub struct Options {
     pub vsync: bool,
     /// Whether to select an explicit gpu backend for the renderer to use.
     pub gpu_backend: Option<GpuBackend>,
+    /// Whether to select an explicit power preference profile for the renderer
+    /// to use when choosing a GPU.
+    pub gpu_power_preference: Option<GpuPowerPreference>,
     /// Logging level for the editor.
     pub app_log_level: Option<logger::LogLevel>,
     /// Logging level for external libraries.
@@ -195,7 +198,8 @@ pub fn init_and_run(options: Options) -> ! {
             // and this field should be renamed to `desired_msaa`.
             msaa: options.msaa,
             vsync: options.vsync,
-            gpu_backend: options.gpu_backend,
+            backend: options.gpu_backend,
+            power_preference: options.gpu_power_preference,
         },
     );
 
@@ -306,10 +310,18 @@ pub fn init_and_run(options: Options) -> ! {
                     let width = physical_size.width.round() as u32;
                     let height = physical_size.height.round() as u32;
 
-                    screenshot_options.width = width;
-                    screenshot_options.height = height;
-                    camera.set_viewport_aspect_ratio(aspect_ratio);
-                    renderer.set_window_size(width, height);
+                    // While it can't be queried, 16 is usually the minimal
+                    // dimension of certain types of textures. Creating anything
+                    // smaller currently crashes most of our GPU backend/driver
+                    // combinations.
+                    if width >= 16 && height >= 16 {
+                        screenshot_options.width = width;
+                        screenshot_options.height = height;
+                        camera.set_viewport_aspect_ratio(aspect_ratio);
+                        renderer.set_window_size(width, height);
+                    } else {
+                        log::warn!("Ignoring new window physical size {}x{}", width, height);
+                    }
                 }
 
                 session.poll_interpreter_response(|callback_value| match callback_value {
