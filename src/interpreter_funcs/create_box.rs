@@ -3,8 +3,8 @@ use std::sync::Arc;
 use nalgebra::{Point3, Rotation3, Vector3};
 
 use crate::interpreter::{
-    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
-    ParamRefinement, Ty, Value,
+    analytics, BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::primitive;
 
@@ -69,6 +69,13 @@ impl Func for FuncCreateBox {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -78,12 +85,13 @@ impl Func for FuncCreateBox {
 
     fn call(
         &mut self,
-        values: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        args: &[Value],
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let center = values[0].unwrap_float3();
-        let rotate = values[1].unwrap_float3();
-        let scale = values[2].unwrap_float3();
+        let center = args[0].unwrap_float3();
+        let rotate = args[1].unwrap_float3();
+        let scale = args[2].unwrap_float3();
+        let analyze = args[3].unwrap_boolean();
 
         let value = primitive::create_box(
             Point3::from(center),
@@ -94,6 +102,12 @@ impl Func for FuncCreateBox {
             ),
             Vector3::from(scale),
         );
+
+        if analyze {
+            analytics::report_mesh_analysis(&value)
+                .iter()
+                .for_each(|line| log(line.clone()));
+        }
 
         Ok(Value::Mesh(Arc::new(value)))
     }

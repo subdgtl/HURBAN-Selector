@@ -3,7 +3,7 @@ use std::sync::Arc;
 use nalgebra::{Matrix4, Rotation, Vector3};
 
 use crate::interpreter::{
-    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    analytics, BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::Mesh;
@@ -81,6 +81,13 @@ impl Func for FuncTransform {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -91,7 +98,7 @@ impl Func for FuncTransform {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
@@ -99,6 +106,8 @@ impl Func for FuncTransform {
         let rotate = args[2].unwrap_float3();
         let scale = Vector3::from(args[3].unwrap_float3());
         let transform_around_local_center = args[4].unwrap_boolean();
+
+        let analyze = args[5].unwrap_boolean();
 
         let user_rotation = Rotation::from_euler_angles(
             rotate[0].to_radians(),
@@ -148,6 +157,12 @@ impl Func for FuncTransform {
                 normals_iter,
             )
         };
+
+        if analyze {
+            analytics::report_mesh_analysis(&value)
+                .iter()
+                .for_each(|line| log(line.clone()));
+        }
 
         Ok(Value::Mesh(Arc::new(value)))
     }

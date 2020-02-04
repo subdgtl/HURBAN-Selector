@@ -3,8 +3,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::interpreter::{
-    FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
-    ParamRefinement, Ty, Value,
+    analytics, BooleanParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::tools;
 
@@ -55,6 +55,13 @@ impl Func for FuncWeld {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -65,13 +72,19 @@ impl Func for FuncWeld {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let tolerance = args[1].unwrap_float();
+        let analyze = args[2].unwrap_boolean();
 
-        if let Some(welded) = tools::weld(&mesh, tolerance) {
-            Ok(Value::Mesh(Arc::new(welded)))
+        if let Some(value) = tools::weld(&mesh, tolerance) {
+            if analyze {
+                analytics::report_mesh_analysis(&value)
+                    .iter()
+                    .for_each(|line| log(line.clone()));
+            }
+            Ok(Value::Mesh(Arc::new(value)))
         } else {
             Err(FuncError::new(FuncWeldError::AllFacesDegenerate))
         }

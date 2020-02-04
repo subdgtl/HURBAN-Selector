@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
+    analytics, BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, Value,
 };
 use crate::mesh::{analysis, tools, topology};
 
@@ -20,11 +21,20 @@ impl Func for FuncSynchronizeMeshFaces {
     }
 
     fn param_info(&self) -> &[ParamInfo] {
-        &[ParamInfo {
-            name: "Mesh",
-            refinement: ParamRefinement::Mesh,
-            optional: false,
-        }]
+        &[
+            ParamInfo {
+                name: "Mesh",
+                refinement: ParamRefinement::Mesh,
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
+        ]
     }
 
     fn return_ty(&self) -> Ty {
@@ -34,24 +44,31 @@ impl Func for FuncSynchronizeMeshFaces {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_refcounted_mesh();
+        let analyze = args[1].unwrap_boolean();
 
         let oriented_edges: Vec<_> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = analysis::edge_sharing(&oriented_edges);
 
-        if !analysis::is_mesh_orientable(&edge_sharing_map)
+        let value = if !analysis::is_mesh_orientable(&edge_sharing_map)
             && analysis::is_mesh_manifold(&edge_sharing_map)
         {
             let vertex_to_face = topology::compute_vertex_to_face_topology(&mesh);
             let face_to_face = topology::compute_face_to_face_topology(&mesh, &vertex_to_face);
 
-            let value = Arc::new(tools::synchronize_mesh_winding(&mesh, &face_to_face));
-
-            Ok(Value::Mesh(value))
+            Arc::new(tools::synchronize_mesh_winding(&mesh, &face_to_face))
         } else {
-            Ok(Value::Mesh(mesh))
+            mesh
+        };
+
+        if analyze {
+            analytics::report_mesh_analysis(&value)
+                .iter()
+                .for_each(|line| log(line.clone()));
         }
+
+        Ok(Value::Mesh(value))
     }
 }

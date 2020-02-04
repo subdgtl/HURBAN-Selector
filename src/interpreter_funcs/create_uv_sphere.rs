@@ -5,8 +5,8 @@ use std::sync::Arc;
 use nalgebra::{Point3, Rotation3, Vector3};
 
 use crate::interpreter::{
-    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
-    ParamRefinement, Ty, UintParamRefinement, Value,
+    analytics, BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::{primitive, NormalStrategy};
 
@@ -119,6 +119,13 @@ impl Func for FuncCreateUvSphere {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -129,13 +136,14 @@ impl Func for FuncCreateUvSphere {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let center = args[0].unwrap_float3();
         let rotate = args[1].unwrap_float3();
         let scale = args[2].unwrap_float3();
         let n_parallels = args[3].unwrap_uint();
         let n_meridians = args[4].unwrap_uint();
+        let analyze = args[5].unwrap_boolean();
 
         if n_parallels < Self::MIN_PARALLELS {
             return Err(FuncError::new(FuncCreateUvSphereError::TooFewParallels {
@@ -161,6 +169,13 @@ impl Func for FuncCreateUvSphere {
             n_meridians,
             NormalStrategy::Smooth,
         );
+
+        if analyze {
+            analytics::report_mesh_analysis(&value)
+                .iter()
+                .for_each(|line| log(line.clone()));
+        }
+
         Ok(Value::Mesh(Arc::new(value)))
     }
 }
