@@ -13,8 +13,8 @@ pub fn report_mesh_analysis(mesh: &Mesh) -> Vec<LogMessage> {
 
     let bbox = mesh.bounding_box();
     let bbox_center = bbox.center();
-    let bbox_dimensions = bbox.maximum_point() - bbox.minimum_point().coords;
-    let bbox_diagonal = bbox.diagonal().norm();
+    let bbox_dimensions = bbox.diagonal();
+    let bbox_diagonal = bbox_dimensions.norm();
     let has_no_orphan_normals = mesh.has_no_orphan_normals();
     let has_no_orphan_vertices = mesh.has_no_orphan_vertices();
     let is_triangulated = mesh.is_triangulated();
@@ -133,8 +133,8 @@ pub fn report_group_analysis(group: &MeshArrayValue) -> Vec<LogMessage> {
     )));
 
     let bbox_center = union_bbox.center();
-    let bbox_dimensions = union_bbox.maximum_point() - union_bbox.minimum_point().coords;
-    let bbox_diagonal = union_bbox.diagonal().norm();
+    let bbox_dimensions = union_bbox.diagonal();
+    let bbox_diagonal = bbox_dimensions.norm();
 
     report.push(LogMessage::info("Union bounding box properties:"));
     report.push(LogMessage::info(format!(
