@@ -39,7 +39,10 @@ pub struct Options {
     /// Whether to run with VSync or not.
     pub vsync: bool,
     /// Whether to select an explicit gpu backend for the renderer to use.
-    pub gpu_backend: Option<GpuBackend>,
+    pub backend: Option<GpuBackend>,
+    /// Whether to select an explicit power preference profile for the renderer
+    /// to use when choosing a GPU.
+    pub power_preference: Option<GpuPowerPreference>,
 }
 
 /// Multi-sampling setting. Can be either disabled (1 sample per
@@ -102,6 +105,22 @@ impl fmt::Display for GpuBackend {
     }
 }
 
+/// The power preference for selecting a GPU.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuPowerPreference {
+    LowPower,
+    HighPerformance,
+}
+
+impl fmt::Display for GpuPowerPreference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GpuPowerPreference::LowPower => write!(f, "Low Power"),
+            GpuPowerPreference::HighPerformance => write!(f, "High Performance"),
+        }
+    }
+}
+
 /// Opaque handle to collection of textures for rendering stored in
 /// renderer. Does not implement `Clone` on purpose. The handle is
 /// acquired by creating the render target and has to be relinquished
@@ -151,25 +170,38 @@ impl Renderer {
         imgui_font_atlas: imgui::FontAtlasRefMut,
         options: Options,
     ) -> Self {
-        let backends = match options.gpu_backend {
+        let backends = match options.backend {
             Some(GpuBackend::Vulkan) => wgpu::BackendBit::VULKAN,
             Some(GpuBackend::D3d12) => wgpu::BackendBit::DX12,
             Some(GpuBackend::Metal) => wgpu::BackendBit::METAL,
             None => wgpu::BackendBit::PRIMARY,
         };
 
-        if let Some(backend) = options.gpu_backend {
+        if let Some(backend) = options.backend {
             log::info!("Selected {} GPU backend", backend);
         } else {
             log::info!("No GPU backend selected, will run on default backend");
         }
 
+        let power_preference = match options.power_preference {
+            Some(GpuPowerPreference::HighPerformance) => wgpu::PowerPreference::HighPerformance,
+            Some(GpuPowerPreference::LowPower) => wgpu::PowerPreference::LowPower,
+            None => wgpu::PowerPreference::Default,
+        };
+
+        if let Some(power_preference) = options.power_preference {
+            log::info!("Selected {} GPU power preference", power_preference);
+        } else {
+            log::info!("No GPU power preference selected, will select a default GPU");
+        }
+
         let surface = wgpu::Surface::create(window);
         let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
+            power_preference,
             backends,
         })
         .expect("Failed to acquire GPU adapter");
+        log::debug!("GPU adapter info: {:?}", adapter.get_info());
 
         let (device, mut queue) = adapter.request_device(&wgpu::DeviceDescriptor {
             extensions: wgpu::Extensions {

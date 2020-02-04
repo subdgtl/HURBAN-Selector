@@ -61,6 +61,14 @@ fn main() {
             _ => panic!("Unknown gpu backend requested"),
         });
 
+    let gpu_power_preference = env::var("HS_GPU_POWER_PREFERENCE")
+        .ok()
+        .map(|power_preference| match power_preference.as_str() {
+            "low-power" => hs::GpuPowerPreference::LowPower,
+            "high-performance" => hs::GpuPowerPreference::HighPerformance,
+            _ => panic!("Unknown gpu power preference requested"),
+        });
+
     let app_log_level = env::var("HS_APP_LOG_LEVEL")
         .ok()
         .map(|app_log_level| match app_log_level.as_str() {
@@ -87,6 +95,7 @@ fn main() {
         msaa,
         vsync,
         gpu_backend,
+        gpu_power_preference,
         app_log_level,
         lib_log_level,
     });
