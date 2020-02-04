@@ -9,7 +9,6 @@ layout(set = 4, binding = 0, std140) uniform ColorPass {
     vec4 u_shading_mode_flat_color;
     vec3 u_shading_mode_edges_color;
     uint u_shading_mode;
-    bool u_collect_shadows;
 };
 
 layout(location = 0) in vec2 v_matcap_tex_coords;
@@ -21,6 +20,7 @@ layout(location = 0) out vec4 f_color;
 const uint SHADING_MODE_FLAT = 0x01;
 const uint SHADING_MODE_SHADED = 0x02;
 const uint SHADING_MODE_EDGES = 0x04;
+const uint SHADING_MODE_SHADOWED = 0x08;
 
 const float EDGE_THICKNESS_MIN = 0.75;
 const float EDGE_THICKNESS_MAX = 1.00;
@@ -61,7 +61,7 @@ void main() {
                                                                    u_shadow_sampler), 0);
 
     // Protect against sampling beyong depth 1.0 (the light's far plane).
-    if (u_collect_shadows && frag_pos_light_space.z <= 1.0) {
+    if (bool(u_shading_mode & SHADING_MODE_SHADOWED) && frag_pos_light_space.z <= 1.0) {
         // Use Percentage Closer Filtering (PCF) - sample the depth texture sixteen
         // times, each time between texels.
         // https://developer.nvidia.com/gpugems/gpugems/part-ii-lighting-and-shadows/chapter-11-shadow-map-antialiasing
@@ -97,12 +97,14 @@ void main() {
 
     // Alpha blend shaded color
     if (bool(u_shading_mode & SHADING_MODE_SHADED)) {
-        f_color += mix(f_color, vec4(matcap_color.rgb, 1), matcap_color.a);
+        f_color = mix(f_color, vec4(matcap_color.rgb, 1), matcap_color.a);
     }
 
     // Apply shadows
-    f_color.rgb *= (1.0 - shadow * SHADOW_INTENSITY);
-    f_color.a = mix(f_color.a, 1.0, shadow * SHADOW_INTENSITY);
+    if (bool(u_shading_mode & SHADING_MODE_SHADOWED)) {
+        f_color.rgb *= (1.0 - shadow * SHADOW_INTENSITY);
+        f_color.a = mix(f_color.a, 1.0, shadow * SHADOW_INTENSITY);
+    }
 
     // Alpha blend edge color
     if (bool(u_shading_mode & SHADING_MODE_EDGES)) {

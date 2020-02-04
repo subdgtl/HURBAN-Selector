@@ -345,7 +345,6 @@ impl SceneRenderer {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.0, 0.0, 0.0],
                 shading_mode: ShadingMode::SHADED,
-                collect_shadows: false,
             }]);
 
         let color_pass_buffer_edges = device
@@ -354,7 +353,6 @@ impl SceneRenderer {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.239, 0.306, 0.400],
                 shading_mode: ShadingMode::EDGES,
-                collect_shadows: false,
             }]);
 
         let color_pass_buffer_shaded_edges = device
@@ -363,7 +361,6 @@ impl SceneRenderer {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.239, 0.306, 0.400],
                 shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
-                collect_shadows: false,
             }]);
 
         let color_pass_buffer_flat_with_shadows = device
@@ -376,8 +373,7 @@ impl SceneRenderer {
                     options.flat_shading_color[3] as f32,
                 ],
                 shading_mode_edges_color: [0.0, 0.0, 0.0],
-                shading_mode: ShadingMode::FLAT,
-                collect_shadows: true,
+                shading_mode: ShadingMode::FLAT | ShadingMode::SHADOWED,
             }]);
 
         let color_pass_bind_group_layout =
@@ -1266,7 +1262,6 @@ struct ColorPassUniforms {
     shading_mode_flat_color: [f32; 4],
     shading_mode_edges_color: [f32; 3],
     shading_mode: ShadingMode,
-    collect_shadows: bool,
 }
 
 bitflags! {
@@ -1274,6 +1269,7 @@ bitflags! {
         const FLAT = 0x01;
         const SHADED = 0x02;
         const EDGES = 0x04;
+        const SHADOWED = 0x08;
     }
 }
 
