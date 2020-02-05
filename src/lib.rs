@@ -5,7 +5,6 @@ pub use crate::ui::Theme;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
-use std::iter;
 use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -226,22 +225,17 @@ pub fn init_and_run(options: Options) -> ! {
         },
     );
 
-    let ground_plane_mesh = mesh::primitive::create_mesh_plane(
-        Plane::new(
-            &Point3::origin(),
-            &Vector3::new(1.0, 0.0, 0.0),
-            &Vector3::new(0.0, 1.0, 0.0),
-        ),
-        Vector2::new(1000.0, 1000.0),
-    );
-    let ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-    let ground_plane_gpu_mesh_handle = renderer
-        .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
-        .expect("Failed to add ground plane mesh");
-
     let mut scene_bounding_box: BoundingBox<f32> = BoundingBox::unit();
     let mut scene_meshes: HashMap<ValuePath, Arc<Mesh>> = HashMap::new();
     let mut scene_gpu_mesh_handles: HashMap<ValuePath, GpuMeshHandle> = HashMap::new();
+
+    let mut ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+    let mut ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+    let mut ground_plane_gpu_mesh_handle = Some(
+        renderer
+            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+            .expect("Failed to add ground plane mesh"),
+    );
 
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
     let mut camera_interpolation: Option<CameraInterpolation> = None;
@@ -382,6 +376,19 @@ pub fn init_and_run(options: Options) -> ! {
                                 scene_meshes.values().map(|mesh| mesh.bounding_box()),
                             )
                             .unwrap_or_else(BoundingBox::unit);
+
+                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                            renderer.remove_scene_mesh(
+                                ground_plane_gpu_mesh_handle
+                                    .take()
+                                    .expect("Ground plane must always be present"),
+                            );
+                            ground_plane_gpu_mesh_handle = Some(
+                                renderer
+                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+                                    .expect("Failed to add ground plane mesh"),
+                            );
                         }
                         Value::MeshArray(mesh_array) => {
                             for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
@@ -400,6 +407,19 @@ pub fn init_and_run(options: Options) -> ! {
                                 scene_meshes.values().map(|mesh| mesh.bounding_box()),
                             )
                             .unwrap_or_else(BoundingBox::unit);
+
+                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                            renderer.remove_scene_mesh(
+                                ground_plane_gpu_mesh_handle
+                                    .take()
+                                    .expect("Ground plane must always be present"),
+                            );
+                            ground_plane_gpu_mesh_handle = Some(
+                                renderer
+                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+                                    .expect("Failed to add ground plane mesh"),
+                            );
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
@@ -418,6 +438,19 @@ pub fn init_and_run(options: Options) -> ! {
                                 scene_meshes.values().map(|mesh| mesh.bounding_box()),
                             )
                             .unwrap_or_else(BoundingBox::unit);
+
+                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                            renderer.remove_scene_mesh(
+                                ground_plane_gpu_mesh_handle
+                                    .take()
+                                    .expect("Ground plane must always be present"),
+                            );
+                            ground_plane_gpu_mesh_handle = Some(
+                                renderer
+                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+                                    .expect("Failed to add ground plane mesh"),
+                            );
                         }
                         Value::MeshArray(mesh_array) => {
                             for index in 0..mesh_array.len() {
@@ -435,6 +468,19 @@ pub fn init_and_run(options: Options) -> ! {
                                 scene_meshes.values().map(|mesh| mesh.bounding_box()),
                             )
                             .unwrap_or_else(BoundingBox::unit);
+
+                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                            renderer.remove_scene_mesh(
+                                ground_plane_gpu_mesh_handle
+                                    .take()
+                                    .expect("Ground plane must always be present"),
+                            );
+                            ground_plane_gpu_mesh_handle = Some(
+                                renderer
+                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+                                    .expect("Failed to add ground plane mesh"),
+                            );
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
@@ -469,7 +515,7 @@ pub fn init_and_run(options: Options) -> ! {
                     true,
                 );
                 window_command_buffer.draw_meshes_to_primary_render_target(
-                    iter::once(&ground_plane_gpu_mesh_handle),
+                    ground_plane_gpu_mesh_handle.iter(),
                     DrawMeshMode::FlatWithShadows,
                     false,
                 );
@@ -530,7 +576,7 @@ pub fn init_and_run(options: Options) -> ! {
                     );
                     screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
                         &screenshot_render_target,
-                        iter::once(&ground_plane_gpu_mesh_handle),
+                        ground_plane_gpu_mesh_handle.iter(),
                         DrawMeshMode::FlatWithShadows,
                         false,
                     );
@@ -708,4 +754,16 @@ fn compute_light(
         max_range: diagonal_length,
         width: diagonal_length,
     }
+}
+
+fn compute_ground_plane_mesh(scene_bounding_box: &BoundingBox<f32>) -> Mesh {
+    let dimension = f32::max(1000.0, scene_bounding_box.diagonal().norm() * 100.0);
+    mesh::primitive::create_mesh_plane(
+        Plane::new(
+            &Point3::origin(),
+            &Vector3::new(1.0, 0.0, 0.0),
+            &Vector3::new(0.0, 1.0, 0.0),
+        ),
+        Vector2::new(dimension, dimension),
+    )
 }
