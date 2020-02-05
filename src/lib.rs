@@ -222,7 +222,7 @@ pub fn init_and_run(options: Options) -> ! {
             vsync: options.vsync,
             backend: options.gpu_backend,
             power_preference: options.gpu_power_preference,
-            flat_shading_color: [0.0, 0.0, 0.0, 0.0],
+            flat_shading_color: [0.0, 0.0, 0.0, 0.1],
         },
     );
 
