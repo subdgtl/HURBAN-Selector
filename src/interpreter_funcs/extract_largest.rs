@@ -1,8 +1,9 @@
 use std::error;
 use std::fmt;
 
+use crate::analytics;
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
     ParamRefinement, Ty, Value,
 };
 
@@ -81,9 +82,7 @@ impl Func for FuncExtractLargest {
         }
 
         if analyze {
-            analytics::report_mesh_analysis(&mesh)
-                .iter()
-                .for_each(|line| log(line.clone()));
+            analytics::report_mesh_analysis(&mesh, log);
         }
 
         Ok(Value::Mesh(mesh))

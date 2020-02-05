@@ -2,10 +2,11 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::importer::{Importer, ImporterError, ObjCache};
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage,
-    MeshArrayValue, ParamInfo, ParamRefinement, StringParamRefinement, Ty, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, MeshArrayValue,
+    ParamInfo, ParamRefinement, StringParamRefinement, Ty, Value,
 };
 
 #[derive(Debug, PartialEq)]
@@ -94,9 +95,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
                     let value = MeshArrayValue::new(meshes);
 
                     if analyze {
-                        analytics::report_group_analysis(&value)
-                            .iter()
-                            .for_each(|line| log(line.clone()));
+                        analytics::report_group_analysis(&value, log);
                     }
 
                     Ok(Value::MeshArray(Arc::new(value)))

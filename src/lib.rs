@@ -27,6 +27,7 @@ pub mod geometry;
 pub mod importer;
 pub mod renderer;
 
+mod analytics;
 mod bounding_box;
 mod camera;
 mod convert;

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
     ParamRefinement, Ty, Value,
 };
 use crate::mesh::{analysis, tools, topology};
@@ -64,9 +65,7 @@ impl Func for FuncSynchronizeMeshFaces {
         };
 
         if analyze {
-            analytics::report_mesh_analysis(&value)
-                .iter()
-                .for_each(|line| log(line.clone()));
+            analytics::report_mesh_analysis(&value, log);
         }
 
         Ok(Value::Mesh(value))

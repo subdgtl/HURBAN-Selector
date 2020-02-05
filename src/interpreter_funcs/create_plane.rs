@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use nalgebra::{Point3, Rotation3, Vector2, Vector3};
 
+use crate::analytics;
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, Func,
-    FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
+    BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, Func, FuncError,
+    FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::primitive;
 use crate::plane::Plane;
@@ -106,9 +107,7 @@ impl Func for FuncCreatePlane {
         let value = primitive::create_mesh_plane(plane, Vector2::from(scale));
 
         if analyze {
-            analytics::report_mesh_analysis(&value)
-                .iter()
-                .for_each(|line| log(line.clone()));
+            analytics::report_mesh_analysis(&value, log);
         }
 
         Ok(Value::Mesh(Arc::new(value)))

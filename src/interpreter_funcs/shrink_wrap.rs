@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use nalgebra::Rotation3;
 
+use crate::analytics;
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
     ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::{analysis, primitive, NormalStrategy};
@@ -78,9 +79,7 @@ impl Func for FuncShrinkWrap {
         }
 
         if analyze {
-            analytics::report_mesh_analysis(&value)
-                .iter()
-                .for_each(|line| log(line.clone()));
+            analytics::report_mesh_analysis(&value, log);
         }
 
         Ok(Value::Mesh(Arc::new(value)))

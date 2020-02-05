@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use nalgebra::{Matrix4, Rotation, Vector3};
 
+use crate::analytics;
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::Mesh;
@@ -159,9 +160,7 @@ impl Func for FuncTransform {
         };
 
         if analyze {
-            analytics::report_mesh_analysis(&value)
-                .iter()
-                .for_each(|line| log(line.clone()));
+            analytics::report_mesh_analysis(&value, log);
         }
 
         Ok(Value::Mesh(Arc::new(value)))

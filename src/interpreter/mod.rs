@@ -16,7 +16,6 @@ pub use self::func::{
 };
 pub use self::value::{MeshArrayValue, Ty, Value};
 
-pub mod analytics;
 pub mod ast;
 pub mod func;
 pub mod value;

@@ -1,8 +1,9 @@
 use std::cmp;
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
     ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::{smoothing, topology, NormalStrategy};
@@ -72,9 +73,7 @@ impl Func for FuncLaplacianSmoothing {
         );
 
         if analyze {
-            analytics::report_mesh_analysis(&value)
-                .iter()
-                .for_each(|line| log(line.clone()));
+            analytics::report_mesh_analysis(&value, log);
         }
 
         Ok(Value::Mesh(Arc::new(value)))

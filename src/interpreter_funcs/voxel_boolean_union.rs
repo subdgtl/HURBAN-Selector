@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 
+use crate::analytics;
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::voxel_cloud::VoxelCloud;
@@ -138,9 +139,7 @@ impl Func for FuncBooleanUnion {
         match voxel_cloud1.to_mesh() {
             Some(value) => {
                 if analyze {
-                    analytics::report_mesh_analysis(&value)
-                        .iter()
-                        .for_each(|line| log(line.clone()));
+                    analytics::report_mesh_analysis(&value, log);
                 }
                 Ok(Value::Mesh(Arc::new(value)))
             }

@@ -2,9 +2,10 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
-    LogMessage, ParamInfo, ParamRefinement, Ty, Value,
+    BooleanParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage,
+    ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::tools;
 
@@ -80,9 +81,7 @@ impl Func for FuncWeld {
 
         if let Some(value) = tools::weld(&mesh, tolerance) {
             if analyze {
-                analytics::report_mesh_analysis(&value)
-                    .iter()
-                    .for_each(|line| log(line.clone()));
+                analytics::report_mesh_analysis(&value, log);
             }
             Ok(Value::Mesh(Arc::new(value)))
         } else {

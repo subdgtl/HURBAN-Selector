@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    analytics, BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage,
-    MeshArrayValue, ParamInfo, ParamRefinement, Ty, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, MeshArrayValue,
+    ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::tools;
 
@@ -53,9 +54,7 @@ impl Func for FuncDisjointMesh {
         let value = MeshArrayValue::new(meshes.into_iter().map(Arc::new).collect());
 
         if analyze {
-            analytics::report_group_analysis(&value)
-                .iter()
-                .for_each(|line| log(line.clone()));
+            analytics::report_group_analysis(&value, log);
         }
 
         Ok(Value::MeshArray(Arc::new(value)))
