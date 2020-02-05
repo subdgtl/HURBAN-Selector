@@ -19,7 +19,7 @@ impl Func for FuncSnapToGround {
     }
 
     fn flags(&self) -> FuncFlags {
-        FuncFlags::empty()
+        FuncFlags::PURE
     }
 
     fn param_info(&self) -> &[ParamInfo] {
