@@ -726,16 +726,6 @@ impl SceneRenderer {
         }
     }
 
-    // FIXME: These bind group layouts and bind groups are exposed because in
-    // the 0.4 version of wgpu, BGLs are only compatible if they have the same
-    // ID. If 2 BGs are to be compatible, they have to have the *same* BGL. The
-    // `shadow_map_texture_bind_group` below was created using the
-    // `sampled_texture_bind_group_layout` and that layout must be propagated
-    // upwards if anything wants to use these bind groups in their pipeline or
-    // swap in a different bind group that is structurally equal, but not
-    // identical. This restriction is lifted in wgpu master already, so we can
-    // perhaps go back to using structurally equal BGLs. But should we?
-
     pub fn sampler_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
         &self.sampler_bind_group_layout
     }
@@ -1063,12 +1053,6 @@ impl SceneRenderer {
                 );
 
                 color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
                 record_drawing(
                     &self.mesh_resources,
@@ -1103,12 +1087,6 @@ impl SceneRenderer {
                 );
 
                 color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded_edges, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
                 record_drawing(
                     &self.mesh_resources,
@@ -1132,12 +1110,6 @@ impl SceneRenderer {
                 );
 
                 color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
                 record_drawing(
                     &self.mesh_resources,
@@ -1146,12 +1118,7 @@ impl SceneRenderer {
                 );
 
                 color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_always_pass);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
                 color_pass.set_bind_group(4, &self.color_pass_bind_group_edges, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
                 record_drawing(&self.mesh_resources, handles.map(|h| h.0), &mut color_pass);
             }
@@ -1171,12 +1138,6 @@ impl SceneRenderer {
                 );
 
                 color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_flat_with_shadows, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
                 record_drawing(
                     &self.mesh_resources,

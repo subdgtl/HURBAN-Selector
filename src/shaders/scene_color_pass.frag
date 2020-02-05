@@ -28,7 +28,6 @@ const float EDGE_THICKNESS_MAX = 1.00;
 const float SHADOW_INTENSITY = 0.3;
 
 void main() {
-
     // -- Compute edge color --
 
     // Find which edge this pixel is the closest to by finding the

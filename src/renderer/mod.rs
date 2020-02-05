@@ -47,7 +47,7 @@ pub struct Options {
     /// Whether to select an explicit power preference profile for the renderer
     /// to use when choosing a GPU.
     pub power_preference: Option<GpuPowerPreference>,
-    /// The color with which to render surfaces in `DrawMeshMode::Flat`.
+    /// The color with which to render surfaces in `DrawMeshMode::FlatWithShadows`.
     pub flat_shading_color: [f64; 4],
 }
 
