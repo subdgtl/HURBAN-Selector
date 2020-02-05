@@ -55,35 +55,39 @@ impl Func for FuncSnapToGround {
         args: &[Value],
         _log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let mesh = args[0].unwrap_mesh();
+        let mesh = args[0].unwrap_refcounted_mesh();
         let move_to_origin = args[1].unwrap_boolean();
         let snap_to_ground = args[2].unwrap_boolean();
 
-        let bbox = mesh.bounding_box();
+        if move_to_origin || snap_to_ground {
+            let bbox = mesh.bounding_box();
 
-        let translation_vector = if move_to_origin {
-            Point3::origin() - bbox.center()
+            let translation_vector = if move_to_origin {
+                Point3::origin() - bbox.center()
+            } else {
+                Vector3::zeros()
+            } + if snap_to_ground {
+                Vector3::new(0.0, 0.0, bbox.diagonal().z / 2.0)
+            } else {
+                Vector3::zeros()
+            };
+
+            let translation = Matrix4::new_translation(&translation_vector);
+
+            let vertices_iter = mesh
+                .vertices()
+                .iter()
+                .map(|v| translation.transform_point(v));
+
+            let value = Mesh::from_faces_with_vertices_and_normals(
+                mesh.faces().iter().copied(),
+                vertices_iter,
+                mesh.normals().iter().copied(),
+            );
+
+            Ok(Value::Mesh(Arc::new(value)))
         } else {
-            Vector3::zeros()
-        } + if snap_to_ground {
-            Vector3::new(0.0, 0.0, bbox.diagonal().z / 2.0)
-        } else {
-            Vector3::zeros()
-        };
-
-        let translation = Matrix4::new_translation(&translation_vector);
-
-        let vertices_iter = mesh
-            .vertices()
-            .iter()
-            .map(|v| translation.transform_point(v));
-
-        let value = Mesh::from_faces_with_vertices_and_normals(
-            mesh.faces().iter().copied(),
-            vertices_iter,
-            mesh.normals().iter().copied(),
-        );
-
-        Ok(Value::Mesh(Arc::new(value)))
+            Ok(Value::Mesh(mesh))
+        }
     }
 }
