@@ -3,7 +3,6 @@ steps:
       set -e
       if command -v rustup; then
         echo `command -v rustup` `rustup -V` already installed
-        rustup self update
       elif [ "$AGENT_OS" = "Windows_NT" ]; then
         curl -sSf -o rustup-init.exe https://win.rustup.rs
         rustup-init.exe -y --default-toolchain $TOOLCHAIN
