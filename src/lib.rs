@@ -568,16 +568,12 @@ pub fn init_and_run(options: Options) -> ! {
                         &screenshot_camera.view_matrix(),
                     );
 
+                    // For screenshots, we don't need to cast shadows, and we
+                    // don't render the ground on purpose.
                     screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
                         &screenshot_render_target,
                         scene_gpu_mesh_handles.values(),
                         renderer_draw_mesh_mode,
-                        true,
-                    );
-                    screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                        &screenshot_render_target,
-                        ground_plane_gpu_mesh_handle.iter(),
-                        DrawMeshMode::FlatWithShadows,
                         false,
                     );
 
