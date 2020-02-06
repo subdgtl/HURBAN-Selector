@@ -16,6 +16,7 @@ pub fn wgpu_size_of<T>() -> wgpu::BufferAddress {
         .unwrap_or_else(|_| panic!("Size {} does not fit into wgpu BufferAddress", size))
 }
 
+// FIXME: @Refactoring Take encoder instead of queue
 pub fn upload_texture_rgba8_unorm(
     device: &wgpu::Device,
     queue: &mut wgpu::Queue,

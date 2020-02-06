@@ -29,11 +29,15 @@ pub struct Camera {
     azimuthal_angle: f32,
     polar_angle: f32,
     origin: Point3<f32>,
-    up: Vector3<f32>,
     options: CameraOptions,
 }
 
 impl Camera {
+    /// Creates a new camera with aspect ratio, radius, azimuthal and polar angle.
+    ///
+    /// Azimuthal angle is computed counter-clockwise from the unit vector
+    /// `[1,0]` lying on the XY plane. Polar angle is the angle between the Z
+    /// axis and the current camera position.
     pub fn new(
         aspect_ratio: f32,
         radius: f32,
@@ -51,18 +55,20 @@ impl Camera {
                 f32::consts::PI - options.polar_angle_distance_min,
             ),
             origin: Point3::origin(),
-            up: Vector3::z(),
             options,
         }
     }
 
-    pub fn set_viewport_aspect_ratio(&mut self, aspect_ratio: f32) {
-        self.aspect_ratio = aspect_ratio;
+    pub fn position(&self) -> Point3<f32> {
+        let x = self.radius * self.azimuthal_angle.cos() * self.polar_angle.sin();
+        let y = self.radius * self.azimuthal_angle.sin() * self.polar_angle.sin();
+        let z = self.radius * self.polar_angle.cos();
+
+        self.origin + Vector3::new(x, y, z)
     }
 
-    #[allow(dead_code)]
-    pub fn reset_origin(&mut self) {
-        self.origin = Point3::origin();
+    pub fn set_viewport_aspect_ratio(&mut self, aspect_ratio: f32) {
+        self.aspect_ratio = aspect_ratio;
     }
 
     pub fn pan_ground(&mut self, dx: f32, dy: f32) {
@@ -80,12 +86,12 @@ impl Camera {
             Rotation3::new(Vector3::z() * (self.azimuthal_angle - f32::consts::FRAC_PI_2));
 
         // Compute normal vector of the screen plane
-        let eye = self.compute_eye();
+        let eye = self.position();
         let normal = eye - self.origin;
 
         // Create rotation from XY plane to screen plane
         // Note that the vectors can theoretically be zero... just don't do anything in that case.
-        if let Some(xy_to_screen_rotation) = Rotation3::rotation_between(&self.up, &normal) {
+        if let Some(xy_to_screen_rotation) = Rotation3::rotation_between(&Vector3::z(), &normal) {
             self.origin += xy_to_screen_rotation * camera_rotation * ground_translation;
         }
     }
@@ -134,8 +140,7 @@ impl Camera {
         self.radius = clamp(new_radius, self.options.radius_min, self.options.radius_max);
     }
 
-    /// A sphere that is completely visible by this camera, no matter
-    /// the rotation.
+    /// A sphere completely visible by this camera, no matter the rotation.
     pub fn visible_sphere(&self) -> (Point3<f32>, f32) {
         const MARGIN_MULTIPLIER: f32 = 1.005;
         let alpha = self.compute_visible_sphere_alpha();
@@ -164,8 +169,8 @@ impl Camera {
     }
 
     pub fn view_matrix(&self) -> Matrix4<f32> {
-        let eye = self.compute_eye();
-        Matrix4::look_at_rh(&eye, &self.origin, &self.up)
+        let eye = self.position();
+        Matrix4::look_at_rh(&eye, &self.origin, &Vector3::z())
     }
 
     pub fn projection_matrix(&self) -> Matrix4<f32> {
@@ -175,14 +180,6 @@ impl Camera {
             self.options.znear,
             self.options.zfar,
         )
-    }
-
-    fn compute_eye(&self) -> Point3<f32> {
-        let x = self.radius * self.azimuthal_angle.cos() * self.polar_angle.sin();
-        let y = self.radius * self.azimuthal_angle.sin() * self.polar_angle.sin();
-        let z = self.radius * self.polar_angle.cos();
-
-        self.origin + Vector3::new(x, y, z)
     }
 
     fn compute_visible_sphere_alpha(&self) -> f32 {
