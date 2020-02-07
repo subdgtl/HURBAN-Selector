@@ -581,7 +581,7 @@ impl Renderer {
         let frame = self.swap_chain.get_next_texture();
         let encoder = self
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         CommandBuffer {
             backbuffer_needs_clearing: true,

@@ -2,9 +2,8 @@ use std::cell::RefCell;
 use std::f32;
 use std::sync::Arc;
 
-use imgui_winit_support::{HiDpiMode, WinitPlatform};
-
 use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
+use crate::imgui_winit_support::{HiDpiMode, WinitPlatform};
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
 use crate::renderer::DrawMeshMode;
@@ -223,10 +222,10 @@ impl Ui {
         self.imgui_context.fonts()
     }
 
-    pub fn handle_event<T>(
+    pub fn process_event<T>(
         &mut self,
-        window: &winit::window::Window,
         event: &winit::event::Event<T>,
+        window: &winit::window::Window,
     ) {
         self.imgui_winit_platform
             .handle_event(self.imgui_context.io_mut(), window, &event);
@@ -248,6 +247,14 @@ impl Ui {
         }
     }
 
+    pub fn want_capture_keyboard(&self) -> bool {
+        self.imgui_context.io().want_capture_keyboard
+    }
+
+    pub fn want_capture_mouse(&self) -> bool {
+        self.imgui_context.io().want_capture_mouse
+    }
+
     pub fn set_delta_time(&mut self, duration_last_frame_s: f32) {
         self.imgui_context.io_mut().delta_time = duration_last_frame_s;
     }
@@ -266,14 +273,6 @@ pub struct UiFrame<'a> {
 }
 
 impl<'a> UiFrame<'a> {
-    pub fn want_capture_keyboard(&self) -> bool {
-        self.imgui_ui.io().want_capture_keyboard
-    }
-
-    pub fn want_capture_mouse(&self) -> bool {
-        self.imgui_ui.io().want_capture_mouse
-    }
-
     pub fn render(self, window: &winit::window::Window) -> &'a imgui::DrawData {
         self.imgui_winit_platform
             .prepare_render(&self.imgui_ui, window);

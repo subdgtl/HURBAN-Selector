@@ -12,14 +12,14 @@ pub struct InputState {
     pub debug_view_cycle: bool,
     pub close_requested: bool,
     pub open_screenshot_options: bool,
-    pub window_resized: Option<winit::dpi::LogicalSize>,
+    pub window_resized: Option<winit::dpi::PhysicalSize<u32>>,
 }
 
 #[derive(Debug, Default)]
 pub struct InputManager {
     lmb_down: bool,
     rmb_down: bool,
-    shift_down: bool,
+    modifiers: winit::event::ModifiersState,
     input_state: InputState,
     window_mouse_x: f64,
     window_mouse_y: f64,
@@ -30,7 +30,7 @@ impl InputManager {
         Self {
             lmb_down: false,
             rmb_down: false,
-            shift_down: false,
+            modifiers: winit::event::ModifiersState::empty(),
             input_state: InputState::default(),
             window_mouse_x: 0.0,
             window_mouse_y: 0.0,
@@ -51,15 +51,14 @@ impl InputManager {
         ui_captured_keyboard: bool,
         ui_captured_mouse: bool,
     ) {
-        const MODIFIERS_NONE: winit::event::ModifiersState = winit::event::ModifiersState {
-            logo: false,
-            shift: false,
-            ctrl: false,
-            alt: false,
-        };
+        match event {
+            winit::event::Event::DeviceEvent { event, .. } => {
+                if let winit::event::DeviceEvent::ModifiersChanged(modifiers) = event {
+                    self.modifiers = *modifiers;
+                }
+            }
 
-        if let winit::event::Event::WindowEvent { event, .. } = event {
-            match event {
+            winit::event::Event::WindowEvent { event, .. } => match event {
                 winit::event::WindowEvent::CloseRequested => {
                     self.input_state.close_requested = true;
                 }
@@ -68,64 +67,32 @@ impl InputManager {
                     let winit::event::KeyboardInput {
                         virtual_keycode,
                         state,
-                        modifiers,
                         ..
                     } = input;
 
                     // We respond to some events unconditionally, even if GUI has focus.
-                    match (virtual_keycode, state, modifiers) {
+                    match (virtual_keycode, state) {
                         // Cmd+Q for macOS
                         #[cfg(target_os = "macos")]
                         (
                             Some(winit::event::VirtualKeyCode::Q),
                             winit::event::ElementState::Pressed,
-                            winit::event::ModifiersState {
-                                logo: true,
-                                shift: false,
-                                ctrl: false,
-                                ..
-                            },
                         ) => {
                             self.input_state.close_requested = true;
-                        }
-                        (
-                            Some(winit::event::VirtualKeyCode::LShift),
-                            winit::event::ElementState::Pressed,
-                            _,
-                        ) => {
-                            self.shift_down = true;
-                        }
-                        (
-                            Some(winit::event::VirtualKeyCode::LShift),
-                            winit::event::ElementState::Released,
-                            _,
-                        ) => {
-                            self.shift_down = false;
-                        }
-                        (
-                            Some(winit::event::VirtualKeyCode::RShift),
-                            winit::event::ElementState::Pressed,
-                            _,
-                        ) => {
-                            self.shift_down = true;
-                        }
-                        (
-                            Some(winit::event::VirtualKeyCode::RShift),
-                            winit::event::ElementState::Released,
-                            _,
-                        ) => {
-                            self.shift_down = false;
                         }
                         _ => (),
                     };
 
-                    // These events are responded to only when gui doesn't have focus
-                    if !ui_captured_keyboard {
-                        match (virtual_keycode, state, modifiers) {
+                    // These events are responded to only when gui doesn't have
+                    // focus and there are no active modifiers (we currently
+                    // have no keyboard shortcuts with modifiers)
+                    if !ui_captured_keyboard
+                        && self.modifiers == winit::event::ModifiersState::empty()
+                    {
+                        match (virtual_keycode, state) {
                             (
                                 Some(winit::event::VirtualKeyCode::A),
                                 winit::event::ElementState::Pressed,
-                                &MODIFIERS_NONE,
                             ) => {
                                 self.input_state.camera_reset_viewport = true;
                             }
@@ -133,14 +100,12 @@ impl InputManager {
                             (
                                 Some(winit::event::VirtualKeyCode::D),
                                 winit::event::ElementState::Pressed,
-                                &MODIFIERS_NONE,
                             ) => {
                                 self.input_state.debug_view_cycle = true;
                             }
                             (
                                 Some(winit::event::VirtualKeyCode::P),
                                 winit::event::ElementState::Pressed,
-                                &MODIFIERS_NONE,
                             ) => {
                                 self.input_state.open_screenshot_options = true;
                             }
@@ -188,7 +153,7 @@ impl InputManager {
                             self.input_state.camera_rotate[0] -= dx;
                             self.input_state.camera_rotate[1] -= dy;
                         } else if self.rmb_down {
-                            if self.shift_down {
+                            if self.modifiers.shift() {
                                 self.input_state.camera_pan_ground[0] += dx;
                                 self.input_state.camera_pan_ground[1] -= dy;
                             } else {
@@ -224,14 +189,16 @@ impl InputManager {
                     }
                 },
 
-                winit::event::WindowEvent::Resized(logical_size) => {
+                winit::event::WindowEvent::Resized(physical_size) => {
                     // Even if the window resized multiple times, only
                     // take the last one into account.
-                    self.input_state.window_resized = Some(*logical_size);
+                    self.input_state.window_resized = Some(*physical_size);
                 }
 
                 _ => (),
-            }
+            },
+
+            _ => (),
         }
     }
 }

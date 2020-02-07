@@ -23,8 +23,7 @@ crc32fast = "1.2.0"
 crossbeam-channel = "0.3.9"
 dirs = "2.0.2"
 fern = { version = "0.5.8", features = ["colored"] }
-imgui = "0.2.0"
-imgui-winit-support = { version = "0.2.0", default-features = false, features = ["winit-20"] }
+imgui = "0.2.1"
 log = { version = "0.4.8" }
 nalgebra = { version = "0.19.0", features = ["serde-serialize"] }
 num-traits = "0.2.11"
@@ -35,7 +34,7 @@ smallvec = "0.6.10"
 tinyfiledialogs = "3.3.5"
 tobj = { version = "0.1.10", features = ["log"] }
 wgpu = { version = "0.4.0", features = ["vulkan"] }
-winit = "0.20.0-alpha5"
+winit = "0.21.0"
 
 [dev-dependencies]
 insta = "0.12.0"
