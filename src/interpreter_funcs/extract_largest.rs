@@ -28,6 +28,7 @@ impl Func for FuncExtractLargest {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Extract Largest",
+            description: "",
             return_value_name: "Extracted Mesh",
         }
     }
@@ -40,11 +41,13 @@ impl Func for FuncExtractLargest {
         &[
             ParamInfo {
                 name: "Group",
+                description: "",
                 refinement: ParamRefinement::MeshArray,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

@@ -14,6 +14,7 @@ impl Func for FuncLaplacianSmoothing {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Relax",
+            description: "",
             return_value_name: "Relaxed Mesh",
         }
     }
@@ -26,11 +27,13 @@ impl Func for FuncLaplacianSmoothing {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Iterations",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(1),
                     min_value: Some(0),
@@ -40,6 +43,7 @@ impl Func for FuncLaplacianSmoothing {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

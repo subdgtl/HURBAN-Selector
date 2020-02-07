@@ -13,6 +13,7 @@ impl Func for FuncJoinGroup {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Join Group",
+            description: "",
             return_value_name: "Joined Mesh",
         }
     }
@@ -25,11 +26,13 @@ impl Func for FuncJoinGroup {
         &[
             ParamInfo {
                 name: "Group",
+                description: "",
                 refinement: ParamRefinement::MeshArray,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

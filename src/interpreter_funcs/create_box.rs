@@ -15,6 +15,7 @@ impl Func for FuncCreateBox {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create Box",
+            description: "",
             return_value_name: "Box",
         }
     }
@@ -27,6 +28,7 @@ impl Func for FuncCreateBox {
         &[
             ParamInfo {
                 name: "Center",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -42,6 +44,7 @@ impl Func for FuncCreateBox {
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -57,6 +60,7 @@ impl Func for FuncCreateBox {
             },
             ParamInfo {
                 name: "Scale",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -72,6 +76,7 @@ impl Func for FuncCreateBox {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

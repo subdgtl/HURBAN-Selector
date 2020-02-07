@@ -38,6 +38,7 @@ impl Func for FuncLoopSubdivision {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Loop Subdivision",
+            description: "",
             return_value_name: "Subdivided Mesh",
         }
     }
@@ -50,11 +51,13 @@ impl Func for FuncLoopSubdivision {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Iterations",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(1),
                     min_value: Some(0),
@@ -64,6 +67,7 @@ impl Func for FuncLoopSubdivision {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

@@ -881,6 +881,7 @@ mod tests {
     fn param_info(ty: Ty, optional: bool) -> ParamInfo {
         ParamInfo {
             name: "<anonymous>",
+            description: "<anonymous>",
             refinement: match ty {
                 Ty::Nil => panic!("Yeah, sure I can do that!"),
                 Ty::Boolean => ParamRefinement::Boolean(BooleanParamRefinement::default()),

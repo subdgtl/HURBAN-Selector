@@ -15,6 +15,7 @@ impl Func for FuncTransform {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Transform",
+            description: "",
             return_value_name: "Transformed Mesh",
         }
     }
@@ -27,11 +28,13 @@ impl Func for FuncTransform {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Translate",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -47,6 +50,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -62,6 +66,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Scale",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -77,6 +82,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Transform around object center",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -84,6 +90,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
