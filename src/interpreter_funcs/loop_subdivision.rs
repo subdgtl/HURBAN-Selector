@@ -3,9 +3,10 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty,
-    UintParamRefinement, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::{smoothing, topology, NormalStrategy};
 
@@ -61,6 +62,13 @@ impl Func for FuncLoopSubdivision {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -71,10 +79,11 @@ impl Func for FuncLoopSubdivision {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_refcounted_mesh();
         let iterations = cmp::min(args[1].unwrap_uint(), Self::MAX_ITERATIONS);
+        let analyze = args[2].unwrap_boolean();
 
         if iterations == 0 {
             return Ok(Value::Mesh(mesh));
@@ -100,6 +109,11 @@ impl Func for FuncLoopSubdivision {
                     None => return Err(FuncError::new(FuncLoopSubdivisionError::InvalidMesh)),
                 }
             }
+
+            if analyze {
+                analytics::report_mesh_analysis(&current_mesh, log);
+            }
+
             Ok(Value::Mesh(Arc::new(current_mesh)))
         } else {
             Err(FuncError::new(FuncLoopSubdivisionError::InvalidMesh))

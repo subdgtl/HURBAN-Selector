@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use nalgebra::{Point3, Rotation3, Vector2, Vector3};
 
+use crate::analytics;
 use crate::interpreter::{
-    Float2ParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage,
-    ParamInfo, ParamRefinement, Ty, Value,
+    BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, Func, FuncError,
+    FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::primitive;
 use crate::plane::Plane;
@@ -67,6 +68,13 @@ impl Func for FuncCreatePlane {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -76,12 +84,13 @@ impl Func for FuncCreatePlane {
 
     fn call(
         &mut self,
-        values: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        args: &[Value],
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let center = values[0].unwrap_float3();
-        let rotate = values[1].unwrap_float3();
-        let scale = values[2].unwrap_float2();
+        let center = args[0].unwrap_float3();
+        let rotate = args[1].unwrap_float3();
+        let scale = args[2].unwrap_float2();
+        let analyze = args[3].unwrap_boolean();
 
         let rotation = Rotation3::from_euler_angles(
             rotate[0].to_radians(),
@@ -96,6 +105,11 @@ impl Func for FuncCreatePlane {
         );
 
         let value = primitive::create_mesh_plane(plane, Vector2::from(scale));
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
+        }
+
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

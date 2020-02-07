@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use nalgebra::Rotation3;
 
+use crate::analytics;
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty,
-    UintParamRefinement, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::{analysis, primitive, NormalStrategy};
 
@@ -38,6 +39,13 @@ impl Func for FuncShrinkWrap {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -48,10 +56,11 @@ impl Func for FuncShrinkWrap {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let sphere_density = args[1].unwrap_uint();
+        let analyze = args[2].unwrap_boolean();
 
         let bounding_box = mesh.bounding_box();
         let mut value = primitive::create_uv_sphere(
@@ -67,6 +76,10 @@ impl Func for FuncShrinkWrap {
             if let Some(closest) = analysis::find_closest_point(vertex, mesh) {
                 vertex.coords = closest.coords;
             }
+        }
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
         }
 
         Ok(Value::Mesh(Arc::new(value)))

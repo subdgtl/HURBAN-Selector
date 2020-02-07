@@ -1,9 +1,10 @@
 use std::cmp;
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty,
-    UintParamRefinement, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::{smoothing, topology, NormalStrategy};
 
@@ -37,6 +38,13 @@ impl Func for FuncLaplacianSmoothing {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -47,10 +55,11 @@ impl Func for FuncLaplacianSmoothing {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let iterations = args[1].unwrap_uint();
+        let analyze = args[2].unwrap_boolean();
 
         let v2v = topology::compute_vertex_to_vertex_topology(mesh);
 
@@ -62,6 +71,11 @@ impl Func for FuncLaplacianSmoothing {
             false,
             NormalStrategy::Smooth,
         );
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
+        }
+
         Ok(Value::Mesh(Arc::new(value)))
     }
 }
