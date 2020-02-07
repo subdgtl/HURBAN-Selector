@@ -1,8 +1,12 @@
 #version 450
 
-layout(set = 0, binding = 0, std140) uniform GlobalMatrix {
+layout(set = 0, binding = 0, std140) uniform Matrix {
     mat4 u_projection_matrix;
     mat4 u_view_matrix;
+};
+
+layout(set = 5, binding = 0, std140) uniform ShadowPass {
+    mat4 u_light_space_matrix;
 };
 
 layout(location = 0) in vec4 a_position;
@@ -11,6 +15,7 @@ layout(location = 2) in uint a_barycentric;
 
 layout(location = 0) out vec2 v_matcap_tex_coords;
 layout(location = 1) out vec3 v_barycentric;
+layout(location = 2) out vec4 v_frag_pos_light_space;
 
 float remap(float value, vec2 from, vec2 to) {
     return (value - from.x) / (from.y - from.x) * (to.y - to.x) + to.x;
@@ -32,7 +37,14 @@ void main() {
 
     v_matcap_tex_coords = vec2(remap(viewspace_normal.x, vec2(-1, 1), vec2(0, 1)),
                                remap(viewspace_normal.y, vec2(-1, 1), vec2(0, 1)));
+
     v_barycentric = get_barycentric_coord(a_barycentric);
+
+    v_frag_pos_light_space = u_light_space_matrix * a_position;
+    // These are manual OpenGL to Vulkan NDC space corrections. We can't just
+    // use the correction matrix as our projection matrix for shadow casting is
+    // ortographic.
+    v_frag_pos_light_space.y = -v_frag_pos_light_space.y;
 
     gl_Position = u_projection_matrix * u_view_matrix * a_position;
 }
