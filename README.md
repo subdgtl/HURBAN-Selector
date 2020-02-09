@@ -125,10 +125,7 @@ Redistributable for Visual Studio 2019" is installed (get it
 
 ### Creating a Windows installer
 
-- Install [Inno Setup](http://www.jrsoftware.org/isinfo.php),
-- `cargo build --release`,
-- Compile `installer/setup.iss` from Inno Setup IDE,
-- Output file will be located at `installer/bin`.
+Refer to [installer's readme](installer/README.md) to create Windows installer.
 
 ### Licence
 

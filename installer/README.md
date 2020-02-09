@@ -14,7 +14,7 @@ To add an icon to binary follow these steps:
 To create a distribution follow these steps:
 
 - Install [Inno Setup](http://www.jrsoftware.org/isinfo.php),
-- `cargo build --release`,
+- `cargo build --release --features dist`,
 - Compile `installer/setup.iss` from Inno Setup IDE,
 - Output file will be located at `installer/bin`.
 
