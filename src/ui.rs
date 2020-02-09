@@ -57,7 +57,8 @@ struct ConsoleState {
     message_count: usize,
 }
 
-pub struct MainMenuBarStatus {
+pub struct UtilitiesStatus {
+    pub reset_viewport: bool,
     pub save_path: Option<String>,
     pub open_path: Option<String>,
 }
@@ -437,22 +438,26 @@ impl<'a> UiFrame<'a> {
         color_token.pop(ui);
     }
 
-    pub fn draw_viewport_settings_window(
+    pub fn draw_utilities_window(
         &self,
         screenshot_modal_open: &mut bool,
         draw_mode: &mut DrawMeshMode,
-    ) -> bool {
+        project_path: Option<&str>,
+    ) -> UtilitiesStatus {
         let ui = &self.imgui_ui;
+        let mut status = UtilitiesStatus {
+            reset_viewport: false,
+            save_path: None,
+            open_path: None,
+        };
 
         const VIEWPORT_WINDOW_WIDTH: f32 = 150.0;
-        const VIEWPORT_WINDOW_HEIGHT: f32 = 170.0;
+        const VIEWPORT_WINDOW_HEIGHT: f32 = 210.0;
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
-        let mut reset_viewport_clicked = false;
-
         let bold_font_token = ui.push_font(self.font_ids.bold);
-        imgui::Window::new(imgui::im_str!("Viewport"))
+        imgui::Window::new(imgui::im_str!("Utilities"))
             .movable(false)
             .resizable(false)
             .collapsible(false)
@@ -481,18 +486,49 @@ impl<'a> UiFrame<'a> {
                     DrawMeshMode::ShadedEdgesXray,
                 );
 
-                reset_viewport_clicked =
+                status.reset_viewport =
                     ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
 
                 if ui.button(imgui::im_str!("Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
                     *screenshot_modal_open = true;
                 }
 
+                let ext_description = "HURBAN Selector project (.hs)";
+                let ext_filter = &["*.hs"];
+
+                if ui.button(imgui::im_str!("Save project"), [-f32::MIN_POSITIVE, 0.0]) {
+                    match project_path {
+                        Some(project_path_str) => {
+                            status.save_path = Some(project_path_str.to_string())
+                        }
+                        None => {
+                            if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
+                                "Save project",
+                                "new_project.hs",
+                                ext_filter,
+                                ext_description,
+                            ) {
+                                status.save_path = Some(path);
+                            }
+                        }
+                    }
+                }
+
+                if ui.button(imgui::im_str!("Open project"), [-f32::MIN_POSITIVE, 0.0]) {
+                    if let Some(path) = tinyfiledialogs::open_file_dialog(
+                        "Open project",
+                        "",
+                        Some((ext_filter, ext_description)),
+                    ) {
+                        status.open_path = Some(path);
+                    }
+                }
+
                 regular_font_token.pop(ui);
             });
         bold_font_token.pop(ui);
 
-        reset_viewport_clicked
+        status
     }
 
     // FIXME: @Refactoring Refactor this once we have full-featured
@@ -841,51 +877,6 @@ impl<'a> UiFrame<'a> {
                 }
             }
         }
-    }
-
-    pub fn draw_menu_bar(&self, project_path: Option<&str>) -> MainMenuBarStatus {
-        let ui = &self.imgui_ui;
-        let mut status = MainMenuBarStatus {
-            save_path: None,
-            open_path: None,
-        };
-
-        ui.main_menu_bar(|| {
-            ui.menu(imgui::im_str!("File"), true, || {
-                let ext_description = "HURBAN Selector project (.hs)";
-                let ext_filter = &["*.hs"];
-
-                if imgui::MenuItem::new(imgui::im_str!("Save project")).build(ui) {
-                    match project_path {
-                        Some(project_path_str) => {
-                            status.save_path = Some(project_path_str.to_string())
-                        }
-                        None => {
-                            if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
-                                "Save project",
-                                "new_project.hs",
-                                ext_filter,
-                                ext_description,
-                            ) {
-                                status.save_path = Some(path);
-                            }
-                        }
-                    }
-                }
-
-                if imgui::MenuItem::new(imgui::im_str!("Open project...")).build(ui) {
-                    if let Some(path) = tinyfiledialogs::open_file_dialog(
-                        "Open project",
-                        "",
-                        Some((ext_filter, ext_description)),
-                    ) {
-                        status.open_path = Some(path);
-                    }
-                }
-            });
-        });
-
-        status
     }
 
     pub fn draw_operations_window(&self, session: &mut Session) {
