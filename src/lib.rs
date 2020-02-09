@@ -327,6 +327,23 @@ pub fn init_and_run(options: Options) -> ! {
                         renderer.remove_scene_mesh(gpu_mesh_handle);
                     }
 
+                    scene_bounding_box =
+                        BoundingBox::union(scene_meshes.values().map(|mesh| mesh.bounding_box()))
+                            .unwrap_or_else(BoundingBox::unit);
+
+                    ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                    ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                    renderer.remove_scene_mesh(
+                        ground_plane_gpu_mesh_handle
+                            .take()
+                            .expect("Ground plane must always be present"),
+                    );
+                    ground_plane_gpu_mesh_handle = Some(
+                        renderer
+                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+                            .expect("Failed to add ground plane mesh"),
+                    );
+
                     session = Session::new();
 
                     for stmt in project.stmts {
