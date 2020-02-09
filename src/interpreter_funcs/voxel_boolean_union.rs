@@ -13,32 +13,35 @@ use crate::interpreter::{
 use crate::mesh::voxel_cloud::VoxelCloud;
 
 #[derive(Debug, PartialEq)]
-pub enum FuncVoxelizeError {
+pub enum FuncBooleanUnionError {
     WeldFailed,
     EmptyVoxelCloud,
 }
 
-impl fmt::Display for FuncVoxelizeError {
+impl fmt::Display for FuncBooleanUnionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FuncVoxelizeError::WeldFailed => write!(
+            FuncBooleanUnionError::WeldFailed => write!(
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncVoxelizeError::EmptyVoxelCloud => write!(f, "The resulting voxel cloud is empty"),
+            FuncBooleanUnionError::EmptyVoxelCloud => write!(
+                f,
+                "A voxel cloud from input meshes or the resulting mesh is empty"
+            ),
         }
     }
 }
 
-impl error::Error for FuncVoxelizeError {}
+impl error::Error for FuncBooleanUnionError {}
 
-pub struct FuncVoxelize;
+pub struct FuncBooleanUnion;
 
-impl Func for FuncVoxelize {
+impl Func for FuncBooleanUnion {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Voxelize Mesh",
-            return_value_name: "Voxelized mesh",
+            name: "Union",
+            return_value_name: "Union Mesh",
         }
     }
 
@@ -49,7 +52,12 @@ impl Func for FuncVoxelize {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                name: "Mesh",
+                name: "Mesh 1",
+                refinement: ParamRefinement::Mesh,
+                optional: false,
+            },
+            ParamInfo {
+                name: "Mesh 2",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
@@ -71,7 +79,7 @@ impl Func for FuncVoxelize {
             ParamInfo {
                 name: "Grow",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
-                    default_value: Some(2),
+                    default_value: Some(1),
                     min_value: None,
                     max_value: None,
                 }),
@@ -103,33 +111,39 @@ impl Func for FuncVoxelize {
         args: &[Value],
         log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let mesh = args[0].unwrap_mesh();
-        let voxel_dimensions = args[1].unwrap_float3();
-        let growth_iterations = args[2].unwrap_uint();
-        let fill = args[3].unwrap_boolean();
-        let analyze = args[4].unwrap_boolean();
+        let mesh1 = args[0].unwrap_mesh();
+        let mesh2 = args[1].unwrap_mesh();
+        let voxel_dimensions = args[2].unwrap_float3();
+        let growth_iterations = args[3].unwrap_uint();
+        let fill = args[4].unwrap_boolean();
+        let analyze = args[5].unwrap_boolean();
 
-        let mut voxel_cloud = VoxelCloud::from_mesh(mesh, &Vector3::from(voxel_dimensions));
+        let mut voxel_cloud1 = VoxelCloud::from_mesh(mesh1, &Vector3::from(voxel_dimensions));
+        let mut voxel_cloud2 = VoxelCloud::from_mesh(mesh2, &Vector3::from(voxel_dimensions));
+
         for _ in 0..growth_iterations {
-            voxel_cloud.grow_volume();
+            voxel_cloud1.grow_volume();
+            voxel_cloud2.grow_volume();
         }
 
         if fill {
-            voxel_cloud.fill_volumes();
+            voxel_cloud1.fill_volumes();
+            voxel_cloud2.fill_volumes();
         }
 
-        if !voxel_cloud.contains_voxels() {
-            return Err(FuncError::new(FuncVoxelizeError::EmptyVoxelCloud));
+        voxel_cloud1.boolean_union(&voxel_cloud2);
+        if !voxel_cloud1.contains_voxels() {
+            return Err(FuncError::new(FuncBooleanUnionError::EmptyVoxelCloud));
         }
 
-        match voxel_cloud.to_mesh() {
+        match voxel_cloud1.to_mesh() {
             Some(value) => {
                 if analyze {
                     analytics::report_mesh_analysis(&value, log);
                 }
                 Ok(Value::Mesh(Arc::new(value)))
             }
-            None => Err(FuncError::new(FuncVoxelizeError::WeldFailed)),
+            None => Err(FuncError::new(FuncBooleanUnionError::WeldFailed)),
         }
     }
 }

@@ -2,14 +2,16 @@ use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct InputState {
-    pub tmp_submit_prog_and_run: bool,
     pub camera_pan_ground: [f32; 2],
     pub camera_pan_screen: [f32; 2],
     pub camera_rotate: [f32; 2],
     pub camera_zoom: f32,
     pub camera_zoom_steps: i32,
     pub camera_reset_viewport: bool,
+    #[cfg(not(feature = "dist"))]
+    pub debug_view_cycle: bool,
     pub close_requested: bool,
+    pub open_screenshot_options: bool,
     pub window_resized: Option<winit::dpi::LogicalSize>,
 }
 
@@ -127,12 +129,20 @@ impl InputManager {
                             ) => {
                                 self.input_state.camera_reset_viewport = true;
                             }
+                            #[cfg(not(feature = "dist"))]
                             (
-                                Some(winit::event::VirtualKeyCode::R),
+                                Some(winit::event::VirtualKeyCode::D),
                                 winit::event::ElementState::Pressed,
                                 &MODIFIERS_NONE,
                             ) => {
-                                self.input_state.tmp_submit_prog_and_run = true;
+                                self.input_state.debug_view_cycle = true;
+                            }
+                            (
+                                Some(winit::event::VirtualKeyCode::P),
+                                winit::event::ElementState::Pressed,
+                                &MODIFIERS_NONE,
+                            ) => {
+                                self.input_state.open_screenshot_options = true;
                             }
                             _ => (),
                         }

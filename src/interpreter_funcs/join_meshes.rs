@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, Value,
 };
 use crate::mesh::tools;
 
@@ -31,6 +33,13 @@ impl Func for FuncJoinMeshes {
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -38,10 +47,20 @@ impl Func for FuncJoinMeshes {
         Ty::Mesh
     }
 
-    fn call(&mut self, args: &[Value]) -> Result<Value, FuncError> {
-        let meshes = args.iter().map(|a| a.unwrap_mesh());
+    fn call(
+        &mut self,
+        args: &[Value],
+        log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
+        let meshes = [args[0].unwrap_mesh(), args[1].unwrap_mesh()];
+        let analyze = args[2].unwrap_boolean();
 
-        let value = tools::join_multiple_meshes(meshes);
+        let value = tools::join_multiple_meshes(meshes.iter().copied());
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
+        }
+
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp;
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::{BTreeMap, HashSet};
@@ -19,6 +20,12 @@ pub mod ast;
 pub mod func;
 pub mod value;
 
+// FIXME: All of the `Display` impls below for the error types were changed to
+// be directly displayable on the UI, e.g. the word "stmt" was changed to
+// "input" and `stmt_index` is displayed as `stmt_index + 1`. Revert these impls
+// back to being developer centric once we have context-aware error message
+// construction mechanism.
+
 /// A name resolution error.
 #[derive(Debug, PartialEq)]
 pub enum ResolveError {
@@ -27,41 +34,42 @@ pub enum ResolveError {
     UndeclaredFuncUse { stmt_index: usize, func: FuncIdent },
 }
 
+impl ResolveError {
+    pub fn stmt_index(&self) -> usize {
+        match self {
+            ResolveError::VarRedefinition { stmt_index, .. } => *stmt_index,
+            ResolveError::UndeclaredVarUse { stmt_index, .. } => *stmt_index,
+            ResolveError::UndeclaredFuncUse { stmt_index, .. } => *stmt_index,
+        }
+    }
+}
+
 impl fmt::Display for ResolveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ResolveError::VarRedefinition { stmt_index, var } => write!(
                 f,
-                "Re-definition of already declared variable {} on stmt {}",
-                var, stmt_index,
+                "Re-definition of already declared variable {} on input {}",
+                var,
+                stmt_index + 1,
             ),
             ResolveError::UndeclaredVarUse { stmt_index, var } => write!(
                 f,
-                "Use of an undeclared variable {} on stmt {}",
-                var, stmt_index
+                "Use of an undeclared variable {} on input {}",
+                var,
+                stmt_index + 1,
             ),
             ResolveError::UndeclaredFuncUse { stmt_index, func } => write!(
                 f,
-                "Use of an undeclared function {} on stmt {}",
-                func, stmt_index
+                "Use of an undeclared function {} on input {}",
+                func,
+                stmt_index + 1,
             ),
         }
     }
 }
 
 impl error::Error for ResolveError {}
-
-/// A type-checking error.
-#[derive(Debug, PartialEq)]
-pub enum TypecheckError {}
-
-impl fmt::Display for TypecheckError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TypecheckError")
-    }
-}
-
-impl error::Error for TypecheckError {}
 
 /// A dynamic func error.
 #[derive(Debug)]
@@ -120,6 +128,17 @@ pub enum RuntimeError {
     },
 }
 
+impl RuntimeError {
+    pub fn stmt_index(&self) -> usize {
+        match self {
+            RuntimeError::ArgCountMismatch { stmt_index, .. } => *stmt_index,
+            RuntimeError::ArgTyMismatch { stmt_index, .. } => *stmt_index,
+            RuntimeError::ReturnTyMismatch { stmt_index, .. } => *stmt_index,
+            RuntimeError::Func { stmt_index, .. } => *stmt_index,
+        }
+    }
+}
+
 impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -130,11 +149,11 @@ impl fmt::Display for RuntimeError {
                 args_provided,
             } => write!(
                 f,
-                "Function {} declared with {} params, but provided with {} args on stmt {}",
+                "Function {} declared with {} params, but provided with {} args on input {}",
                 call.ident(),
                 args_expected,
                 args_provided,
-                stmt_index,
+                stmt_index + 1,
             ),
             RuntimeError::ArgTyMismatch {
                 stmt_index,
@@ -144,12 +163,12 @@ impl fmt::Display for RuntimeError {
                 ty_provided,
             } => write!(
                 f,
-                "Function {} declared to take param (optional={}) type {}, but given {} on stmt {}",
+                "Function {} declared to take param (optional={}) type {}, but given {} on input {}",
                 call.ident(),
                 optional,
                 ty_expected,
                 ty_provided,
-                stmt_index,
+                stmt_index + 1,
             ),
             RuntimeError::ReturnTyMismatch {
                 stmt_index,
@@ -158,11 +177,11 @@ impl fmt::Display for RuntimeError {
                 ty_provided,
             } => write!(
                 f,
-                "Function {} declared to return type {}, but returned {} on stmt {}",
+                "Function {} declared to return type {}, but returned {} on input {}",
                 call.ident(),
                 ty_expected,
                 ty_provided,
-                stmt_index,
+                stmt_index + 1,
             ),
             RuntimeError::Func {
                 stmt_index,
@@ -170,10 +189,10 @@ impl fmt::Display for RuntimeError {
                 func_error,
             } => write!(
                 f,
-                "Function {} errored with \"{}\" on stmt {}",
+                "Function {} errored with \"{}\" on input {}",
                 call.ident(),
                 func_error,
-                stmt_index,
+                stmt_index + 1,
             ),
         }
     }
@@ -185,15 +204,22 @@ impl error::Error for RuntimeError {}
 #[derive(Debug, PartialEq)]
 pub enum InterpretError {
     Resolve(ResolveError),
-    Typecheck(TypecheckError),
     Runtime(RuntimeError),
+}
+
+impl InterpretError {
+    pub fn stmt_index(&self) -> usize {
+        match self {
+            InterpretError::Resolve(resolve_error) => resolve_error.stmt_index(),
+            InterpretError::Runtime(runtime_error) => runtime_error.stmt_index(),
+        }
+    }
 }
 
 impl fmt::Display for InterpretError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             InterpretError::Resolve(resolve_error) => f.write_str(&resolve_error.to_string()),
-            InterpretError::Typecheck(typecheck_error) => f.write_str(&typecheck_error.to_string()),
             InterpretError::Runtime(runtime_error) => f.write_str(&runtime_error.to_string()),
         }
     }
@@ -207,24 +233,71 @@ impl From<ResolveError> for InterpretError {
     }
 }
 
-impl From<TypecheckError> for InterpretError {
-    fn from(typecheck_error: TypecheckError) -> InterpretError {
-        InterpretError::Typecheck(typecheck_error)
-    }
-}
-
 impl From<RuntimeError> for InterpretError {
     fn from(runtime_error: RuntimeError) -> InterpretError {
         InterpretError::Runtime(runtime_error)
     }
 }
 
-pub type InterpretResult = Result<ValueSet, InterpretError>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogMessageLevel {
+    Info,
+    #[allow(dead_code)]
+    Warn,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogMessage {
+    pub level: LogMessageLevel,
+    pub message: Cow<'static, str>,
+}
+
+impl LogMessage {
+    pub fn info<S: Into<Cow<'static, str>>>(message: S) -> Self {
+        Self {
+            level: LogMessageLevel::Info,
+            message: message.into(),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn warn<S: Into<Cow<'static, str>>>(message: S) -> Self {
+        Self {
+            level: LogMessageLevel::Warn,
+            message: message.into(),
+        }
+    }
+
+    pub fn error<S: Into<Cow<'static, str>>>(message: S) -> Self {
+        Self {
+            level: LogMessageLevel::Error,
+            message: message.into(),
+        }
+    }
+}
+
+/// The resulting state of the interpreter after interpreting.
+#[derive(Debug, PartialEq)]
+pub struct InterpretOutcome {
+    /// The result of interpreting. Either a value containing the
+    /// state of variables, or the error on which the interpreting
+    /// failed.
+    pub result: Result<InterpretValue, InterpretError>,
+
+    /// The program counter - index of the statement the interpreter
+    /// would execute next.
+    pub pc: usize,
+
+    /// The log messages for each statement. The vector has the same
+    /// length as the interpreted program.
+    pub log_messages: Vec<Vec<LogMessage>>,
+}
 
 /// The state of variable values as captured by interpreting up to a
 /// certain point in a program.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ValueSet {
+pub struct InterpretValue {
     /// The value of the last executed statement. `None` if no
     /// statement was executed.
     pub last_value: Option<Value>,
@@ -258,10 +331,16 @@ struct VarInfo {
 pub struct Interpreter {
     prog: ast::Prog,
     funcs: BTreeMap<FuncIdent, Box<dyn Func>>,
+
+    /// The environment (scope) of the program's memory. Every
+    /// variable's value is looked up here.
     env: HashMap<VarIdent, VarInfo>,
 
-    /// The program counter. Always points to the **next** stmt to execute.
-    pc: usize,
+    /// The log messages output by functions. The outer vector has the
+    /// same length as the program and is indexed by the same
+    /// statement index. Log messages are always cleared before
+    /// interpreting. This is just to keep the vector warm.
+    log_messages: Vec<Vec<LogMessage>>,
 
     /// The number of changes to the program since the interpreter was
     /// created. Incremented with each program modification.
@@ -278,7 +357,7 @@ impl Interpreter {
             prog: ast::Prog::default(),
             funcs,
             env: HashMap::new(),
-            pc: 0,
+            log_messages: Vec::new(),
             epoch: 0,
             last_resolve_epoch: 0,
         }
@@ -290,22 +369,28 @@ impl Interpreter {
     }
 
     pub fn set_prog(&mut self, prog: ast::Prog) {
-        self.env.clear();
-        self.pc = 0;
-        self.epoch += 1;
         self.prog = prog;
+
+        self.env.clear();
+        self.log_messages
+            .resize_with(self.prog.stmts().len(), Vec::new);
+
+        self.epoch += 1;
     }
 
     pub fn clear_prog(&mut self) {
-        self.env.clear();
-        self.pc = 0;
-        self.epoch += 1;
         self.prog = ast::Prog::default();
+
+        self.env.clear();
+        self.log_messages.clear();
+
+        self.epoch += 1;
     }
 
     pub fn push_prog_stmt(&mut self, stmt: ast::Stmt) {
-        self.epoch += 1;
         self.prog.push_stmt(stmt);
+        self.log_messages.push(Vec::new());
+        self.epoch += 1;
     }
 
     pub fn pop_prog_stmt(&mut self) {
@@ -314,15 +399,9 @@ impl Interpreter {
             "Program must not be empty when popping"
         );
 
-        // If we already executed everything we had so far, decrement
-        // the program counter to mark the stmt for re-execution.
-        if self.pc == self.prog.stmts().len() {
-            self.pc -= 1;
-            assert_eq!(self.pc, self.prog.stmts().len() - 1);
-        }
-
-        self.epoch += 1;
         self.prog.pop_stmt();
+        self.log_messages.pop();
+        self.epoch += 1;
     }
 
     #[allow(dead_code)]
@@ -331,14 +410,8 @@ impl Interpreter {
     }
 
     pub fn set_prog_stmt_at(&mut self, index: usize, stmt: ast::Stmt) {
-        // Mark the stmt and everything following it for re-execution,
-        // if we already executed that far
-        if self.pc > index {
-            self.pc = index;
-        }
-
         self.prog.set_stmt_at(index, stmt);
-
+        self.log_messages[index].clear();
         self.epoch += 1;
     }
 
@@ -392,15 +465,9 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn typecheck(&mut self) -> Result<(), TypecheckError> {
-        // FIXME: @Diagnostics Implement type-checking
-
-        Ok(())
-    }
-
     /// Interprets the whole currently set program and returns the
     /// used/unused values after the last statement.
-    pub fn interpret(&mut self) -> InterpretResult {
+    pub fn interpret(&mut self) -> InterpretOutcome {
         self.interpret_up_until(self.prog.stmts().len().saturating_sub(1))
     }
 
@@ -410,38 +477,55 @@ impl Interpreter {
     ///
     /// If the program does not contain enough statements, interprets
     /// the program up until the end.
-    pub fn interpret_up_until(&mut self, mut index: usize) -> InterpretResult {
+    pub fn interpret_up_until(&mut self, mut index: usize) -> InterpretOutcome {
         if self.prog.stmts().is_empty() {
-            return Ok(ValueSet {
-                last_value: None,
-                used_values: Vec::new(),
-                unused_values: Vec::new(),
-            });
+            return InterpretOutcome {
+                result: Ok(InterpretValue {
+                    last_value: None,
+                    used_values: Vec::new(),
+                    unused_values: Vec::new(),
+                }),
+                pc: 0,
+                log_messages: vec![Vec::new(); self.log_messages.len()],
+            };
         }
 
-        self.resolve()?;
-        self.typecheck()?;
+        if let Err(err) = self.resolve() {
+            return InterpretOutcome {
+                result: Err(InterpretError::from(err)),
+                pc: 0,
+                log_messages: vec![Vec::new(); self.log_messages.len()],
+            };
+        }
+
+        // FIXME: @Diagnostics Implement type-checking
 
         index = cmp::min(index, self.prog.stmts().len().saturating_sub(1));
 
-        log::debug!("PC before invalidation: {}", self.pc);
         self.invalidate();
-
-        log::debug!("PC before evaluation: {}", self.pc);
-        if self.pc <= index {
-            // Run remaining operations, write results to vars
-            let range_start = self.pc;
-            let range = self.pc..=index;
-
-            for (stmt_index_offset, stmt) in self.prog.stmts()[range].iter().enumerate() {
-                let stmt_index = range_start + stmt_index_offset;
-                eval_stmt(stmt_index, stmt, &mut self.funcs, &mut self.env)?;
-                self.pc += 1;
-            }
-
-            assert_eq!(self.pc, index + 1);
+        for log_messages in &mut self.log_messages {
+            log_messages.clear();
         }
-        log::debug!("PC after evaluation: {}", self.pc);
+
+        log::debug!("Starting program evaluation with PC: 0");
+
+        for (stmt_index, stmt) in self.prog.stmts()[0..=index].iter().enumerate() {
+            if let Err(err) = eval_stmt(
+                stmt_index,
+                stmt,
+                &mut self.funcs,
+                &mut self.env,
+                &mut self.log_messages,
+            ) {
+                return InterpretOutcome {
+                    result: Err(InterpretError::from(err)),
+                    pc: stmt_index + 1,
+                    log_messages: self.log_messages.clone(),
+                };
+            }
+        }
+
+        log::debug!("Ended program evaluation with PC: {}", index + 1);
 
         let unused_vars = self.compute_unused_vars_up_until(index);
         let last_value = match &self.prog.stmts()[index] {
@@ -477,11 +561,15 @@ impl Interpreter {
             }
         }
 
-        Ok(ValueSet {
-            last_value: Some(last_value),
-            used_values,
-            unused_values,
-        })
+        InterpretOutcome {
+            result: Ok(InterpretValue {
+                last_value: Some(last_value),
+                used_values,
+                unused_values,
+            }),
+            pc: index + 1,
+            log_messages: self.log_messages.clone(),
+        }
     }
 
     /// Computes a set of variable identifiers that would be unused,
@@ -513,7 +601,7 @@ impl Interpreter {
         unused_vars
     }
 
-    /// Invalidate variables in the environment.
+    /// Invalidates variables in the environment.
     ///
     /// Verify all variables we have computed already, invalidating
     /// all that could have possibly changed since last execution.
@@ -522,13 +610,6 @@ impl Interpreter {
     /// the fact that any dependency must come before its dependents
     /// in the examined statements due to the serialized nature of the
     /// program.
-    ///
-    /// If we invalidate any variable, we will have to reset our
-    /// program counter to the statement declaring the earliest
-    /// variable we cleared, once again taking advantage of the
-    /// program's serialized form. Cached variables will be skipped
-    /// over during evaluation though, so this does not generate a lot
-    /// of extra work.
     ///
     /// There are 3 types of variable invalidation:
     ///
@@ -539,13 +620,15 @@ impl Interpreter {
     /// 3) Dependency invalidation: variables referenced in the
     ///    parameters have have been invalidated.
     fn invalidate(&mut self) {
+        // FIXME: We'd like to have this return an execution plan so
+        // that we don't necessarily try to execute stmts only to find
+        // that we already have the results in cache.
+
         // FIXME: This is still very pessimistic, we should support an
         // incremental computation model with fact verification a-lá
         // salsa. https://github.com/salsa-rs/salsa
 
-        let mut new_pc = None;
-
-        for (i, stmt) in self.prog.stmts().iter().enumerate() {
+        for stmt in self.prog.stmts() {
             match stmt {
                 ast::Stmt::VarDecl(var_decl) => {
                     let var_ident = var_decl.ident();
@@ -556,11 +639,7 @@ impl Interpreter {
 
                     if !self.funcs[&func_ident].flags().contains(FuncFlags::PURE) {
                         log::debug!("Performing impurity invalidation of {}", var_ident);
-
                         self.env.remove(&var_ident);
-                        if new_pc.is_none() {
-                            new_pc = Some(i);
-                        }
 
                         continue;
                     }
@@ -573,11 +652,7 @@ impl Interpreter {
 
                         if created_call != init_expr {
                             log::debug!("Performing definition invalidation of {}", var_ident);
-
                             occupied.remove_entry();
-                            if new_pc.is_none() {
-                                new_pc = Some(i);
-                            }
 
                             continue;
                         }
@@ -589,28 +664,13 @@ impl Interpreter {
                         if let ast::Expr::Var(var) = expr {
                             if !self.env.contains_key(&var.ident()) {
                                 log::debug!("Performing dependency invalidation of {}", var_ident);
-
                                 self.env.remove(&var_ident);
-                                if new_pc.is_none() {
-                                    new_pc = Some(i);
-                                }
 
                                 break;
                             }
                         }
                     }
                 }
-            }
-        }
-
-        if let Some(pc) = new_pc {
-            if pc < self.pc {
-                log::debug!(
-                    "Resetting PC after invalidation ({} -> {}) to re-compute vars",
-                    self.pc,
-                    pc,
-                );
-                self.pc = pc;
             }
         }
     }
@@ -621,21 +681,45 @@ fn eval_stmt(
     stmt: &ast::Stmt,
     funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
+    log_messages: &mut [Vec<LogMessage>],
 ) -> Result<(), RuntimeError> {
     let time_start = Instant::now();
     log::debug!("Evaluating stmt {}: {}", stmt_index, stmt);
 
     let result = match stmt {
-        ast::Stmt::VarDecl(var_decl) => eval_var_decl_stmt(stmt_index, var_decl, funcs, env),
+        ast::Stmt::VarDecl(var_decl) => {
+            eval_var_decl_stmt(stmt_index, var_decl, funcs, env, &mut |message| {
+                log_messages[stmt_index].push(message);
+            })
+        }
     };
 
-    log::debug!(
-        "Evaluation of stmt {} took {}ms",
-        stmt_index,
-        time_start.elapsed().as_secs_f32() * 1000.0,
-    );
+    let elapsed_ms = time_start.elapsed().as_secs_f32() * 1000.0;
+    log::debug!("Evaluation of stmt {} took {:.2}ms", stmt_index, elapsed_ms);
 
-    result
+    match result {
+        Ok(cached) => {
+            if cached {
+                log_messages[stmt_index].push(LogMessage::info(format!(
+                    ">>> Taken from cache ({:.2}ms)",
+                    elapsed_ms,
+                )));
+            } else {
+                log_messages[stmt_index]
+                    .push(LogMessage::info(format!(">>> Took {:.2}ms", elapsed_ms)));
+            }
+
+            Ok(())
+        }
+        Err(err) => {
+            log_messages[stmt_index].push(LogMessage::error(format!(
+                ">>> Errored after {:.2}ms",
+                elapsed_ms,
+            )));
+
+            Err(err)
+        }
+    }
 }
 
 fn eval_var_decl_stmt(
@@ -643,7 +727,8 @@ fn eval_var_decl_stmt(
     var_decl: &ast::VarDeclStmt,
     funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
-) -> Result<(), RuntimeError> {
+    log: &mut dyn FnMut(LogMessage),
+) -> Result<bool, RuntimeError> {
     let var_ident = var_decl.ident();
 
     // This is a false positive. Bad Clippy, bad! Rewriting the code
@@ -660,9 +745,11 @@ fn eval_var_decl_stmt(
 
     #[allow(clippy::map_entry)]
     {
-        if !env.contains_key(&var_ident) {
+        if env.contains_key(&var_ident) {
+            Ok(true)
+        } else {
             let init_expr = var_decl.init_expr();
-            let value = eval_call_expr(stmt_index, init_expr, funcs, env)?;
+            let value = eval_call_expr(stmt_index, init_expr, funcs, env, log)?;
 
             env.insert(
                 var_ident,
@@ -671,10 +758,10 @@ fn eval_var_decl_stmt(
                     value,
                 },
             );
+
+            Ok(false)
         }
     }
-
-    Ok(())
 }
 
 fn eval_expr(
@@ -717,6 +804,7 @@ fn eval_call_expr(
     call: &ast::CallExpr,
     funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
     env: &mut HashMap<VarIdent, VarInfo>,
+    log: &mut dyn FnMut(LogMessage),
 ) -> Result<Value, RuntimeError> {
     // FIXME: @Diagnostics use the func name and the param names in
     // the reported errors
@@ -759,8 +847,7 @@ fn eval_call_expr(
         }
     }
 
-    let result = func.call(&args);
-    match result {
+    match func.call(&args, log) {
         Ok(value) => {
             let return_ty = func.return_ty();
             let value_ty = value.ty();
@@ -773,6 +860,7 @@ fn eval_call_expr(
                     ty_provided: value_ty,
                 });
             }
+
             Ok(value)
         }
         Err(func_error) => Err(RuntimeError::Func {
@@ -849,7 +937,11 @@ mod tests {
             self.return_ty
         }
 
-        fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
+        fn call(
+            &mut self,
+            values: &[Value],
+            _log: &mut dyn FnMut(LogMessage),
+        ) -> Result<Value, FuncError> {
             (self.func)(values)
         }
     }
@@ -900,7 +992,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
@@ -927,7 +1019,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
@@ -954,7 +1046,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
@@ -981,7 +1073,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
@@ -1027,7 +1119,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
@@ -1073,7 +1165,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
@@ -1086,16 +1178,19 @@ mod tests {
         let mut interpreter = Interpreter::new(BTreeMap::new());
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let interpret_outcome = interpreter.interpret();
         assert_eq!(
-            value,
-            ValueSet {
-                last_value: None,
-                used_values: Vec::new(),
-                unused_values: Vec::new(),
+            interpret_outcome,
+            InterpretOutcome {
+                result: Ok(InterpretValue {
+                    last_value: None,
+                    used_values: Vec::new(),
+                    unused_values: Vec::new(),
+                }),
+                pc: 0,
+                log_messages: Vec::new(),
             },
         );
-        assert_eq!(interpreter.pc, 0);
     }
 
     #[test]
@@ -1105,16 +1200,19 @@ mod tests {
         let mut interpreter = Interpreter::new(BTreeMap::new());
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret_up_until(0).unwrap();
+        let interpret_outcome = interpreter.interpret_up_until(0);
         assert_eq!(
-            value,
-            ValueSet {
-                last_value: None,
-                used_values: Vec::new(),
-                unused_values: Vec::new(),
+            interpret_outcome,
+            InterpretOutcome {
+                result: Ok(InterpretValue {
+                    last_value: None,
+                    used_values: Vec::new(),
+                    unused_values: Vec::new(),
+                }),
+                pc: 0,
+                log_messages: Vec::new(),
             },
         );
-        assert_eq!(interpreter.pc, 0);
     }
 
     #[test]
@@ -1140,12 +1238,13 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret_up_until(1).unwrap();
+        let interpret_outcome = interpreter.interpret_up_until(1);
+        let value = interpret_outcome.result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
         // The PC must have stayed pointed at 1st stmt, even though it
         // would normally point to 2nd, because we executed less
         // statements than what was requested.
-        assert_eq!(interpreter.pc, 1);
+        assert_eq!(interpret_outcome.pc, 1);
     }
 
     #[test]
@@ -1177,7 +1276,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret_up_until(0).unwrap();
+        let value = interpreter.interpret_up_until(0).result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
     }
 
@@ -1212,10 +1311,10 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
         assert_eq!(n_calls.get(), 1);
     }
@@ -1249,10 +1348,10 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
         assert_eq!(n_calls.get(), 2);
     }
@@ -1301,7 +1400,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         // Change the args but not the func
@@ -1319,7 +1418,7 @@ mod tests {
             )),
         );
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(false)));
         assert_eq!(n_calls.get(), 2);
     }
@@ -1393,7 +1492,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         // Change the func but not the args
@@ -1411,7 +1510,7 @@ mod tests {
             )),
         );
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         assert_eq!(n_calls1.get(), 1);
@@ -1472,10 +1571,10 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Boolean(true)));
 
         assert_eq!(n_calls1.get(), 2);
@@ -1483,43 +1582,6 @@ mod tests {
     }
 
     // FIXME: Prog manipulation tests
-
-    #[test]
-    fn test_interpreter_set_prog_stmt_does_not_advance_pc_to_unexecuted_stmts() {
-        let func_id = FuncIdent(0);
-        let prog = ast::Prog::new(vec![
-            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                VarIdent(0),
-                ast::CallExpr::new(func_id, vec![]),
-            )),
-            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                VarIdent(1),
-                ast::CallExpr::new(func_id, vec![]),
-            )),
-        ]);
-
-        let mut interpreter = Interpreter::new(BTreeMap::new());
-        interpreter.set_prog(prog);
-        assert_eq!(interpreter.pc, 0);
-
-        interpreter.set_prog_stmt_at(
-            0,
-            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                VarIdent(0),
-                ast::CallExpr::new(func_id, vec![]),
-            )),
-        );
-        assert_eq!(interpreter.pc, 0);
-
-        interpreter.set_prog_stmt_at(
-            1,
-            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                VarIdent(0),
-                ast::CallExpr::new(func_id, vec![]),
-            )),
-        );
-        assert_eq!(interpreter.pc, 0);
-    }
 
     // Name resolution tests
 
@@ -1552,7 +1614,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
         assert_eq!(
             err,
             InterpretError::from(ResolveError::VarRedefinition {
@@ -1588,7 +1650,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
         assert_eq!(
             err,
             InterpretError::from(ResolveError::UndeclaredVarUse {
@@ -1626,7 +1688,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
         assert_eq!(
             err,
             InterpretError::from(ResolveError::UndeclaredVarUse {
@@ -1670,7 +1732,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
         assert_eq!(
             err,
             InterpretError::from(ResolveError::UndeclaredVarUse {
@@ -1691,7 +1753,7 @@ mod tests {
         let mut interpreter = Interpreter::new(BTreeMap::new());
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
         assert_eq!(
             err,
             InterpretError::from(ResolveError::UndeclaredFuncUse {
@@ -1735,7 +1797,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
         assert_eq!(
             err,
             InterpretError::from(RuntimeError::ArgCountMismatch {
@@ -1771,7 +1833,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
         assert_eq!(
             err,
             InterpretError::from(RuntimeError::ArgTyMismatch {
@@ -1811,7 +1873,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let value = interpreter.interpret().result.unwrap();
         assert_eq!(value.last_value, Some(Value::Float(1.0)));
     }
 
@@ -1842,7 +1904,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
         assert_eq!(
             err,
             InterpretError::from(RuntimeError::ArgTyMismatch {
@@ -1874,7 +1936,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
         assert_eq!(
             err,
             InterpretError::from(RuntimeError::ReturnTyMismatch {
@@ -1886,7 +1948,7 @@ mod tests {
         );
     }
 
-    // Func runtime erorrs tests
+    // Func runtime errors tests
 
     #[test]
     fn test_interpreter_interpret_single_func_runtime_error() {
@@ -1923,7 +1985,7 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let err = interpreter.interpret().unwrap_err();
+        let err = interpreter.interpret().result.unwrap_err();
 
         match err {
             InterpretError::Runtime(RuntimeError::Func {
@@ -1944,10 +2006,10 @@ mod tests {
         }
     }
 
-    // ValueSet tests
+    // InterpretOutcome tests
 
     #[test]
-    fn test_interpreter_interpret_value_set() {
+    fn test_interpreter_interpret_outcome() {
         let (func_id, func) = (
             FuncIdent(0),
             TestFunc::new(
@@ -1992,10 +2054,10 @@ mod tests {
         let mut interpreter = Interpreter::new(funcs);
         interpreter.set_prog(prog);
 
-        let value = interpreter.interpret().unwrap();
+        let interpret_outcome = interpreter.interpret();
         assert_eq!(
-            value,
-            ValueSet {
+            interpret_outcome.result,
+            Ok(InterpretValue {
                 last_value: Some(Value::Float(8.0)),
                 used_values: vec![
                     (VarIdent(0), Value::Float(2.0)),
@@ -2005,7 +2067,9 @@ mod tests {
                     (VarIdent(2), Value::Float(8.0)),
                     (VarIdent(3), Value::Float(8.0)),
                 ],
-            }
+            }),
         );
+        assert_eq!(interpret_outcome.pc, 4);
+        assert_eq!(interpret_outcome.log_messages.len(), 4);
     }
 }

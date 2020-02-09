@@ -1,11 +1,12 @@
+use std::cell::RefCell;
 use std::f32;
 use std::sync::Arc;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
 use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
-use crate::interpreter::ast;
-use crate::interpreter::{ParamRefinement, Ty};
+use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
+use crate::notifications::{NotificationLevel, Notifications};
 use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
@@ -18,6 +19,13 @@ const MARGIN: f32 = 10.0;
 pub enum Theme {
     Dark,
     Funky,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScreenshotOptions {
+    pub width: u32,
+    pub height: u32,
+    pub transparent: bool,
 }
 
 struct FontIds {
@@ -33,6 +41,21 @@ struct Colors {
     combo_box_selected_item: [f32; 4],
     combo_box_selected_item_hovered: [f32; 4],
     combo_box_selected_item_active: [f32; 4],
+    log_message_info: [f32; 4],
+    log_message_warn: [f32; 4],
+    log_message_error: [f32; 4],
+    header_error: [f32; 4],
+    header_error_hovered: [f32; 4],
+}
+
+#[derive(Debug, Default)]
+struct NotificationsState {
+    notifications_count: usize,
+}
+
+#[derive(Debug, Default)]
+struct ConsoleState {
+    message_count: usize,
 }
 
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
@@ -42,6 +65,13 @@ pub struct Ui {
     imgui_winit_platform: WinitPlatform,
     font_ids: FontIds,
     colors: Colors,
+    notifications_state: RefCell<NotificationsState>,
+    console_state: RefCell<Vec<ConsoleState>>,
+
+    /// A preallocated string buffer used for imgui strings in the
+    /// UI. Every user of this buffer has the responsibility to clear
+    /// it afterwards.
+    global_imstring_buffer: RefCell<imgui::ImString>,
 }
 
 impl Ui {
@@ -57,6 +87,11 @@ impl Ui {
             combo_box_selected_item: style[imgui::StyleColor::Header],
             combo_box_selected_item_hovered: style[imgui::StyleColor::HeaderHovered],
             combo_box_selected_item_active: style[imgui::StyleColor::HeaderActive],
+            log_message_info: [0.70, 0.70, 0.70, 1.0],
+            log_message_warn: [0.80, 0.80, 0.05, 1.0],
+            log_message_error: [1.0, 0.15, 0.05, 1.0],
+            header_error: [0.85, 0.15, 0.05, 0.4],
+            header_error_hovered: [1.00, 0.15, 0.05, 0.4],
         };
 
         style.window_padding = [4.0, 4.0];
@@ -133,9 +168,15 @@ impl Ui {
             colors.special_button = light_transparent;
             colors.special_button_hovered = blue_transparent;
             colors.special_button_active = blue_transparent;
+
             colors.combo_box_selected_item = light;
             colors.combo_box_selected_item_hovered = orange_light;
             colors.combo_box_selected_item_active = orange_dark;
+
+            colors.log_message_warn = [0.90, 0.75, 0.05, 1.0];
+
+            colors.header_error = [0.9, 0.0, 0.0, 0.2];
+            colors.header_error_hovered = [1.0, 0.0, 0.0, 0.3];
         }
 
         imgui_context.set_ini_filename(None);
@@ -172,6 +213,9 @@ impl Ui {
                 bold: bold_font_id,
             },
             colors,
+            console_state: RefCell::new(Vec::new()),
+            notifications_state: RefCell::new(NotificationsState::default()),
+            global_imstring_buffer: RefCell::new(imgui::ImString::with_capacity(1024)),
         }
     }
 
@@ -198,6 +242,9 @@ impl Ui {
             imgui_ui: self.imgui_context.frame(),
             font_ids: &self.font_ids,
             colors: &self.colors,
+            console_state: &self.console_state,
+            notifications_state: &self.notifications_state,
+            global_imstring_buffer: &self.global_imstring_buffer,
         }
     }
 
@@ -213,6 +260,9 @@ pub struct UiFrame<'a> {
     imgui_ui: imgui::Ui<'a>,
     font_ids: &'a FontIds,
     colors: &'a Colors,
+    console_state: &'a RefCell<Vec<ConsoleState>>,
+    notifications_state: &'a RefCell<NotificationsState>,
+    global_imstring_buffer: &'a RefCell<imgui::ImString>,
 }
 
 impl<'a> UiFrame<'a> {
@@ -230,18 +280,175 @@ impl<'a> UiFrame<'a> {
         self.imgui_ui.render()
     }
 
-    pub fn draw_viewport_settings_window(&self, draw_mode: &mut DrawMeshMode) -> bool {
+    pub fn draw_screenshot_window(
+        &self,
+        screenshot_modal_open: &mut bool,
+        screenshot_options: &mut ScreenshotOptions,
+        viewport_width: u32,
+        viewport_height: u32,
+    ) -> bool {
+        let ui = &self.imgui_ui;
+
+        let window_name = imgui::im_str!("Screenshot");
+        if *screenshot_modal_open {
+            ui.open_popup(window_name);
+        }
+
+        let mut take_screenshot_clicked = false;
+
+        let viewport_width_f32 = viewport_width as f32;
+        let viewport_height_f32 = viewport_height as f32;
+        let mut viewport_scale = [
+            screenshot_options.width as f32 / viewport_width_f32,
+            screenshot_options.height as f32 / viewport_height_f32,
+        ];
+
+        let bold_font_token = ui.push_font(self.font_ids.bold);
+        ui.popup_modal(window_name)
+            .opened(screenshot_modal_open)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .always_auto_resize(true)
+            .build(|| {
+                let regular_font_token = ui.push_font(self.font_ids.regular);
+
+                let mut dimensions = [
+                    clamp_cast_u32_to_i32(screenshot_options.width),
+                    clamp_cast_u32_to_i32(screenshot_options.height),
+                ];
+
+                if ui
+                    .input_int2(imgui::im_str!("Dimensions"), &mut dimensions)
+                    .build()
+                {
+                    screenshot_options.width = clamp_cast_i32_to_u32(dimensions[0]);
+                    screenshot_options.height = clamp_cast_i32_to_u32(dimensions[1]);
+                }
+
+                if ui
+                    .input_float2(imgui::im_str!("Scale"), &mut viewport_scale)
+                    .build()
+                {
+                    screenshot_options.width = clamp_cast_i32_to_u32(
+                        (viewport_width_f32 * viewport_scale[0]).round() as i32,
+                    );
+                    screenshot_options.height = clamp_cast_i32_to_u32(
+                        (viewport_height_f32 * viewport_scale[1]).round() as i32,
+                    );
+                }
+
+                ui.checkbox(
+                    imgui::im_str!("Transparent"),
+                    &mut screenshot_options.transparent,
+                );
+
+                ui.text(imgui::im_str!(
+                    "Attempting to take screenshots may crash the program."
+                ));
+                ui.text(imgui::im_str!("Be sure to save your work."));
+
+                if ui.button(imgui::im_str!("Take Screenshot"), [0.0, 0.0]) {
+                    take_screenshot_clicked = true;
+                }
+
+                regular_font_token.pop(ui);
+            });
+        bold_font_token.pop(ui);
+
+        if take_screenshot_clicked {
+            *screenshot_modal_open = false;
+        }
+
+        take_screenshot_clicked
+    }
+
+    pub fn draw_notifications_window(&self, notifications: &Notifications) {
+        let notifications_count = notifications.iter().count();
+        if notifications_count == 0 {
+            self.notifications_state.borrow_mut().notifications_count = 0;
+            return;
+        }
+
+        let ui = &self.imgui_ui;
+
+        const NOTIFICATIONS_WINDOW_WIDTH: f32 = 400.0;
+        const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.12;
+
+        let window_logical_size = ui.io().display_size;
+        let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
+        let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
+
+        let notifications_window_height =
+            window_inner_height * NOTIFICATIONS_WINDOW_HEIGHT_MULT - MARGIN;
+        let notifications_window_vertical_position =
+            MARGIN * 2.0 + (1.0 - NOTIFICATIONS_WINDOW_HEIGHT_MULT) * window_inner_height;
+
+        let color_token = ui.push_style_colors(&[
+            (imgui::StyleColor::Border, [0.0, 0.0, 0.0, 0.1]),
+            (imgui::StyleColor::WindowBg, [0.0, 0.0, 0.0, 0.1]),
+        ]);
+
+        imgui::Window::new(imgui::im_str!("Notifications"))
+            .title_bar(false)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .size(
+                [NOTIFICATIONS_WINDOW_WIDTH, notifications_window_height],
+                imgui::Condition::Always,
+            )
+            .position(
+                [
+                    window_inner_width + MARGIN - NOTIFICATIONS_WINDOW_WIDTH,
+                    notifications_window_vertical_position,
+                ],
+                imgui::Condition::Always,
+            )
+            .build(ui, || {
+                for notification in notifications.iter() {
+                    let text_color_token = match notification.level {
+                        NotificationLevel::Info => ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_info,
+                        ),
+                        NotificationLevel::Warn => ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_warn,
+                        ),
+                    };
+
+                    ui.text_wrapped(&imgui::im_str!("{}", notification.text));
+
+                    text_color_token.pop(ui);
+                }
+
+                let mut notifications_state = self.notifications_state.borrow_mut();
+                if notifications_count != notifications_state.notifications_count {
+                    notifications_state.notifications_count = notifications_count;
+                    ui.set_scroll_here_y();
+                }
+            });
+
+        color_token.pop(ui);
+    }
+
+    pub fn draw_viewport_settings_window(
+        &self,
+        screenshot_modal_open: &mut bool,
+        draw_mode: &mut DrawMeshMode,
+    ) -> bool {
         let ui = &self.imgui_ui;
 
         const VIEWPORT_WINDOW_WIDTH: f32 = 150.0;
-        const VIEWPORT_WINDOW_HEIGHT: f32 = 150.0;
+        const VIEWPORT_WINDOW_HEIGHT: f32 = 170.0;
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
         let mut reset_viewport_clicked = false;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
-        imgui::Window::new(imgui::im_str!("Viewport Settings"))
+        imgui::Window::new(imgui::im_str!("Viewport"))
             .movable(false)
             .resizable(false)
             .collapsible(false)
@@ -270,7 +477,13 @@ impl<'a> UiFrame<'a> {
                     DrawMeshMode::ShadedEdgesXray,
                 );
 
-                reset_viewport_clicked = ui.button(imgui::im_str!("Reset Viewport"), [0.0, 0.0]);
+                reset_viewport_clicked =
+                    ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
+
+                if ui.button(imgui::im_str!("Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
+                    *screenshot_modal_open = true;
+                }
+
                 regular_font_token.pop(ui);
             });
         bold_font_token.pop(ui);
@@ -278,8 +491,16 @@ impl<'a> UiFrame<'a> {
         reset_viewport_clicked
     }
 
+    // FIXME: @Refactoring Refactor this once we have full-featured
+    // functionality. Until then, this is exploratory code and we
+    // don't care.
+    #[allow(clippy::cognitive_complexity)]
     pub fn draw_pipeline_window(&self, session: &mut Session) {
         let ui = &self.imgui_ui;
+        self.console_state
+            .borrow_mut()
+            .resize_with(session.stmts().len(), Default::default);
+
         let function_table = session.function_table();
 
         const PIPELINE_WINDOW_WIDTH: f32 = 400.0;
@@ -292,9 +513,6 @@ impl<'a> UiFrame<'a> {
 
         let interpreter_busy = session.interpreter_busy();
         let mut change = None;
-
-        // FIXME: @Optimization Try to not allocate this every frame.
-        let mut imstring_buffer = imgui::ImString::with_capacity(256);
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Pipeline"))
@@ -312,7 +530,18 @@ impl<'a> UiFrame<'a> {
                             let func_ident = call_expr.ident();
                             let func = &function_table[&func_ident];
 
-                            if ui
+                            let error = session.error_at_stmt(stmt_index);
+                            let error_color_token = if error.is_some() {
+                                Some(ui.push_style_colors(&[
+                                    (imgui::StyleColor::Header, self.colors.header_error),
+                                    (imgui::StyleColor::HeaderHovered, self.colors.header_error_hovered),
+                                    (imgui::StyleColor::HeaderActive, self.colors.header_error_hovered),
+                                ]))
+                            } else {
+                                None
+                            };
+
+                            let collapsing_header_open = ui
                                 .collapsing_header(&imgui::im_str!(
                                     "#{} {} ##{}",
                                     stmt_index + 1,
@@ -320,8 +549,35 @@ impl<'a> UiFrame<'a> {
                                     stmt_index
                                 ))
                                 .default_open(true)
-                                .build()
-                            {
+                                .build();
+
+                            if ui.is_item_hovered() {
+                                if let Some(error) = error {
+                                    ui.tooltip(|| {
+                                        let mut imstring_buffer = self.global_imstring_buffer
+                                            .borrow_mut();
+
+                                        // FIXME: @Optimization don't allocate intermediate
+                                        // string and use `write!` once imgui-rs implements
+                                        // `io::Write` for `ImString`.
+                                        // https://github.com/Gekkio/imgui-rs/issues/290
+                                        imstring_buffer.push_str(&error.to_string());
+
+                                        ui.text_colored(
+                                            [1.0, 0.0, 0.0, 1.0],
+                                            &*imstring_buffer,
+                                        );
+
+                                        imstring_buffer.clear();
+                                    });
+                                }
+                            }
+
+                            if let Some(color_token) = error_color_token {
+                                color_token.pop(ui);
+                            }
+
+                            if collapsing_header_open {
                                 ui.indent();
 
                                 assert_eq!(
@@ -450,6 +706,9 @@ impl<'a> UiFrame<'a> {
                                             }
                                         }
                                         ParamRefinement::String(param_refinement_string) => {
+                                            let mut imstring_buffer = self.global_imstring_buffer
+                                                .borrow_mut();
+
                                             let string_lit = arg.unwrap_literal().unwrap_string();
                                             imstring_buffer.push_str(string_lit);
 
@@ -520,21 +779,32 @@ impl<'a> UiFrame<'a> {
                                     }
                                 }
 
-                                let token = ui.push_style_color(
-                                    imgui::StyleColor::Text,
-                                    ui.style_color(imgui::StyleColor::TextDisabled),
-                                );
+                                let console_id = imgui::im_str!("##console{}", stmt_index);
+                                if let Some(window_token) = imgui::ChildWindow::new(&console_id)
+                                    .size([0.0, 80.0])
+                                    .scrollable(true)
+                                    .scroll_bar(true)
+                                    .always_vertical_scrollbar(true)
+                                    .begin(ui)
+                                {
+                                    let log_messages = session.log_messages_at_stmt(stmt_index);
+                                    for log_message in log_messages {
+                                        ui.text_colored(match log_message.level {
+                                            LogMessageLevel::Info => self.colors.log_message_info,
+                                            LogMessageLevel::Warn => self.colors.log_message_warn,
+                                            LogMessageLevel::Error => self.colors.log_message_error,
+                                        }, &log_message.message);
+                                    }
 
-                                imgui::InputTextMultiline::new(
-                                    ui,
-                                    &imgui::im_str!("##console{}", stmt_index),
-                                    &mut imgui::ImString::new("This console will contain debug information"),
-                                    [0.0, 60.0],
-                                )
-                                    .read_only(true)
-                                    .build();
+                                    let message_count = log_messages.len();
+                                    let mut console_state = self.console_state.borrow_mut();
+                                    if console_state[stmt_index].message_count < message_count {
+                                        ui.set_scroll_here_y();
+                                        console_state[stmt_index].message_count = message_count;
+                                    }
 
-                                token.pop(ui);
+                                    window_token.end(ui);
+                                }
 
                                 if let Some((color_token, style_token)) = operation_arg_style_tokens {
                                     color_token.pop(ui);

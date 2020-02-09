@@ -1,8 +1,9 @@
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::{BTreeMap, HashSet};
+use std::fmt;
 
 use crate::interpreter::ast::{FuncIdent, Prog, Stmt, VarIdent};
-use crate::interpreter::{Func, Ty, Value};
+use crate::interpreter::{Func, InterpretError, LogMessage, Ty, Value};
 use crate::interpreter_funcs;
 use crate::interpreter_server::{
     InterpreterRequest, InterpreterResponse, InterpreterServer, PollResponseError, RequestId,
@@ -31,6 +32,8 @@ pub struct Session {
     interpreter_edit_prog_requests_in_flight: HashSet<RequestId>,
 
     prog: Prog,
+    log_messages: Vec<Vec<LogMessage>>,
+    error: Option<InterpretError>,
 
     unused_values: HashMap<VarIdent, Value>,
 
@@ -54,6 +57,8 @@ impl Session {
             interpreter_edit_prog_requests_in_flight: HashSet::new(),
 
             prog: Prog::new(Vec::new()),
+            log_messages: Vec::new(),
+            error: None,
 
             unused_values: HashMap::new(),
 
@@ -93,6 +98,8 @@ impl Session {
         );
 
         self.prog.push_stmt(stmt.clone());
+        self.log_messages.push(Vec::new());
+        self.error = None;
 
         let request_id = self
             .interpreter_server
@@ -121,6 +128,8 @@ impl Session {
         );
 
         self.prog.pop_stmt();
+        self.log_messages.pop();
+        self.error = None;
 
         let request_id = self
             .interpreter_server
@@ -140,7 +149,7 @@ impl Session {
     ///
     /// # Panics
     /// Panics if the interpreter is busy.
-    pub fn set_prog_stmt_at(&mut self, index: usize, stmt: Stmt) {
+    pub fn set_prog_stmt_at(&mut self, stmt_index: usize, stmt: Stmt) {
         // This is because the current session could want to report
         // errors and we would like to show them somewhere
         assert!(
@@ -148,11 +157,24 @@ impl Session {
             "Can't submit a request while the interpreter is already interpreting",
         );
 
-        self.prog.set_stmt_at(index, stmt.clone());
+        // If we are replacing one function call with a completely
+        // different function call (as opposed to just updating
+        // parameters), we want to clear the logs.
+        let current_stmt = &self.prog.stmts()[stmt_index];
+        match (current_stmt, &stmt) {
+            (Stmt::VarDecl(current_var_decl), Stmt::VarDecl(new_var_decl)) => {
+                if current_var_decl.init_expr().ident() != new_var_decl.init_expr().ident() {
+                    self.log_messages[stmt_index].clear();
+                }
+            }
+        }
+
+        self.prog.set_stmt_at(stmt_index, stmt.clone());
+        self.error = None;
 
         let request_id = self
             .interpreter_server
-            .submit_request(InterpreterRequest::SetProgStmtAt(index, stmt));
+            .submit_request(InterpreterRequest::SetProgStmtAt(stmt_index, stmt));
         let tracked = self
             .interpreter_edit_prog_requests_in_flight
             .insert(request_id);
@@ -208,7 +230,7 @@ impl Session {
     /// (index) in the program.
     pub fn visible_vars_at_stmt<'a>(
         &'a self,
-        index: usize,
+        stmt_index: usize,
         ty: Ty,
     ) -> impl Iterator<Item = VarIdent> + Clone + 'a {
         static EMPTY: Vec<Option<VarIdent>> = Vec::new();
@@ -218,10 +240,24 @@ impl Session {
             _ => &EMPTY,
         };
 
-        var_visibility[0..index]
+        var_visibility[0..stmt_index]
             .iter()
             .filter_map(|var_ident| var_ident.as_ref())
             .copied()
+    }
+
+    pub fn log_messages_at_stmt(&self, stmt_index: usize) -> &[LogMessage] {
+        &self.log_messages[stmt_index]
+    }
+
+    pub fn error_at_stmt(&self, stmt_index: usize) -> Option<&impl fmt::Display> {
+        self.error.as_ref().and_then(|err| {
+            if stmt_index == err.stmt_index() {
+                Some(err)
+            } else {
+                None
+            }
+        })
     }
 
     /// Returns whether the interpreter is currently running. Program
@@ -270,25 +306,25 @@ impl Session {
             match self.interpreter_server.poll_response() {
                 Ok((request_id, response)) => {
                     match response {
-                        InterpreterResponse::Completed => {
+                        InterpreterResponse::CompletedEditProg => {
                             let tracked = self
                                 .interpreter_edit_prog_requests_in_flight
                                 .remove(&request_id);
                             assert!(tracked, "Each edit prog request must have been tracked");
 
-                            log::info!("Interpreter completed request {}", request_id);
+                            log::info!("Interpreter completed edit program request {}", request_id);
                         }
-                        InterpreterResponse::CompletedWithResult(result) => {
+                        InterpreterResponse::CompletedInterpret(interpret_outcome) => {
                             let tracked = self
                                 .interpreter_interpret_request_in_flight
                                 .take()
                                 .is_some();
                             assert!(tracked, "The interpret request must have been tracked");
 
-                            log::info!("Interpreter completed request {} with result", request_id);
+                            log::info!("Interpreter completed interpret request {}", request_id);
 
-                            match result {
-                                Ok(value_set) => {
+                            match interpret_outcome.result {
+                                Ok(interpret_value) => {
                                     // Now we track whether the usage of any value changed. Adding
                                     // an operation to the pipeline can:
                                     // - create a new unused_value
@@ -318,7 +354,7 @@ impl Session {
                                     let mut to_reinsert =
                                         Vec::with_capacity(self.unused_values.len());
                                     for (current_var_ident, current_value) in &self.unused_values {
-                                        if let Some((var_ident, value)) = value_set
+                                        if let Some((var_ident, value)) = interpret_value
                                             .unused_values
                                             .iter()
                                             .find(|(var_ident, _)| var_ident == current_var_ident)
@@ -361,7 +397,7 @@ impl Session {
                                         ))
                                     }
 
-                                    for (var_ident, value) in value_set.unused_values {
+                                    for (var_ident, value) in interpret_value.unused_values {
                                         // Only add and emit events for values that we
                                         // didn't have before. We handled re-insertions
                                         // earlier by comparing the values.
@@ -374,14 +410,31 @@ impl Session {
                                             ));
                                         }
                                     }
+
+                                    // Impure funcs (think import) can sometimes succeed
+                                    // with the same parameters for which they previously
+                                    // failed. We want to clear the error in this case.
+                                    self.error = None;
                                 }
                                 Err(interpret_error) => {
-                                    // FIXME: Display error on UI
                                     log::error!(
-                                        "Interpreter failed with error {}",
+                                        "Interpreter failed with error: {}",
                                         interpret_error
                                     );
+
+                                    self.error = Some(interpret_error);
                                 }
+                            }
+
+                            assert_eq!(
+                                self.log_messages.len(),
+                                interpret_outcome.log_messages.len(),
+                                "Every statement must have its own log messages",
+                            );
+                            for (i, log_messages_at_stmt) in
+                                interpret_outcome.log_messages.into_iter().enumerate()
+                            {
+                                self.log_messages[i].extend(log_messages_at_stmt);
                             }
                         }
                     }

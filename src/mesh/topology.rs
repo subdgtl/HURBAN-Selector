@@ -169,10 +169,10 @@ mod tests {
             NormalStrategy::Sharp,
         );
         let vertex_to_face_topology = compute_vertex_to_face_topology(&mesh);
-        let face_to_face_topology_calculated =
+        let face_to_face_topology_computed =
             compute_face_to_face_topology(&mesh, &vertex_to_face_topology);
 
-        for (self_index, neighbor_indices) in face_to_face_topology_calculated.iter().enumerate() {
+        for (self_index, neighbor_indices) in face_to_face_topology_computed.iter().enumerate() {
             assert!(!neighbor_indices.contains(&cast_u32(self_index)));
         }
     }
@@ -189,11 +189,11 @@ mod tests {
             vec![smallvec![1], smallvec![0, 2, 3], smallvec![1], smallvec![1]];
 
         let vertex_to_face_topology = compute_vertex_to_face_topology(&mesh);
-        let face_to_face_topology_calculated =
+        let face_to_face_topology_computed =
             compute_face_to_face_topology(&mesh, &vertex_to_face_topology);
 
         assert_eq!(
-            face_to_face_topology_calculated,
+            face_to_face_topology_computed,
             face_to_face_topology_correct,
         );
     }
@@ -207,13 +207,13 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
-        let vertex_to_vertex_topology_calculated = compute_vertex_to_vertex_topology(&mesh);
+        let vertex_to_vertex_topology_computed = compute_vertex_to_vertex_topology(&mesh);
 
-        let two_neighbors_count = vertex_to_vertex_topology_calculated
+        let two_neighbors_count = vertex_to_vertex_topology_computed
             .iter()
             .filter(|to| to.len() == 2)
             .count();
-        let four_neighbors_count = vertex_to_vertex_topology_calculated
+        let four_neighbors_count = vertex_to_vertex_topology_computed
             .iter()
             .filter(|to| to.len() == 4)
             .count();

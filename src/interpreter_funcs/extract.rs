@@ -1,20 +1,27 @@
 use std::error;
 use std::fmt;
 
+use crate::analytics;
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, UintParamRefinement,
-    Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, UintParamRefinement, Value,
 };
 
 #[derive(Debug, PartialEq)]
 pub enum FuncExtractError {
     Empty,
+    IndexOutOfBounds(u32, u32),
 }
 
 impl fmt::Display for FuncExtractError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Empty => write!(f, "No mesh geometry contained in group"),
+            Self::IndexOutOfBounds(index, length) => write!(
+                f,
+                "Can't extract mesh on index {} from group of {} meshes",
+                index, length
+            ),
         }
     }
 }
@@ -51,6 +58,13 @@ impl Func for FuncExtract {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -58,21 +72,35 @@ impl Func for FuncExtract {
         Ty::Mesh
     }
 
-    fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
-        let mesh_array = values[0].unwrap_mesh_array();
-        let index = values[1].unwrap_uint();
+    fn call(
+        &mut self,
+        args: &[Value],
+        log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
+        let mesh_array = args[0].unwrap_mesh_array();
+        let index = args[1].unwrap_uint();
+        let analyze = args[2].unwrap_boolean();
 
         if mesh_array.is_empty() {
             return Err(FuncError::new(FuncExtractError::Empty));
         }
 
-        // FIXME: @Correctness The wrapping index is just a temporary
-        // crutch until we can report errors to the user.
-        let wrapping_index = index % mesh_array.len();
-        let value = mesh_array
-            .get_refcounted(wrapping_index)
-            .expect("Array must not be empty");
+        let group_length = mesh_array.len();
+        if index >= group_length {
+            Err(FuncError::new(FuncExtractError::IndexOutOfBounds(
+                index,
+                group_length,
+            )))
+        } else {
+            let value = mesh_array
+                .get_refcounted(index)
+                .expect("Array must not be empty");
 
-        Ok(Value::Mesh(value))
+            if analyze {
+                analytics::report_mesh_analysis(&value, log);
+            }
+
+            Ok(Value::Mesh(value))
+        }
     }
 }

@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::f32;
 
 use nalgebra as na;
 use nalgebra::{Point3, Vector3};
@@ -7,103 +6,6 @@ use nalgebra::{Point3, Vector3};
 use crate::convert::{cast_i32, cast_usize};
 
 use super::{Face, Mesh, OrientedEdge, UnorientedEdge};
-
-/// World-aligned bounding box contains the entire given geometry and defines an
-/// envelope aligned to the world (euclidean) coordinate system.
-pub struct BoundingBox {
-    minimum_point: Point3<f32>,
-    maximum_point: Point3<f32>,
-}
-
-impl BoundingBox {
-    #[allow(dead_code)]
-    pub fn new_separate(
-        min_x: f32,
-        min_y: f32,
-        min_z: f32,
-        max_x: f32,
-        max_y: f32,
-        max_z: f32,
-    ) -> Self {
-        BoundingBox {
-            minimum_point: Point3::new(min_x, min_y, min_z),
-            maximum_point: Point3::new(max_x, max_y, max_z),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn new(minimum_point: Point3<f32>, maximum_point: Point3<f32>) -> Self {
-        BoundingBox {
-            minimum_point,
-            maximum_point,
-        }
-    }
-
-    pub fn from_meshes<'a, I>(meshes: I) -> Self
-    where
-        I: IntoIterator<Item = &'a Mesh>,
-    {
-        let points = meshes.into_iter().flat_map(|mesh| mesh.vertices());
-
-        BoundingBox::from_points(points)
-    }
-
-    pub fn from_points<'a, I>(points: I) -> Self
-    where
-        I: IntoIterator<Item = &'a Point3<f32>>,
-    {
-        let mut min_x = f32::MAX;
-        let mut min_y = f32::MAX;
-        let mut min_z = f32::MAX;
-        let mut max_x = f32::MIN;
-        let mut max_y = f32::MIN;
-        let mut max_z = f32::MIN;
-
-        for point in points {
-            if point.x < min_x {
-                min_x = point.x;
-            }
-            if point.y < min_y {
-                min_y = point.y;
-            }
-            if point.z < min_z {
-                min_z = point.z;
-            }
-            if point.x > max_x {
-                max_x = point.x;
-            }
-            if point.y > max_y {
-                max_y = point.y;
-            }
-            if point.z > max_z {
-                max_z = point.z;
-            }
-        }
-
-        BoundingBox {
-            minimum_point: Point3::new(min_x, min_y, min_z),
-            maximum_point: Point3::new(max_x, max_y, max_z),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn minimum_point(&self) -> Point3<f32> {
-        self.minimum_point
-    }
-
-    #[allow(dead_code)]
-    pub fn maximum_point(&self) -> Point3<f32> {
-        self.maximum_point
-    }
-
-    pub fn center(&self) -> Point3<f32> {
-        nalgebra::center(&self.minimum_point, &self.maximum_point)
-    }
-
-    pub fn diagonal_length(&self) -> f32 {
-        nalgebra::distance(&self.minimum_point, &self.maximum_point)
-    }
-}
 
 // FIXME: Make more generic: take &[Point] or Iterator<Item=&Point>
 pub fn find_closest_point(position: &Point3<f32>, mesh: &Mesh) -> Option<Point3<f32>> {
@@ -1185,12 +1087,12 @@ mod tests {
             UnorientedEdge(OrientedEdge::new(3, 0)),
         ];
 
-        let calculated_loops = border_edge_loops(&edge_sharing_map);
+        let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert_eq!(calculated_loops.len(), 1);
-        assert_eq!(calculated_loops[0].len(), correct_loop.len());
+        assert_eq!(computed_loops.len(), 1);
+        assert_eq!(computed_loops[0].len(), correct_loop.len());
         for edge in correct_loop {
-            assert!(calculated_loops[0].iter().any(|e| *e == edge));
+            assert!(computed_loops[0].iter().any(|e| *e == edge));
         }
     }
 
@@ -1205,9 +1107,9 @@ mod tests {
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_sharing(&oriented_edges);
 
-        let calculated_loops = border_edge_loops(&edge_sharing_map);
+        let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert!(calculated_loops.is_empty());
+        assert!(computed_loops.is_empty());
     }
 
     #[test]
@@ -1238,26 +1140,26 @@ mod tests {
             ],
         ];
 
-        let calculated_loops = border_edge_loops(&edge_sharing_map);
+        let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert_eq!(calculated_loops.len(), 2);
+        assert_eq!(computed_loops.len(), 2);
         assert!(
-            calculated_loops[0].len() == correct_loops[0].len()
-                || calculated_loops[0].len() == correct_loops[1].len()
+            computed_loops[0].len() == correct_loops[0].len()
+                || computed_loops[0].len() == correct_loops[1].len()
         );
 
-        if calculated_loops[0].len() == correct_loops[0].len() {
-            assert_eq!(calculated_loops[1].len(), correct_loops[1].len());
+        if computed_loops[0].len() == correct_loops[0].len() {
+            assert_eq!(computed_loops[1].len(), correct_loops[1].len());
             for (i, correct_loop) in correct_loops.iter().enumerate() {
                 for edge in correct_loop {
-                    assert!(calculated_loops[i].iter().any(|e| e == edge));
+                    assert!(computed_loops[i].iter().any(|e| e == edge));
                 }
             }
         } else {
-            assert_eq!(calculated_loops[1].len(), correct_loops[0].len());
+            assert_eq!(computed_loops[1].len(), correct_loops[0].len());
             for (i, correct_loop) in correct_loops.iter().enumerate() {
                 for edge in correct_loop {
-                    assert!(calculated_loops[(i + 1) % 2].iter().any(|e| e == edge));
+                    assert!(computed_loops[(i + 1) % 2].iter().any(|e| e == edge));
                 }
             }
         }

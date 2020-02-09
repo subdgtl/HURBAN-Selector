@@ -32,6 +32,7 @@ fn main() {
         .ok()
         .map(|msaa| match msaa.as_str() {
             "1" => hs::Msaa::Disabled,
+            "2" => hs::Msaa::X2,
             "4" => hs::Msaa::X4,
             "8" => hs::Msaa::X8,
             "16" => hs::Msaa::X16,
@@ -39,17 +40,17 @@ fn main() {
         })
         .unwrap_or(hs::Msaa::Disabled);
 
-    let present_mode = env::var("HS_VSYNC")
+    let vsync = env::var("HS_VSYNC")
         .ok()
         .map(|vsync| match vsync.as_str() {
-            "0" => hs::PresentMode::NoVsync,
-            "1" => hs::PresentMode::Vsync,
+            "0" => false,
+            "1" => true,
             unsupported_vsync => panic!(
                 "Unsupported vsync behavior requested: {}",
                 unsupported_vsync,
             ),
         })
-        .unwrap_or(hs::PresentMode::Vsync);
+        .unwrap_or(true);
 
     let gpu_backend = env::var("HS_GPU_BACKEND")
         .ok()
@@ -58,6 +59,14 @@ fn main() {
             "d3d12" => hs::GpuBackend::D3d12,
             "metal" => hs::GpuBackend::Metal,
             _ => panic!("Unknown gpu backend requested"),
+        });
+
+    let gpu_power_preference = env::var("HS_GPU_POWER_PREFERENCE")
+        .ok()
+        .map(|power_preference| match power_preference.as_str() {
+            "low-power" => hs::GpuPowerPreference::LowPower,
+            "high-performance" => hs::GpuPowerPreference::HighPerformance,
+            _ => panic!("Unknown gpu power preference requested"),
         });
 
     let app_log_level = env::var("HS_APP_LOG_LEVEL")
@@ -84,8 +93,9 @@ fn main() {
         theme,
         fullscreen,
         msaa,
-        present_mode,
+        vsync,
         gpu_backend,
+        gpu_power_preference,
         app_log_level,
         lib_log_level,
     });

@@ -1,8 +1,10 @@
 use std::error;
 use std::fmt;
 
+use crate::analytics;
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, Ty, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, Value,
 };
 
 #[derive(Debug, PartialEq)]
@@ -35,19 +37,33 @@ impl Func for FuncExtractLargest {
     }
 
     fn param_info(&self) -> &[ParamInfo] {
-        &[ParamInfo {
-            name: "Group",
-            refinement: ParamRefinement::MeshArray,
-            optional: false,
-        }]
+        &[
+            ParamInfo {
+                name: "Group",
+                refinement: ParamRefinement::MeshArray,
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
+        ]
     }
 
     fn return_ty(&self) -> Ty {
         Ty::Mesh
     }
 
-    fn call(&mut self, values: &[Value]) -> Result<Value, FuncError> {
-        let mesh_array = values[0].unwrap_mesh_array();
+    fn call(
+        &mut self,
+        args: &[Value],
+        log: &mut dyn FnMut(LogMessage),
+    ) -> Result<Value, FuncError> {
+        let mesh_array = args[0].unwrap_mesh_array();
+        let analyze = args[1].unwrap_boolean();
 
         if mesh_array.is_empty() {
             return Err(FuncError::new(FuncExtractLargestError::Empty));
@@ -63,6 +79,10 @@ impl Func for FuncExtractLargest {
                 largest_face_count = current_face_count;
                 mesh = current_mesh;
             }
+        }
+
+        if analyze {
+            analytics::report_mesh_analysis(&mesh, log);
         }
 
         Ok(Value::Mesh(mesh))
