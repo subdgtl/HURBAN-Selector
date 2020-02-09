@@ -454,8 +454,8 @@ impl<'a> UiFrame<'a> {
             open_path: None,
         };
 
-        const VIEWPORT_WINDOW_WIDTH: f32 = 150.0;
-        const VIEWPORT_WINDOW_HEIGHT: f32 = 210.0;
+        const UTILITIES_WINDOW_WIDTH: f32 = 150.0;
+        const UTILITIES_WINDOW_HEIGHT: f32 = 210.0;
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
@@ -465,11 +465,11 @@ impl<'a> UiFrame<'a> {
             .resizable(false)
             .collapsible(false)
             .size(
-                [VIEWPORT_WINDOW_WIDTH, VIEWPORT_WINDOW_HEIGHT],
+                [UTILITIES_WINDOW_WIDTH, UTILITIES_WINDOW_HEIGHT],
                 imgui::Condition::Always,
             )
             .position(
-                [window_inner_width + MARGIN - VIEWPORT_WINDOW_WIDTH, MARGIN],
+                [window_inner_width + MARGIN - UTILITIES_WINDOW_WIDTH, MARGIN],
                 imgui::Condition::Always,
             )
             .build(ui, || {
