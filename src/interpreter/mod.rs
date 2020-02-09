@@ -277,11 +277,11 @@ impl LogMessage {
     }
 }
 
-/// The resulting state of the interpreter after interpretting.
+/// The resulting state of the interpreter after interpreting.
 #[derive(Debug, PartialEq)]
 pub struct InterpretOutcome {
-    /// The result of interpretting. Either a value containing the
-    /// state of variables, or the error on which the interpretting
+    /// The result of interpreting. Either a value containing the
+    /// state of variables, or the error on which the interpreting
     /// failed.
     pub result: Result<InterpretValue, InterpretError>,
 
@@ -339,7 +339,7 @@ pub struct Interpreter {
     /// The log messages output by functions. The outer vector has the
     /// same length as the program and is indexed by the same
     /// statement index. Log messages are always cleared before
-    /// interpretting. This is just to keep the vector warm.
+    /// interpreting. This is just to keep the vector warm.
     log_messages: Vec<Vec<LogMessage>>,
 
     /// The number of changes to the program since the interpreter was
@@ -621,7 +621,7 @@ impl Interpreter {
     ///    parameters have have been invalidated.
     fn invalidate(&mut self) {
         // FIXME: We'd like to have this return an execution plan so
-        // that we don't necesarily try to execute stmts only to find
+        // that we don't necessarily try to execute stmts only to find
         // that we already have the results in cache.
 
         // FIXME: This is still very pessimistic, we should support an
@@ -881,6 +881,7 @@ mod tests {
     fn param_info(ty: Ty, optional: bool) -> ParamInfo {
         ParamInfo {
             name: "<anonymous>",
+            description: "<anonymous>",
             refinement: match ty {
                 Ty::Nil => panic!("Yeah, sure I can do that!"),
                 Ty::Boolean => ParamRefinement::Boolean(BooleanParamRefinement::default()),
@@ -1948,7 +1949,7 @@ mod tests {
         );
     }
 
-    // Func runtime erorrs tests
+    // Func runtime errors tests
 
     #[test]
     fn test_interpreter_interpret_single_func_runtime_error() {

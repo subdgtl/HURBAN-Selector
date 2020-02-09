@@ -16,7 +16,7 @@ strategies for mesh models, allowing designers to smoothly interpolate
 between multiple mesh geometries and select the result with the most
 desired features.
 
-_Screenshots coming soon™!_
+![Screenshot](./hurban_selector-2020-02-03-15-20-24.png)
 
 ## Getting the software
 
@@ -83,6 +83,10 @@ Optionally configure one of the following:
 - `metal` on macOS.
 
 Default is primary GPU backend for the current OS.
+
+**HS_GPU_POWER_PREFERENCE**: Choose power preference used to select a GPU to run
+  on. Either `low-power` or `high-performance`. Default defers the decision to
+  the GPU backend.
 
 **HS_APP_LOG_LEVEL**: Set level of logging for the editor. Either
   `error`, `warn`, `info` or `debug`. Default is `debug`.

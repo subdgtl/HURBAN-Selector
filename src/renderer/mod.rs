@@ -1,14 +1,18 @@
-pub use self::scene_renderer::{AddMeshError, DrawMeshMode, GpuMesh, GpuMeshHandle};
+pub use self::scene_renderer::{
+    AddMeshError, DirectionalLight, DrawMeshMode, GpuMesh, GpuMeshHandle,
+};
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io;
 use std::mem;
+use std::thread;
 
 use nalgebra::Matrix4;
 
 use crate::convert::{cast_u32, cast_u64};
 
+use self::common::wgpu_size_of;
 use self::imgui_renderer::{ImguiRenderer, Options as ImguiRendererOptions};
 use self::scene_renderer::{Options as SceneRendererOptions, SceneRenderer};
 
@@ -39,7 +43,12 @@ pub struct Options {
     /// Whether to run with VSync or not.
     pub vsync: bool,
     /// Whether to select an explicit gpu backend for the renderer to use.
-    pub gpu_backend: Option<GpuBackend>,
+    pub backend: Option<GpuBackend>,
+    /// Whether to select an explicit power preference profile for the renderer
+    /// to use when choosing a GPU.
+    pub power_preference: Option<GpuPowerPreference>,
+    /// The color with which to render surfaces in `DrawMeshMode::FlatWithShadows`.
+    pub flat_shading_color: [f64; 4],
 }
 
 /// Multi-sampling setting. Can be either disabled (1 sample per
@@ -102,6 +111,22 @@ impl fmt::Display for GpuBackend {
     }
 }
 
+/// The power preference for selecting a GPU.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuPowerPreference {
+    LowPower,
+    HighPerformance,
+}
+
+impl fmt::Display for GpuPowerPreference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GpuPowerPreference::LowPower => write!(f, "Low Power"),
+            GpuPowerPreference::HighPerformance => write!(f, "High Performance"),
+        }
+    }
+}
+
 /// Opaque handle to collection of textures for rendering stored in
 /// renderer. Does not implement `Clone` on purpose. The handle is
 /// acquired by creating the render target and has to be relinquished
@@ -132,9 +157,10 @@ pub struct Renderer {
     depth_texture_view: wgpu::TextureView,
     offscreen_render_targets: HashMap<u64, OffscreenRenderTarget>,
     offscreen_render_targets_next_handle: u64,
-    blit_texture_bind_group_layout: wgpu::BindGroupLayout,
+    blit_pass_bind_group_color: wgpu::BindGroup,
+    #[cfg(not(feature = "dist"))]
+    blit_pass_bind_group_depth: wgpu::BindGroup,
     blit_texture_bind_group: wgpu::BindGroup,
-    blit_sampler_bind_group: wgpu::BindGroup,
     blit_render_pipeline: wgpu::RenderPipeline,
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
@@ -146,36 +172,50 @@ impl Renderer {
         window: &H,
         width: u32,
         height: u32,
-        projection_matrix: &Matrix4<f32>,
-        view_matrix: &Matrix4<f32>,
         imgui_font_atlas: imgui::FontAtlasRefMut,
         options: Options,
     ) -> Self {
-        let backends = match options.gpu_backend {
+        let backends = match options.backend {
             Some(GpuBackend::Vulkan) => wgpu::BackendBit::VULKAN,
             Some(GpuBackend::D3d12) => wgpu::BackendBit::DX12,
             Some(GpuBackend::Metal) => wgpu::BackendBit::METAL,
             None => wgpu::BackendBit::PRIMARY,
         };
 
-        if let Some(backend) = options.gpu_backend {
+        if let Some(backend) = options.backend {
             log::info!("Selected {} GPU backend", backend);
         } else {
             log::info!("No GPU backend selected, will run on default backend");
         }
 
+        let power_preference = match options.power_preference {
+            Some(GpuPowerPreference::HighPerformance) => wgpu::PowerPreference::HighPerformance,
+            Some(GpuPowerPreference::LowPower) => wgpu::PowerPreference::LowPower,
+            None => wgpu::PowerPreference::Default,
+        };
+
+        if let Some(power_preference) = options.power_preference {
+            log::info!("Selected {} GPU power preference", power_preference);
+        } else {
+            log::info!("No GPU power preference selected, will select a default GPU");
+        }
+
         let surface = wgpu::Surface::create(window);
         let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
+            power_preference,
             backends,
         })
         .expect("Failed to acquire GPU adapter");
+        log::debug!("GPU adapter info: {:?}", adapter.get_info());
 
         let (device, mut queue) = adapter.request_device(&wgpu::DeviceDescriptor {
             extensions: wgpu::Extensions {
                 anisotropic_filtering: false,
             },
-            limits: wgpu::Limits::default(),
+            limits: wgpu::Limits {
+                // FIXME: @Optimization Use less bind groups if possible.
+                max_bind_groups: 6,
+            },
         });
 
         let swap_chain = create_swap_chain(&device, &surface, width, height, options.vsync);
@@ -196,52 +236,78 @@ impl Renderer {
         let depth_texture =
             create_depth_texture(&device, width, height, options.msaa.sample_count());
 
-        let color_texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            lod_min_clamp: -100.0,
-            lod_max_clamp: 100.0,
-            compare_function: wgpu::CompareFunction::Always,
-        });
+        let scene_renderer = SceneRenderer::new(
+            &device,
+            &mut queue,
+            SceneRendererOptions {
+                sample_count: options.msaa.sample_count(),
+                output_color_attachment_format: TEXTURE_FORMAT_COLOR,
+                output_depth_attachment_format: TEXTURE_FORMAT_DEPTH,
+                flat_shading_color: options.flat_shading_color,
+            },
+        );
 
-        let blit_texture_bind_group_layout =
+        let imgui_renderer = ImguiRenderer::new(
+            imgui_font_atlas,
+            &device,
+            &mut queue,
+            ImguiRendererOptions {
+                output_color_attachment_format: TEXTURE_FORMAT_SWAP_CHAIN,
+            },
+        )
+        .expect("Failed to create imgui renderer");
+
+        let blit_pass_buffer_size = wgpu_size_of::<BlitPassUniforms>();
+        let blit_pass_buffer_color = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .fill_from_slice(&[BlitPassUniforms {
+                blit_sampler: BlitSampler::Color,
+            }]);
+
+        #[cfg(not(feature = "dist"))]
+        let blit_pass_buffer_depth = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .fill_from_slice(&[BlitPassUniforms {
+                blit_sampler: BlitSampler::Depth,
+            }]);
+
+        let blit_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 bindings: &[wgpu::BindGroupLayoutBinding {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::SampledTexture {
-                        multisampled: false,
-                        dimension: wgpu::TextureViewDimension::D2,
-                    },
+                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                 }],
             });
 
-        let blit_sampler_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler,
-                }],
-            });
-
-        let blit_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &blit_texture_bind_group_layout,
+        let blit_pass_bind_group_color = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &blit_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
-                resource: wgpu::BindingResource::TextureView(&color_texture_view),
+                resource: wgpu::BindingResource::Buffer {
+                    buffer: &blit_pass_buffer_color,
+                    range: 0..blit_pass_buffer_size,
+                },
             }],
         });
 
-        let blit_sampler_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &blit_sampler_bind_group_layout,
+        #[cfg(not(feature = "dist"))]
+        let blit_pass_bind_group_depth = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &blit_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
-                resource: wgpu::BindingResource::Sampler(&color_texture_sampler),
+                resource: wgpu::BindingResource::Buffer {
+                    buffer: &blit_pass_buffer_depth,
+                    range: 0..blit_pass_buffer_size,
+                },
+            }],
+        });
+
+        let blit_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: scene_renderer.sampled_texture_bind_group_layout(),
+            bindings: &[wgpu::Binding {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&color_texture_view),
             }],
         });
 
@@ -255,8 +321,9 @@ impl Renderer {
         let blit_render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 bind_group_layouts: &[
-                    &blit_texture_bind_group_layout,
-                    &blit_sampler_bind_group_layout,
+                    &blit_pass_bind_group_layout,
+                    scene_renderer.sampler_bind_group_layout(),
+                    scene_renderer.sampled_texture_bind_group_layout(),
                 ],
             });
 
@@ -286,28 +353,6 @@ impl Renderer {
             alpha_to_coverage_enabled: false,
         });
 
-        let scene_renderer = SceneRenderer::new(
-            &device,
-            &mut queue,
-            projection_matrix,
-            view_matrix,
-            SceneRendererOptions {
-                sample_count: options.msaa.sample_count(),
-                output_color_attachment_format: TEXTURE_FORMAT_COLOR,
-                output_depth_attachment_format: TEXTURE_FORMAT_DEPTH,
-            },
-        );
-
-        let imgui_renderer = ImguiRenderer::new(
-            imgui_font_atlas,
-            &device,
-            &mut queue,
-            ImguiRendererOptions {
-                output_color_attachment_format: TEXTURE_FORMAT_SWAP_CHAIN,
-            },
-        )
-        .expect("Failed to create imgui renderer");
-
         Self {
             device,
             queue,
@@ -320,9 +365,10 @@ impl Renderer {
             depth_texture_view: depth_texture.create_default_view(),
             offscreen_render_targets: HashMap::new(),
             offscreen_render_targets_next_handle: 0,
-            blit_texture_bind_group_layout,
+            blit_pass_bind_group_color,
+            #[cfg(not(feature = "dist"))]
+            blit_pass_bind_group_depth,
             blit_texture_bind_group,
-            blit_sampler_bind_group,
             blit_render_pipeline,
             scene_renderer,
             imgui_renderer,
@@ -377,7 +423,7 @@ impl Renderer {
             // newly created color texture.
             self.blit_texture_bind_group =
                 self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout: &self.blit_texture_bind_group_layout,
+                    layout: self.scene_renderer.sampled_texture_bind_group_layout(),
                     bindings: &[wgpu::Binding {
                         binding: 0,
                         resource: wgpu::BindingResource::TextureView(&self.color_texture_view),
@@ -480,8 +526,13 @@ impl Renderer {
     ///
     /// The mesh will be available for drawing in subsequent render
     /// passes.
-    pub fn add_scene_mesh(&mut self, mesh: &GpuMesh) -> Result<GpuMeshHandle, AddMeshError> {
-        self.scene_renderer.add_mesh(&self.device, mesh)
+    pub fn add_scene_mesh(
+        &mut self,
+        mesh: &GpuMesh,
+        transparent: bool,
+    ) -> Result<GpuMeshHandle, AddMeshError> {
+        self.scene_renderer
+            .add_mesh(&self.device, mesh, transparent)
     }
 
     /// Removes mesh from the GPU.
@@ -516,9 +567,16 @@ impl Renderer {
         self.imgui_renderer.remove_texture(id);
     }
 
-    /// Starts recording draw commands.
+    /// Starts recording draw commands in an append only log.
     ///
-    /// Underlying renderpasses will use given `clear_color`.
+    /// Underlying render passes will use given `clear_color`.
+    ///
+    /// Everything recorded in a command buffer holds until it is overriden by
+    /// later recordings, e.g. `CommandBuffer::set_light` can be called multiple
+    /// times, each time setting the light value for all subsequent operations.
+    ///
+    /// Render target resources, such as the offscreen texture or the shadow map
+    /// are cleared exactly once per command buffer.
     pub fn begin_command_buffer(&mut self, clear_color: [f64; 4]) -> CommandBuffer {
         let frame = self.swap_chain.get_next_texture();
         let encoder = self
@@ -538,10 +596,12 @@ impl Renderer {
             depth_texture_view: &self.depth_texture_view,
             offscreen_render_targets: &self.offscreen_render_targets,
             offscreen_render_targets_cleared: HashSet::new(),
+            blit_pass_bind_group_color: &self.blit_pass_bind_group_color,
+            #[cfg(not(feature = "dist"))]
+            blit_pass_bind_group_depth: &self.blit_pass_bind_group_depth,
             blit_texture_bind_group: &self.blit_texture_bind_group,
-            blit_sampler_bind_group: &self.blit_sampler_bind_group,
             blit_render_pipeline: &self.blit_render_pipeline,
-            scene_renderer: &self.scene_renderer,
+            scene_renderer: &mut self.scene_renderer,
             imgui_renderer: &self.imgui_renderer,
         }
     }
@@ -562,15 +622,26 @@ pub struct CommandBuffer<'a> {
     depth_texture_view: &'a wgpu::TextureView,
     offscreen_render_targets: &'a HashMap<u64, OffscreenRenderTarget>,
     offscreen_render_targets_cleared: HashSet<u64>,
+    blit_pass_bind_group_color: &'a wgpu::BindGroup,
+    #[cfg(not(feature = "dist"))]
+    blit_pass_bind_group_depth: &'a wgpu::BindGroup,
     blit_texture_bind_group: &'a wgpu::BindGroup,
-    blit_sampler_bind_group: &'a wgpu::BindGroup,
     blit_render_pipeline: &'a wgpu::RenderPipeline,
-    scene_renderer: &'a SceneRenderer,
+    scene_renderer: &'a mut SceneRenderer,
     imgui_renderer: &'a ImguiRenderer,
 }
 
 impl CommandBuffer<'_> {
-    /// Update camera matrices (projection matrix and view matrix).
+    /// Update properties of the shadow casting light.
+    pub fn set_light(&mut self, light: &DirectionalLight) {
+        self.scene_renderer.set_light(
+            &self.device,
+            self.encoder.as_mut().expect("Need encoder to update data"),
+            light,
+        );
+    }
+
+    /// Update camera matrices (projection and view).
     pub fn set_camera_matrices(
         &mut self,
         projection_matrix: &Matrix4<f32>,
@@ -584,17 +655,32 @@ impl CommandBuffer<'_> {
         );
     }
 
-    /// Record a mesh drawing operation targeting the primary render
-    /// target to the command buffer.
+    /// Record a mesh drawing operation targeting the primary render target to
+    /// the command buffer.
+    ///
+    /// # Warning
+    ///
+    /// Drawing consists of multiple render passes, some of which compute
+    /// metadata (e.g. a shadow map) that is later used in the actual
+    /// drawing. Calling this multiple times adds to this metadata every
+    /// time. Each subsequent call will have available the information computed
+    /// in previous calls, but not vice versa.
+    ///
+    /// For example, An object rendered in a first call will cast shadows on
+    /// objects rendered in subsequent calls (in addition to casting shadows on
+    /// objects rendered within the same call), but the shadows won't be present
+    /// on objects rendered in prior calls.
     pub fn draw_meshes_to_primary_render_target<'a, H>(
         &mut self,
         mesh_handles: H,
         mode: DrawMeshMode,
+        cast_shadows: bool,
     ) where
         H: Iterator<Item = &'a GpuMeshHandle> + Clone,
     {
         self.scene_renderer.draw_meshes(
             mode,
+            cast_shadows,
             self.primary_render_target_needs_clearing,
             self.clear_color,
             self.encoder
@@ -611,11 +697,25 @@ impl CommandBuffer<'_> {
 
     /// Record a mesh drawing operation targeting a previously created
     /// offcreen render target to the command buffer.
+    ///
+    /// # Warning
+    ///
+    /// Drawing consists of multiple render passes, some of which compute
+    /// metadata (e.g. a shadow map) that is later used in the actual
+    /// drawing. Calling this multiple times adds to this metadata every
+    /// time. Each subsequent call will have available the information computed
+    /// in previous calls, but not vice versa.
+    ///
+    /// For example, An object rendered in a first call will cast shadows on
+    /// objects rendered in subsequent calls (in addition to casting shadows on
+    /// objects rendered within the same call), but the shadows won't be present
+    /// on objects rendered in prior calls.
     pub fn draw_meshes_to_offscreen_render_target<'a, H>(
         &mut self,
         render_target_handle: &OffscreenRenderTargetHandle,
         mesh_handles: H,
         mode: DrawMeshMode,
+        cast_shadows: bool,
     ) where
         H: Iterator<Item = &'a GpuMeshHandle> + Clone,
     {
@@ -631,6 +731,7 @@ impl CommandBuffer<'_> {
 
         self.scene_renderer.draw_meshes(
             mode,
+            cast_shadows,
             offscreen_render_target_needs_clearing,
             self.clear_color,
             encoder,
@@ -706,8 +807,43 @@ impl CommandBuffer<'_> {
         });
 
         rpass.set_pipeline(self.blit_render_pipeline);
-        rpass.set_bind_group(0, self.blit_texture_bind_group, &[]);
-        rpass.set_bind_group(1, self.blit_sampler_bind_group, &[]);
+        rpass.set_bind_group(0, &self.blit_pass_bind_group_color, &[]);
+        rpass.set_bind_group(1, self.scene_renderer.sampler_bind_group(), &[]);
+        rpass.set_bind_group(2, self.blit_texture_bind_group, &[]);
+        rpass.draw(0..3, 0..1);
+
+        self.backbuffer_needs_clearing = false;
+    }
+
+    /// Record a copy operation from the shadow map to the backbuffer. Use for
+    /// debugging.
+    #[cfg(not(feature = "dist"))]
+    pub fn blit_shadow_map_to_backbuffer(&mut self) {
+        let encoder = self
+            .encoder
+            .as_mut()
+            .expect("Need encoder to record drawing");
+
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                attachment: &self.frame.view,
+                resolve_target: None,
+                load_op: if self.backbuffer_needs_clearing {
+                    wgpu::LoadOp::Clear
+                } else {
+                    wgpu::LoadOp::Load
+                },
+                store_op: wgpu::StoreOp::Store,
+                // If we see this color, something has gone wrong :)
+                clear_color: COLOR_DEBUG_PURPLE,
+            }],
+            depth_stencil_attachment: None,
+        });
+
+        rpass.set_pipeline(self.blit_render_pipeline);
+        rpass.set_bind_group(0, &self.blit_pass_bind_group_depth, &[]);
+        rpass.set_bind_group(1, self.scene_renderer.sampler_bind_group(), &[]);
+        rpass.set_bind_group(2, self.scene_renderer.shadow_map_texture_bind_group(), &[]);
         rpass.draw(0..3, 0..1);
 
         self.backbuffer_needs_clearing = false;
@@ -722,11 +858,26 @@ impl CommandBuffer<'_> {
 
 impl Drop for CommandBuffer<'_> {
     fn drop(&mut self) {
-        assert!(
-            self.encoder.is_none(),
-            "Rendering must be finished by the time the command buffer goes out of scope",
-        );
+        if !thread::panicking() {
+            assert!(
+                self.encoder.is_none(),
+                "Rendering must be finished by the time the command buffer goes out of scope",
+            );
+        }
     }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct BlitPassUniforms {
+    blit_sampler: BlitSampler,
+}
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlitSampler {
+    Color = 0,
+    Depth = 1,
 }
 
 struct OffscreenRenderTarget {
