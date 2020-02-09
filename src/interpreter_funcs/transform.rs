@@ -15,6 +15,7 @@ impl Func for FuncTransform {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Transform",
+            description: "Translates, rotates and scales, either in local or global coordinates",
             return_value_name: "Transformed Mesh",
         }
     }
@@ -27,11 +28,13 @@ impl Func for FuncTransform {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "Mesh to transform",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Translate",
+                description: "Translation (movement) vector",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -47,6 +50,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "Rotation around the X, Y and Z axis, respectively. In degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -62,6 +66,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Scale",
+                description: "Scaling factors for the X, Y and Z axis, respectively",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -77,6 +82,9 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Transform around object center",
+                description: "\
+Whether to transform the object in local coordinates (around the object's center) \
+instead of global world origin",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -84,6 +92,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "Whether to output mesh analysis into console after running",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

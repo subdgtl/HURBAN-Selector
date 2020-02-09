@@ -47,6 +47,7 @@ impl Func for FuncCreateUvSphere {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create UV Sphere",
+            description: "",
             return_value_name: "Sphere",
         }
     }
@@ -59,6 +60,7 @@ impl Func for FuncCreateUvSphere {
         &[
             ParamInfo {
                 name: "Center",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -74,6 +76,7 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -89,6 +92,7 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Scale",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -104,6 +108,7 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Parallels",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(8),
                     min_value: Some(Self::MIN_PARALLELS),
@@ -113,6 +118,7 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Meridians",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(8),
                     min_value: Some(Self::MIN_MERIDIANS),
@@ -122,6 +128,7 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

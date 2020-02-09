@@ -32,6 +32,7 @@ impl Func for FuncWeld {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Weld",
+            description: "",
             return_value_name: "Welded Mesh",
         }
     }
@@ -44,11 +45,13 @@ impl Func for FuncWeld {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Tolerance",
+                description: "",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
                     default_value: Some(0.001),
                     min_value: Some(0.0),
@@ -58,6 +61,7 @@ impl Func for FuncWeld {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

@@ -13,6 +13,7 @@ impl Func for FuncJoinMeshes {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Join Meshes",
+            description: "",
             return_value_name: "Joined Mesh",
         }
     }
@@ -25,16 +26,19 @@ impl Func for FuncJoinMeshes {
         &[
             ParamInfo {
                 name: "Mesh 1",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Mesh 2",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

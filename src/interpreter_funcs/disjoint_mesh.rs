@@ -13,6 +13,7 @@ impl Func for FuncDisjointMesh {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Disjoint Mesh",
+            description: "",
             return_value_name: "Disjoint Group",
         }
     }
@@ -25,11 +26,13 @@ impl Func for FuncDisjointMesh {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting group",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

@@ -40,6 +40,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Import OBJ as Group",
+            description: "",
             return_value_name: "Imported Group",
         }
     }
@@ -52,6 +53,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
         &[
             ParamInfo {
                 name: "Path",
+                description: "",
                 refinement: ParamRefinement::String(StringParamRefinement {
                     default_value: "",
                     file_path: true,
@@ -61,6 +63,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
             },
             ParamInfo {
                 name: "Analyze resulting group",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

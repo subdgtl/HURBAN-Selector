@@ -13,6 +13,7 @@ impl Func for FuncRevertMeshFaces {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Revert Faces",
+            description: "",
             return_value_name: "Reverted Mesh",
         }
     }
@@ -25,11 +26,13 @@ impl Func for FuncRevertMeshFaces {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
