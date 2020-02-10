@@ -782,7 +782,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
         ast::LitExpr::Float(float) => Value::Float(*float),
         ast::LitExpr::Float2(float2) => Value::Float2(*float2),
         ast::LitExpr::Float3(float3) => Value::Float3(*float3),
-        ast::LitExpr::String(string) => Value::String(Arc::clone(&string)),
+        ast::LitExpr::String(string) => Value::String(Arc::new(string.clone())),
         ast::LitExpr::Nil => Value::Nil,
     };
 

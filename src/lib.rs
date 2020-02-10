@@ -44,6 +44,7 @@ mod math;
 mod mesh;
 mod notifications;
 mod plane;
+mod project;
 mod pull;
 mod session;
 mod ui;
@@ -180,6 +181,8 @@ pub fn init_and_run(options: Options) -> ! {
 
     let mut ui = Ui::new(&window, options.theme);
 
+    let mut project_path: Option<String> = None;
+
     let mut camera = Camera::new(
         initial_window_aspect_ratio,
         5.0,
@@ -305,11 +308,57 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.zoom(input_state.camera_zoom);
                 camera.zoom_step(input_state.camera_zoom_steps);
 
-                let ui_reset_viewport = ui_frame.draw_viewport_settings_window(
+                let utilities_status = ui_frame.draw_utilities_window(
                     &mut screenshot_modal_open,
                     &mut renderer_draw_mesh_mode,
+                    project_path.as_ref().map(|p| p.as_str()),
                 );
-                let reset_viewport = input_state.camera_reset_viewport || ui_reset_viewport;
+                let reset_viewport =
+                    input_state.camera_reset_viewport || utilities_status.reset_viewport;
+
+                if let Some(save_path) = utilities_status.save_path {
+                    let stmts = session.stmts().to_vec();
+                    let project = project::Project { version: 1, stmts };
+
+                    project::save(&save_path, project);
+
+                    project_path = Some(save_path);
+                }
+
+                if let Some(open_path) = utilities_status.open_path {
+                    let project = project::open(&open_path);
+
+                    scene_meshes.clear();
+
+                    for (_, gpu_mesh_handle) in scene_gpu_mesh_handles.drain() {
+                        renderer.remove_scene_mesh(gpu_mesh_handle);
+                    }
+
+                    scene_bounding_box =
+                        BoundingBox::union(scene_meshes.values().map(|mesh| mesh.bounding_box()))
+                            .unwrap_or_else(BoundingBox::unit);
+
+                    ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                    ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                    renderer.remove_scene_mesh(
+                        ground_plane_gpu_mesh_handle
+                            .take()
+                            .expect("Ground plane must always be present"),
+                    );
+                    ground_plane_gpu_mesh_handle = Some(
+                        renderer
+                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+                            .expect("Failed to add ground plane mesh"),
+                    );
+
+                    session = Session::new();
+
+                    for stmt in project.stmts {
+                        session.push_prog_stmt(stmt);
+                    }
+
+                    project_path = Some(open_path);
+                }
 
                 let window_size = window.inner_size().to_physical(window.hidpi_factor());
                 let take_screenshot = ui_frame.draw_screenshot_window(
