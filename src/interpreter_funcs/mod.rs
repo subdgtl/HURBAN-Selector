@@ -15,6 +15,7 @@ use self::join_meshes::FuncJoinMeshes;
 use self::laplacian_smoothing::FuncLaplacianSmoothing;
 use self::loop_subdivision::FuncLoopSubdivision;
 use self::revert_mesh_faces::FuncRevertMeshFaces;
+use self::snap_to_ground::FuncSnapToGround;
 use self::synchronize_mesh_faces::FuncSynchronizeMeshFaces;
 use self::transform::FuncTransform;
 use self::voxel_boolean_difference::FuncBooleanDifference;
@@ -35,6 +36,7 @@ mod join_meshes;
 mod laplacian_smoothing;
 mod loop_subdivision;
 mod revert_mesh_faces;
+mod snap_to_ground;
 mod synchronize_mesh_faces;
 mod transform;
 mod voxel_boolean_difference;
@@ -52,6 +54,7 @@ mod weld;
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0);
 pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_EXTRACT_LARGEST: FuncIdent = FuncIdent(2);
+pub const FUNC_ID_SNAP_TO_GROUND: FuncIdent = FuncIdent(3);
 
 // Create funcs
 pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(1000);
@@ -91,6 +94,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncTransform));
     funcs.insert(FUNC_ID_EXTRACT, Box::new(FuncExtract));
     funcs.insert(FUNC_ID_EXTRACT_LARGEST, Box::new(FuncExtractLargest));
+    funcs.insert(FUNC_ID_SNAP_TO_GROUND, Box::new(FuncSnapToGround));
 
     // Create funcs
     funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncCreateUvSphere));
