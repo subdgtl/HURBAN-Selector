@@ -1,20 +1,20 @@
 # Windows installer
 
-An Inno Setup Windows installer. 
+An Inno Setup Windows installer.
 
-## Icon
+## Creating the installer
 
-To add an icon to binary follow these steps:
+Make sure you have the following installed:
 
-- Install [rcedit](https://github.com/electron/rcedit),
-- Add icon to binary: `rcedit-x86.exe "C:\path\to\release\hurban_selector.exe" --set-icon "C:\path\to\icons\64x64.ico"`
-
-## Installer
+- [Inno Setup](http://www.jrsoftware.org/isinfo.php),
+- [rcedit](https://github.com/electron/rcedit) (binary releases can be found
+  [the github releases page](https://github.com/electron/rcedit/releases)).
 
 To create a distribution follow these steps:
 
-- Install [Inno Setup](http://www.jrsoftware.org/isinfo.php),
 - `cargo build --release --features dist`,
+- Add icon to binary:
+ `rcedit-x86.exe "C:\path\to\release\hurban_selector.exe" --set-icon "C:\path\to\icons\64x64.ico"`,
 - Compile `installer/setup.iss` from Inno Setup IDE,
 - Output file will be located at `installer/bin`.
 
