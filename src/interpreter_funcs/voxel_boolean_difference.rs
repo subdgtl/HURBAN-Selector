@@ -10,7 +10,7 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::interval::Interval;
+// TODO use crate::interval::Interval;
 use crate::mesh::scalar_field::ScalarField;
 
 #[derive(Debug, PartialEq)]
@@ -116,13 +116,13 @@ impl Func for FuncBooleanDifference {
         let mut scalar_field2 =
             ScalarField::from_mesh(mesh2, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);
 
-        scalar_field1.compute_distance_filed(Interval::new(0, 0));
-        scalar_field2.compute_distance_filed(Interval::new(0, 0));
+        scalar_field1.compute_distance_filed(0..=0);
+        scalar_field2.compute_distance_filed(0..=0);
 
         let meshing_interval = if fill {
-            Interval::new_left_infinite(growth_i16)
+            ..=growth_i16
         } else {
-            Interval::new(-growth_i16, growth_i16)
+            -growth_i16..=growth_i16
         };
 
         scalar_field1.boolean_difference(meshing_interval, &scalar_field2, meshing_interval);
