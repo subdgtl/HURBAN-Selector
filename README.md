@@ -127,6 +127,10 @@ Before running on target computer, make sure "Microsoft Visual C++
 Redistributable for Visual Studio 2019" is installed (get it
 [here](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads))
 
+### Creating a Windows installer
+
+Refer to [installer's readme](installer/README.md) to create Windows installer.
+
 ### Licence
 
 The editor source code is provided under the GNU GENERAL PUBLIC

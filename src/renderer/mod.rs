@@ -877,6 +877,7 @@ struct BlitPassUniforms {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BlitSampler {
     Color = 0,
+    #[cfg(not(feature = "dist"))]
     Depth = 1,
 }
 
