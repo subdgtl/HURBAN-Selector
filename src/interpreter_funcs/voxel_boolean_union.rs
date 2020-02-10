@@ -140,7 +140,9 @@ impl Func for FuncBooleanUnion {
 
         voxel_cloud1.boolean_union(&voxel_cloud2);
         if !voxel_cloud1.contains_voxels() {
-            return Err(FuncError::new(FuncBooleanUnionError::EmptyVoxelCloud));
+            let error = FuncError::new(FuncBooleanUnionError::EmptyVoxelCloud);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         match voxel_cloud1.to_mesh() {
@@ -150,7 +152,11 @@ impl Func for FuncBooleanUnion {
                 }
                 Ok(Value::Mesh(Arc::new(value)))
             }
-            None => Err(FuncError::new(FuncBooleanUnionError::WeldFailed)),
+            None => {
+                let error = FuncError::new(FuncBooleanUnionError::WeldFailed);
+                log(LogMessage::error(format!("Error: {}", error)));
+                Err(error)
+            }
         }
     }
 }

@@ -90,6 +90,7 @@ impl Func for FuncLoopSubdivision {
         let analyze = args[2].unwrap_boolean();
 
         if iterations == 0 {
+            log(LogMessage::info("Zero iterations, the mesh hasn't changed"));
             return Ok(Value::Mesh(mesh));
         }
 
@@ -110,7 +111,11 @@ impl Func for FuncLoopSubdivision {
                     NormalStrategy::Smooth,
                 ) {
                     Some(m) => m,
-                    None => return Err(FuncError::new(FuncLoopSubdivisionError::InvalidMesh)),
+                    None => {
+                        let error = FuncError::new(FuncLoopSubdivisionError::InvalidMesh);
+                        log(LogMessage::error(format!("Error: {}", error)));
+                        return Err(error);
+                    }
                 }
             }
 
@@ -120,7 +125,9 @@ impl Func for FuncLoopSubdivision {
 
             Ok(Value::Mesh(Arc::new(current_mesh)))
         } else {
-            Err(FuncError::new(FuncLoopSubdivisionError::InvalidMesh))
+            let error = FuncError::new(FuncLoopSubdivisionError::InvalidMesh);
+            log(LogMessage::error(format!("Error: {}", error)));
+            Err(error)
         }
     }
 }

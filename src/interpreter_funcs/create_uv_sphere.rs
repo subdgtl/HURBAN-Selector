@@ -154,15 +154,19 @@ impl Func for FuncCreateUvSphere {
         let analyze = args[5].unwrap_boolean();
 
         if n_parallels < Self::MIN_PARALLELS {
-            return Err(FuncError::new(FuncCreateUvSphereError::TooFewParallels {
+            let error = FuncError::new(FuncCreateUvSphereError::TooFewParallels {
                 parallels_provided: n_parallels,
-            }));
+            });
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         if n_meridians < Self::MIN_MERIDIANS {
-            return Err(FuncError::new(FuncCreateUvSphereError::TooFewMeridians {
+            let error = FuncError::new(FuncCreateUvSphereError::TooFewMeridians {
                 meridians_provided: n_meridians,
-            }));
+            });
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         let value = primitive::create_uv_sphere(
