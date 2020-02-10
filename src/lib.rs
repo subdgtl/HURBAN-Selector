@@ -10,6 +10,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use image::{GenericImageView, Pixel};
 use nalgebra::{Point3, Vector2, Vector3};
 
 use crate::bounding_box::BoundingBox;
@@ -108,6 +109,8 @@ pub fn init_and_run(options: Options) -> ! {
     logger::init(options.app_log_level, options.lib_log_level);
 
     let event_loop = winit::event_loop::EventLoop::new();
+    let icon_file = include_bytes!("../icons/64x64.ico");
+    let icon = load_icon(icon_file);
     let window = if options.fullscreen {
         let monitor = event_loop.primary_monitor();
 
@@ -140,6 +143,7 @@ pub fn init_and_run(options: Options) -> ! {
                 winit::window::WindowBuilder::new()
                     .with_title("H.U.R.B.A.N. Selector")
                     .with_fullscreen(Some(winit::window::Fullscreen::Exclusive(video_mode)))
+                    .with_window_icon(Some(icon))
                     .build(&event_loop)
                     .expect("Failed to create window")
             } else {
@@ -147,15 +151,18 @@ pub fn init_and_run(options: Options) -> ! {
                 winit::window::WindowBuilder::new()
                     .with_title("H.U.R.B.A.N. Selector")
                     .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
+                    .with_window_icon(Some(icon))
                     .build(&event_loop)
                     .expect("Failed to create window")
             }
         }
     } else {
         log::info!("Running in windowed mode");
+
         winit::window::WindowBuilder::new()
             .with_title("H.U.R.B.A.N. Selector")
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+            .with_window_icon(Some(icon))
             .build(&event_loop)
             .expect("Failed to create window")
     };
@@ -763,6 +770,23 @@ impl CameraInterpolation {
         let sphere_radius = math::lerp(self.source_radius, self.target_radius, t);
         (sphere_origin, sphere_radius)
     }
+}
+
+fn load_icon(contents: &[u8]) -> winit::window::Icon {
+    let (icon_rgba, icon_width, icon_height) = {
+        let image = image::load_from_memory(contents).expect("Failed to load icon contents.");
+        let (width, height) = image.dimensions();
+        let mut rgba = Vec::with_capacity((width * height) as usize * 4);
+
+        for (_, _, pixel) in image.pixels() {
+            rgba.extend_from_slice(&pixel.to_rgba().0);
+        }
+
+        (rgba, width, height)
+    };
+
+    winit::window::Icon::from_rgba(icon_rgba, icon_width, icon_height)
+        .expect("Failed to create icon.")
 }
 
 fn compute_light(
