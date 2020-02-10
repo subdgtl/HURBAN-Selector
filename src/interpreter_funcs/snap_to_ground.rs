@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::{Matrix4, Point3, Vector3};
 
+use crate::analytics;
 use crate::interpreter::{
     BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
     ParamRefinement, Ty, Value,
@@ -47,6 +48,14 @@ impl Func for FuncSnapToGround {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "Whether to output mesh analysis into console after running",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -57,13 +66,14 @@ impl Func for FuncSnapToGround {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_refcounted_mesh();
         let move_to_origin = args[1].unwrap_boolean();
         let snap_to_ground = args[2].unwrap_boolean();
+        let analyze = args[3].unwrap_boolean();
 
-        if move_to_origin || snap_to_ground {
+        let value = if move_to_origin || snap_to_ground {
             let bbox = mesh.bounding_box();
 
             let translation_vector = if move_to_origin {
@@ -89,9 +99,14 @@ impl Func for FuncSnapToGround {
                 mesh.normals().iter().copied(),
             );
 
-            Ok(Value::Mesh(Arc::new(value)))
+            Arc::new(value)
         } else {
-            Ok(Value::Mesh(mesh))
+            mesh
+        };
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
         }
+        Ok(Value::Mesh(value))
     }
 }
