@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 use std::f32;
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use std::ops::Neg;
 
 use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
-use num_traits::{Bounded, FromPrimitive, ToPrimitive};
+use num_traits::{Bounded, FromPrimitive, Num, ToPrimitive};
 
 use crate::bounding_box::BoundingBox;
 use crate::convert::{cast_i32, cast_u32, cast_usize, clamp_cast_i32_to_u32};
@@ -44,18 +44,8 @@ pub struct ScalarField<T> {
     voxels: Vec<Option<T>>,
 }
 
-impl<
-        T: Add<Output = T>
-            + Bounded
-            + Copy
-            + Div<Output = T>
-            + FromPrimitive
-            + Mul<Output = T>
-            + Neg<Output = T>
-            + PartialOrd
-            + Sub<Output = T>
-            + ToPrimitive,
-    > ScalarField<T>
+impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + ToPrimitive>
+    ScalarField<T>
 {
     /// Define a new empty block of voxel space, which begins at
     /// `block_start`(in discrete voxel units), has dimensions
@@ -1190,16 +1180,7 @@ impl<
 /// Returns true if the value of a voxel is within given interval.
 fn is_voxel_within_closed_interval<T>(voxel: &Option<T>, volume_value_interval: Interval<T>) -> bool
 where
-    T: Add<Output = T>
-        + Bounded
-        + Copy
-        + Div<Output = T>
-        + FromPrimitive
-        + Mul<Output = T>
-        + Neg<Output = T>
-        + PartialOrd
-        + Sub<Output = T>
-        + ToPrimitive,
+    T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + ToPrimitive,
 {
     match voxel {
         Some(value) => volume_value_interval.includes_closed(*value),

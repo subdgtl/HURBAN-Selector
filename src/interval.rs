@@ -1,6 +1,4 @@
-use std::ops::{Add, Div, Mul, Sub};
-
-use num_traits::{Bounded, FromPrimitive, ToPrimitive};
+use num_traits::{Bounded, FromPrimitive, Num, ToPrimitive};
 
 /// Interval is a set of real numbers lying between two numbers, the extremities
 /// (left and right) of the interval.
@@ -14,18 +12,7 @@ pub struct Interval<T> {
     right_infinite: bool,
 }
 
-impl<
-        T: Add<Output = T>
-            + Bounded
-            + Copy
-            + Div<Output = T>
-            + FromPrimitive
-            + Mul<Output = T>
-            + PartialOrd
-            + Sub<Output = T>
-            + ToPrimitive,
-    > Interval<T>
-{
+impl<T: Bounded + Copy + FromPrimitive + Num + PartialOrd + ToPrimitive> Interval<T> {
     /// Creates a new interval from two extremities. Left and right extremity
     /// don't need to be ordered.
     pub fn new(left: T, right: T) -> Self {
