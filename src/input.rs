@@ -70,18 +70,19 @@ impl InputManager {
                         ..
                     } = input;
 
-                    // We respond to some events unconditionally, even if GUI has focus.
-                    match (virtual_keycode, state) {
-                        // Cmd+Q for macOS
-                        #[cfg(target_os = "macos")]
-                        (
-                            Some(winit::event::VirtualKeyCode::Q),
-                            winit::event::ElementState::Pressed,
-                        ) => {
-                            self.input_state.close_requested = true;
+                    // Respond to Cmd+Q unconditionally, even if GUI has focus
+                    #[cfg(target_os = "macos")]
+                    {
+                        if self.modifiers == winit::event::ModifiersState::LOGO {
+                            if let (
+                                Some(winit::event::VirtualKeyCode::Q),
+                                winit::event::ElementState::Pressed,
+                            ) = (virtual_keycode, state)
+                            {
+                                self.input_state.close_requested = true;
+                            };
                         }
-                        _ => (),
-                    };
+                    }
 
                     // These events are responded to only when gui doesn't have
                     // focus and there are no active modifiers (we currently
