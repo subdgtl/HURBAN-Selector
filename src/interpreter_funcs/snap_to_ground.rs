@@ -76,14 +76,14 @@ impl Func for FuncSnapToGround {
         let value = if move_to_origin || snap_to_ground {
             let bbox = mesh.bounding_box();
 
-            let translation_vector = if move_to_origin {
-                Point3::origin() - bbox.center()
-            } else {
-                Vector3::zeros()
-            } + if snap_to_ground {
-                Vector3::new(0.0, 0.0, bbox.diagonal().z / 2.0)
-            } else {
-                Vector3::zeros()
+            let translation_vector = match (move_to_origin, snap_to_ground) {
+                (true, true) => {
+                    Point3::origin() - bbox.center()
+                        + Vector3::new(0.0, 0.0, bbox.diagonal().z / 2.0)
+                }
+                (true, false) => Point3::origin() - bbox.center(),
+                (false, true) => Vector3::new(0.0, 0.0, bbox.diagonal().z / 2.0 - bbox.center().z),
+                _ => Vector3::zeros(),
             };
 
             let translation = Matrix4::new_translation(&translation_vector);
