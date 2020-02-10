@@ -142,11 +142,11 @@ impl InputManager {
                         let y = position.y;
                         let x_prev = self.window_mouse_x;
                         let y_prev = self.window_mouse_y;
-                        self.window_mouse_x = x;
-                        self.window_mouse_y = y;
+                        self.window_mouse_x = f64::from(x);
+                        self.window_mouse_y = f64::from(y);
 
-                        let dx = (x - x_prev) as f32;
-                        let dy = (y - y_prev) as f32;
+                        let dx = (f64::from(x) - x_prev) as f32;
+                        let dy = (f64::from(y) - y_prev) as f32;
 
                         if self.lmb_down && self.rmb_down {
                             self.input_state.camera_zoom -= dy;
