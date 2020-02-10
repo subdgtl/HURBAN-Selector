@@ -2,6 +2,7 @@ use num_traits::{Bounded, FromPrimitive, Num, ToPrimitive};
 
 /// Interval is a set of real numbers lying between two numbers, the extremities
 /// (left and right) of the interval.
+/// 
 /// # Source
 /// https://en.wikipedia.org/wiki/Interval_(mathematics)
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -121,7 +122,7 @@ impl<T: Bounded + Copy + FromPrimitive + Num + PartialOrd + ToPrimitive> Interva
             } else {
                 (self.right, self.left)
             };
-            Some((min + max) / T::from_f32(2_f32).unwrap())
+            Some((min + max) / T::from_i32(2_i32).expect("Conversion from i32 failed"))
         }
     }
 

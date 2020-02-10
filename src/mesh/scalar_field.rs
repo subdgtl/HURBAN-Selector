@@ -219,11 +219,11 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         // will be the volume to be scanned for any voxels.
         source_scalar_field
             .mesh_volume_bounding_box_cartesian(volume_value_interval)
-            .map(|current_sf_bounding_box| {
+            .map(|source_sf_bounding_box| {
                 // New scalar field that can encompass the source
                 // scalar field's mesh.
                 let mut target_scalar_field = ScalarField::from_cartesian_bounding_box(
-                    &current_sf_bounding_box,
+                    &source_sf_bounding_box,
                     &voxel_dimensions,
                 );
 
@@ -506,7 +506,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     /// the source scalar field.
     ///
     /// # Panics
-    /// Panics if one of the volume voxel intervals is infinite.
+    /// Panics if one of the volume value intervals is infinite.
     ///
     /// # Warning
     /// If the input scalar fields are far apart, the resulting scalar field may
