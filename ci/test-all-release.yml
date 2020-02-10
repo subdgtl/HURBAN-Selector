@@ -4,7 +4,7 @@ steps:
 
 - template: install-rust.yml
 
-- bash: cargo clippy --release -- -D warnings
+- bash: cargo clippy --release --features dist -- -D warnings
   displayName: "cargo clippy"
-- bash: cargo test --release --verbose
+- bash: cargo test --release --features dist --verbose
   displayName: "cargo test"
