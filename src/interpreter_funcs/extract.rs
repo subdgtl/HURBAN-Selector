@@ -34,6 +34,7 @@ impl Func for FuncExtract {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Extract from Group",
+            description: "",
             return_value_name: "Extracted Mesh",
         }
     }
@@ -46,11 +47,13 @@ impl Func for FuncExtract {
         &[
             ParamInfo {
                 name: "Group",
+                description: "",
                 refinement: ParamRefinement::MeshArray,
                 optional: false,
             },
             ParamInfo {
                 name: "Index",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(0),
                     min_value: Some(0),
@@ -60,6 +63,7 @@ impl Func for FuncExtract {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

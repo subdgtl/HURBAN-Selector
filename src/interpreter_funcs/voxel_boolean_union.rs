@@ -41,6 +41,7 @@ impl Func for FuncBooleanUnion {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Union",
+            description: "",
             return_value_name: "Union Mesh",
         }
     }
@@ -53,16 +54,19 @@ impl Func for FuncBooleanUnion {
         &[
             ParamInfo {
                 name: "Mesh 1",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Mesh 2",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Voxel Size",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(f32::MIN_POSITIVE),
@@ -78,6 +82,7 @@ impl Func for FuncBooleanUnion {
             },
             ParamInfo {
                 name: "Grow",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(1),
                     min_value: None,
@@ -87,6 +92,7 @@ impl Func for FuncBooleanUnion {
             },
             ParamInfo {
                 name: "Fill Closed Volumes",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -94,6 +100,7 @@ impl Func for FuncBooleanUnion {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

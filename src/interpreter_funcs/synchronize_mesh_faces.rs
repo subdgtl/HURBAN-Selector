@@ -13,6 +13,7 @@ impl Func for FuncSynchronizeMeshFaces {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Synchronize Faces",
+            description: "",
             return_value_name: "Synchronized Mesh",
         }
     }
@@ -25,11 +26,13 @@ impl Func for FuncSynchronizeMeshFaces {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

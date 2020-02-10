@@ -16,6 +16,7 @@ impl Func for FuncCreatePlane {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create Plane",
+            description: "",
             return_value_name: "Plane",
         }
     }
@@ -28,6 +29,7 @@ impl Func for FuncCreatePlane {
         &[
             ParamInfo {
                 name: "Center",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -43,6 +45,7 @@ impl Func for FuncCreatePlane {
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -58,6 +61,7 @@ impl Func for FuncCreatePlane {
             },
             ParamInfo {
                 name: "Scale",
+                description: "",
                 refinement: ParamRefinement::Float2(Float2ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(0.0),
@@ -70,6 +74,7 @@ impl Func for FuncCreatePlane {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
