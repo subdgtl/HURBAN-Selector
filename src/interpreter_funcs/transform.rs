@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::{Matrix4, Rotation, Vector3};
 
+use crate::analytics;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, Value,
@@ -14,6 +15,7 @@ impl Func for FuncTransform {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Transform",
+            description: "Translates, rotates and scales, either in local or global coordinates",
             return_value_name: "Transformed Mesh",
         }
     }
@@ -26,11 +28,13 @@ impl Func for FuncTransform {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "Mesh to transform",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Translate",
+                description: "Translation (movement) vector",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -46,6 +50,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "Rotation around the X, Y and Z axis, respectively. In degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -61,6 +66,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Scale",
+                description: "Scaling factors for the X, Y and Z axis, respectively",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -76,8 +82,19 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Transform around object center",
+                description: "\
+Whether to transform the object in local coordinates (around the object's center) \
+instead of global world origin",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "Whether to output mesh analysis into console after running",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
                 }),
                 optional: false,
             },
@@ -91,7 +108,7 @@ impl Func for FuncTransform {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
 
@@ -99,6 +116,8 @@ impl Func for FuncTransform {
         let rotate = args[2].unwrap_float3();
         let scale = Vector3::from(args[3].unwrap_float3());
         let transform_around_local_center = args[4].unwrap_boolean();
+
+        let analyze = args[5].unwrap_boolean();
 
         let user_rotation = Rotation::from_euler_angles(
             rotate[0].to_radians(),
@@ -148,6 +167,10 @@ impl Func for FuncTransform {
                 normals_iter,
             )
         };
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
+        }
 
         Ok(Value::Mesh(Arc::new(value)))
     }

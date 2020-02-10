@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use nalgebra::{Matrix4, Point3, Vector3};
 
+use crate::analytics;
 use crate::bounding_box::BoundingBox;
 use crate::importer::{Importer, ImporterError, ObjCache};
 use crate::interpreter::{
@@ -43,6 +44,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Import OBJ as Group",
+            description: "",
             return_value_name: "Imported Group",
         }
     }
@@ -55,6 +57,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
         &[
             ParamInfo {
                 name: "Path",
+                description: "",
                 refinement: ParamRefinement::String(StringParamRefinement {
                     default_value: "",
                     file_path: true,
@@ -64,6 +67,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
             },
             ParamInfo {
                 name: "Move to origin",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -71,8 +75,17 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
             },
             ParamInfo {
                 name: "Snap to ground",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting group",
+                description: "",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
                 }),
                 optional: false,
             },
@@ -85,12 +98,13 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
 
     fn call(
         &mut self,
-        values: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        args: &[Value],
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let path = values[0].unwrap_string();
-        let move_to_origin = values[1].unwrap_boolean();
-        let snap_to_ground = values[2].unwrap_boolean();
+        let path = args[0].unwrap_string();
+        let move_to_origin = args[1].unwrap_boolean();
+        let snap_to_ground = args[2].unwrap_boolean();
+        let analyze = args[3].unwrap_boolean();
 
         let result = self.importer.import_obj(path);
         match result {
@@ -138,6 +152,11 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
                     };
 
                     let value = MeshArrayValue::new(meshes);
+
+                    if analyze {
+                        analytics::report_group_analysis(&value, log);
+                    }
+
                     Ok(Value::MeshArray(Arc::new(value)))
                 }
             }

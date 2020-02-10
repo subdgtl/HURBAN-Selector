@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 
+use crate::analytics;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
@@ -39,6 +40,7 @@ impl Func for FuncBooleanDifference {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Difference",
+            description: "",
             return_value_name: "Difference Mesh",
         }
     }
@@ -51,16 +53,19 @@ impl Func for FuncBooleanDifference {
         &[
             ParamInfo {
                 name: "Mesh 1",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Mesh 2",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Voxel Size",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(f32::MIN_POSITIVE),
@@ -76,6 +81,7 @@ impl Func for FuncBooleanDifference {
             },
             ParamInfo {
                 name: "Grow",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(1),
                     min_value: None,
@@ -85,8 +91,17 @@ impl Func for FuncBooleanDifference {
             },
             ParamInfo {
                 name: "Fill Closed Volumes",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
                 }),
                 optional: false,
             },
@@ -100,13 +115,14 @@ impl Func for FuncBooleanDifference {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh1 = args[0].unwrap_mesh();
         let mesh2 = args[1].unwrap_mesh();
         let voxel_dimensions = args[2].unwrap_float3();
         let growth_iterations = args[3].unwrap_uint();
         let fill = args[4].unwrap_boolean();
+        let analyze = args[5].unwrap_boolean();
 
         let mut voxel_cloud1 = VoxelCloud::from_mesh(mesh1, &Vector3::from(voxel_dimensions));
         let mut voxel_cloud2 = VoxelCloud::from_mesh(mesh2, &Vector3::from(voxel_dimensions));
@@ -127,7 +143,12 @@ impl Func for FuncBooleanDifference {
         }
 
         match voxel_cloud1.to_mesh() {
-            Some(value) => Ok(Value::Mesh(Arc::new(value))),
+            Some(value) => {
+                if analyze {
+                    analytics::report_mesh_analysis(&value, log);
+                }
+                Ok(Value::Mesh(Arc::new(value)))
+            }
             None => Err(FuncError::new(FuncBooleanDifferenceError::WeldFailed)),
         }
     }

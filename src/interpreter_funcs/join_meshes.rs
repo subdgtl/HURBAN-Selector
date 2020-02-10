@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, Value,
 };
 use crate::mesh::tools;
 
@@ -11,6 +13,7 @@ impl Func for FuncJoinMeshes {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Join Meshes",
+            description: "",
             return_value_name: "Joined Mesh",
         }
     }
@@ -23,12 +26,22 @@ impl Func for FuncJoinMeshes {
         &[
             ParamInfo {
                 name: "Mesh 1",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Mesh 2",
+                description: "",
                 refinement: ParamRefinement::Mesh,
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
                 optional: false,
             },
         ]
@@ -41,11 +54,17 @@ impl Func for FuncJoinMeshes {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let meshes = args.iter().map(|a| a.unwrap_mesh());
+        let meshes = [args[0].unwrap_mesh(), args[1].unwrap_mesh()];
+        let analyze = args[2].unwrap_boolean();
 
-        let value = tools::join_multiple_meshes(meshes);
+        let value = tools::join_multiple_meshes(meshes.iter().copied());
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
+        }
+
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

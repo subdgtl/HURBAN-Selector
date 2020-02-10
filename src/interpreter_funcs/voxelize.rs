@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 
+use crate::analytics;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
@@ -37,6 +38,7 @@ impl Func for FuncVoxelize {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Voxelize Mesh",
+            description: "",
             return_value_name: "Voxelized mesh",
         }
     }
@@ -49,11 +51,13 @@ impl Func for FuncVoxelize {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Voxel Size",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(f32::MIN_POSITIVE),
@@ -69,6 +73,7 @@ impl Func for FuncVoxelize {
             },
             ParamInfo {
                 name: "Grow",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(2),
                     min_value: None,
@@ -78,8 +83,17 @@ impl Func for FuncVoxelize {
             },
             ParamInfo {
                 name: "Fill Closed Volumes",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
                 }),
                 optional: false,
             },
@@ -93,12 +107,13 @@ impl Func for FuncVoxelize {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let voxel_dimensions = args[1].unwrap_float3();
         let growth_iterations = args[2].unwrap_uint();
         let fill = args[3].unwrap_boolean();
+        let analyze = args[4].unwrap_boolean();
 
         let mut voxel_cloud = VoxelCloud::from_mesh(mesh, &Vector3::from(voxel_dimensions));
         for _ in 0..growth_iterations {
@@ -114,7 +129,12 @@ impl Func for FuncVoxelize {
         }
 
         match voxel_cloud.to_mesh() {
-            Some(value) => Ok(Value::Mesh(Arc::new(value))),
+            Some(value) => {
+                if analyze {
+                    analytics::report_mesh_analysis(&value, log);
+                }
+                Ok(Value::Mesh(Arc::new(value)))
+            }
             None => Err(FuncError::new(FuncVoxelizeError::WeldFailed)),
         }
     }

@@ -10,8 +10,11 @@ use crate::notifications::{NotificationLevel, Notifications};
 use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
-const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
-const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Bold.ttf");
+const FONT_OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
+const FONT_OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Bold.ttf");
+
+const WRAP_POS_TOOLTIP_TEXT_PIXELS: f32 = 400.0;
+const WRAP_POS_CONSOLE_TEXT_PIXELS: f32 = 380.0;
 
 const MARGIN: f32 = 10.0;
 
@@ -191,14 +194,14 @@ impl Ui {
         let regular_font_id = imgui_context
             .fonts()
             .add_font(&[imgui::FontSource::TtfData {
-                data: OPENSANS_REGULAR_BYTES,
+                data: FONT_OPENSANS_REGULAR_BYTES,
                 size_pixels: font_size,
                 config: None,
             }]);
         let bold_font_id = imgui_context
             .fonts()
             .add_font(&[imgui::FontSource::TtfData {
-                data: OPENSANS_BOLD_BYTES,
+                data: FONT_OPENSANS_BOLD_BYTES,
                 size_pixels: font_size,
                 config: None,
             }]);
@@ -554,6 +557,9 @@ impl<'a> UiFrame<'a> {
                             if ui.is_item_hovered() {
                                 if let Some(error) = error {
                                     ui.tooltip(|| {
+                                        let wrap_token = ui
+                                            .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+
                                         let mut imstring_buffer = self.global_imstring_buffer
                                             .borrow_mut();
 
@@ -569,7 +575,16 @@ impl<'a> UiFrame<'a> {
                                         );
 
                                         imstring_buffer.clear();
+
+                                        wrap_token.pop(ui);
                                     });
+                                } else if !func.info().description.is_empty() {
+                                    ui.tooltip(|| {
+                                        let wrap_token = ui
+                                            .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                                        ui.text(func.info().description);
+                                        wrap_token.pop(ui);
+                                    })
                                 }
                             }
 
@@ -777,6 +792,15 @@ impl<'a> UiFrame<'a> {
                                             }
                                         }
                                     }
+
+                                    if ui.is_item_hovered() && !param_info.description.is_empty() {
+                                        ui.tooltip(|| {
+                                            let wrap_token = ui
+                                                .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                                            ui.text(param_info.description);
+                                            wrap_token.pop(ui);
+                                        });
+                                    }
                                 }
 
                                 let console_id = imgui::im_str!("##console{}", stmt_index);
@@ -787,6 +811,9 @@ impl<'a> UiFrame<'a> {
                                     .always_vertical_scrollbar(true)
                                     .begin(ui)
                                 {
+                                    let wrap_token = ui
+                                        .push_text_wrap_pos(WRAP_POS_CONSOLE_TEXT_PIXELS);
+
                                     let log_messages = session.log_messages_at_stmt(stmt_index);
                                     for log_message in log_messages {
                                         ui.text_colored(match log_message.level {
@@ -803,6 +830,7 @@ impl<'a> UiFrame<'a> {
                                         console_state[stmt_index].message_count = message_count;
                                     }
 
+                                    wrap_token.pop(ui);
                                     window_token.end(ui);
                                 }
 
@@ -943,6 +971,15 @@ impl<'a> UiFrame<'a> {
                     {
                         function_clicked = Some(func_ident);
                     }
+
+                    if ui.is_item_hovered() && !func.info().description.is_empty() {
+                        ui.tooltip(|| {
+                            let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                            ui.text(func.info().description);
+                            wrap_token.pop(ui);
+                        });
+                    }
+
                     ui.next_column();
                 }
                 if let Some((color_token, style_token)) = pushing_tokens {

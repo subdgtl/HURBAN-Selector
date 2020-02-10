@@ -14,6 +14,7 @@ impl Func for FuncSnapToGround {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Snap To Ground",
+            description: "",
             return_value_name: "Mesh on origin",
         }
     }
@@ -26,11 +27,13 @@ impl Func for FuncSnapToGround {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Move to origin",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -38,6 +41,7 @@ impl Func for FuncSnapToGround {
             },
             ParamInfo {
                 name: "Snap to ground",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),

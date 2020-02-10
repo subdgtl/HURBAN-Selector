@@ -15,7 +15,6 @@ use self::join_meshes::FuncJoinMeshes;
 use self::laplacian_smoothing::FuncLaplacianSmoothing;
 use self::loop_subdivision::FuncLoopSubdivision;
 use self::revert_mesh_faces::FuncRevertMeshFaces;
-use self::shrink_wrap::FuncShrinkWrap;
 use self::snap_to_ground::FuncSnapToGround;
 use self::synchronize_mesh_faces::FuncSynchronizeMeshFaces;
 use self::transform::FuncTransform;
@@ -37,7 +36,6 @@ mod join_meshes;
 mod laplacian_smoothing;
 mod loop_subdivision;
 mod revert_mesh_faces;
-mod shrink_wrap;
 mod snap_to_ground;
 mod synchronize_mesh_faces;
 mod transform;
@@ -71,7 +69,7 @@ pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3000);
 pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(3001);
 
 // Tool funcs
-pub const FUNC_ID_SHRINK_WRAP: FuncIdent = FuncIdent(9000);
+// FIXME: Fill id 9000
 pub const FUNC_ID_DISJOINT_MESH: FuncIdent = FuncIdent(9001);
 pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(9002);
 pub const FUNC_ID_WELD: FuncIdent = FuncIdent(9003);
@@ -119,7 +117,6 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncLoopSubdivision));
 
     // Tool funcs
-    funcs.insert(FUNC_ID_SHRINK_WRAP, Box::new(FuncShrinkWrap));
     funcs.insert(FUNC_ID_DISJOINT_MESH, Box::new(FuncDisjointMesh));
     funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncJoinMeshes));
     funcs.insert(FUNC_ID_WELD, Box::new(FuncWeld));
