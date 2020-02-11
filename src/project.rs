@@ -8,6 +8,8 @@ use serde::Serialize;
 
 use crate::interpreter::ast;
 
+pub const PROJECT_EXTENSION: &str = "hurban";
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Project {
     pub version: u32,
