@@ -6,6 +6,7 @@ use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
+use crate::project;
 use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
@@ -496,8 +497,9 @@ impl<'a> UiFrame<'a> {
                     *screenshot_modal_open = true;
                 }
 
-                let ext_description = "HURBAN Selector project (.hs)";
-                let ext_filter = &["*.hs"];
+                let ext_description =
+                    &format!("HURBAN Selector project (.{})", project::PROJECT_EXTENSION);
+                let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
                 if ui.button(imgui::im_str!("Save project"), [-f32::MIN_POSITIVE, 0.0]) {
                     match project_path {
@@ -507,7 +509,7 @@ impl<'a> UiFrame<'a> {
                         None => {
                             if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
                                 "Save project",
-                                "new_project.hs",
+                                &format!("new_project.{}", project::PROJECT_EXTENSION),
                                 ext_filter,
                                 ext_description,
                             ) {
