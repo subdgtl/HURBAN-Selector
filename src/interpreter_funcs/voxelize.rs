@@ -10,7 +10,6 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::interval::Interval;
 use crate::mesh::scalar_field::ScalarField;
 
 #[derive(Debug, PartialEq)]
@@ -106,21 +105,28 @@ impl Func for FuncVoxelize {
         let mut scalar_field =
             ScalarField::from_mesh(mesh, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);
 
-        scalar_field.compute_distance_filed(Interval::new(0, 0));
+        scalar_field.compute_distance_filed(&(0..=0));
 
-        let meshing_interval = if fill {
-            Interval::new_left_infinite(growth_i16)
+        // FIXME: Return RangeBounds of the volume_value_range for both
+        // if/else options and remove redundant code.
+        if fill {
+            if !scalar_field.contains_voxels_within_range(&(..=growth_i16)) {
+                return Err(FuncError::new(FuncVoxelizeError::EmptyScalarField));
+            }
+
+            match scalar_field.to_mesh(&(..=growth_i16)) {
+                Some(value) => Ok(Value::Mesh(Arc::new(value))),
+                None => Err(FuncError::new(FuncVoxelizeError::WeldFailed)),
+            }
         } else {
-            Interval::new(-growth_i16, growth_i16)
-        };
+            if !scalar_field.contains_voxels_within_range(&(-growth_i16..=growth_i16)) {
+                return Err(FuncError::new(FuncVoxelizeError::EmptyScalarField));
+            }
 
-        if !scalar_field.contains_voxels_within_interval(meshing_interval) {
-            return Err(FuncError::new(FuncVoxelizeError::EmptyScalarField));
-        }
-
-        match scalar_field.to_mesh(meshing_interval) {
-            Some(value) => Ok(Value::Mesh(Arc::new(value))),
-            None => Err(FuncError::new(FuncVoxelizeError::WeldFailed)),
+            match scalar_field.to_mesh(&(-growth_i16..=growth_i16)) {
+                Some(value) => Ok(Value::Mesh(Arc::new(value))),
+                None => Err(FuncError::new(FuncVoxelizeError::WeldFailed)),
+            }
         }
     }
 }

@@ -1,8 +1,6 @@
-use std::ops::{Add, Sub};
-
 use arrayvec::ArrayVec;
 use nalgebra::{Point3, Scalar, Vector3};
-use num_traits::{Bounded, Zero};
+use num_traits::{Bounded, Num};
 
 /// World-origin-based axis-aligned bounding box contains the entire given
 /// geometry and defines an envelope aligned to the world (euclidean) coordinate
@@ -16,7 +14,7 @@ where
     maximum_point: Point3<T>,
 }
 
-impl<T: Add<Output = T> + Bounded + Scalar + Sub<Output = T> + PartialOrd + Zero> BoundingBox<T> {
+impl<T: Bounded + Num + Scalar + PartialOrd> BoundingBox<T> {
     /// Creates a new bounding box. The two input points will be deconstructed
     /// and a new couple of points will be created: minimum point with minimum
     /// values of x, y, z and maximum point with maximum values of x, y, z. The
