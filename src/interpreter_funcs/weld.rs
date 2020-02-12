@@ -89,7 +89,9 @@ impl Func for FuncWeld {
             }
             Ok(Value::Mesh(Arc::new(value)))
         } else {
-            Err(FuncError::new(FuncWeldError::AllFacesDegenerate))
+            let error = FuncError::new(FuncWeldError::AllFacesDegenerate);
+            log(LogMessage::error(format!("Error: {}", error)));
+            Err(error)
         }
     }
 }
