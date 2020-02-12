@@ -36,7 +36,7 @@ pub fn lerp(source: f32, target: f32, weight: f32) -> f32 {
 
 /// Remaps the value from one range to another. Return None if one of the
 /// ranges is infinite.
-pub fn remap<T, U>(value: T, source_range: U, target_range: U) -> Option<T>
+pub fn remap<T, U>(value: T, source_range: &U, target_range: &U) -> Option<T>
 where
     T: Num + ToPrimitive + FromPrimitive,
     U: RangeBounds<T>,

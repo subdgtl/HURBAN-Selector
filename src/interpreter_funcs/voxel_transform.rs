@@ -10,7 +10,6 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncError,
     FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::interval::Interval;
 use crate::mesh::scalar_field::ScalarField;
 
 #[derive(Debug, PartialEq)]
@@ -163,13 +162,7 @@ impl Func for FuncVoxelTransform {
             growth_u32,
         );
 
-        scalar_field.compute_distance_filed(Interval::new(0, 0));
-
-        let meshing_interval = if fill {
-            Interval::new_left_infinite(growth_i16)
-        } else {
-            Interval::new(-growth_i16, growth_i16)
-        };
+        scalar_field.compute_distance_filed(&(0..=0));
 
         let rotation = Rotation::from_euler_angles(
             rotate[0].to_radians(),
@@ -181,15 +174,24 @@ impl Func for FuncVoxelTransform {
 
         if let Some(transformed_vc) = ScalarField::from_scalar_field_transformed(
             &scalar_field,
-            Interval::new(0, 0),
+            &(0..=0),
             voxel_dimension,
             &translate,
             &rotation,
             &scaling,
         ) {
-            match transformed_vc.to_mesh(meshing_interval) {
-                Some(value) => Ok(Value::Mesh(Arc::new(value))),
-                None => Err(FuncError::new(FuncVoxelTransformError::WeldFailed)),
+            // FIXME: Return RangeBounds of the volume_value_range for both
+            // if/else options and remove redundant code.
+            if fill {
+                match transformed_vc.to_mesh(&(..=growth_i16)) {
+                    Some(value) => Ok(Value::Mesh(Arc::new(value))),
+                    None => Err(FuncError::new(FuncVoxelTransformError::WeldFailed)),
+                }
+            } else {
+                match transformed_vc.to_mesh(&(-growth_i16..=growth_i16)) {
+                    Some(value) => Ok(Value::Mesh(Arc::new(value))),
+                    None => Err(FuncError::new(FuncVoxelTransformError::WeldFailed)),
+                }
             }
         } else {
             Err(FuncError::new(FuncVoxelTransformError::TransformFailed))
