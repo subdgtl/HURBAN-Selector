@@ -18,7 +18,7 @@ impl Func for FuncCreateBox {
             description: "CREATE MESH BOX\n\
                           \n\
                           Creates a new mesh box made of 12 welded triangles \
-                          and 8 vertices.\n\
+                          and 8 vertices. \
                           The default size of the box is 1x1x1 model units.\n\
                           \n\
                           The resulting mesh geometry will be named 'Box'.",

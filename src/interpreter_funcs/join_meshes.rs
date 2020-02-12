@@ -16,7 +16,7 @@ impl Func for FuncJoinMeshes {
             description: "JOIN TWO MESH GEOMETRIES INTO ONE\n\
                           \n\
                           Creates a new mesh containing vertices and triangles \
-                          from both input meshes.\n\
+                          from both input meshes. \
                           The two meshes will not be welded.\n\
                           \n\
                           The input meshes will be marked used \

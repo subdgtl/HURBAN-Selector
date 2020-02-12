@@ -14,23 +14,23 @@ impl Func for FuncLaplacianSmoothing {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Relax",
-            description: "RELAX MESH WITH LAPLACIAN SMOOTHING\n\
-            \n\
-                        
-            Creates a new relaxed mesh geometry using laplacian smoothing algorithm. \
-            Laplacian smoothing is an algorithm to smoothen a polygonal mesh. \
-            For each vertex in a mesh, a new position is chosen based on local \
-            information (such as the position of neighbors) and the vertex is moved there.\n\
-            The vertex and face count will remain unchanged. \n\
-            \n\
-            Laplacian smoothing removes small details, grain and kinks of the original model. \
-            Too many iterations may reduce the mesh volume. \
-            The output mesh will be recomputed with smooth normals.\n\
-            \n\
-            The input mesh will be marked used and thus invisible in the viewport. \
-            It can still be used in subsequent operations.\n\
-            \n\
-            The resulting mesh geometry will be named 'Relaxed Mesh'.",
+            description:
+                "RELAX MESH WITH LAPLACIAN SMOOTHING\n\
+                 \n\
+                 Creates a new relaxed mesh geometry using laplacian smoothing algorithm. \
+                 Laplacian smoothing is an algorithm to smoothen a polygonal mesh. \
+                 For each vertex in a mesh, a new position is chosen based on local \
+                 information (such as the position of neighbors) and the vertex is moved there. \
+                 The vertex and face count will remain unchanged. \n\
+                 \n\
+                 Laplacian smoothing removes small details, grain and kinks of the original model. \
+                 Too many iterations may reduce the mesh volume. \
+                 The output mesh will be recomputed with smooth normals.\n\
+                 \n\
+                 The input mesh will be marked used and thus invisible in the viewport. \
+                 It can still be used in subsequent operations.\n\
+                 \n\
+                 The resulting mesh geometry will be named 'Relaxed Mesh'.",
             return_value_name: "Relaxed Mesh",
         }
     }

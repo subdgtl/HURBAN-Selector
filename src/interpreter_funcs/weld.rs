@@ -39,7 +39,7 @@ impl Func for FuncWeld {
                           which results in watertight mesh if the original geometry was visually \
                           closed. In specific cases (large, mostly convex volumes with no kinks \
                           or folds and with proportionally small faces), \
-                          weld can be used for mesh vertex and face reduction.\n\
+                          weld can be used for mesh vertex and face reduction. \
                           Weld may result in invalid (non-manifold or collapsed) mesh in cases, \
                           when the welding tolerance is too high.\n\
                           \n\

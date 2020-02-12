@@ -38,29 +38,29 @@ impl Func for FuncLoopSubdivision {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Smoothen",
-            description: "SMOOTHEN MESH WITH LOOP SUBDIVISION\n\
-            \n\
-                        
-            Creates a new smoothened mesh geometry using Loop subdivision algorithm. \
-            Loop subdivision surface is an approximating subdivision scheme developed \
-            by Charles Loop in 1987 for triangular meshes. Loop subdivision surfaces \
-            are defined recursively, dividing each triangle into four smaller ones.\n\
-            The vertex and face count will increase with each iteration (2 times \
-            for vertices, 4 times for faces). Too many iterations may take long time \
-            and produce an unnecessarily heavy mesh. Therefore the number of \
-            iterations is limited to 3.\n\
-            The output mesh will be recomputed with smooth normals.\n\
-            \n\
-            The Loop subdivision algorithm requires the input mesh to be triangulated, \
-            watertight and manifold. \
-            Smoothing operations are usually placed at the end of mesh manipulation \
-            pipeline because the subdivided dense meshes are not suitable for geometry \
-            manipulation.\n\
-            \n\
-            The input mesh will be marked used and thus invisible in the viewport. \
-            It can still be used in subsequent operations.\n\
-            \n\
-            The resulting mesh geometry will be named 'Smooth Mesh'.",
+            description:
+                "SMOOTHEN MESH WITH LOOP SUBDIVISION\n\
+                 \n\
+                 Creates a new smoothened mesh geometry using Loop subdivision algorithm. \
+                 Loop subdivision surface is an approximating subdivision scheme developed \
+                 by Charles Loop in 1987 for triangular meshes. Loop subdivision surfaces \
+                 are defined recursively, dividing each triangle into four smaller ones. \
+                 The vertex and face count will increase with each iteration (2 times \
+                 for vertices, 4 times for faces). Too many iterations may take long time \
+                 and produce an unnecessarily heavy mesh. Therefore the number of \
+                 iterations is limited to 3. \
+                 The output mesh will be recomputed with smooth normals.\n\
+                 \n\
+                 The Loop subdivision algorithm requires the input mesh to be triangulated, \
+                 watertight and manifold. \
+                 Smoothing operations are usually placed at the end of mesh manipulation \
+                 pipeline because the subdivided dense meshes are not suitable for geometry \
+                 manipulation.\n\
+                 \n\
+                 The input mesh will be marked used and thus invisible in the viewport. \
+                 It can still be used in subsequent operations.\n\
+                 \n\
+                 The resulting mesh geometry will be named 'Smooth Mesh'.",
             return_value_name: "Smooth Mesh",
         }
     }

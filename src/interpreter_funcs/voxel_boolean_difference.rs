@@ -44,7 +44,7 @@ impl Func for FuncBooleanDifference {
             \n\
             Converts the input mesh geometries into voxel clouds, then performs \
             boolean difference of the first to second voxel clouds and eventually \
-            materializes the resulting voxel cloud into a welded mesh.\n\
+            materializes the resulting voxel cloud into a welded mesh. \
             Boolean difference removes volume of the first geometry where there is \
             a volume in the second geometry (removes the second volume from the first one). \
             It is equivalent to arithmetic subtraction.\n\

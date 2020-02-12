@@ -17,14 +17,12 @@ impl Func for FuncCreatePlane {
         &FuncInfo {
             name: "Create Plane",
             description: "CREATE MESH PLANE\n\
-            \n\
-                        
-            Creates a new mesh plane made of two welded triangles \
-            and four vertices.\n\
-            The default size of the plane is 1x1 model units.\n\
-            \n\
-                        
-            The resulting mesh geometry will be named 'Plane'.",
+                          \n\
+                          Creates a new mesh plane made of two welded triangles \
+                          and four vertices. \
+                          The default size of the plane is 1x1 model units.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Plane'.",
             return_value_name: "Plane",
         }
     }

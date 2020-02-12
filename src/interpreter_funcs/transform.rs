@@ -90,8 +90,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Transform around object center",
-                description: "\
-                              Transforms the mesh geometry around the object's center \
+                description: "Transforms the mesh geometry around the object's center \
                               instead of global world origin.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,

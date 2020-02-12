@@ -51,7 +51,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
                  \n\
                  Mesh group is displayed in the viewport as geometry but is \
                  a distinct data type. Only some operations can use mesh groups \
-                 and most of them are intended to generate a proper mesh from the mesh group.\n\
+                 and most of them are intended to generate a proper mesh from the mesh group. \
                  To use the content of the group it is necessary to Extract specific \
                  mesh from group, Extract largest mesh from group or Join mesh group \
                  into a single mesh.\n\

@@ -48,16 +48,14 @@ impl Func for FuncCreateUvSphere {
         &FuncInfo {
             name: "Create UV Sphere",
             description: "CREATE UV MESH SPHERE\n\
-            \n\
-                        
-            Creates a new mesh sphere made of segments ordered into \
-            parallels and meridians, which intersect on poles.\n\
-            The default size of the sphere is 1x1x1 model units.\n\
-            A high number of parallels and meridians will produce \
-            smoother sphere but heavier geometry.\n\
-            \n\
-                        
-            The resulting mesh geometry will be named 'Sphere'.",
+                          \n\
+                          Creates a new mesh sphere made of segments ordered into \
+                          parallels and meridians, which intersect on poles. \
+                          The default size of the sphere is 1x1x1 model units. \
+                          A high number of parallels and meridians will produce \
+                          smoother sphere but heavier geometry.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Sphere'.",
             return_value_name: "Sphere",
         }
     }

@@ -16,19 +16,18 @@ impl Func for FuncSnapToGround {
         &FuncInfo {
             name: "Snap To Ground",
             description: "SNAP MESH GEOMETRY TO GROUND AND/OR WORLD ORIGIN\n\
-            \n\
-                        
-            Move to origin moves the mesh geometry so that its local \
-            center matches the world origin.\n\
-            Snap to ground moves the mesh geometry so that its bottommost \
-            vertexes vertical coordinate is zero (sits on the ground).\n\
-            \n\
-            The two options can be combined.\n\
-            \n\
-            The input mesh will be marked used and thus invisible in the viewport. \
-            It can still be used in subsequent operations.\n\
-            \n\
-            The resulting mesh geometry will be named 'Snapped Mesh'.",
+                          \n\
+                          Move to origin moves the mesh geometry so that its local \
+                          center matches the world origin.\n\
+                          Snap to ground moves the mesh geometry so that its bottommost \
+                          vertexes vertical coordinate is zero (sits on the ground).\n\
+                          \n\
+                          The two options can be combined.\n\
+                          \n\
+                          The input mesh will be marked used and thus invisible in the viewport. \
+                          It can still be used in subsequent operations.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Snapped Mesh'.",
             return_value_name: "Snapped Mesh",
         }
     }

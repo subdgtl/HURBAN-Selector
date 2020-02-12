@@ -44,7 +44,7 @@ impl Func for FuncBooleanIntersection {
             \n\
             Converts the input mesh geometries into voxel clouds, then performs \
             boolean intersection of the first to second voxel clouds and eventually \
-            materializes the resulting voxel cloud into a welded mesh.\n\
+            materializes the resulting voxel cloud into a welded mesh. \
             Boolean intersection keeps only those parts of the volume, which are common \
             to both input geometries. It is equivalent to logical AND operation.\n\
             \n\
