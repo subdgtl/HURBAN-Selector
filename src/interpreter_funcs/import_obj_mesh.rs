@@ -44,7 +44,19 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Import OBJ as Group",
-            description: "",
+            description:
+                "IMPORT OBJ FILE AS A MESH GROUP\n\
+                 \n\
+                 Loads the content of an OBJ file as a mesh group.\n\
+                 \n\
+                 Mesh group is displayed in the viewport as geometry but is \
+                 a distinct data type. Only some operations can use mesh groups \
+                 and most of them are intended to generate a proper mesh from the mesh group.\n\
+                 To use the content of the group it is necessary to Extract specific \
+                 mesh from group, Extract largest mesh from group or Join mesh group \
+                 into a single mesh.\n\
+                 \n\
+                 The resulting mesh group will be named 'Imported Group'.",
             return_value_name: "Imported Group",
         }
     }
@@ -57,7 +69,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
         &[
             ParamInfo {
                 name: "Path",
-                description: "",
+                description: "Path to the OBJ file.",
                 refinement: ParamRefinement::String(StringParamRefinement {
                     default_value: "",
                     file_path: true,
@@ -67,7 +79,8 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
             },
             ParamInfo {
                 name: "Move to origin",
-                description: "",
+                description: "Moves the imported mesh group so that its local \
+                              center matches the world origin.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -75,7 +88,8 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
             },
             ParamInfo {
                 name: "Snap to ground",
-                description: "",
+                description: "Moves the imported mesh group so that its bottommost \
+                              vertexes vertical coordinate is zero (sits on the ground).",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -83,9 +97,9 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
             },
             ParamInfo {
                 name: "Analyze resulting group",
-                description: "",
+                description: "Reports detailed analytic information on the imported mesh group.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
-                    default_value: false,
+                    default_value: true,
                 }),
                 optional: false,
             },

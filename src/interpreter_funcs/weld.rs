@@ -32,7 +32,21 @@ impl Func for FuncWeld {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Weld",
-            description: "",
+            description: "WELD MESH VERTICES\n\
+                          \n\
+                          Replaces mesh vertices that are close to each other with \
+                          a single common vertex. Faces will then share the common vertices, \
+                          which results in watertight mesh if the original geometry was visually \
+                          closed. In specific cases (large, mostly convex volumes with no kinks \
+                          or folds and with proportionally small faces), \
+                          weld can be used for mesh vertex and face reduction.\n\
+                          Weld may result in invalid (non-manifold or collapsed) mesh in cases, \
+                          when the welding tolerance is too high.\n\
+                          \n\
+                          The input mesh will be marked used and thus invisible in the viewport. \
+                          It can still be used in subsequent operations.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Welded Mesh'.",
             return_value_name: "Welded Mesh",
         }
     }
@@ -45,13 +59,16 @@ impl Func for FuncWeld {
         &[
             ParamInfo {
                 name: "Mesh",
-                description: "",
+                description: "Input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Tolerance",
-                description: "",
+                description:
+                    "Limit distance of two vertices to be welded into one.\n\
+                     Weld may result in invalid (non-manifold or collapsed) mesh in cases, \
+                     when the welding tolerance is too high.",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
                     default_value: Some(0.001),
                     min_value: Some(0.0),
@@ -61,9 +78,12 @@ impl Func for FuncWeld {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                The analysis may be slow but it is crucial to check the validity of welding, \
+                therefore it is by default on and may be turned off only after the correct welding \
+                tolerance has been set.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
-                    default_value: false,
+                    default_value: true,
                 }),
                 optional: false,
             },

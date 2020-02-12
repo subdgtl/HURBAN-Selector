@@ -28,7 +28,17 @@ impl Func for FuncExtractLargest {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Extract Largest",
-            description: "",
+            description: "EXTRACT THE LARGEST MESH GEOMETRY FROM MESH GROUP\n\
+                          \n\
+                          Extracts the mesh geometry with the largest number of faces \
+                          (considered to be the main geometry in the group) from a mesh group.\n\
+                          \n\
+                          Mesh group is displayed in the viewport as geometry but is \
+                          a distinct data type. Only some operations, such as this one, \
+                          can use mesh groups and most of them are intended to generate \
+                          a proper mesh from the mesh group.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Extracted Mesh'.",
             return_value_name: "Extracted Mesh",
         }
     }
@@ -41,13 +51,14 @@ impl Func for FuncExtractLargest {
         &[
             ParamInfo {
                 name: "Group",
-                description: "",
+                description: "Input mesh group.",
                 refinement: ParamRefinement::MeshArray,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

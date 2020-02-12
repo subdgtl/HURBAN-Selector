@@ -16,7 +16,15 @@ impl Func for FuncCreatePlane {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create Plane",
-            description: "",
+            description: "CREATE MESH PLANE\n\
+            \n\
+                        
+            Creates a new mesh plane made of two welded triangles \
+            and four vertices.\n\
+            The default size of the plane is 1x1 model units.\n\
+            \n\
+                        
+            The resulting mesh geometry will be named 'Plane'.",
             return_value_name: "Plane",
         }
     }
@@ -29,7 +37,7 @@ impl Func for FuncCreatePlane {
         &[
             ParamInfo {
                 name: "Center",
-                description: "",
+                description: "Center of the plane in absolute model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -45,7 +53,7 @@ impl Func for FuncCreatePlane {
             },
             ParamInfo {
                 name: "Rotate (deg)",
-                description: "",
+                description: "Rotation of the plane in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -61,7 +69,8 @@ impl Func for FuncCreatePlane {
             },
             ParamInfo {
                 name: "Scale",
-                description: "",
+                description: "Scale of the plane as a relative factor.\n\
+                              The original size of the plane is 1x1 model units.",
                 refinement: ParamRefinement::Float2(Float2ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(0.0),
@@ -74,7 +83,8 @@ impl Func for FuncCreatePlane {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

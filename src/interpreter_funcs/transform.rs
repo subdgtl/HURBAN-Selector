@@ -15,7 +15,15 @@ impl Func for FuncTransform {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Transform",
-            description: "Translates, rotates and scales, either in local or global coordinates",
+            description: "TRANSFORM: MOVE, ROTATE, SCALE\n\
+                          \n\
+                          Moves, rotates and scales the mesh geometry, either around local \
+                          object center or global origin.\n\
+                          \n\
+                          The input mesh will be marked used and thus invisible in the viewport. \
+                          It can still be used in subsequent operations.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Transformed Mesh'.",
             return_value_name: "Transformed Mesh",
         }
     }
@@ -28,13 +36,13 @@ impl Func for FuncTransform {
         &[
             ParamInfo {
                 name: "Mesh",
-                description: "Mesh to transform",
+                description: "Input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Translate",
-                description: "Translation (movement) vector",
+                description: "Translation (movement) in X, Y and Z direction.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -50,7 +58,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Rotate (deg)",
-                description: "Rotation around the X, Y and Z axis, respectively. In degrees.",
+                description: "Rotation around the X, Y and Z axis in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -66,7 +74,7 @@ impl Func for FuncTransform {
             },
             ParamInfo {
                 name: "Scale",
-                description: "Scaling factors for the X, Y and Z axis, respectively",
+                description: "Relative scaling factors for the world X, Y and Z axis.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -83,8 +91,8 @@ impl Func for FuncTransform {
             ParamInfo {
                 name: "Transform around object center",
                 description: "\
-Whether to transform the object in local coordinates (around the object's center) \
-instead of global world origin",
+                              Transforms the mesh geometry around the object's center \
+                              instead of global world origin.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -92,7 +100,8 @@ instead of global world origin",
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "Whether to output mesh analysis into console after running",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

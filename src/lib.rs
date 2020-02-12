@@ -308,7 +308,7 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.zoom(input_state.camera_zoom);
                 camera.zoom_step(input_state.camera_zoom_steps);
 
-                let utilities_status = ui_frame.draw_utilities_window(
+                let utilities_status = ui_frame.draw_menu_window(
                     &mut screenshot_modal_open,
                     &mut renderer_draw_mesh_mode,
                     project_path.as_ref().map(|p| p.as_str()),

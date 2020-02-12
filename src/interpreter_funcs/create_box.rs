@@ -15,17 +15,13 @@ impl Func for FuncCreateBox {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create Box",
-            description: "\
-Lorem Ipsum is simply dummy text of the printing and typesetting industry. \n\
-\n\
-
-Lorem Ipsum has been the industry's standard dummy text ever since the \
-1500s, when an unknown printer took a galley of type and scrambled it to make \
-a type specimen book. It has survived not only five centuries, but also the leap \
-into electronic typesetting, remaining essentially unchanged. It was popularised \
-in the 1960s with the release of Letraset sheets containing Lorem Ipsum \
-passages, and more recently with desktop publishing software like Aldus \
-PageMaker including versions of Lorem Ipsum.",
+            description: "CREATE MESH BOX\n\
+                          \n\
+                          Creates a new mesh box made of 12 welded triangles \
+                          and 8 vertices.\n\
+                          The default size of the box is 1x1x1 model units.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Box'.",
             return_value_name: "Box",
         }
     }
@@ -38,7 +34,7 @@ PageMaker including versions of Lorem Ipsum.",
         &[
             ParamInfo {
                 name: "Center",
-                description: "",
+                description: "Center of the box in absolute model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -54,7 +50,7 @@ PageMaker including versions of Lorem Ipsum.",
             },
             ParamInfo {
                 name: "Rotate (deg)",
-                description: "",
+                description: "Rotation of the box in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -70,7 +66,8 @@ PageMaker including versions of Lorem Ipsum.",
             },
             ParamInfo {
                 name: "Scale",
-                description: "",
+                description: "Scale of the box as a relative factor.\n\
+                              The original size of the box is 1x1x1 model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -86,7 +83,8 @@ PageMaker including versions of Lorem Ipsum.",
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
