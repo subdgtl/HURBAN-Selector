@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::importer::{EndlessCache, Importer};
 use crate::interpreter::{Func, FuncIdent};
 
+use self::align::FuncAlign;
 use self::create_box::FuncCreateBox;
 use self::create_plane::FuncCreatePlane;
 use self::create_uv_sphere::FuncCreateUvSphere;
@@ -24,6 +25,7 @@ use self::voxel_boolean_union::FuncBooleanUnion;
 use self::voxelize::FuncVoxelize;
 use self::weld::FuncWeld;
 
+mod align;
 mod create_box;
 mod create_plane;
 mod create_uv_sphere;
@@ -55,6 +57,7 @@ pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0);
 pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_EXTRACT_LARGEST: FuncIdent = FuncIdent(2);
 pub const FUNC_ID_SNAP_TO_GROUND: FuncIdent = FuncIdent(3);
+pub const FUNC_ID_ALIGN: FuncIdent = FuncIdent(4);
 
 // Create funcs
 pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(1000);
@@ -95,6 +98,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_EXTRACT, Box::new(FuncExtract));
     funcs.insert(FUNC_ID_EXTRACT_LARGEST, Box::new(FuncExtractLargest));
     funcs.insert(FUNC_ID_SNAP_TO_GROUND, Box::new(FuncSnapToGround));
+    funcs.insert(FUNC_ID_ALIGN, Box::new(FuncAlign));
 
     // Create funcs
     funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncCreateUvSphere));
