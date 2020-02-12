@@ -124,7 +124,9 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
         match result {
             Ok(models) => {
                 if models.is_empty() {
-                    Err(FuncError::new(FuncImportObjMeshError::Empty))
+                    let error = FuncError::new(FuncImportObjMeshError::Empty);
+                    log(LogMessage::error(format!("Error: {}", error)));
+                    Err(error)
                 } else {
                     let meshes: Vec<_> = if move_to_origin || snap_to_ground {
                         let meshes_iter = models.into_iter().map(|model| model.mesh);
@@ -177,7 +179,11 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
                     Ok(Value::MeshArray(Arc::new(value)))
                 }
             }
-            Err(err) => Err(FuncError::new(FuncImportObjMeshError::Importer(err))),
+            Err(err) => {
+                let error = FuncError::new(FuncImportObjMeshError::Importer(err));
+                log(LogMessage::error(format!("Error: {}", error)));
+                Err(error)
+            }
         }
     }
 }

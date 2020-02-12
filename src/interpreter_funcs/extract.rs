@@ -98,15 +98,16 @@ impl Func for FuncExtract {
         let analyze = args[2].unwrap_boolean();
 
         if mesh_array.is_empty() {
-            return Err(FuncError::new(FuncExtractError::Empty));
+            let error = FuncError::new(FuncExtractError::Empty);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         let group_length = mesh_array.len();
         if index >= group_length {
-            Err(FuncError::new(FuncExtractError::IndexOutOfBounds(
-                index,
-                group_length,
-            )))
+            let error = FuncError::new(FuncExtractError::IndexOutOfBounds(index, group_length));
+            log(LogMessage::error(format!("Error: {}", error)));
+            Err(error)
         } else {
             let value = mesh_array
                 .get_refcounted(index)

@@ -80,7 +80,9 @@ impl Func for FuncExtractLargest {
         let analyze = args[1].unwrap_boolean();
 
         if mesh_array.is_empty() {
-            return Err(FuncError::new(FuncExtractLargestError::Empty));
+            let error = FuncError::new(FuncExtractLargestError::Empty);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         let mut mesh_iter = mesh_array.iter_refcounted();

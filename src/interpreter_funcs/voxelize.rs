@@ -151,7 +151,9 @@ impl Func for FuncVoxelize {
         }
 
         if !voxel_cloud.contains_voxels() {
-            return Err(FuncError::new(FuncVoxelizeError::EmptyVoxelCloud));
+            let error = FuncError::new(FuncVoxelizeError::EmptyVoxelCloud);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         match voxel_cloud.to_mesh() {
@@ -161,7 +163,11 @@ impl Func for FuncVoxelize {
                 }
                 Ok(Value::Mesh(Arc::new(value)))
             }
-            None => Err(FuncError::new(FuncVoxelizeError::WeldFailed)),
+            None => {
+                let error = FuncError::new(FuncVoxelizeError::WeldFailed);
+                log(LogMessage::error(format!("Error: {}", error)));
+                Err(error)
+            }
         }
     }
 }

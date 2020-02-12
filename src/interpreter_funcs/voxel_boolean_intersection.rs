@@ -168,9 +168,9 @@ impl Func for FuncBooleanIntersection {
 
         voxel_cloud1.boolean_intersection(&voxel_cloud2);
         if !voxel_cloud1.contains_voxels() {
-            return Err(FuncError::new(
-                FuncBooleanIntersectionError::EmptyVoxelCloud,
-            ));
+            let error = FuncError::new(FuncBooleanIntersectionError::EmptyVoxelCloud);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         match voxel_cloud1.to_mesh() {
@@ -180,7 +180,11 @@ impl Func for FuncBooleanIntersection {
                 }
                 Ok(Value::Mesh(Arc::new(value)))
             }
-            None => Err(FuncError::new(FuncBooleanIntersectionError::WeldFailed)),
+            None => {
+                let error = FuncError::new(FuncBooleanIntersectionError::WeldFailed);
+                log(LogMessage::error(format!("Error: {}", error)));
+                Err(error)
+            }
         }
     }
 }

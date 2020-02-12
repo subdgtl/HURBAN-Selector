@@ -169,7 +169,9 @@ impl Func for FuncBooleanDifference {
 
         voxel_cloud1.boolean_difference(&voxel_cloud2);
         if !voxel_cloud1.contains_voxels() {
-            return Err(FuncError::new(FuncBooleanDifferenceError::EmptyVoxelCloud));
+            let error = FuncError::new(FuncBooleanDifferenceError::EmptyVoxelCloud);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         match voxel_cloud1.to_mesh() {
@@ -179,7 +181,11 @@ impl Func for FuncBooleanDifference {
                 }
                 Ok(Value::Mesh(Arc::new(value)))
             }
-            None => Err(FuncError::new(FuncBooleanDifferenceError::WeldFailed)),
+            None => {
+                let error = FuncError::new(FuncBooleanDifferenceError::WeldFailed);
+                log(LogMessage::error(format!("Error: {}", error)));
+                Err(error)
+            }
         }
     }
 }
