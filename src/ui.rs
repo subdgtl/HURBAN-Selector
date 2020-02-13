@@ -89,10 +89,10 @@ impl Ui {
         let mut imgui_context = imgui::Context::create();
         let mut style = imgui_context.style_mut();
         let mut colors = Colors {
-            special_button_text: [0.2, 0.7, 0.3, 1.0],
-            special_button: style[imgui::StyleColor::Button],
-            special_button_hovered: style[imgui::StyleColor::ButtonHovered],
-            special_button_active: style[imgui::StyleColor::ButtonActive],
+            special_button_text: style[imgui::StyleColor::Text],
+            special_button: [0.2, 0.7, 0.3, 1.0],
+            special_button_hovered: [0.4, 0.8, 0.5, 1.0],
+            special_button_active: [0.1, 0.5, 0.2, 1.0],
             combo_box_selected_item: style[imgui::StyleColor::Header],
             combo_box_selected_item_hovered: style[imgui::StyleColor::HeaderHovered],
             combo_box_selected_item_active: style[imgui::StyleColor::HeaderActive],
@@ -125,13 +125,14 @@ impl Ui {
 
             let light = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0xff]);
             let light_transparent = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0x40]);
-            let blue = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0xff]);
-            let blue_transparent = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0x40]);
             let orange = cast_u8_color_to_f32([0xf2, 0x80, 0x37, 0xff]);
             let orange_light = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0xff]);
             let orange_light_transparent = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0x40]);
             let orange_dark = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0xff]);
             let orange_dark_transparent = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0x40]);
+            let green_light = [0.4, 0.8, 0.5, 1.0];
+            let green_light_transparent = [0.4, 0.8, 0.5, 0.4];
+            let green_dark = [0.1, 0.5, 0.2, 1.0];
 
             style[imgui::StyleColor::Text] = orange;
             style[imgui::StyleColor::TextDisabled] = orange_light;
@@ -173,10 +174,10 @@ impl Ui {
             style[imgui::StyleColor::TextSelectedBg] = orange_light_transparent;
             style[imgui::StyleColor::NavHighlight] = light_transparent;
 
-            colors.special_button_text = blue;
-            colors.special_button = light_transparent;
-            colors.special_button_hovered = blue_transparent;
-            colors.special_button_active = blue_transparent;
+            colors.special_button_text = orange;
+            colors.special_button = green_light_transparent;
+            colors.special_button_hovered = green_light;
+            colors.special_button_active = green_dark;
 
             colors.combo_box_selected_item = light;
             colors.combo_box_selected_item_hovered = orange_light;
@@ -965,11 +966,12 @@ impl<'a> UiFrame<'a> {
                 } else {
                     Some(push_disabled_style(ui))
                 };
-                if ui.button(imgui::im_str!("Run pipeline"), [-f32::MIN_POSITIVE, 25.0])
-                    && running_enabled
-                {
+
+                let bold_font_token = ui.push_font(self.font_ids.bold);
+                if ui.button(imgui::im_str!("Run"), [-f32::MIN_POSITIVE, 25.0]) && running_enabled {
                     interpret_clicked = true;
                 }
+                bold_font_token.pop(ui);
                 if let Some((color_token, style_token)) = running_tokens {
                     color_token.pop(ui);
                     style_token.pop(ui);
