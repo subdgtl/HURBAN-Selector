@@ -20,7 +20,7 @@ impl fmt::Display for FuncLoopSubdivisionError {
         match self {
             Self::InvalidMesh => write!(
                 f,
-                "The mesh doesn't meet the loop subdivision prerequisites"
+                "The mesh is either not triangulated, watertight or manifold."
             ),
         }
     }
@@ -37,9 +37,31 @@ impl FuncLoopSubdivision {
 impl Func for FuncLoopSubdivision {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Loop Subdivision",
-            description: "",
-            return_value_name: "Subdivided Mesh",
+            name: "Smoothen",
+            description:
+                "SMOOTHEN MESH WITH LOOP SUBDIVISION\n\
+                 \n\
+                 Creates a new smoothened mesh geometry using Loop subdivision algorithm. \
+                 Loop subdivision surface is an approximating subdivision scheme developed \
+                 by Charles Loop in 1987 for triangular meshes. Loop subdivision surfaces \
+                 are defined recursively, dividing each triangle into four smaller ones. \
+                 The vertex and face count will increase with each iteration (2 times \
+                 for vertices, 4 times for faces). Too many iterations may take long time \
+                 and produce an unnecessarily heavy mesh. Therefore the number of \
+                 iterations is limited to 3. \
+                 The output mesh will be recomputed with smooth normals.\n\
+                 \n\
+                 The Loop subdivision algorithm requires the input mesh to be triangulated, \
+                 watertight and manifold. \
+                 Smoothing operations are usually placed at the end of mesh manipulation \
+                 pipeline because the subdivided dense meshes are not suitable for geometry \
+                 manipulation.\n\
+                 \n\
+                 The input mesh will be marked used and thus invisible in the viewport. \
+                 It can still be used in subsequent operations.\n\
+                 \n\
+                 The resulting mesh geometry will be named 'Smooth Mesh'.",
+            return_value_name: "Smooth Mesh",
         }
     }
 
@@ -51,13 +73,18 @@ impl Func for FuncLoopSubdivision {
         &[
             ParamInfo {
                 name: "Mesh",
-                description: "",
+                description: "Input mesh.\n\
+                              The mesh must be triangulated, watertight and manifold.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Iterations",
-                description: "",
+                description:
+                    "Number of iterations (repetitions) of the Loop subdivision algorithm.\n\
+                     \n\
+                     The number of iterations is limited to 3. \
+                     Too many iterations may take long time and produce a heavy dense mesh.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(1),
                     min_value: Some(0),
@@ -67,7 +94,8 @@ impl Func for FuncLoopSubdivision {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

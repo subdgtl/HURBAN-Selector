@@ -47,7 +47,15 @@ impl Func for FuncCreateUvSphere {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create UV Sphere",
-            description: "",
+            description: "CREATE UV MESH SPHERE\n\
+                          \n\
+                          Creates a new mesh sphere made of segments ordered into \
+                          parallels and meridians, which intersect on poles. \
+                          The default size of the sphere is 1x1x1 model units. \
+                          A high number of parallels and meridians will produce \
+                          smoother sphere but heavier geometry.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Sphere'.",
             return_value_name: "Sphere",
         }
     }
@@ -60,7 +68,7 @@ impl Func for FuncCreateUvSphere {
         &[
             ParamInfo {
                 name: "Center",
-                description: "",
+                description: "Center of the sphere in absolute model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -76,7 +84,7 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Rotate (deg)",
-                description: "",
+                description: "Rotation of the sphere in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -92,7 +100,8 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Scale",
-                description: "",
+                description: "Scale of the sphere as a relative factor.\n\
+                The original size of the sphere is 1x1x1 model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -108,7 +117,8 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Parallels",
-                description: "",
+                description: "The number of parallels must be greater than 2.\n\
+                A high number of parallels and meridians will produce smoother but heavier geometry.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(8),
                     min_value: Some(Self::MIN_PARALLELS),
@@ -118,7 +128,8 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Meridians",
-                description: "",
+                description: "The number of meridians must be greater than 3.\n\
+                A high number of parallels and meridians will produce smoother but heavier geometry.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(8),
                     min_value: Some(Self::MIN_MERIDIANS),
@@ -128,7 +139,8 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
