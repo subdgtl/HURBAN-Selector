@@ -41,7 +41,7 @@ impl Func for FuncTransform {
                 optional: false,
             },
             ParamInfo {
-                name: "Translate",
+                name: "Move",
                 description: "Translation (movement) in X, Y and Z direction.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),

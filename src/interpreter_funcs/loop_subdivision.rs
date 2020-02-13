@@ -82,6 +82,7 @@ impl Func for FuncLoopSubdivision {
                 name: "Iterations",
                 description:
                     "Number of iterations (repetitions) of the Loop subdivision algorithm.\n\
+                     \n\
                      The number of iterations is limited to 3. \
                      Too many iterations may take long time and produce a heavy dense mesh.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {

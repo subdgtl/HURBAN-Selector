@@ -104,8 +104,9 @@ impl Func for FuncBooleanUnion {
                 name: "Grow",
                 description: "The voxelization algorithm puts voxels on the surface of \
                 the input mesh geometries.\n\
+                \n\
                 The grow option adds several extra layers of voxels on both sides of such \
-                voxel volumes. This option generates thicker voxelized meshes.\n\
+                voxel volumes. This option generates thicker voxelized meshes. \
                 In some cases not growing the volume at all may result in \
                 a non manifold voxelized mesh.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {

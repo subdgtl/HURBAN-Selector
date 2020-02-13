@@ -103,8 +103,9 @@ impl Func for FuncBooleanIntersection {
                 name: "Grow",
                 description: "The voxelization algorithm puts voxels on the surface of \
                 the input mesh geometries.\n\
+                \n\
                 The grow option adds several extra layers of voxels on both sides of such \
-                voxel volumes. This option generates thicker voxelized meshes.\n\
+                voxel volumes. This option generates thicker voxelized meshes. \
                 In some cases not growing the volume at all may result in \
                 a non manifold voxelized mesh.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
@@ -117,6 +118,7 @@ impl Func for FuncBooleanIntersection {
             ParamInfo {
                 name: "Fill Closed Volumes",
                 description: "Treats the insides of watertight mesh geometries as volumes.\n\
+                \n\
                 If this option is off, the resulting voxelized mesh geometries will have two \
                 separate mesh shells: one for outer surface, the other for inner surface of \
                 hollow watertight mesh.",

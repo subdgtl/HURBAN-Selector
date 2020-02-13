@@ -67,6 +67,7 @@ impl Func for FuncWeld {
                 name: "Tolerance",
                 description:
                     "Limit distance of two vertices to be welded into one.\n\
+                    \n\
                      Weld may result in invalid (non-manifold or collapsed) mesh in cases, \
                      when the welding tolerance is too high.",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
@@ -79,6 +80,7 @@ impl Func for FuncWeld {
             ParamInfo {
                 name: "Analyze resulting mesh",
                 description: "Reports detailed analytic information on the created mesh.\n\
+                \n\
                 The analysis may be slow but it is crucial to check the validity of welding, \
                 therefore it is by default on and may be turned off only after the correct welding \
                 tolerance has been set.",
