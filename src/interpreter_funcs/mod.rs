@@ -75,6 +75,9 @@ pub const FUNC_ID_IMPORT_OBJ_MESH: FuncIdent = FuncIdent(2000);
 pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3000);
 pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(3001);
 
+// Morphing funcs
+pub const FUNC_ID_INTERPOLATED_UNION: FuncIdent = FuncIdent(5000);
+
 // Tool funcs
 // FIXME: Fill id 9000
 pub const FUNC_ID_DISJOINT_MESH: FuncIdent = FuncIdent(9001);
@@ -88,7 +91,6 @@ pub const FUNC_ID_BOOLEAN_INTERSECTION: FuncIdent = FuncIdent(9008);
 pub const FUNC_ID_BOOLEAN_DIFFERENCE: FuncIdent = FuncIdent(9009);
 pub const FUNC_ID_BOOLEAN_UNION: FuncIdent = FuncIdent(9010);
 pub const FUNC_ID_VOXEL_TRANSFORM: FuncIdent = FuncIdent(9011);
-pub const FUNC_ID_INTERPOLATED_UNION: FuncIdent = FuncIdent(9012);
 
 /// Returns the global set of function definitions available to the
 /// editor.
@@ -126,6 +128,9 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     );
     funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncLoopSubdivision));
 
+    // Morphing funcs
+    funcs.insert(FUNC_ID_INTERPOLATED_UNION, Box::new(FuncInterpolatedUnion));
+
     // Tool funcs
     funcs.insert(FUNC_ID_DISJOINT_MESH, Box::new(FuncDisjointMesh));
     funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncJoinMeshes));
@@ -144,7 +149,6 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_BOOLEAN_DIFFERENCE, Box::new(FuncBooleanDifference));
     funcs.insert(FUNC_ID_BOOLEAN_UNION, Box::new(FuncBooleanUnion));
     funcs.insert(FUNC_ID_VOXEL_TRANSFORM, Box::new(FuncVoxelTransform));
-    funcs.insert(FUNC_ID_INTERPOLATED_UNION, Box::new(FuncInterpolatedUnion));
 
     funcs
 }

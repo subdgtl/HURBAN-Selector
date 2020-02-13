@@ -712,25 +712,29 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         self.shrink_to_fit(volume_value_range_self)
     }
 
-    #[allow(dead_code)]
-    pub fn interpolated_union_of_distance_fields(
+    /// Perform boolean union while interpolating to the other scalar field.
+    // FIXME: More thorough description
+    pub fn interpolated_union_of_distance_fields<U>(
         &mut self,
-        volume_value_interval_self: Interval<T>,
+        volume_value_range_self: &U,
         other: &ScalarField<T>,
-        volume_value_interval_other: Interval<T>,
-        factor: f32,
-    ) {
+        volume_value_range_other: &U,
+        interpolation_factor: f32,
+    ) where
+        U: RangeBounds<T>,
+    {
         let mut other_clone = other.clone();
         let bounding_box_self = self.bounding_box_cartesian();
         let bounding_box_other = other_clone.bounding_box_cartesian();
 
-        if let Some(bounding_box) = BoundingBox::union(vec![bounding_box_self, bounding_box_other]) {
+        if let Some(bounding_box) = BoundingBox::union(vec![bounding_box_self, bounding_box_other])
+        {
             self.resize_to_cartesian_bounding_box(&bounding_box);
             other_clone.resize_to_cartesian_bounding_box(&bounding_box);
-            self.compute_distance_filed(volume_value_interval_self);
-            other_clone.compute_distance_filed(volume_value_interval_other);
+            self.compute_distance_filed(volume_value_range_self);
+            other_clone.compute_distance_filed(volume_value_range_other);
 
-            self.interpolate_to(&other_clone, factor);
+            self.interpolate_to(&other_clone, interpolation_factor);
         } else {
             // Wipe the current scalar field if none of the scalar fields
             // contained any volume voxels.
@@ -738,9 +742,10 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         }
     }
 
-    pub fn interpolate_to(&mut self, other: &ScalarField<T>, factor: f32) {
-        let unit_interval = Interval::new(0.0, 1.0);
-
+    /// Interpolate values of the current scalar field to the values of the
+    /// other scalar field.
+    // FIXME: More thorough description
+    pub fn interpolate_to(&mut self, other: &ScalarField<T>, interpolation_factor: f32) {
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
             let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                 one_dimensional,
@@ -753,21 +758,20 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                 &other.voxel_dimensions,
             );
 
+            // FIXME: Don't panic for None voxels. Keep them None instead.
             let value_self = voxel.expect("The value is None");
 
             *voxel = other
                 .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
                 .map(|value_other| {
                     T::from_f32(
-                        unit_interval
-                            .remap_to(
-                                factor,
-                                Interval::new(
-                                    value_self.to_f32().expect("Conversion to f32 failed"),
-                                    value_other.to_f32().expect("Conversion to f32 failed"),
-                                ),
-                            )
-                            .expect("The target interval is infinite"),
+                        math::remap(
+                            interpolation_factor,
+                            &(0.0..1.0),
+                            &(value_self.to_f32().expect("Conversion to f32 failed")
+                                ..value_other.to_f32().expect("Conversion to f32 failed")),
+                        )
+                        .expect("The target interval is infinite"),
                     )
                     .expect("Conversion from f32 failed")
                 });
