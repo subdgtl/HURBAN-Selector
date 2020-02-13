@@ -61,7 +61,7 @@ struct ConsoleState {
     message_count: usize,
 }
 
-pub struct UtilitiesStatus {
+pub struct MenuStatus {
     pub reset_viewport: bool,
     pub save_path: Option<String>,
     pub open_path: Option<String>,
@@ -442,14 +442,14 @@ impl<'a> UiFrame<'a> {
         color_token.pop(ui);
     }
 
-    pub fn draw_utilities_window(
+    pub fn draw_menu_window(
         &self,
         screenshot_modal_open: &mut bool,
         draw_mode: &mut DrawMeshMode,
         project_path: Option<&str>,
-    ) -> UtilitiesStatus {
+    ) -> MenuStatus {
         let ui = &self.imgui_ui;
-        let mut status = UtilitiesStatus {
+        let mut status = MenuStatus {
             reset_viewport: false,
             save_path: None,
             open_path: None,
@@ -461,7 +461,7 @@ impl<'a> UiFrame<'a> {
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
-        imgui::Window::new(imgui::im_str!("Utilities"))
+        imgui::Window::new(imgui::im_str!("Menu"))
             .movable(false)
             .resizable(false)
             .collapsible(false)
@@ -560,7 +560,7 @@ impl<'a> UiFrame<'a> {
         let mut change = None;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
-        imgui::Window::new(imgui::im_str!("Pipeline"))
+        imgui::Window::new(imgui::im_str!("Sequence of operations"))
             .movable(false)
             .resizable(false)
             .collapsible(false)
@@ -1165,7 +1165,7 @@ impl<'a> UiFrame<'a> {
                     ty == Ty::MeshArray,
                 )
             })
-            .unwrap_or_else(|| imgui::ImString::new("<Nil>"));
+            .unwrap_or_else(|| imgui::ImString::new("<Select one option>"));
 
         combo = combo.preview_value(&preview_value);
 
@@ -1204,7 +1204,7 @@ impl<'a> UiFrame<'a> {
                 }
             }
 
-            if imgui::Selectable::new(imgui::im_str!("<Nil>"))
+            if imgui::Selectable::new(imgui::im_str!(""))
                 .selected(selected_var_index.is_none())
                 .build(ui)
             {

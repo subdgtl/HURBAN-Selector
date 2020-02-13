@@ -15,8 +15,20 @@ impl Func for FuncSnapToGround {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Snap To Ground",
-            description: "",
-            return_value_name: "Mesh on origin",
+            description: "SNAP MESH GEOMETRY TO GROUND AND/OR WORLD ORIGIN\n\
+                          \n\
+                          Move to origin moves the mesh geometry so that its local \
+                          center matches the world origin.\n\
+                          Snap to ground moves the mesh geometry so that its bottommost \
+                          vertexes vertical coordinate is zero (sits on the ground).\n\
+                          \n\
+                          The two options can be combined.\n\
+                          \n\
+                          The input mesh will be marked used and thus invisible in the viewport. \
+                          It can still be used in subsequent operations.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Snapped Mesh'.",
+            return_value_name: "Snapped Mesh",
         }
     }
 
@@ -28,13 +40,14 @@ impl Func for FuncSnapToGround {
         &[
             ParamInfo {
                 name: "Mesh",
-                description: "",
+                description: "Input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Move to origin",
-                description: "",
+                description: "Moves the mesh geometry so that its local \
+                              center matches the world origin.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -42,7 +55,8 @@ impl Func for FuncSnapToGround {
             },
             ParamInfo {
                 name: "Snap to ground",
-                description: "",
+                description: "Moves the mesh geometry so that its bottommost \
+                              vertexes vertical coordinate is zero (sits on the ground).",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -50,7 +64,8 @@ impl Func for FuncSnapToGround {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "Whether to output mesh analysis into console after running",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
