@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use nalgebra::{Point3, Rotation3, Vector3};
 
+use crate::analytics;
 use crate::interpreter::{
-    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
-    ParamRefinement, Ty, UintParamRefinement, Value,
+    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::{primitive, NormalStrategy};
 
@@ -46,6 +47,7 @@ impl Func for FuncCreateUvSphere {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create UV Sphere",
+            description: "",
             return_value_name: "Sphere",
         }
     }
@@ -58,6 +60,7 @@ impl Func for FuncCreateUvSphere {
         &[
             ParamInfo {
                 name: "Center",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -73,6 +76,7 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -88,6 +92,7 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Scale",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -103,6 +108,7 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Parallels",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(8),
                     min_value: Some(Self::MIN_PARALLELS),
@@ -112,10 +118,19 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Meridians",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(8),
                     min_value: Some(Self::MIN_MERIDIANS),
                     max_value: None,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
                 }),
                 optional: false,
             },
@@ -129,24 +144,29 @@ impl Func for FuncCreateUvSphere {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let center = args[0].unwrap_float3();
         let rotate = args[1].unwrap_float3();
         let scale = args[2].unwrap_float3();
         let n_parallels = args[3].unwrap_uint();
         let n_meridians = args[4].unwrap_uint();
+        let analyze = args[5].unwrap_boolean();
 
         if n_parallels < Self::MIN_PARALLELS {
-            return Err(FuncError::new(FuncCreateUvSphereError::TooFewParallels {
+            let error = FuncError::new(FuncCreateUvSphereError::TooFewParallels {
                 parallels_provided: n_parallels,
-            }));
+            });
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         if n_meridians < Self::MIN_MERIDIANS {
-            return Err(FuncError::new(FuncCreateUvSphereError::TooFewMeridians {
+            let error = FuncError::new(FuncCreateUvSphereError::TooFewMeridians {
                 meridians_provided: n_meridians,
-            }));
+            });
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         let value = primitive::create_uv_sphere(
@@ -161,6 +181,11 @@ impl Func for FuncCreateUvSphere {
             n_meridians,
             NormalStrategy::Smooth,
         );
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
+        }
+
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

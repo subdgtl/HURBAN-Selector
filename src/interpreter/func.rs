@@ -6,6 +6,8 @@ use super::{FuncError, LogMessage, Ty, Value};
 pub struct FuncInfo {
     /// The function's name.
     pub name: &'static str,
+    /// The function's description.
+    pub description: &'static str,
     /// The name of the function's return value.
     pub return_value_name: &'static str,
 }
@@ -32,14 +34,14 @@ bitflags! {
 /// Information about a function parameter.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParamInfo {
-    /// The parameter's name
+    /// The parameter's name.
     pub name: &'static str,
-
+    /// The parameter's description.
+    pub description: &'static str,
     /// Refinement of the parameter type. Can set additional
     /// constraints on the parameter's value, such as a default value
     /// or the value range.
     pub refinement: ParamRefinement,
-
     /// Whether the parameter is optional. The parameter value is
     /// allowed to have the type [`Nil`] in addition to its own type,
     /// if set to `true`.
@@ -260,6 +262,7 @@ pub trait Func {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "<Unnamed operation>",
+            description: "<No description>",
             return_value_name: "<Unnamed value>",
         }
     }

@@ -1,8 +1,10 @@
 use std::error;
 use std::fmt;
 
+use crate::analytics;
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, Value,
 };
 
 #[derive(Debug, PartialEq)]
@@ -26,6 +28,7 @@ impl Func for FuncExtractLargest {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Extract Largest",
+            description: "",
             return_value_name: "Extracted Mesh",
         }
     }
@@ -35,11 +38,22 @@ impl Func for FuncExtractLargest {
     }
 
     fn param_info(&self) -> &[ParamInfo] {
-        &[ParamInfo {
-            name: "Group",
-            refinement: ParamRefinement::MeshArray,
-            optional: false,
-        }]
+        &[
+            ParamInfo {
+                name: "Group",
+                description: "",
+                refinement: ParamRefinement::MeshArray,
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
+        ]
     }
 
     fn return_ty(&self) -> Ty {
@@ -48,13 +62,16 @@ impl Func for FuncExtractLargest {
 
     fn call(
         &mut self,
-        values: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        args: &[Value],
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let mesh_array = values[0].unwrap_mesh_array();
+        let mesh_array = args[0].unwrap_mesh_array();
+        let analyze = args[1].unwrap_boolean();
 
         if mesh_array.is_empty() {
-            return Err(FuncError::new(FuncExtractLargestError::Empty));
+            let error = FuncError::new(FuncExtractLargestError::Empty);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         let mut mesh_iter = mesh_array.iter_refcounted();
@@ -67,6 +84,10 @@ impl Func for FuncExtractLargest {
                 largest_face_count = current_face_count;
                 mesh = current_mesh;
             }
+        }
+
+        if analyze {
+            analytics::report_mesh_analysis(&mesh, log);
         }
 
         Ok(Value::Mesh(mesh))

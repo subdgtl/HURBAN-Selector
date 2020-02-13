@@ -1,10 +1,12 @@
 use std::error;
 use std::f32;
 use std::fmt;
+use std::ops::Bound;
 use std::sync::Arc;
 
 use nalgebra::Vector3;
 
+use crate::analytics;
 use crate::convert::clamp_cast_u32_to_i16;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
@@ -40,6 +42,7 @@ impl Func for FuncBooleanIntersection {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Intersection",
+            description: "",
             return_value_name: "Intersection Mesh",
         }
     }
@@ -52,16 +55,19 @@ impl Func for FuncBooleanIntersection {
         &[
             ParamInfo {
                 name: "Mesh 1",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Mesh 2",
+                description: "",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Voxel Size",
+                description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(f32::MIN_POSITIVE),
@@ -77,6 +83,7 @@ impl Func for FuncBooleanIntersection {
             },
             ParamInfo {
                 name: "Grow",
+                description: "",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(0),
                     min_value: None,
@@ -86,8 +93,17 @@ impl Func for FuncBooleanIntersection {
             },
             ParamInfo {
                 name: "Fill Closed Volumes",
+                description: "",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
                 }),
                 optional: false,
             },
@@ -101,7 +117,7 @@ impl Func for FuncBooleanIntersection {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh1 = args[0].unwrap_mesh();
         let mesh2 = args[1].unwrap_mesh();
@@ -109,6 +125,7 @@ impl Func for FuncBooleanIntersection {
         let growth_u32 = args[3].unwrap_uint();
         let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[4].unwrap_boolean();
+        let analyze = args[5].unwrap_boolean();
 
         let mut scalar_field1 =
             ScalarField::from_mesh(mesh1, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);
@@ -118,37 +135,31 @@ impl Func for FuncBooleanIntersection {
         scalar_field1.compute_distance_filed(&(0..=0));
         scalar_field2.compute_distance_filed(&(0..=0));
 
-        // FIXME: Return RangeBounds of the volume_value_range for both
-        // if/else options and remove redundant code.
-        if fill {
-            scalar_field1.boolean_intersection(&(..=growth_i16), &scalar_field2, &(..=growth_i16));
-
-            if !scalar_field1.contains_voxels_within_range(&(..=growth_i16)) {
-                return Err(FuncError::new(
-                    FuncBooleanIntersectionError::EmptyScalarField,
-                ));
-            }
-
-            match scalar_field1.to_mesh(&(..=growth_i16)) {
-                Some(value) => Ok(Value::Mesh(Arc::new(value))),
-                None => Err(FuncError::new(FuncBooleanIntersectionError::WeldFailed)),
-            }
+        let meshing_range = if fill {
+            (Bound::Unbounded, Bound::Included(growth_i16))
         } else {
-            scalar_field1.boolean_intersection(
-                &(-growth_i16..=growth_i16),
-                &scalar_field2,
-                &(-growth_i16..=growth_i16),
-            );
+            (Bound::Included(-growth_i16), Bound::Included(growth_i16))
+        };
 
-            if !scalar_field1.contains_voxels_within_range(&(-growth_i16..=growth_i16)) {
-                return Err(FuncError::new(
-                    FuncBooleanIntersectionError::EmptyScalarField,
-                ));
+        scalar_field1.boolean_intersection(&meshing_range, &scalar_field2, &meshing_range);
+
+        if !scalar_field1.contains_voxels_within_range(&meshing_range) {
+            let error = FuncError::new(FuncBooleanIntersectionError::EmptyScalarField);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
+
+        match scalar_field1.to_mesh(&meshing_range) {
+            Some(value) => {
+                if analyze {
+                    analytics::report_mesh_analysis(&value, log);
+                }
+                Ok(Value::Mesh(Arc::new(value)))
             }
-
-            match scalar_field1.to_mesh(&(-growth_i16..=growth_i16)) {
-                Some(value) => Ok(Value::Mesh(Arc::new(value))),
-                None => Err(FuncError::new(FuncBooleanIntersectionError::WeldFailed)),
+            None => {
+                let error = FuncError::new(FuncBooleanIntersectionError::WeldFailed);
+                log(LogMessage::error(format!("Error: {}", error)));
+                Err(error)
             }
         }
     }

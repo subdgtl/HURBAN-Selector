@@ -58,6 +58,32 @@ impl<T: Bounded + Num + Scalar + PartialOrd> BoundingBox<T> {
         }
     }
 
+    /// Creates a new bounding box with all dimensions equal to zero and center
+    /// in `[0,0,0]`.
+    pub fn zero() -> Self {
+        BoundingBox {
+            minimum_point: Point3::new(T::zero(), T::zero(), T::zero()),
+            maximum_point: Point3::new(T::zero(), T::zero(), T::zero()),
+        }
+    }
+
+    /// Creates a new unit bounding box.
+    ///
+    /// All distances from the center to the planes are one and the center is
+    /// `[0,0,0]`.
+    pub fn unit() -> Self {
+        BoundingBox {
+            // Implemented this way because `ops::Sub` is implemented for
+            // `num_traits::NumOps` while `ops::Neg` is not.
+            minimum_point: Point3::new(
+                T::zero() - T::one(),
+                T::zero() - T::one(),
+                T::zero() - T::one(),
+            ),
+            maximum_point: Point3::new(T::one(), T::one(), T::one()),
+        }
+    }
+
     /// Creates a new bounding box from an iterator of points. The resulting
     /// bounding box will encompass all the input points. The resulting bounding
     /// box will be defined in the units of the input points. Returns None if
