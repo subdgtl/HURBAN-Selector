@@ -75,8 +75,8 @@ pub fn init_env_specific(
 
     #[cfg(target_os = "windows")]
     let path = match dirs::data_local_dir() {
-        Ok(appdata_local) => Path::new(&appdata_local).join("HURBAN Selector/Logs"),
-        Err(_) => return base_logger,
+        Some(appdata_local) => Path::new(&appdata_local).join("HURBAN Selector/Logs"),
+        None => return base_logger,
     };
 
     #[cfg(target_os = "macos")]

@@ -1,9 +1,10 @@
 use std::cmp;
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty,
-    UintParamRefinement, Value,
+    BooleanParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
+    ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::{smoothing, topology, NormalStrategy};
 
@@ -13,6 +14,23 @@ impl Func for FuncLaplacianSmoothing {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Relax",
+            description:
+                "RELAX MESH WITH LAPLACIAN SMOOTHING\n\
+                 \n\
+                 Creates a new relaxed mesh geometry using laplacian smoothing algorithm. \
+                 Laplacian smoothing is an algorithm to smoothen a polygonal mesh. \
+                 For each vertex in a mesh, a new position is chosen based on local \
+                 information (such as the position of neighbors) and the vertex is moved there. \
+                 The vertex and face count will remain unchanged. \n\
+                 \n\
+                 Laplacian smoothing removes small details, grain and kinks of the original model. \
+                 Too many iterations may reduce the mesh volume. \
+                 The output mesh will be recomputed with smooth normals.\n\
+                 \n\
+                 The input mesh will be marked used and thus invisible in the viewport. \
+                 It can still be used in subsequent operations.\n\
+                 \n\
+                 The resulting mesh geometry will be named 'Relaxed Mesh'.",
             return_value_name: "Relaxed Mesh",
         }
     }
@@ -25,15 +43,28 @@ impl Func for FuncLaplacianSmoothing {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "Input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Iterations",
+                description:
+                    "Number of iterations (repetitions) of the laplacian smoothing algorithm.\n\
+                     Too many iterations may take long time and/or reduce the mesh volume.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(1),
                     min_value: Some(0),
                     max_value: Some(255),
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
                 }),
                 optional: false,
             },
@@ -47,10 +78,11 @@ impl Func for FuncLaplacianSmoothing {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let iterations = args[1].unwrap_uint();
+        let analyze = args[2].unwrap_boolean();
 
         let v2v = topology::compute_vertex_to_vertex_topology(mesh);
 
@@ -62,6 +94,11 @@ impl Func for FuncLaplacianSmoothing {
             false,
             NormalStrategy::Smooth,
         );
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
+        }
+
         Ok(Value::Mesh(Arc::new(value)))
     }
 }

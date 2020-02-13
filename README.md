@@ -84,6 +84,10 @@ Optionally configure one of the following:
 
 Default is primary GPU backend for the current OS.
 
+**HS_GPU_POWER_PREFERENCE**: Choose power preference used to select a GPU to run
+  on. Either `low-power` or `high-performance`. Default defers the decision to
+  the GPU backend.
+
 **HS_APP_LOG_LEVEL**: Set level of logging for the editor. Either
   `error`, `warn`, `info` or `debug`. Default is `debug`.
 
@@ -122,6 +126,10 @@ hurban_selector.exe
 Before running on target computer, make sure "Microsoft Visual C++
 Redistributable for Visual Studio 2019" is installed (get it
 [here](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads))
+
+### Creating a Windows installer
+
+Refer to [installer's readme](installer/README.md) to create Windows installer.
 
 ### Licence
 

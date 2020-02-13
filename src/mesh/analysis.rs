@@ -8,6 +8,7 @@ use crate::convert::{cast_i32, cast_usize};
 use super::{Face, Mesh, OrientedEdge, UnorientedEdge};
 
 // FIXME: Make more generic: take &[Point] or Iterator<Item=&Point>
+#[allow(dead_code)]
 pub fn find_closest_point(position: &Point3<f32>, mesh: &Mesh) -> Option<Point3<f32>> {
     let vertices = mesh.vertices();
     if vertices.is_empty() {

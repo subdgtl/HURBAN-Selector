@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use nalgebra::{Point3, Rotation3, Vector3};
 
+use crate::analytics;
 use crate::interpreter::{
-    Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
-    ParamRefinement, Ty, Value,
+    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::primitive;
 
@@ -14,6 +15,13 @@ impl Func for FuncCreateBox {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create Box",
+            description: "CREATE MESH BOX\n\
+                          \n\
+                          Creates a new mesh box made of 12 welded triangles \
+                          and 8 vertices. \
+                          The default size of the box is 1x1x1 model units.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Box'.",
             return_value_name: "Box",
         }
     }
@@ -26,6 +34,7 @@ impl Func for FuncCreateBox {
         &[
             ParamInfo {
                 name: "Center",
+                description: "Center of the box in absolute model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -41,6 +50,7 @@ impl Func for FuncCreateBox {
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "Rotation of the box in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(0.0),
                     min_value_x: None,
@@ -56,6 +66,8 @@ impl Func for FuncCreateBox {
             },
             ParamInfo {
                 name: "Scale",
+                description: "Scale of the box as a relative factor.\n\
+                              The original size of the box is 1x1x1 model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: None,
@@ -69,6 +81,15 @@ impl Func for FuncCreateBox {
                 }),
                 optional: false,
             },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
+                }),
+                optional: false,
+            },
         ]
     }
 
@@ -78,12 +99,13 @@ impl Func for FuncCreateBox {
 
     fn call(
         &mut self,
-        values: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        args: &[Value],
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let center = values[0].unwrap_float3();
-        let rotate = values[1].unwrap_float3();
-        let scale = values[2].unwrap_float3();
+        let center = args[0].unwrap_float3();
+        let rotate = args[1].unwrap_float3();
+        let scale = args[2].unwrap_float3();
+        let analyze = args[3].unwrap_boolean();
 
         let value = primitive::create_box(
             Point3::from(center),
@@ -94,6 +116,10 @@ impl Func for FuncCreateBox {
             ),
             Vector3::from(scale),
         );
+
+        if analyze {
+            analytics::report_mesh_analysis(&value, log);
+        }
 
         Ok(Value::Mesh(Arc::new(value)))
     }

@@ -2,9 +2,10 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::analytics;
 use crate::interpreter::{
-    FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo,
-    ParamRefinement, Ty, Value,
+    BooleanParamRefinement, FloatParamRefinement, Func, FuncError, FuncFlags, FuncInfo, LogMessage,
+    ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::tools;
 
@@ -31,6 +32,21 @@ impl Func for FuncWeld {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Weld",
+            description: "WELD MESH VERTICES\n\
+                          \n\
+                          Replaces mesh vertices that are close to each other with \
+                          a single common vertex. Faces will then share the common vertices, \
+                          which results in watertight mesh if the original geometry was visually \
+                          closed. In specific cases (large, mostly convex volumes with no kinks \
+                          or folds and with proportionally small faces), \
+                          weld can be used for mesh vertex and face reduction. \
+                          Weld may result in invalid (non-manifold or collapsed) mesh in cases, \
+                          when the welding tolerance is too high.\n\
+                          \n\
+                          The input mesh will be marked used and thus invisible in the viewport. \
+                          It can still be used in subsequent operations.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Welded Mesh'.",
             return_value_name: "Welded Mesh",
         }
     }
@@ -43,15 +59,33 @@ impl Func for FuncWeld {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "Input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Tolerance",
+                description:
+                    "Limit distance of two vertices to be welded into one.\n\
+                    \n\
+                     Weld may result in invalid (non-manifold or collapsed) mesh in cases, \
+                     when the welding tolerance is too high.",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
                     default_value: Some(0.001),
                     min_value: Some(0.0),
                     max_value: None,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Analyze resulting mesh",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                \n\
+                The analysis may be slow but it is crucial to check the validity of welding, \
+                therefore it is by default on and may be turned off only after the correct welding \
+                tolerance has been set.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
                 }),
                 optional: false,
             },
@@ -65,15 +99,21 @@ impl Func for FuncWeld {
     fn call(
         &mut self,
         args: &[Value],
-        _log: &mut dyn FnMut(LogMessage),
+        log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let tolerance = args[1].unwrap_float();
+        let analyze = args[2].unwrap_boolean();
 
-        if let Some(welded) = tools::weld(&mesh, tolerance) {
-            Ok(Value::Mesh(Arc::new(welded)))
+        if let Some(value) = tools::weld(&mesh, tolerance) {
+            if analyze {
+                analytics::report_mesh_analysis(&value, log);
+            }
+            Ok(Value::Mesh(Arc::new(value)))
         } else {
-            Err(FuncError::new(FuncWeldError::AllFacesDegenerate))
+            let error = FuncError::new(FuncWeldError::AllFacesDegenerate);
+            log(LogMessage::error(format!("Error: {}", error)));
+            Err(error)
         }
     }
 }
