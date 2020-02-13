@@ -42,7 +42,25 @@ impl Func for FuncBooleanDifference {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Difference",
-            description: "",
+            description: "BOOLEAN DIFFERENCE OF VOXEL CLOUDS FROM TWO MESH GEOMETRIES\n\
+            \n\
+            Converts the input mesh geometries into voxel clouds, then performs \
+            boolean difference of the first to second voxel clouds and eventually \
+            materializes the resulting voxel cloud into a welded mesh. \
+            Boolean difference removes volume of the first geometry where there is \
+            a volume in the second geometry (removes the second volume from the first one). \
+            It is equivalent to arithmetic subtraction.\n\
+            \n\
+            Voxels are three-dimensional pixels. They exist in a regular three-dimensional \
+            grid of arbitrary dimensions (voxel size). The voxel can be turned on \
+            (be a volume) or off (be a void). The voxels can be materialized as \
+            rectangular blocks. Voxelized meshes can be effectively smoothened by \
+            Laplacian relaxation.
+            \n\
+            The input meshes will be marked used and thus invisible in the viewport. \
+            They can still be used in subsequent operations.\n\
+            \n\
+            The resulting mesh geometry will be named 'Difference Mesh'.",
             return_value_name: "Difference Mesh",
         }
     }
@@ -55,19 +73,22 @@ impl Func for FuncBooleanDifference {
         &[
             ParamInfo {
                 name: "Mesh 1",
-                description: "",
+                description: "First input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Mesh 2",
-                description: "",
+                description: "Second input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Voxel Size",
-                description: "",
+                description: "Size of a single cell in the regular three-dimensional voxel grid.\n\
+                High values produce coarser results, low values may increase precision but produce \
+                heavier geometry that significantly affect performance. Too high values produce \
+                single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     default_value_x: Some(1.0),
                     min_value_x: Some(f32::MIN_POSITIVE),
@@ -83,7 +104,13 @@ impl Func for FuncBooleanDifference {
             },
             ParamInfo {
                 name: "Grow",
-                description: "",
+                description: "The voxelization algorithm puts voxels on the surface of \
+                the input mesh geometries.\n\
+                \n\
+                The grow option adds several extra layers of voxels on both sides of such \
+                voxel volumes. This option generates thicker voxelized meshes. \
+                In some cases not growing the volume at all may result in \
+                a non manifold voxelized mesh.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(0),
                     min_value: None,
@@ -93,7 +120,11 @@ impl Func for FuncBooleanDifference {
             },
             ParamInfo {
                 name: "Fill Closed Volumes",
-                description: "",
+                description: "Treats the insides of watertight mesh geometries as volumes.\n\
+                \n\
+                If this option is off, the resulting voxelized mesh geometries will have two \
+                separate mesh shells: one for outer surface, the other for inner surface of \
+                hollow watertight mesh.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -101,7 +132,8 @@ impl Func for FuncBooleanDifference {
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

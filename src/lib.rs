@@ -308,15 +308,15 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.zoom(input_state.camera_zoom);
                 camera.zoom_step(input_state.camera_zoom_steps);
 
-                let utilities_status = ui_frame.draw_utilities_window(
+                let menu_status = ui_frame.draw_menu_window(
                     &mut screenshot_modal_open,
                     &mut renderer_draw_mesh_mode,
                     project_path.as_ref().map(|p| p.as_str()),
                 );
                 let reset_viewport =
-                    input_state.camera_reset_viewport || utilities_status.reset_viewport;
+                    input_state.camera_reset_viewport || menu_status.reset_viewport;
 
-                if let Some(save_path) = utilities_status.save_path {
+                if let Some(save_path) = menu_status.save_path {
                     let stmts = session.stmts().to_vec();
                     let project = project::Project { version: 1, stmts };
 
@@ -325,7 +325,7 @@ pub fn init_and_run(options: Options) -> ! {
                     project_path = Some(save_path);
                 }
 
-                if let Some(open_path) = utilities_status.open_path {
+                if let Some(open_path) = menu_status.open_path {
                     let project = project::open(&open_path);
 
                     scene_meshes.clear();

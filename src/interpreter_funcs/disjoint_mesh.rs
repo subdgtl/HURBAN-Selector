@@ -13,7 +13,21 @@ impl Func for FuncDisjointMesh {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Disjoint Mesh",
-            description: "",
+            description:
+                "DISJOINT MESH INTO A MESH GROUP\n\
+                 \n\
+                 Splits the visually separate / unwelded / island geometries \
+                 from their common mesh geometry and stores the resulting \
+                 separate mesh geometries in a mesh group.\n\
+                 \n\
+                 Mesh group is displayed in the viewport as geometry but is \
+                 a distinct data type. Only some operations can use mesh groups \
+                 and most of them are intended to generate a proper mesh from the mesh group. \
+                 To use the content of the group it is necessary to Extract specific \
+                 mesh from group, Extract largest mesh from group or Join mesh group \
+                 into a single mesh.\n\
+                 \n\
+                 The resulting mesh group will be named 'Disjoint Group'.",
             return_value_name: "Disjoint Group",
         }
     }
@@ -26,15 +40,15 @@ impl Func for FuncDisjointMesh {
         &[
             ParamInfo {
                 name: "Mesh",
-                description: "",
+                description: "Input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting group",
-                description: "",
+                description: "Reports detailed analytic information on the mesh group.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
-                    default_value: false,
+                    default_value: true,
                 }),
                 optional: false,
             },
