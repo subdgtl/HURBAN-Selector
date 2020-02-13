@@ -1,3 +1,5 @@
+use std::error;
+use std::fmt;
 use std::sync::Arc;
 
 use crate::analytics;
@@ -6,6 +8,24 @@ use crate::interpreter::{
     ParamRefinement, Ty, Value,
 };
 use crate::mesh::{analysis, tools, topology};
+
+#[derive(Debug, PartialEq)]
+pub enum FuncSynchronizeMeshFacesError {
+    NonManifold,
+}
+
+impl fmt::Display for FuncSynchronizeMeshFacesError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FuncSynchronizeMeshFacesError::NonManifold => write!(
+                f,
+                "The mesh is non-manifold. Some edges are shared by more than two faces."
+            ),
+        }
+    }
+}
+
+impl error::Error for FuncSynchronizeMeshFacesError {}
 
 pub struct FuncSynchronizeMeshFaces;
 
@@ -76,9 +96,14 @@ impl Func for FuncSynchronizeMeshFaces {
         let oriented_edges: Vec<_> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = analysis::edge_sharing(&oriented_edges);
 
-        let value = if !analysis::is_mesh_orientable(&edge_sharing_map)
-            && analysis::is_mesh_manifold(&edge_sharing_map)
-        {
+        let is_manifold = analysis::is_mesh_manifold(&edge_sharing_map);
+        if !is_manifold {
+            let error = FuncError::new(FuncSynchronizeMeshFacesError::NonManifold);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
+
+        let value = if !analysis::is_mesh_orientable(&edge_sharing_map) {
             let vertex_to_face = topology::compute_vertex_to_face_topology(&mesh);
             let face_to_face = topology::compute_face_to_face_topology(&mesh, &vertex_to_face);
 
