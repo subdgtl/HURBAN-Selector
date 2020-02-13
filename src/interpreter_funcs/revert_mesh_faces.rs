@@ -13,7 +13,23 @@ impl Func for FuncRevertMeshFaces {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Revert Faces",
-            description: "",
+            description: "REVERT MESH FACES\n\
+                          \n\
+                          Changes winding (vertex order) of all mesh faces.\n\
+                          This is a maintenance operation that helps to \
+                          synchronize properties of multiple meshes before \
+                          hybridization. Some hybridization algorithms require \
+                          the faces of input meshes to face the same direction \
+                          (inwards or outwards). This operation is also useful \
+                          after Synchronizing mesh faces, which can result in \
+                          a mesh facing inwards.\n\
+                          \n\
+                          This operation does not affect normals and mesh rendering.\n\
+                          \n\
+                          The input mesh will be marked used and thus invisible in the viewport. \
+                          It can still be used in subsequent operations.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Reverted Mesh'.",
             return_value_name: "Reverted Mesh",
         }
     }
@@ -26,13 +42,14 @@ impl Func for FuncRevertMeshFaces {
         &[
             ParamInfo {
                 name: "Mesh",
-                description: "",
+                description: "Input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),

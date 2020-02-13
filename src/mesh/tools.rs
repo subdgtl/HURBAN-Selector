@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use arrayvec::ArrayVec;
-use nalgebra::{Point3, Vector3};
+use nalgebra::{Matrix4, Point3, Vector3};
 use smallvec::{smallvec, SmallVec};
 
 use crate::convert::{cast_u32, cast_usize};
@@ -364,6 +364,42 @@ where
     }
 
     Mesh::from_faces_with_vertices_and_normals(faces, vertices, normals)
+}
+
+/// Aligns the mesh 1 (`mesh_to_align`) to mesh 2 (`align_to_mesh`).
+///
+/// Mesh 1 will be translated so that its center matches the mesh 2 center. Mesh
+/// 1 will be scaled so that the diagonal of its bounding box will have the same
+/// length as the diagonal of the mesh 2 bounding box.
+pub fn align_two_meshes(mesh_to_align: &Mesh, align_to_mesh: &Mesh) -> Mesh {
+    let target_bbox = align_to_mesh.bounding_box();
+    let current_bbox = mesh_to_align.bounding_box();
+
+    let vector_from_current_to_origin = Point3::origin() - current_bbox.center();
+    let vector_from_origin_to_target = target_bbox.center().coords;
+
+    let scaling_factor = target_bbox.diagonal().norm() / current_bbox.diagonal().norm();
+
+    let translation_from_current_to_origin =
+        Matrix4::new_translation(&vector_from_current_to_origin);
+    let scaling = Matrix4::new_scaling(scaling_factor);
+    let translation_from_origin_to_target = Matrix4::new_translation(&vector_from_origin_to_target);
+
+    let vertices_iter = mesh_to_align.vertices().iter().map(|v| {
+        let v1 = translation_from_current_to_origin.transform_point(v);
+        let v2 = scaling.transform_point(&v1);
+        translation_from_origin_to_target.transform_point(&v2)
+    });
+    let normals_iter = mesh_to_align
+        .normals()
+        .iter()
+        .map(|n| scaling.transform_vector(n));
+
+    Mesh::from_faces_with_vertices_and_normals(
+        mesh_to_align.faces().iter().copied(),
+        vertices_iter,
+        normals_iter,
+    )
 }
 
 #[cfg(test)]

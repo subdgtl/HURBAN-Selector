@@ -7,24 +7,26 @@ use crate::interpreter::{
 };
 use crate::mesh::tools;
 
-pub struct FuncJoinMeshes;
+pub struct FuncAlign;
 
-impl Func for FuncJoinMeshes {
+impl Func for FuncAlign {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Join Meshes",
-            description: "JOIN TWO MESH GEOMETRIES INTO ONE\n\
-                          \n\
-                          Creates a new mesh containing vertices and triangles \
-                          from both input meshes. \
-                          The two meshes will not be welded.\n\
-                          \n\
-                          The input meshes will be marked used \
-                          and thus invisible in the viewport. \
-                          They can still be used in subsequent operations.\n\
-                          \n\
-                          The resulting mesh geometry will be named 'Joined Mesh'.",
-            return_value_name: "Joined Mesh",
+            name: "Align",
+            description:
+                "ALIGN MESH TO ANOTHER\n\
+                 \n\
+                 Moves and scales a mesh to match another mesh. 'Mesh to align' will be \
+                 translated so that its center matches the center of 'Align to mesh'. \
+                 'Mesh to align' will be scaled so that the diagonal of its bounding \
+                 box will have the same length as the diagonal of the bounding box \
+                 of 'Align to mesh'.\n\
+                 \n\
+                 Both input meshes will be marked used and thus invisible in the viewport. \
+                 They can still be used in subsequent operations.\n\
+                 \n\
+                 The resulting mesh geometry will be named 'Aligned Mesh'.",
+            return_value_name: "Aligned Mesh",
         }
     }
 
@@ -35,14 +37,14 @@ impl Func for FuncJoinMeshes {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                name: "Mesh 1",
-                description: "First input mesh.",
+                name: "Mesh to align",
+                description: "Mesh to be transformed to align to another mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
-                name: "Mesh 2",
-                description: "Second input mesh.",
+                name: "Align to mesh",
+                description: "The target mesh, towards which the source mesh should be aligned.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
@@ -67,10 +69,11 @@ impl Func for FuncJoinMeshes {
         args: &[Value],
         log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let meshes = [args[0].unwrap_mesh(), args[1].unwrap_mesh()];
+        let mesh_to_align = args[0].unwrap_mesh();
+        let align_to_mesh = args[1].unwrap_mesh();
         let analyze = args[2].unwrap_boolean();
 
-        let value = tools::join_multiple_meshes(meshes.iter().copied());
+        let value = tools::align_two_meshes(&mesh_to_align, &align_to_mesh);
 
         if analyze {
             analytics::report_mesh_analysis(&value, log);

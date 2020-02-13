@@ -33,7 +33,25 @@ impl Func for FuncSynchronizeMeshFaces {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Synchronize Faces",
-            description: "",
+            description: "SYNCHRONIZE MESH FACES\n\
+                          \n\
+                          Change winding (vertex order) of all mesh faces so \
+                          that they match winding of the first face of the mesh.\
+                          This is a maintenance operation that helps to \
+                          fix meshes with faces randomly facing inwards and outwards. \
+                          The resulting mesh may face entirely inwards. In such case it \
+                          is necessary to Revert mesh faces so that they face outwards. \
+                          The operation is useful for synchronizing properties of multiple \
+                          meshes before hybridization. Some hybridization algorithms \
+                          require the faces of input meshes to face the same direction \
+                          (inwards or outwards).\n\
+                          \n\
+                          This operation does not affect normals and mesh rendering.\n\
+                          \n\
+                          The input mesh will be marked used and thus invisible in the viewport. \
+                          It can still be used in subsequent operations.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Synchronized Mesh'.",
             return_value_name: "Synchronized Mesh",
         }
     }
@@ -46,13 +64,15 @@ impl Func for FuncSynchronizeMeshFaces {
         &[
             ParamInfo {
                 name: "Mesh",
-                description: "",
+                description: "Input mesh.\n\
+                              The input mesh must be manifold.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Analyze resulting mesh",
-                description: "",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
