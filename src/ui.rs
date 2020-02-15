@@ -53,6 +53,11 @@ struct Colors {
 }
 
 #[derive(Debug, Default)]
+struct PipelineWindowState {
+    autoscroll: bool,
+}
+
+#[derive(Debug, Default)]
 struct NotificationsState {
     notifications_count: usize,
 }
@@ -75,6 +80,7 @@ pub struct Ui {
     imgui_winit_platform: WinitPlatform,
     font_ids: FontIds,
     colors: Colors,
+    pipeline_window_state: RefCell<PipelineWindowState>,
     notifications_state: RefCell<NotificationsState>,
     console_state: RefCell<Vec<ConsoleState>>,
 
@@ -224,6 +230,7 @@ impl Ui {
                 bold: bold_font_id,
             },
             colors,
+            pipeline_window_state: RefCell::new(PipelineWindowState::default()),
             console_state: RefCell::new(Vec::new()),
             notifications_state: RefCell::new(NotificationsState::default()),
             global_imstring_buffer: RefCell::new(imgui::ImString::with_capacity(1024)),
@@ -254,6 +261,7 @@ impl Ui {
             font_ids: &self.font_ids,
             colors: &self.colors,
             console_state: &self.console_state,
+            pipeline_window_state: &self.pipeline_window_state,
             notifications_state: &self.notifications_state,
             global_imstring_buffer: &self.global_imstring_buffer,
         }
@@ -272,6 +280,7 @@ pub struct UiFrame<'a> {
     font_ids: &'a FontIds,
     colors: &'a Colors,
     console_state: &'a RefCell<Vec<ConsoleState>>,
+    pipeline_window_state: &'a RefCell<PipelineWindowState>,
     notifications_state: &'a RefCell<NotificationsState>,
     global_imstring_buffer: &'a RefCell<imgui::ImString>,
 }
@@ -887,6 +896,12 @@ impl<'a> UiFrame<'a> {
                     }
                 }
                 regular_font_token.pop(ui);
+
+                let mut pipeline_window_state = self.pipeline_window_state.borrow_mut();
+                if pipeline_window_state.autoscroll {
+                    ui.set_scroll_here_y();
+                    pipeline_window_state.autoscroll = false;
+                }
             });
         bold_font_token.pop(ui);
 
@@ -1128,6 +1143,7 @@ impl<'a> UiFrame<'a> {
             ));
 
             session.push_prog_stmt(current_time, stmt);
+            self.pipeline_window_state.borrow_mut().autoscroll = true;
         }
 
         if interpret_clicked {
