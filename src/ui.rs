@@ -533,7 +533,7 @@ impl<'a> UiFrame<'a> {
                 status.reset_viewport =
                     ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
 
-                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                if status.reset_viewport {
                     notifications.push(
                         current_time,
                         NotificationLevel::Info,
