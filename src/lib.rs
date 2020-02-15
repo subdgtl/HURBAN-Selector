@@ -311,9 +311,11 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.zoom_step(input_state.camera_zoom_steps);
 
                 let menu_status = ui_frame.draw_menu_window(
+                    time,
                     &mut screenshot_modal_open,
                     &mut renderer_draw_mesh_mode,
                     project_path.as_ref().map(|p| p.as_str()),
+                    &mut notifications.borrow_mut(),
                 );
                 let reset_viewport =
                     input_state.camera_reset_viewport || menu_status.reset_viewport;
@@ -324,6 +326,12 @@ pub fn init_and_run(options: Options) -> ! {
                     let project = project::Project { version: 1, stmts };
 
                     project::save(&save_path, project);
+
+                    notifications.borrow_mut().push(
+                        time,
+                        NotificationLevel::Info,
+                        format!("Project saved as {}", &save_path),
+                    );
 
                     project_path = Some(save_path);
                 }
@@ -363,6 +371,12 @@ pub fn init_and_run(options: Options) -> ! {
                         session.push_prog_stmt(time, stmt);
                     }
 
+                    notifications.borrow_mut().push(
+                        time,
+                        NotificationLevel::Info,
+                        format!("Opened project {}", &open_path),
+                    );
+
                     project_path = Some(open_path);
                 }
 
@@ -376,7 +390,12 @@ pub fn init_and_run(options: Options) -> ! {
                 ui_frame.draw_notifications_window(&notifications.borrow());
 
                 ui_frame.draw_pipeline_window(time, &mut session);
-                ui_frame.draw_operations_window(time, &mut session, DURATION_AUTORUN_DELAY);
+                ui_frame.draw_operations_window(
+                    time,
+                    &mut session,
+                    &mut notifications.borrow_mut(),
+                    DURATION_AUTORUN_DELAY,
+                );
 
                 if reset_viewport {
                     camera_interpolation =
@@ -423,7 +442,7 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 session.poll(time, |callback_value| match callback_value {
-                    PollNotification::Add(var_ident, value) => match value {
+                    PollNotification::ValueAdded(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
@@ -486,7 +505,7 @@ pub fn init_and_run(options: Options) -> ! {
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
-                    PollNotification::Remove(var_ident, value) => match value {
+                    PollNotification::ValueRemoved(var_ident, value) => match value {
                         Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
@@ -547,6 +566,23 @@ pub fn init_and_run(options: Options) -> ! {
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
+                    PollNotification::FinishedSuccessfully => {
+                        notifications.borrow_mut().push(
+                            time,
+                            NotificationLevel::Info,
+                            "Execution of the Sequence of operations finished successfully.",
+                        );
+                    }
+                    PollNotification::FinishedWithError(error_message) => {
+                        notifications.borrow_mut().push(
+                            time,
+                            NotificationLevel::Error,
+                            format!(
+                                "Execution of the Sequence of operations finished with error: {}",
+                                error_message
+                            ),
+                        );
+                    }
                 });
 
                 if let Some(interp) = camera_interpolation {

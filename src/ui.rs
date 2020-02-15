@@ -73,7 +73,7 @@ pub struct MenuStatus {
     pub open_path: Option<String>,
 }
 
-/// Thin wrapper around imgui and its winit platform. Its main responsibilty
+/// Thin wrapper around imgui and its winit platform. Its main responsibility
 /// is to create UI frames which draw the UI itself.
 pub struct Ui {
     imgui_context: imgui::Context,
@@ -436,6 +436,10 @@ impl<'a> UiFrame<'a> {
                             imgui::StyleColor::Text,
                             self.colors.log_message_warn,
                         ),
+                        NotificationLevel::Error => ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_error,
+                        ),
                     };
 
                     ui.text_wrapped(&imgui::im_str!("{}", notification.text));
@@ -455,9 +459,11 @@ impl<'a> UiFrame<'a> {
 
     pub fn draw_menu_window(
         &self,
+        current_time: Instant,
         screenshot_modal_open: &mut bool,
         draw_mode: &mut DrawMeshMode,
         project_path: Option<&str>,
+        notifications: &mut Notifications,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
         let mut status = MenuStatus {
@@ -497,7 +503,6 @@ impl<'a> UiFrame<'a> {
                 }
                 let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
-
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
@@ -510,12 +515,18 @@ impl<'a> UiFrame<'a> {
                         \n\
                         If the FPS suddenly drops, it is na indication that the current model \
                         is already too heavy (contains too many vertices and faces) \
-                        and for the sake of performance and safety, it should be reduced.");
+                        and for sake of performance and safety, it should be reduced.");
                         wrap_token.pop(ui);
                     });
                 }
 
-                ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
+                if ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Shaded.",
+                    );
+                }
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
@@ -525,7 +536,14 @@ impl<'a> UiFrame<'a> {
                         wrap_token.pop(ui);
                     });
                 }
-                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawMeshMode::Edges);
+
+                if ui.radio_button(imgui::im_str!("Wireframes"), draw_mode, DrawMeshMode::Edges) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Wireframes.",
+                    );
+                }
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
@@ -536,11 +554,18 @@ impl<'a> UiFrame<'a> {
                         wrap_token.pop(ui);
                     });
                 }
-                ui.radio_button(
+
+                if ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
                     draw_mode,
                     DrawMeshMode::ShadedEdges,
-                );
+                ) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Shaded with Edges (Wireframes).",
+                    );
+                }
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
@@ -550,11 +575,18 @@ impl<'a> UiFrame<'a> {
                         wrap_token.pop(ui);
                     });
                 }
-                ui.radio_button(
+
+                if ui.radio_button(
                     imgui::im_str!("X-RAY"),
                     draw_mode,
                     DrawMeshMode::ShadedEdgesXray,
-                );
+                ) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to X-Ray: Shaded with internal Edges (Wireframes).",
+                    );
+                }
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
@@ -569,7 +601,13 @@ impl<'a> UiFrame<'a> {
 
                 status.reset_viewport =
                     ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
-
+                if status.reset_viewport {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport camera reset to fit all visible geometry.",
+                    );
+                }
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
@@ -583,7 +621,6 @@ impl<'a> UiFrame<'a> {
                 if ui.button(imgui::im_str!("Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
                     *screenshot_modal_open = true;
                 }
-
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
@@ -1089,6 +1126,7 @@ impl<'a> UiFrame<'a> {
         &self,
         current_time: Instant,
         session: &mut Session,
+        notifications: &mut Notifications,
         duration_autorun_delay: Duration,
     ) {
         let ui = &self.imgui_ui;
@@ -1206,6 +1244,11 @@ impl<'a> UiFrame<'a> {
                 ) && popping_enabled
                 {
                     pop_stmt_clicked = true;
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Warn,
+                        "Removed last operation from the Sequence.",
+                    );
                 }
                 if let Some((color_token, style_token)) = popping_tokens {
                     color_token.pop(ui);
@@ -1264,6 +1307,11 @@ impl<'a> UiFrame<'a> {
                     ) && pushing_enabled
                     {
                         function_clicked = Some(func_ident);
+                        notifications.push(
+                            current_time,
+                            NotificationLevel::Info,
+                            format!("Added new operation to the Sequence: {}.", func.info().name),
+                        );
                     }
 
                     if ui.is_item_hovered() && !func.info().description.is_empty() {
@@ -1367,6 +1415,11 @@ impl<'a> UiFrame<'a> {
         }
 
         if interpret_clicked {
+            notifications.push(
+                current_time,
+                NotificationLevel::Info,
+                "Execution of the Sequence of operations has started...",
+            );
             session.interpret();
         }
 

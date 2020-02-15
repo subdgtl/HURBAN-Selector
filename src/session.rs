@@ -14,8 +14,11 @@ use crate::interpreter_server::{
 /// about what values have been added since the last poll, and what
 /// values have been removed are no longer required.
 pub enum PollNotification {
-    Add(VarIdent, Value),
-    Remove(VarIdent, Value),
+    ValueAdded(VarIdent, Value),
+    ValueRemoved(VarIdent, Value),
+    FinishedSuccessfully,
+    // FIXME: Replace String with InterpretError
+    FinishedWithError(String),
 }
 
 /// An editing session.
@@ -43,7 +46,7 @@ pub struct Session {
 
     // Auxiliary side-arrays for prog. Determine mesh and mesh-array
     // vars visible from a stmt. The value is read by producing a
-    // slice from the begining of the array to the current stmt's
+    // slice from the beginning of the array to the current stmt's
     // index (exclusive), and filtering only `Some` values. E.g. 0th
     // stmt can not see any vars, 1st stmt can see vars produced by
     // the 0th stmt (if it is `Some`), etc.
@@ -80,7 +83,7 @@ impl Session {
             // table as we do here (the interpreter has its own
             // instance), this state will not be shared, which could
             // lead to unexpected behavior, if the state is mutated
-            // from multiple places. Fortunately, we currenly don't
+            // from multiple places. Fortunately, we currently don't
             // mutate the state here in the session (nor do we need
             // to), that's why the hack is harmless. The most clean
             // solution would be to split the stateful part of funcs
@@ -413,7 +416,7 @@ impl Session {
                                         let value = self.unused_values.remove(&var_ident).expect(
                                             "Value must be present if we want to remove it",
                                         );
-                                        callback(PollNotification::Remove(var_ident, value));
+                                        callback(PollNotification::ValueRemoved(var_ident, value));
                                     }
                                     for (var_ident, value) in to_reinsert {
                                         let inserted = self
@@ -424,7 +427,7 @@ impl Session {
                                             inserted,
                                             "Value must have been removed previously for reinsertion",
                                         );
-                                        callback(PollNotification::Add(var_ident, value))
+                                        callback(PollNotification::ValueAdded(var_ident, value))
                                     }
 
                                     for (var_ident, value) in interpret_value.unused_values {
@@ -435,7 +438,9 @@ impl Session {
                                             self.unused_values.entry(var_ident)
                                         {
                                             vacant.insert(value.clone());
-                                            callback(PollNotification::Add(var_ident, value));
+                                            callback(PollNotification::ValueAdded(
+                                                var_ident, value,
+                                            ));
                                         }
                                     }
 
@@ -443,12 +448,18 @@ impl Session {
                                     // with the same parameters for which they previously
                                     // failed. We want to clear the error in this case.
                                     self.error = None;
+
+                                    callback(PollNotification::FinishedSuccessfully);
                                 }
                                 Err(interpret_error) => {
                                     log::error!(
                                         "Interpreter failed with error: {}",
                                         interpret_error,
                                     );
+                                    callback(PollNotification::FinishedWithError(format!(
+                                        "{}",
+                                        interpret_error
+                                    )));
 
                                     self.error = Some(interpret_error);
                                 }

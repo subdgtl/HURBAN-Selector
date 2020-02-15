@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 pub enum NotificationLevel {
     Info,
     Warn,
+    Error,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
