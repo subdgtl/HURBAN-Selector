@@ -51,7 +51,7 @@ mod ui;
 
 const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
 const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
-const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(500);
+const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
