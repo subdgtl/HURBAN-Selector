@@ -5,6 +5,7 @@ pub use crate::ui::Theme;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
+use std::iter;
 use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -22,10 +23,10 @@ use crate::mesh::Mesh;
 use crate::notifications::{NotificationLevel, Notifications};
 use crate::plane::Plane;
 use crate::renderer::{
-    DirectionalLight, DrawMeshMode, GpuMesh, GpuMeshHandle, Options as RendererOptions, Renderer,
+    DirectionalLight, GpuMesh, GpuMeshHandle, Material, Options as RendererOptions, Renderer,
 };
 use crate::session::{PollNotification, Session};
-use crate::ui::{ScreenshotOptions, Ui};
+use crate::ui::{ScreenshotOptions, Ui, ViewportDrawMode};
 
 pub mod geometry;
 pub mod importer;
@@ -218,7 +219,8 @@ pub fn init_and_run(options: Options) -> ! {
 
     #[cfg(not(feature = "dist"))]
     let mut renderer_debug_view = RendererDebugView::Off;
-    let mut renderer_draw_mesh_mode = DrawMeshMode::Shaded;
+    let mut viewport_draw_mode = ViewportDrawMode::ShadedWireframe;
+    let mut viewport_draw_used_values = true;
     let mut renderer = Renderer::new(
         &window,
         initial_window_width,
@@ -234,19 +236,20 @@ pub fn init_and_run(options: Options) -> ! {
             vsync: options.vsync,
             backend: options.gpu_backend,
             power_preference: options.gpu_power_preference,
-            flat_shading_color: [0.0, 0.0, 0.0, 0.1],
+            flat_material_color: [0.0, 0.0, 0.0, 0.1],
+            transparent_matcap_shaded_material_alpha: 0.2,
         },
     );
 
     let mut scene_bounding_box: BoundingBox<f32> = BoundingBox::unit();
-    let mut scene_meshes: HashMap<ValuePath, Arc<Mesh>> = HashMap::new();
-    let mut scene_gpu_mesh_handles: HashMap<ValuePath, GpuMeshHandle> = HashMap::new();
+    let mut scene_meshes: HashMap<ValuePath, (bool, Arc<Mesh>)> = HashMap::new();
+    let mut scene_gpu_mesh_handles: HashMap<ValuePath, (bool, GpuMeshHandle)> = HashMap::new();
 
     let mut ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
     let mut ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
     let mut ground_plane_gpu_mesh_handle = Some(
         renderer
-            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
             .expect("Failed to add ground plane mesh"),
     );
 
@@ -259,6 +262,7 @@ pub fn init_and_run(options: Options) -> ! {
     let time_start = Instant::now();
     let mut time = time_start;
 
+    #[allow(clippy::cognitive_complexity)]
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
 
@@ -313,10 +317,35 @@ pub fn init_and_run(options: Options) -> ! {
                 let menu_status = ui_frame.draw_menu_window(
                     time,
                     &mut screenshot_modal_open,
-                    &mut renderer_draw_mesh_mode,
+                    &mut viewport_draw_mode,
+                    &mut viewport_draw_used_values,
                     project_path.as_ref().map(|p| p.as_str()),
                     &mut notifications.borrow_mut(),
                 );
+
+                if menu_status.viewport_draw_used_values_changed {
+                    scene_bounding_box = BoundingBox::union(
+                        scene_meshes
+                            .values()
+                            .filter(|(used, _)| viewport_draw_used_values || !used)
+                            .map(|(_, mesh)| mesh.bounding_box()),
+                    )
+                    .unwrap_or_else(BoundingBox::unit);
+
+                    ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                    ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                    renderer.remove_scene_mesh(
+                        ground_plane_gpu_mesh_handle
+                            .take()
+                            .expect("Ground plane must always be present"),
+                    );
+                    ground_plane_gpu_mesh_handle = Some(
+                        renderer
+                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
+                            .expect("Failed to add ground plane mesh"),
+                    );
+                }
+
                 let reset_viewport =
                     input_state.camera_reset_viewport || menu_status.reset_viewport;
 
@@ -342,13 +371,17 @@ pub fn init_and_run(options: Options) -> ! {
 
                     scene_meshes.clear();
 
-                    for (_, gpu_mesh_handle) in scene_gpu_mesh_handles.drain() {
+                    for (_, (_, gpu_mesh_handle)) in scene_gpu_mesh_handles.drain() {
                         renderer.remove_scene_mesh(gpu_mesh_handle);
                     }
 
-                    scene_bounding_box =
-                        BoundingBox::union(scene_meshes.values().map(|mesh| mesh.bounding_box()))
-                            .unwrap_or_else(BoundingBox::unit);
+                    scene_bounding_box = BoundingBox::union(
+                        scene_meshes
+                            .values()
+                            .filter(|(used, _)| viewport_draw_used_values || !used)
+                            .map(|(_, mesh)| mesh.bounding_box()),
+                    )
+                    .unwrap_or_else(BoundingBox::unit);
 
                     ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
                     ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
@@ -359,7 +392,7 @@ pub fn init_and_run(options: Options) -> ! {
                     );
                     ground_plane_gpu_mesh_handle = Some(
                         renderer
-                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
                             .expect("Failed to add ground plane mesh"),
                     );
 
@@ -442,97 +475,45 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 session.poll(time, |callback_value| match callback_value {
-                    PollNotification::ValueAdded(var_ident, value) => match value {
+                    PollNotification::UsedValueAdded(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
-                                .add_scene_mesh(&gpu_mesh, false)
+                                .add_scene_mesh(&gpu_mesh)
                                 .expect("Failed to upload scene mesh");
 
                             let path = ValuePath(var_ident, 0);
 
-                            scene_meshes.insert(path, mesh);
-                            scene_gpu_mesh_handles.insert(path, gpu_mesh_id);
-
-                            scene_bounding_box = BoundingBox::union(
-                                scene_meshes.values().map(|mesh| mesh.bounding_box()),
-                            )
-                            .unwrap_or_else(BoundingBox::unit);
-
-                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
-                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-                            renderer.remove_scene_mesh(
-                                ground_plane_gpu_mesh_handle
-                                    .take()
-                                    .expect("Ground plane must always be present"),
-                            );
-                            ground_plane_gpu_mesh_handle = Some(
-                                renderer
-                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
-                                    .expect("Failed to add ground plane mesh"),
-                            );
+                            scene_meshes.insert(path, (true, mesh));
+                            scene_gpu_mesh_handles.insert(path, (true, gpu_mesh_id));
                         }
                         Value::MeshArray(mesh_array) => {
                             for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
                                 let gpu_mesh = GpuMesh::from_mesh(&mesh);
                                 let gpu_mesh_id = renderer
-                                    .add_scene_mesh(&gpu_mesh, false)
+                                    .add_scene_mesh(&gpu_mesh)
                                     .expect("Failed to upload scene mesh");
 
                                 let path = ValuePath(var_ident, index);
 
-                                scene_meshes.insert(path, mesh);
-                                scene_gpu_mesh_handles.insert(path, gpu_mesh_id);
+                                scene_meshes.insert(path, (true, mesh));
+                                scene_gpu_mesh_handles.insert(path, (true, gpu_mesh_id));
                             }
-
-                            scene_bounding_box = BoundingBox::union(
-                                scene_meshes.values().map(|mesh| mesh.bounding_box()),
-                            )
-                            .unwrap_or_else(BoundingBox::unit);
-
-                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
-                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-                            renderer.remove_scene_mesh(
-                                ground_plane_gpu_mesh_handle
-                                    .take()
-                                    .expect("Ground plane must always be present"),
-                            );
-                            ground_plane_gpu_mesh_handle = Some(
-                                renderer
-                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
-                                    .expect("Failed to add ground plane mesh"),
-                            );
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
-                    PollNotification::ValueRemoved(var_ident, value) => match value {
+
+                    PollNotification::UsedValueRemoved(var_ident, value) => match value {
                         Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
                             scene_meshes.remove(&path);
                             let gpu_mesh_id = scene_gpu_mesh_handles
                                 .remove(&path)
-                                .expect("Gpu mesh ID was not tracked");
+                                .expect("Gpu mesh ID was not tracked")
+                                .1;
 
                             renderer.remove_scene_mesh(gpu_mesh_id);
-
-                            scene_bounding_box = BoundingBox::union(
-                                scene_meshes.values().map(|mesh| mesh.bounding_box()),
-                            )
-                            .unwrap_or_else(BoundingBox::unit);
-
-                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
-                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-                            renderer.remove_scene_mesh(
-                                ground_plane_gpu_mesh_handle
-                                    .take()
-                                    .expect("Ground plane must always be present"),
-                            );
-                            ground_plane_gpu_mesh_handle = Some(
-                                renderer
-                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
-                                    .expect("Failed to add ground plane mesh"),
-                            );
                         }
                         Value::MeshArray(mesh_array) => {
                             for index in 0..mesh_array.len() {
@@ -541,38 +522,100 @@ pub fn init_and_run(options: Options) -> ! {
                                 scene_meshes.remove(&path);
                                 let gpu_mesh_id = scene_gpu_mesh_handles
                                     .remove(&path)
-                                    .expect("Gpu mesh ID was not tracked");
+                                    .expect("Gpu mesh ID was not tracked")
+                                    .1;
 
                                 renderer.remove_scene_mesh(gpu_mesh_id);
                             }
-
-                            scene_bounding_box = BoundingBox::union(
-                                scene_meshes.values().map(|mesh| mesh.bounding_box()),
-                            )
-                            .unwrap_or_else(BoundingBox::unit);
-
-                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
-                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-                            renderer.remove_scene_mesh(
-                                ground_plane_gpu_mesh_handle
-                                    .take()
-                                    .expect("Ground plane must always be present"),
-                            );
-                            ground_plane_gpu_mesh_handle = Some(
-                                renderer
-                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
-                                    .expect("Failed to add ground plane mesh"),
-                            );
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
+
+                    PollNotification::UnusedValueAdded(var_ident, value) => match value {
+                        Value::Mesh(mesh) => {
+                            let gpu_mesh = GpuMesh::from_mesh(&mesh);
+                            let gpu_mesh_id = renderer
+                                .add_scene_mesh(&gpu_mesh)
+                                .expect("Failed to upload scene mesh");
+
+                            let path = ValuePath(var_ident, 0);
+
+                            scene_meshes.insert(path, (false, mesh));
+                            scene_gpu_mesh_handles.insert(path, (false, gpu_mesh_id));
+                        }
+                        Value::MeshArray(mesh_array) => {
+                            for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
+                                let gpu_mesh = GpuMesh::from_mesh(&mesh);
+                                let gpu_mesh_id = renderer
+                                    .add_scene_mesh(&gpu_mesh)
+                                    .expect("Failed to upload scene mesh");
+
+                                let path = ValuePath(var_ident, index);
+
+                                scene_meshes.insert(path, (false, mesh));
+                                scene_gpu_mesh_handles.insert(path, (false, gpu_mesh_id));
+                            }
+                        }
+                        _ => (/* Ignore other values, we don't display them in the viewport */),
+                    },
+
+                    PollNotification::UnusedValueRemoved(var_ident, value) => match value {
+                        Value::Mesh(_) => {
+                            let path = ValuePath(var_ident, 0);
+
+                            scene_meshes.remove(&path);
+                            let gpu_mesh_id = scene_gpu_mesh_handles
+                                .remove(&path)
+                                .expect("Gpu mesh ID was not tracked")
+                                .1;
+
+                            renderer.remove_scene_mesh(gpu_mesh_id);
+                        }
+                        Value::MeshArray(mesh_array) => {
+                            for index in 0..mesh_array.len() {
+                                let path = ValuePath(var_ident, cast_usize(index));
+
+                                scene_meshes.remove(&path);
+                                let gpu_mesh_id = scene_gpu_mesh_handles
+                                    .remove(&path)
+                                    .expect("Gpu mesh ID was not tracked")
+                                    .1;
+
+                                renderer.remove_scene_mesh(gpu_mesh_id);
+                            }
+                        }
+                        _ => (/* Ignore other values, we don't display them in the viewport */),
+                    },
+
                     PollNotification::FinishedSuccessfully => {
+                        scene_bounding_box = BoundingBox::union(
+                            scene_meshes
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(_, mesh)| mesh.bounding_box()),
+                        )
+                        .unwrap_or_else(BoundingBox::unit);
+
+                        ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                        ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                        renderer.remove_scene_mesh(
+                            ground_plane_gpu_mesh_handle
+                                .take()
+                                .expect("Ground plane must always be present"),
+                        );
+                        ground_plane_gpu_mesh_handle = Some(
+                            renderer
+                                .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
+                                .expect("Failed to add ground plane mesh"),
+                        );
+
                         notifications.borrow_mut().push(
                             time,
                             NotificationLevel::Info,
                             "Execution of the Sequence of operations finished successfully.",
                         );
                     }
+
                     PollNotification::FinishedWithError(error_message) => {
                         notifications.borrow_mut().push(
                             time,
@@ -608,15 +651,76 @@ pub fn init_and_run(options: Options) -> ! {
                 window_command_buffer
                     .set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
 
+                match viewport_draw_mode {
+                    ViewportDrawMode::Wireframe => {
+                        window_command_buffer.draw_meshes_to_primary_render_target(
+                            true,
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(_, handle)| (handle, Material::Edges)),
+                        );
+                    }
+                    ViewportDrawMode::Shaded => {
+                        window_command_buffer.draw_meshes_to_primary_render_target(
+                            true,
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(used, handle)| {
+                                    if *used {
+                                        (handle, Material::TransparentMatcapShaded)
+                                    } else {
+                                        (handle, Material::MatcapShaded)
+                                    }
+                                }),
+                        );
+                    }
+                    ViewportDrawMode::ShadedWireframe => {
+                        window_command_buffer.draw_meshes_to_primary_render_target(
+                            true,
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(used, handle)| {
+                                    if *used {
+                                        (handle, Material::TransparentMatcapShadedEdges)
+                                    } else {
+                                        (handle, Material::MatcapShadedEdges)
+                                    }
+                                }),
+                        );
+                    }
+                    ViewportDrawMode::ShadedWireframeXray => {
+                        window_command_buffer.draw_meshes_to_primary_render_target(
+                            true,
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(used, handle)| {
+                                    if *used {
+                                        (handle, Material::TransparentMatcapShaded)
+                                    } else {
+                                        (handle, Material::MatcapShaded)
+                                    }
+                                }),
+                        );
+
+                        window_command_buffer.draw_meshes_to_primary_render_target(
+                            false,
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(_, handle)| (handle, Material::EdgesXray)),
+                        );
+                    }
+                }
+
                 window_command_buffer.draw_meshes_to_primary_render_target(
-                    scene_gpu_mesh_handles.values(),
-                    renderer_draw_mesh_mode,
-                    true,
-                );
-                window_command_buffer.draw_meshes_to_primary_render_target(
-                    ground_plane_gpu_mesh_handle.iter(),
-                    DrawMeshMode::FlatWithShadows,
                     false,
+                    ground_plane_gpu_mesh_handle
+                        .iter()
+                        .zip(iter::repeat(Material::FlatWithShadows)),
                 );
 
                 #[cfg(not(feature = "dist"))]
@@ -669,12 +773,75 @@ pub fn init_and_run(options: Options) -> ! {
 
                     // For screenshots, we don't need to cast shadows, and we
                     // don't render the ground on purpose.
-                    screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                        &screenshot_render_target,
-                        scene_gpu_mesh_handles.values(),
-                        renderer_draw_mesh_mode,
-                        false,
-                    );
+                    match viewport_draw_mode {
+                        ViewportDrawMode::Wireframe => {
+                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                                &screenshot_render_target,
+                                true,
+                                scene_gpu_mesh_handles
+                                    .values()
+                                    .filter(|(used, _)| viewport_draw_used_values || !used)
+                                    .map(|(_, handle)| (handle, Material::Edges)),
+                            );
+                        }
+                        ViewportDrawMode::Shaded => {
+                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                                &screenshot_render_target,
+                                true,
+                                scene_gpu_mesh_handles
+                                    .values()
+                                    .filter(|(used, _)| viewport_draw_used_values || !used)
+                                    .map(|(used, handle)| {
+                                        if *used {
+                                            (handle, Material::TransparentMatcapShaded)
+                                        } else {
+                                            (handle, Material::MatcapShaded)
+                                        }
+                                    }),
+                            );
+                        }
+                        ViewportDrawMode::ShadedWireframe => {
+                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                                &screenshot_render_target,
+                                true,
+                                scene_gpu_mesh_handles
+                                    .values()
+                                    .filter(|(used, _)| viewport_draw_used_values || !used)
+                                    .map(|(used, handle)| {
+                                        if *used {
+                                            (handle, Material::TransparentMatcapShadedEdges)
+                                        } else {
+                                            (handle, Material::MatcapShadedEdges)
+                                        }
+                                    }),
+                            );
+                        }
+                        ViewportDrawMode::ShadedWireframeXray => {
+                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                                &screenshot_render_target,
+                                true,
+                                scene_gpu_mesh_handles
+                                    .values()
+                                    .filter(|(used, _)| viewport_draw_used_values || !used)
+                                    .map(|(used, handle)| {
+                                        if *used {
+                                            (handle, Material::TransparentMatcapShaded)
+                                        } else {
+                                            (handle, Material::MatcapShaded)
+                                        }
+                                    }),
+                            );
+
+                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
+                                &screenshot_render_target,
+                                false,
+                                scene_gpu_mesh_handles
+                                    .values()
+                                    .filter(|(used, _)| viewport_draw_used_values || !used)
+                                    .map(|(_, handle)| (handle, Material::EdgesXray)),
+                            );
+                        }
+                    }
 
                     screenshot_command_buffer.submit();
 

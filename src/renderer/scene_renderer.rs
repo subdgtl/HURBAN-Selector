@@ -241,7 +241,8 @@ pub struct Options {
     pub sample_count: u32,
     pub output_color_attachment_format: wgpu::TextureFormat,
     pub output_depth_attachment_format: wgpu::TextureFormat,
-    pub flat_shading_color: [f64; 4],
+    pub flat_material_color: [f64; 4],
+    pub transparent_matcap_shaded_material_alpha: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -253,13 +254,36 @@ pub struct DirectionalLight {
     pub width: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DrawMeshMode {
-    Shaded,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Material {
     Edges,
-    ShadedEdges,
-    ShadedEdgesXray,
+    EdgesXray,
+    MatcapShaded,
+    MatcapShadedEdges,
+    TransparentMatcapShaded,
+    TransparentMatcapShadedEdges,
     FlatWithShadows,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MaterialTransparency {
+    Opaque,
+    Transparent,
+    Xray,
+}
+
+impl Material {
+    fn transparency(self) -> MaterialTransparency {
+        match self {
+            Material::Edges => MaterialTransparency::Transparent,
+            Material::EdgesXray => MaterialTransparency::Xray,
+            Material::MatcapShaded => MaterialTransparency::Opaque,
+            Material::MatcapShadedEdges => MaterialTransparency::Opaque,
+            Material::TransparentMatcapShaded => MaterialTransparency::Transparent,
+            Material::TransparentMatcapShadedEdges => MaterialTransparency::Transparent,
+            Material::FlatWithShadows => MaterialTransparency::Transparent,
+        }
+    }
 }
 
 /// 3D renderer of the editor scene.
@@ -272,19 +296,24 @@ pub struct SceneRenderer {
     mesh_resources_next_handle: u64,
     /// Working memory for sorting opaque meshes by the projected z coord of
     /// their centroid
-    render_list_opaque: Vec<(u64, Point3<f32>)>,
+    render_list_opaque: Vec<(u64, Material, Point3<f32>)>,
     /// Working memory for sorting transparent meshes by the projected z coord
     /// of their centroid
-    render_list_transparent: Vec<(u64, Point3<f32>)>,
+    render_list_transparent: Vec<(u64, Material, Point3<f32>)>,
+    /// Working memory for sorting xray meshes by the projected z coord
+    /// of their centroid
+    render_list_xray: Vec<(u64, Material, Point3<f32>)>,
     render_list_sort_matrix: Matrix4<f32>,
     matrix_buffer: wgpu::Buffer,
     matrix_bind_group: wgpu::BindGroup,
     sampler_bind_group: wgpu::BindGroup,
     sampler_bind_group_layout: wgpu::BindGroupLayout,
     sampled_texture_bind_group_layout: wgpu::BindGroupLayout,
-    color_pass_bind_group_shaded: wgpu::BindGroup,
     color_pass_bind_group_edges: wgpu::BindGroup,
-    color_pass_bind_group_shaded_edges: wgpu::BindGroup,
+    color_pass_bind_group_matcap_shaded: wgpu::BindGroup,
+    color_pass_bind_group_matcap_shaded_transparent: wgpu::BindGroup,
+    color_pass_bind_group_matcap_shaded_edges: wgpu::BindGroup,
+    color_pass_bind_group_matcap_shaded_edges_transparent: wgpu::BindGroup,
     color_pass_bind_group_flat_with_shadows: wgpu::BindGroup,
     color_pass_matcap_texture_bind_group: wgpu::BindGroup,
     color_pass_pipeline_opaque_depth_read_write: wgpu::RenderPipeline,
@@ -340,27 +369,48 @@ impl SceneRenderer {
         });
 
         let color_pass_buffer_size = wgpu_size_of::<ColorPassUniforms>();
-        let color_pass_buffer_shaded = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
-            .fill_from_slice(&[ColorPassUniforms {
-                shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
-                shading_mode_edges_color: [0.0, 0.0, 0.0],
-                shading_mode: ShadingMode::SHADED,
-            }]);
-
         let color_pass_buffer_edges = device
             .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
             .fill_from_slice(&[ColorPassUniforms {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.239, 0.306, 0.400],
+                shading_mode_shaded_alpha: 1.0,
                 shading_mode: ShadingMode::EDGES,
             }]);
 
-        let color_pass_buffer_shaded_edges = device
+        let color_pass_buffer_matcap_shaded = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .fill_from_slice(&[ColorPassUniforms {
+                shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
+                shading_mode_edges_color: [0.0, 0.0, 0.0],
+                shading_mode_shaded_alpha: 1.0,
+                shading_mode: ShadingMode::SHADED,
+            }]);
+
+        let color_pass_buffer_matcap_shaded_transparent = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .fill_from_slice(&[ColorPassUniforms {
+                shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
+                shading_mode_edges_color: [0.0, 0.0, 0.0],
+                shading_mode_shaded_alpha: options.transparent_matcap_shaded_material_alpha as f32,
+                shading_mode: ShadingMode::SHADED,
+            }]);
+
+        let color_pass_buffer_matcap_shaded_edges = device
             .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
             .fill_from_slice(&[ColorPassUniforms {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.239, 0.306, 0.400],
+                shading_mode_shaded_alpha: 1.0,
+                shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
+            }]);
+
+        let color_pass_buffer_matcap_shaded_edges_transparent = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .fill_from_slice(&[ColorPassUniforms {
+                shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
+                shading_mode_edges_color: [0.239, 0.306, 0.400],
+                shading_mode_shaded_alpha: options.transparent_matcap_shaded_material_alpha as f32,
                 shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
             }]);
 
@@ -368,12 +418,13 @@ impl SceneRenderer {
             .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
             .fill_from_slice(&[ColorPassUniforms {
                 shading_mode_flat_color: [
-                    options.flat_shading_color[0] as f32,
-                    options.flat_shading_color[1] as f32,
-                    options.flat_shading_color[2] as f32,
-                    options.flat_shading_color[3] as f32,
+                    options.flat_material_color[0] as f32,
+                    options.flat_material_color[1] as f32,
+                    options.flat_material_color[2] as f32,
+                    options.flat_material_color[3] as f32,
                 ],
                 shading_mode_edges_color: [0.0, 0.0, 0.0],
+                shading_mode_shaded_alpha: 1.0,
                 shading_mode: ShadingMode::FLAT | ShadingMode::SHADOWED,
             }]);
 
@@ -386,17 +437,6 @@ impl SceneRenderer {
                 }],
             });
 
-        let color_pass_bind_group_shaded = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &color_pass_bind_group_layout,
-            bindings: &[wgpu::Binding {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &color_pass_buffer_shaded,
-                    range: 0..color_pass_buffer_size,
-                },
-            }],
-        });
-
         let color_pass_bind_group_edges = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &color_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
@@ -408,13 +448,49 @@ impl SceneRenderer {
             }],
         });
 
-        let color_pass_bind_group_shaded_edges =
+        let color_pass_bind_group_matcap_shaded =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_shaded_edges,
+                        buffer: &color_pass_buffer_matcap_shaded,
+                        range: 0..color_pass_buffer_size,
+                    },
+                }],
+            });
+
+        let color_pass_bind_group_matcap_shaded_transparent =
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &color_pass_bind_group_layout,
+                bindings: &[wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &color_pass_buffer_matcap_shaded_transparent,
+                        range: 0..color_pass_buffer_size,
+                    },
+                }],
+            });
+
+        let color_pass_bind_group_matcap_shaded_edges =
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &color_pass_bind_group_layout,
+                bindings: &[wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &color_pass_buffer_matcap_shaded_edges,
+                        range: 0..color_pass_buffer_size,
+                    },
+                }],
+            });
+
+        let color_pass_bind_group_matcap_shaded_edges_transparent =
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &color_pass_bind_group_layout,
+                bindings: &[wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &color_pass_buffer_matcap_shaded_edges_transparent,
                         range: 0..color_pass_buffer_size,
                     },
                 }],
@@ -704,15 +780,18 @@ impl SceneRenderer {
             mesh_resources_next_handle: 0,
             render_list_opaque: Vec::new(),
             render_list_transparent: Vec::new(),
+            render_list_xray: Vec::new(),
             render_list_sort_matrix: Matrix4::identity(),
             matrix_buffer,
             matrix_bind_group,
             sampler_bind_group,
             sampler_bind_group_layout,
             sampled_texture_bind_group_layout,
-            color_pass_bind_group_shaded,
             color_pass_bind_group_edges,
-            color_pass_bind_group_shaded_edges,
+            color_pass_bind_group_matcap_shaded,
+            color_pass_bind_group_matcap_shaded_transparent,
+            color_pass_bind_group_matcap_shaded_edges,
+            color_pass_bind_group_matcap_shaded_edges_transparent,
             color_pass_bind_group_flat_with_shadows,
             color_pass_matcap_texture_bind_group,
             color_pass_pipeline_opaque_depth_read_write,
@@ -820,7 +899,6 @@ impl SceneRenderer {
         &mut self,
         device: &wgpu::Device,
         mesh: &GpuMesh,
-        transparent: bool,
     ) -> Result<GpuMeshHandle, AddMeshError> {
         let handle = GpuMeshHandle(self.mesh_resources_next_handle);
 
@@ -847,7 +925,6 @@ impl SceneRenderer {
                 .fill_from_slice(indices);
 
             MeshResource {
-                transparent,
                 centroid: mesh.centroid,
                 vertices: (vertex_buffer, vertex_data_count),
                 indices: Some((index_buffer, index_count)),
@@ -864,7 +941,6 @@ impl SceneRenderer {
                 .fill_from_slice(vertex_data);
 
             MeshResource {
-                transparent,
                 centroid: mesh.centroid,
                 vertices: (vertex_buffer, vertex_data_count),
                 indices: None,
@@ -888,9 +964,8 @@ impl SceneRenderer {
     /// meshes as one of the commands executed with the `encoder`
     /// to the `color_attachment`.
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_meshes<'a, H>(
+    pub fn draw_meshes<'a, P>(
         &mut self,
-        mode: DrawMeshMode,
         cast_shadows: bool,
         color_and_depth_need_clearing: bool,
         clear_color: [f64; 4],
@@ -898,40 +973,56 @@ impl SceneRenderer {
         msaa_attachment: Option<&wgpu::TextureView>,
         color_attachment: &wgpu::TextureView,
         depth_attachment: &wgpu::TextureView,
-        handles: H,
+        handle_material_pairs: P,
     ) where
-        H: Iterator<Item = &'a GpuMeshHandle> + Clone,
+        P: Iterator<Item = (&'a GpuMeshHandle, Material)> + Clone,
     {
         self.render_list_opaque.clear();
         self.render_list_transparent.clear();
+        self.render_list_xray.clear();
 
-        for handle in handles.clone() {
+        for (handle, material) in handle_material_pairs.clone() {
             let mesh_resource = &self.mesh_resources[&handle.0];
-            if mesh_resource.transparent {
-                self.render_list_transparent
-                    .push((handle.0, mesh_resource.centroid));
-            } else {
-                self.render_list_opaque
-                    .push((handle.0, mesh_resource.centroid));
+            match material.transparency() {
+                MaterialTransparency::Opaque => {
+                    self.render_list_opaque
+                        .push((handle.0, material, mesh_resource.centroid));
+                }
+                MaterialTransparency::Transparent => {
+                    self.render_list_transparent
+                        .push((handle.0, material, mesh_resource.centroid));
+                }
+                MaterialTransparency::Xray => {
+                    self.render_list_xray
+                        .push((handle.0, material, mesh_resource.centroid));
+                }
             }
         }
 
         let render_list_sort_matrix = self.render_list_sort_matrix;
+        self.render_list_opaque.sort_unstable_by(|left, right| {
+            let left_point = render_list_sort_matrix.transform_point(&left.2);
+            let right_point = render_list_sort_matrix.transform_point(&right.2);
+            right_point
+                .z
+                .partial_cmp(&left_point.z)
+                .expect("Failed to compare floats")
+        });
         self.render_list_transparent
             .sort_unstable_by(|left, right| {
-                let left_point = render_list_sort_matrix.transform_point(&left.1);
-                let right_point = render_list_sort_matrix.transform_point(&right.1);
+                let left_point = render_list_sort_matrix.transform_point(&left.2);
+                let right_point = render_list_sort_matrix.transform_point(&right.2);
                 left_point
                     .z
                     .partial_cmp(&right_point.z)
                     .expect("Failed to compare floats")
             });
-        self.render_list_opaque.sort_unstable_by(|left, right| {
-            let left_point = render_list_sort_matrix.transform_point(&left.1);
-            let right_point = render_list_sort_matrix.transform_point(&right.1);
-            right_point
+        self.render_list_xray.sort_unstable_by(|left, right| {
+            let left_point = render_list_sort_matrix.transform_point(&left.2);
+            let right_point = render_list_sort_matrix.transform_point(&right.2);
+            left_point
                 .z
-                .partial_cmp(&left_point.z)
+                .partial_cmp(&right_point.z)
                 .expect("Failed to compare floats")
         });
 
@@ -962,11 +1053,9 @@ impl SceneRenderer {
                 shadow_pass.set_pipeline(&self.shadow_pass_pipeline);
                 shadow_pass.set_bind_group(0, &self.shadow_pass_bind_group, &[]);
 
-                record_drawing(
-                    &self.mesh_resources,
-                    handles.clone().map(|h| h.0),
-                    &mut shadow_pass,
-                );
+                for (handle, _) in handle_material_pairs {
+                    record(&self.mesh_resources, handle.0, &mut shadow_pass)
+                }
             }
         }
 
@@ -1012,165 +1101,149 @@ impl SceneRenderer {
             }),
         });
 
-        // FIXME: The current renderer architecture is enough for our
-        // current needs, but has some serious downsides.
+        // FIXME: Mitigate self-transparency issues. The simplest mitigation
+        // would be to draw back and front faces separately, with 2 different
+        // pipelines (for culling settings). There are also more advanced
+        // techniques, such as:
         //
-        // - We should be doing object sorting. We currently live
-        //   without it as the only transparent objects we have are
-        //   the edges and those do not show mis-blending artifacts,
-        //   because the area that of their fragments that is neither
-        //   fully transparent nor fully opaque is very small. If we
-        //   ever want to support transparency, we need to sort
-        //   objects.
-        //
-        // - We don't mitigate self-transparency issues (because we
-        //   don't experience them much). The simplest mitigation
-        //   would be to draw back and front faces separately, with 2
-        //   different pipelines (for culling settings). There are
-        //   also more advanced techniques, such as:
-        //
-        //   * Weighted Blended Order-Independent Transparency
-        //     http://jcgt.org/published/0002/02/09/
-        //   * Stochastic Transparency
-        //     http://www.cse.chalmers.se/~d00sint/StochasticTransparency_I3D2010.pdf
-        //   * Adaptive Transparency
-        //     https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
+        // * Weighted Blended Order-Independent Transparency
+        //   http://jcgt.org/published/0002/02/09/
+        // * Stochastic Transparency
+        //   http://www.cse.chalmers.se/~d00sint/StochasticTransparency_I3D2010.pdf
+        // * Adaptive Transparency
+        //   https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
 
-        match mode {
-            DrawMeshMode::Shaded => {
-                color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+        for (raw_handle, material, _) in &self.render_list_opaque {
+            match material {
+                Material::MatcapShaded => {
+                    color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
+                    color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                    color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                    color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                    color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                    color_pass.set_bind_group(4, &self.color_pass_bind_group_matcap_shaded, &[]);
+                    color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                record_drawing(
-                    &self.mesh_resources,
-                    self.render_list_opaque.iter().map(|(h, _)| h).copied(),
-                    &mut color_pass,
-                );
+                    record(&self.mesh_resources, *raw_handle, &mut color_pass);
+                }
+                Material::MatcapShadedEdges => {
+                    color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
+                    color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                    color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                    color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                    color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                    color_pass.set_bind_group(
+                        4,
+                        &self.color_pass_bind_group_matcap_shaded_edges,
+                        &[],
+                    );
+                    color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
-
-                record_drawing(
-                    &self.mesh_resources,
-                    self.render_list_transparent.iter().map(|(h, _)| h).copied(),
-                    &mut color_pass,
-                );
+                    record(&self.mesh_resources, *raw_handle, &mut color_pass);
+                }
+                _ => panic!("Incorrect material found in opaque render list"),
             }
-            DrawMeshMode::Edges => {
-                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_always_pass);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_edges, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+        }
 
-                record_drawing(&self.mesh_resources, handles.map(|h| h.0), &mut color_pass);
+        for (raw_handle, material, _) in &self.render_list_transparent {
+            match material {
+                Material::Edges => {
+                    color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
+                    color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                    color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                    color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                    color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                    color_pass.set_bind_group(4, &self.color_pass_bind_group_edges, &[]);
+                    color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+
+                    record(&self.mesh_resources, *raw_handle, &mut color_pass);
+                }
+                Material::TransparentMatcapShaded => {
+                    color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
+                    color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                    color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                    color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                    color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                    color_pass.set_bind_group(
+                        4,
+                        &self.color_pass_bind_group_matcap_shaded_transparent,
+                        &[],
+                    );
+                    color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+
+                    record(&self.mesh_resources, *raw_handle, &mut color_pass);
+                }
+                Material::TransparentMatcapShadedEdges => {
+                    color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
+                    color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                    color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                    color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                    color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                    color_pass.set_bind_group(
+                        4,
+                        &self.color_pass_bind_group_matcap_shaded_edges_transparent,
+                        &[],
+                    );
+                    color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+
+                    record(&self.mesh_resources, *raw_handle, &mut color_pass);
+                }
+                Material::FlatWithShadows => {
+                    color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
+                    color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                    color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                    color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                    color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                    color_pass.set_bind_group(
+                        4,
+                        &self.color_pass_bind_group_flat_with_shadows,
+                        &[],
+                    );
+                    color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+
+                    record(&self.mesh_resources, *raw_handle, &mut color_pass);
+                }
+                _ => panic!("Incorrect material found in transparent render list"),
             }
-            DrawMeshMode::ShadedEdges => {
-                color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded_edges, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
+        }
 
-                record_drawing(
-                    &self.mesh_resources,
-                    self.render_list_opaque.iter().map(|(h, _)| h).copied(),
-                    &mut color_pass,
-                );
+        for (raw_handle, material, _) in &self.render_list_xray {
+            match material {
+                Material::EdgesXray => {
+                    color_pass
+                        .set_pipeline(&self.color_pass_pipeline_transparent_depth_always_pass);
+                    color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
+                    color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                    color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
+                    color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
+                    color_pass.set_bind_group(4, &self.color_pass_bind_group_edges, &[]);
+                    color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
 
-                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
-
-                record_drawing(
-                    &self.mesh_resources,
-                    self.render_list_transparent.iter().map(|(h, _)| h).copied(),
-                    &mut color_pass,
-                );
-            }
-            DrawMeshMode::ShadedEdgesXray => {
-                color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_shaded, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
-
-                record_drawing(
-                    &self.mesh_resources,
-                    self.render_list_opaque.iter().map(|(h, _)| h).copied(),
-                    &mut color_pass,
-                );
-
-                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
-
-                record_drawing(
-                    &self.mesh_resources,
-                    self.render_list_transparent.iter().map(|(h, _)| h).copied(),
-                    &mut color_pass,
-                );
-
-                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_always_pass);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_edges, &[]);
-
-                record_drawing(&self.mesh_resources, handles.map(|h| h.0), &mut color_pass);
-            }
-            DrawMeshMode::FlatWithShadows => {
-                color_pass.set_pipeline(&self.color_pass_pipeline_opaque_depth_read_write);
-                color_pass.set_bind_group(0, &self.matrix_bind_group, &[]);
-                color_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
-                color_pass.set_bind_group(2, &self.color_pass_matcap_texture_bind_group, &[]);
-                color_pass.set_bind_group(3, &self.shadow_map_texture_bind_group, &[]);
-                color_pass.set_bind_group(4, &self.color_pass_bind_group_flat_with_shadows, &[]);
-                color_pass.set_bind_group(5, &self.shadow_pass_bind_group, &[]);
-
-                record_drawing(
-                    &self.mesh_resources,
-                    self.render_list_opaque.iter().map(|(h, _)| h).copied(),
-                    &mut color_pass,
-                );
-
-                color_pass.set_pipeline(&self.color_pass_pipeline_transparent_depth_read_only);
-
-                record_drawing(
-                    &self.mesh_resources,
-                    self.render_list_transparent.iter().map(|(h, _)| h).copied(),
-                    &mut color_pass,
-                );
+                    record(&self.mesh_resources, *raw_handle, &mut color_pass);
+                }
+                _ => panic!("Incorrect material found in xray render list"),
             }
         }
     }
 }
 
-fn record_drawing<I>(
+fn record(
     mesh_resources: &HashMap<u64, MeshResource>,
-    render_list: I,
+    raw_handle: u64,
     rpass: &mut wgpu::RenderPass,
-) where
-    I: Iterator<Item = u64>,
-{
-    for raw_handle in render_list {
-        let mesh_resource = &mesh_resources[&raw_handle];
-        let (vertex_buffer, vertex_count) = &mesh_resource.vertices;
-        rpass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
-        if let Some((index_buffer, index_count)) = &mesh_resource.indices {
-            rpass.set_index_buffer(&index_buffer, 0);
-            rpass.draw_indexed(0..*index_count, 0, 0..1);
-        } else {
-            rpass.draw(0..*vertex_count, 0..1);
-        }
+) {
+    let mesh_resource = &mesh_resources[&raw_handle];
+    let (vertex_buffer, vertex_count) = &mesh_resource.vertices;
+    rpass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
+    if let Some((index_buffer, index_count)) = &mesh_resource.indices {
+        rpass.set_index_buffer(&index_buffer, 0);
+        rpass.draw_indexed(0..*index_count, 0, 0..1);
+    } else {
+        rpass.draw(0..*vertex_count, 0..1);
     }
 }
 
 struct MeshResource {
-    transparent: bool,
     centroid: Point3<f32>,
     vertices: (wgpu::Buffer, u32),
     indices: Option<(wgpu::Buffer, u32)>,
@@ -1208,6 +1281,7 @@ struct MatrixUniforms {
 struct ColorPassUniforms {
     shading_mode_flat_color: [f32; 4],
     shading_mode_edges_color: [f32; 3],
+    shading_mode_shaded_alpha: f32,
     shading_mode: ShadingMode,
 }
 

@@ -10,7 +10,6 @@ use crate::convert::{
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
 use crate::project;
-use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
 const FONT_OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
@@ -28,8 +27,8 @@ const PIPELINE_WINDOW_WIDTH: f32 = OPERATIONS_WINDOW_WIDTH;
 const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 1.0 - OPERATIONS_WINDOW_HEIGHT_MULT;
 const PIPELINE_OPERATION_CONSOLE_HEIGHT: f32 = 40.0;
 
-const MENU_WINDOW_WIDTH: f32 = 150.0;
-const MENU_WINDOW_HEIGHT: f32 = 212.0;
+const MENU_WINDOW_WIDTH: f32 = 160.0;
+const MENU_WINDOW_HEIGHT: f32 = 234.0;
 
 const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
 const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
@@ -38,6 +37,16 @@ const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
 pub enum Theme {
     Dark,
     Funky,
+}
+
+/// The draw mode applied to a group of objects in the viewport. Not always a
+/// 1:1 mapping with renderer materials.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ViewportDrawMode {
+    Wireframe,
+    Shaded,
+    ShadedWireframe,
+    ShadedWireframeXray,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -83,6 +92,7 @@ struct ConsoleState {
 }
 
 pub struct MenuStatus {
+    pub viewport_draw_used_values_changed: bool,
     pub reset_viewport: bool,
     pub save_path: Option<String>,
     pub open_path: Option<String>,
@@ -473,12 +483,14 @@ impl<'a> UiFrame<'a> {
         &self,
         current_time: Instant,
         screenshot_modal_open: &mut bool,
-        draw_mode: &mut DrawMeshMode,
+        viewport_draw_mode: &mut ViewportDrawMode,
+        viewport_draw_used_values: &mut bool,
         project_path: Option<&str>,
         notifications: &mut Notifications,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
         let mut status = MenuStatus {
+            viewport_draw_used_values_changed: false,
             reset_viewport: false,
             save_path: None,
             open_path: None,
@@ -530,7 +542,11 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                if ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded) {
+                if ui.radio_button(
+                    imgui::im_str!("Shaded"),
+                    viewport_draw_mode,
+                    ViewportDrawMode::Shaded,
+                ) {
                     notifications.push(
                         current_time,
                         NotificationLevel::Info,
@@ -547,7 +563,11 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                if ui.radio_button(imgui::im_str!("Wireframes"), draw_mode, DrawMeshMode::Edges) {
+                if ui.radio_button(
+                    imgui::im_str!("Wireframes"),
+                    viewport_draw_mode,
+                    ViewportDrawMode::Wireframe,
+                ) {
                     notifications.push(
                         current_time,
                         NotificationLevel::Info,
@@ -567,8 +587,8 @@ impl<'a> UiFrame<'a> {
 
                 if ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
-                    draw_mode,
-                    DrawMeshMode::ShadedEdges,
+                    viewport_draw_mode,
+                    ViewportDrawMode::ShadedWireframe,
                 ) {
                     notifications.push(
                         current_time,
@@ -588,8 +608,8 @@ impl<'a> UiFrame<'a> {
 
                 if ui.radio_button(
                     imgui::im_str!("X-RAY"),
-                    draw_mode,
-                    DrawMeshMode::ShadedEdgesXray,
+                    viewport_draw_mode,
+                    ViewportDrawMode::ShadedWireframeXray,
                 ) {
                     notifications.push(
                         current_time,
@@ -605,6 +625,33 @@ impl<'a> UiFrame<'a> {
                         The geometry will be shaded with solid color and all edges, \
                         including the ones hidden behind the solid color of the surfaces, \
                         will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                status.viewport_draw_used_values_changed = ui.checkbox(
+                    imgui::im_str!("Draw used geometry"),
+                    viewport_draw_used_values,
+                );
+                if status.viewport_draw_used_values_changed {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        if *viewport_draw_used_values {
+                            "Viewport now draws used geometry."
+                        } else {
+                            "Viewport now doesn't draw used geomery."
+                        }
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("DRAW USED GEOMETRY IN VIEWPORT\n\
+                        \n\
+                        Used geometry is geometry that has been referenced as a parameter \
+                        in an operation. When enabled, used geometry will be drawn with \
+                        a transparent material.");
                         wrap_token.pop(ui);
                     });
                 }

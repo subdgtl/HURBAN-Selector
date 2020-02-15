@@ -8,6 +8,7 @@ layout(set = 3, binding = 0) uniform texture2D u_shadow_map_texture;
 layout(set = 4, binding = 0, std140) uniform ColorPass {
     vec4 u_shading_mode_flat_color;
     vec3 u_shading_mode_edges_color;
+    float u_shading_mode_shaded_alpha;
     uint u_shading_mode;
 };
 
@@ -47,7 +48,9 @@ void main() {
 
     // -- Sample matcap color --
 
-    vec4 matcap_color = texture(sampler2D(u_matcap_texture, u_sampler), v_matcap_tex_coords);
+    vec4 matcap_color = vec4(texture(sampler2D(u_matcap_texture, u_sampler),
+                                     v_matcap_tex_coords).rgb,
+                             u_shading_mode_shaded_alpha);
 
     // -- Compute shadow --
 
