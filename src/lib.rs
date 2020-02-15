@@ -52,6 +52,7 @@ mod ui;
 const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
 const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
 const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(100);
+const BASE_WINDOW_TITLE: &str = "H.U.R.B.A.N. Selector";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
@@ -128,7 +129,7 @@ pub fn init_and_run(options: Options) -> ! {
         {
             log::info!("Running in fullscreen mode on macOS, opening borderless fullscreen");
             winit::window::WindowBuilder::new()
-                .with_title("H.U.R.B.A.N. Selector")
+                .with_title(BASE_WINDOW_TITLE)
                 .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
                 .build(&event_loop)
                 .expect("Failed to create window")
@@ -143,7 +144,7 @@ pub fn init_and_run(options: Options) -> ! {
                     video_mode,
                 );
                 winit::window::WindowBuilder::new()
-                    .with_title("H.U.R.B.A.N. Selector")
+                    .with_title(BASE_WINDOW_TITLE)
                     .with_fullscreen(Some(winit::window::Fullscreen::Exclusive(video_mode)))
                     .with_window_icon(Some(icon))
                     .build(&event_loop)
@@ -151,7 +152,7 @@ pub fn init_and_run(options: Options) -> ! {
             } else {
                 log::info!("Didn't find compatible video mode, opening borderless fullscreen");
                 winit::window::WindowBuilder::new()
-                    .with_title("H.U.R.B.A.N. Selector")
+                    .with_title(BASE_WINDOW_TITLE)
                     .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
                     .with_window_icon(Some(icon))
                     .build(&event_loop)
@@ -162,7 +163,7 @@ pub fn init_and_run(options: Options) -> ! {
         log::info!("Running in windowed mode");
 
         winit::window::WindowBuilder::new()
-            .with_title("H.U.R.B.A.N. Selector")
+            .with_title(BASE_WINDOW_TITLE)
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
             .with_window_icon(Some(icon))
             .build(&event_loop)
@@ -185,6 +186,9 @@ pub fn init_and_run(options: Options) -> ! {
 
     let mut project_path: Option<String> = None;
     let mut project_error: Option<project::ProjectError> = None;
+    let mut changed_since_last_save = true;
+
+    change_window_title(&window, &project_path, changed_since_last_save);
 
     let mut camera = Camera::new(
         initial_window_aspect_ratio,
@@ -327,7 +331,12 @@ pub fn init_and_run(options: Options) -> ! {
                     let project = project::Project { version: 1, stmts };
 
                     match project::save(&save_path, project) {
-                        Ok(_) => project_path = Some(save_path),
+                        Ok(_) => {
+                            project_path = Some(save_path);
+                            changed_since_last_save = false;
+
+                            change_window_title(&window, &project_path, changed_since_last_save);
+                        }
                         Err(err) => {
                             log::error!("{}", err);
                             project_error = Some(err);
@@ -394,8 +403,17 @@ pub fn init_and_run(options: Options) -> ! {
                 );
                 ui_frame.draw_notifications_window(&notifications.borrow());
 
-                ui_frame.draw_pipeline_window(time, &mut session);
-                ui_frame.draw_operations_window(time, &mut session, DURATION_AUTORUN_DELAY);
+                if ui_frame.draw_pipeline_window(time, &mut session) {
+                    changed_since_last_save = true;
+
+                    change_window_title(&window, &project_path, changed_since_last_save);
+                }
+
+                if ui_frame.draw_operations_window(time, &mut session, DURATION_AUTORUN_DELAY) {
+                    changed_since_last_save = true;
+
+                    change_window_title(&window, &project_path, changed_since_last_save);
+                }
 
                 if reset_viewport {
                     camera_interpolation =
@@ -861,4 +879,28 @@ fn compute_ground_plane_mesh(scene_bounding_box: &BoundingBox<f32>) -> Mesh {
         ),
         Vector2::new(dimension, dimension),
     )
+}
+
+fn change_window_title(
+    window: &winit::window::Window,
+    project_path: &Option<String>,
+    changed_since_last_save: bool,
+) {
+    use std::path::Path;
+
+    let filename = match project_path {
+        Some(project_path) => Path::new(project_path)
+            .file_name()
+            .expect("Failed to parse file name of the project.")
+            .to_str()
+            .expect("Project file name isn't valid UTF-8."),
+        None => "unsaved project",
+    };
+    let title = if changed_since_last_save {
+        format!("{} - *{}", BASE_WINDOW_TITLE, filename)
+    } else {
+        format!("{} - {}", BASE_WINDOW_TITLE, filename)
+    };
+
+    window.set_title(&title);
 }

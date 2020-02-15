@@ -590,7 +590,7 @@ impl<'a> UiFrame<'a> {
     // functionality. Until then, this is exploratory code and we
     // don't care.
     #[allow(clippy::cognitive_complexity)]
-    pub fn draw_pipeline_window(&self, current_time: Instant, session: &mut Session) {
+    pub fn draw_pipeline_window(&self, current_time: Instant, session: &mut Session) -> bool {
         let ui = &self.imgui_ui;
         self.console_state
             .borrow_mut()
@@ -950,7 +950,7 @@ impl<'a> UiFrame<'a> {
         // imgui components can be made read-only, so we can not trust
         // it.
         if !interpreter_busy {
-            if let Some((stmt_index, arg_index, expr)) = change {
+            if let Some((stmt_index, arg_index, expr)) = change.clone() {
                 let stmt = &session.stmts()[stmt_index];
                 match stmt {
                     ast::Stmt::VarDecl(var_decl) => {
@@ -967,6 +967,8 @@ impl<'a> UiFrame<'a> {
                 }
             }
         }
+
+        change.is_some()
     }
 
     pub fn draw_operations_window(
@@ -974,7 +976,7 @@ impl<'a> UiFrame<'a> {
         current_time: Instant,
         session: &mut Session,
         duration_autorun_delay: Duration,
-    ) {
+    ) -> bool {
         let ui = &self.imgui_ui;
         let function_table = session.function_table();
 
@@ -1103,6 +1105,8 @@ impl<'a> UiFrame<'a> {
             });
         bold_font_token.pop(ui);
 
+        let function_added = function_clicked.is_some();
+
         if let Some(func_ident) = function_clicked {
             let func = &function_table[&func_ident];
             let mut args = Vec::with_capacity(func.param_info().len());
@@ -1200,6 +1204,8 @@ impl<'a> UiFrame<'a> {
                 session.set_autorun_delay(None);
             }
         }
+
+        function_added || pop_stmt_clicked
     }
 
     fn draw_var_combo_box(
