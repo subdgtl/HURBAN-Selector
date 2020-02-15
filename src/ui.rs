@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::f32;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
@@ -450,6 +450,7 @@ impl<'a> UiFrame<'a> {
 
     pub fn draw_menu_window(
         &self,
+        current_time: Instant,
         screenshot_modal_open: &mut bool,
         draw_mode: &mut DrawMeshMode,
         project_path: Option<&str>,
@@ -487,7 +488,7 @@ impl<'a> UiFrame<'a> {
                 ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
                 if ui.is_item_clicked(imgui::MouseButton::Left) {
                     notifications.push(
-                        Instant::now(),
+                        current_time,
                         NotificationLevel::Info,
                         "Viewport mode changed to Shaded.",
                     );
@@ -495,7 +496,7 @@ impl<'a> UiFrame<'a> {
                 ui.radio_button(imgui::im_str!("Wireframes"), draw_mode, DrawMeshMode::Edges);
                 if ui.is_item_clicked(imgui::MouseButton::Left) {
                     notifications.push(
-                        Instant::now(),
+                        current_time,
                         NotificationLevel::Info,
                         "Viewport mode changed to Wireframes.",
                     );
@@ -507,7 +508,7 @@ impl<'a> UiFrame<'a> {
                 );
                 if ui.is_item_clicked(imgui::MouseButton::Left) {
                     notifications.push(
-                        Instant::now(),
+                        current_time,
                         NotificationLevel::Info,
                         "Viewport mode changed to Shaded with Edges (Wireframes).",
                     );
@@ -519,7 +520,7 @@ impl<'a> UiFrame<'a> {
                 );
                 if ui.is_item_clicked(imgui::MouseButton::Left) {
                     notifications.push(
-                        Instant::now(),
+                        current_time,
                         NotificationLevel::Info,
                         "Viewport mode changed to X-Ray: Shaded with internal Edges (Wireframes).",
                     );
@@ -529,7 +530,7 @@ impl<'a> UiFrame<'a> {
 
                 if ui.is_item_clicked(imgui::MouseButton::Left) {
                     notifications.push(
-                        Instant::now(),
+                        current_time,
                         NotificationLevel::Info,
                         "Viewport camera reset to fit all visible geometry.",
                     );
@@ -582,7 +583,7 @@ impl<'a> UiFrame<'a> {
     // functionality. Until then, this is exploratory code and we
     // don't care.
     #[allow(clippy::cognitive_complexity)]
-    pub fn draw_pipeline_window(&self, session: &mut Session) {
+    pub fn draw_pipeline_window(&self, current_time: Instant, session: &mut Session) {
         let ui = &self.imgui_ui;
         self.console_state
             .borrow_mut()
@@ -944,14 +945,24 @@ impl<'a> UiFrame<'a> {
                         let new_var_decl = var_decl
                             .clone_with_init_expr(init_expr.clone_with_arg_at(arg_index, expr));
 
-                        session.set_prog_stmt_at(stmt_index, ast::Stmt::VarDecl(new_var_decl));
+                        session.set_prog_stmt_at(
+                            current_time,
+                            stmt_index,
+                            ast::Stmt::VarDecl(new_var_decl),
+                        );
                     }
                 }
             }
         }
     }
 
-    pub fn draw_operations_window(&self, session: &mut Session, notifications: &mut Notifications) {
+    pub fn draw_operations_window(
+        &self,
+        current_time: Instant,
+        session: &mut Session,
+        notifications: &mut Notifications,
+        duration_autorun_delay: Duration,
+    ) {
         let ui = &self.imgui_ui;
         let function_table = session.function_table();
 
@@ -965,13 +976,16 @@ impl<'a> UiFrame<'a> {
         let operations_window_vertical_position =
             MARGIN * 2.0 + (1.0 - OPERATIONS_WINDOW_HEIGHT_MULT) * window_inner_height;
 
-        let running_enabled = !session.interpreter_busy();
+        let running_enabled = !session.interpreter_busy() && session.autorun_delay().is_none();
         let popping_enabled = !session.interpreter_busy() && !session.stmts().is_empty();
         let pushing_enabled = !session.interpreter_busy();
 
         let mut function_clicked = None;
         let mut interpret_clicked = false;
         let mut pop_stmt_clicked = false;
+
+        let mut autorun_enabled = session.autorun_delay().is_some();
+        let mut autorun_clicked = false;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Operations"))
@@ -1033,7 +1047,7 @@ impl<'a> UiFrame<'a> {
                 {
                     pop_stmt_clicked = true;
                     notifications.push(
-                        Instant::now(),
+                        current_time,
                         NotificationLevel::Warn,
                         "Removed last operation from the Sequence.",
                     );
@@ -1042,6 +1056,10 @@ impl<'a> UiFrame<'a> {
                     color_token.pop(ui);
                     style_token.pop(ui);
                 }
+
+                ui.columns(1, imgui::im_str!("Autorun columns"), false);
+                autorun_clicked =
+                    ui.checkbox(imgui::im_str!("Run automatically"), &mut autorun_enabled);
 
                 ui.separator();
 
@@ -1059,7 +1077,7 @@ impl<'a> UiFrame<'a> {
                     {
                         function_clicked = Some(func_ident);
                         notifications.push(
-                            Instant::now(),
+                            current_time,
                             NotificationLevel::Info,
                             format!("Added new operation to the Sequence: {}.", func.info().name),
                         );
@@ -1161,12 +1179,12 @@ impl<'a> UiFrame<'a> {
                 init_expr,
             ));
 
-            session.push_prog_stmt(stmt);
+            session.push_prog_stmt(current_time, stmt);
         }
 
         if interpret_clicked {
             notifications.push(
-                Instant::now(),
+                current_time,
                 NotificationLevel::Info,
                 "Execution of the Sequence of operations has started...",
             );
@@ -1174,7 +1192,15 @@ impl<'a> UiFrame<'a> {
         }
 
         if pop_stmt_clicked {
-            session.pop_prog_stmt();
+            session.pop_prog_stmt(current_time);
+        }
+
+        if autorun_clicked {
+            if autorun_enabled {
+                session.set_autorun_delay(Some(duration_autorun_delay));
+            } else {
+                session.set_autorun_delay(None);
+            }
         }
     }
 

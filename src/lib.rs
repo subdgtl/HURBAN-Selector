@@ -24,7 +24,7 @@ use crate::plane::Plane;
 use crate::renderer::{
     DirectionalLight, DrawMeshMode, GpuMesh, GpuMeshHandle, Options as RendererOptions, Renderer,
 };
-use crate::session::{PollInterpreterResponseNotification, Session};
+use crate::session::{PollNotification, Session};
 use crate::ui::{ScreenshotOptions, Ui};
 
 pub mod geometry;
@@ -49,7 +49,9 @@ mod pull;
 mod session;
 mod ui;
 
-const CAMERA_INTERPOLATION_DURATION: Duration = Duration::from_millis(1000);
+const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
+const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
+const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
@@ -174,10 +176,10 @@ pub fn init_and_run(options: Options) -> ! {
         initial_window_size.width as f32 / initial_window_size.height as f32;
 
     let mut session = Session::new();
+    session.set_autorun_delay(Some(DURATION_AUTORUN_DELAY));
     let mut input_manager = InputManager::new();
 
-    let notification_ttl = Duration::from_secs(5);
-    let notifications = Rc::new(RefCell::new(Notifications::with_ttl(notification_ttl)));
+    let notifications = Rc::new(RefCell::new(Notifications::with_ttl(DURATION_NOTIFICATION)));
 
     let mut ui = Ui::new(&window, options.theme);
 
@@ -310,6 +312,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                 let menu_notifications = Rc::clone(&notifications);
                 let menu_status = ui_frame.draw_menu_window(
+                    time,
                     &mut screenshot_modal_open,
                     &mut renderer_draw_mesh_mode,
                     project_path.as_ref().map(|p| p.as_str()),
@@ -319,6 +322,7 @@ pub fn init_and_run(options: Options) -> ! {
                     input_state.camera_reset_viewport || menu_status.reset_viewport;
 
                 if let Some(save_path) = menu_status.save_path {
+                    log::info!("Saving project at {}", save_path);
                     let stmts = session.stmts().to_vec();
                     let project = project::Project { version: 1, stmts };
 
@@ -335,6 +339,7 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 if let Some(open_path) = menu_status.open_path {
+                    log::info!("Opening new project at {}", open_path);
                     let project = project::open(&open_path);
 
                     scene_meshes.clear();
@@ -360,10 +365,12 @@ pub fn init_and_run(options: Options) -> ! {
                             .expect("Failed to add ground plane mesh"),
                     );
 
+                    let current_autorun_delay = session.autorun_delay();
                     session = Session::new();
+                    session.set_autorun_delay(current_autorun_delay);
 
                     for stmt in project.stmts {
-                        session.push_prog_stmt(stmt);
+                        session.push_prog_stmt(time, stmt);
                     }
 
                     let open_project_notification = Rc::clone(&notifications);
@@ -385,11 +392,13 @@ pub fn init_and_run(options: Options) -> ! {
                 );
                 ui_frame.draw_notifications_window(&notifications.borrow());
 
-                ui_frame.draw_pipeline_window(&mut session);
+                ui_frame.draw_pipeline_window(time, &mut session);
                 let operations_notifications = Rc::clone(&notifications);
                 ui_frame.draw_operations_window(
+                    time,
                     &mut session,
                     &mut *operations_notifications.borrow_mut(),
+                    DURATION_AUTORUN_DELAY,
                 );
 
                 if reset_viewport {
@@ -436,8 +445,8 @@ pub fn init_and_run(options: Options) -> ! {
                     }
                 }
 
-                session.poll_interpreter_response(|callback_value| match callback_value {
-                    PollInterpreterResponseNotification::Add(var_ident, value) => match value {
+                session.poll(time, |callback_value| match callback_value {
+                    PollNotification::Add(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
@@ -500,7 +509,7 @@ pub fn init_and_run(options: Options) -> ! {
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
-                    PollInterpreterResponseNotification::Remove(var_ident, value) => match value {
+                    PollNotification::Remove(var_ident, value) => match value {
                         Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
@@ -561,7 +570,7 @@ pub fn init_and_run(options: Options) -> ! {
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
-                    PollInterpreterResponseNotification::FinishedSuccessfully => {
+                    PollNotification::FinishedSuccessfully => {
                         let interpreter_notification = Rc::clone(&notifications);
                         interpreter_notification.borrow_mut().push(
                             time,
@@ -569,7 +578,7 @@ pub fn init_and_run(options: Options) -> ! {
                             "Execution of the Sequence of operations finished successfully.",
                         );
                     }
-                    PollInterpreterResponseNotification::FinishedWithError(error_message) => {
+                    PollNotification::FinishedWithError(error_message) => {
                         let interpreter_notification = Rc::clone(&notifications);
                         interpreter_notification.borrow_mut().push(
                             time,
@@ -792,13 +801,13 @@ impl CameraInterpolation {
             source_radius,
             target_origin,
             target_radius,
-            target_time: time + CAMERA_INTERPOLATION_DURATION,
+            target_time: time + DURATION_CAMERA_INTERPOLATION,
         }
     }
 
     fn update(&self, time: Instant, easing: &math::CubicBezierEasing) -> (Point3<f32>, f32) {
         let duration_left = self.target_time.duration_since(time).as_secs_f32();
-        let whole_duration = CAMERA_INTERPOLATION_DURATION.as_secs_f32();
+        let whole_duration = DURATION_CAMERA_INTERPOLATION.as_secs_f32();
         let t = easing.apply(1.0 - duration_left / whole_duration);
 
         let sphere_origin = Point3::from(
