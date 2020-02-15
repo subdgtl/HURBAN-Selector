@@ -308,10 +308,12 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.zoom(input_state.camera_zoom);
                 camera.zoom_step(input_state.camera_zoom_steps);
 
+                let menu_notifications = Rc::clone(&notifications);
                 let menu_status = ui_frame.draw_menu_window(
                     &mut screenshot_modal_open,
                     &mut renderer_draw_mesh_mode,
                     project_path.as_ref().map(|p| p.as_str()),
+                    &mut *menu_notifications.borrow_mut(),
                 );
                 let reset_viewport =
                     input_state.camera_reset_viewport || menu_status.reset_viewport;
@@ -321,6 +323,13 @@ pub fn init_and_run(options: Options) -> ! {
                     let project = project::Project { version: 1, stmts };
 
                     project::save(&save_path, project);
+
+                    let save_project_notification = Rc::clone(&notifications);
+                    save_project_notification.borrow_mut().push(
+                        time,
+                        NotificationLevel::Info,
+                        format!("Project saved as {}", &save_path),
+                    );
 
                     project_path = Some(save_path);
                 }
@@ -357,6 +366,13 @@ pub fn init_and_run(options: Options) -> ! {
                         session.push_prog_stmt(stmt);
                     }
 
+                    let open_project_notification = Rc::clone(&notifications);
+                    open_project_notification.borrow_mut().push(
+                        time,
+                        NotificationLevel::Info,
+                        format!("Opened project {}", &open_path),
+                    );
+
                     project_path = Some(open_path);
                 }
 
@@ -370,7 +386,11 @@ pub fn init_and_run(options: Options) -> ! {
                 ui_frame.draw_notifications_window(&notifications.borrow());
 
                 ui_frame.draw_pipeline_window(&mut session);
-                ui_frame.draw_operations_window(&mut session);
+                let operations_notifications = Rc::clone(&notifications);
+                ui_frame.draw_operations_window(
+                    &mut session,
+                    &mut *operations_notifications.borrow_mut(),
+                );
 
                 if reset_viewport {
                     camera_interpolation =
@@ -541,6 +561,25 @@ pub fn init_and_run(options: Options) -> ! {
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
+                    PollInterpreterResponseNotification::FinishedSuccessfully => {
+                        let interpreter_notification = Rc::clone(&notifications);
+                        interpreter_notification.borrow_mut().push(
+                            time,
+                            NotificationLevel::Info,
+                            "Execution of the Sequence of operations finished successfully.",
+                        );
+                    }
+                    PollInterpreterResponseNotification::FinishedWithError(error_message) => {
+                        let interpreter_notification = Rc::clone(&notifications);
+                        interpreter_notification.borrow_mut().push(
+                            time,
+                            NotificationLevel::Error,
+                            format!(
+                                "Execution of the Sequence of operations finished with error: {}",
+                                error_message
+                            ),
+                        );
+                    }
                 });
 
                 if let Some(interp) = camera_interpolation {

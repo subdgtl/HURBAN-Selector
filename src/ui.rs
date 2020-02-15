@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::f32;
+use std::time::Instant;
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
@@ -67,7 +68,7 @@ pub struct MenuStatus {
     pub open_path: Option<String>,
 }
 
-/// Thin wrapper around imgui and its winit platform. Its main responsibilty
+/// Thin wrapper around imgui and its winit platform. Its main responsibility
 /// is to create UI frames which draw the UI itself.
 pub struct Ui {
     imgui_context: imgui::Context,
@@ -426,6 +427,10 @@ impl<'a> UiFrame<'a> {
                             imgui::StyleColor::Text,
                             self.colors.log_message_warn,
                         ),
+                        NotificationLevel::Error => ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_error,
+                        ),
                     };
 
                     ui.text_wrapped(&imgui::im_str!("{}", notification.text));
@@ -448,6 +453,7 @@ impl<'a> UiFrame<'a> {
         screenshot_modal_open: &mut bool,
         draw_mode: &mut DrawMeshMode,
         project_path: Option<&str>,
+        notifications: &mut Notifications,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
         let mut status = MenuStatus {
@@ -479,20 +485,55 @@ impl<'a> UiFrame<'a> {
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
 
                 ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
-                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawMeshMode::Edges);
+                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                    notifications.push(
+                        Instant::now(),
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Shaded.",
+                    );
+                }
+                ui.radio_button(imgui::im_str!("Wireframes"), draw_mode, DrawMeshMode::Edges);
+                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                    notifications.push(
+                        Instant::now(),
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Wireframes.",
+                    );
+                }
                 ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
                     draw_mode,
                     DrawMeshMode::ShadedEdges,
                 );
+                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                    notifications.push(
+                        Instant::now(),
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Shaded with Edges (Wireframes).",
+                    );
+                }
                 ui.radio_button(
                     imgui::im_str!("X-RAY"),
                     draw_mode,
                     DrawMeshMode::ShadedEdgesXray,
                 );
-
+                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                    notifications.push(
+                        Instant::now(),
+                        NotificationLevel::Info,
+                        "Viewport mode changed to X-Ray: Shaded with internal Edges (Wireframes).",
+                    );
+                }
                 status.reset_viewport =
                     ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
+
+                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                    notifications.push(
+                        Instant::now(),
+                        NotificationLevel::Info,
+                        "Viewport camera reset to fit all visible geometry.",
+                    );
+                }
 
                 if ui.button(imgui::im_str!("Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
                     *screenshot_modal_open = true;
@@ -910,7 +951,7 @@ impl<'a> UiFrame<'a> {
         }
     }
 
-    pub fn draw_operations_window(&self, session: &mut Session) {
+    pub fn draw_operations_window(&self, session: &mut Session, notifications: &mut Notifications) {
         let ui = &self.imgui_ui;
         let function_table = session.function_table();
 
@@ -991,6 +1032,11 @@ impl<'a> UiFrame<'a> {
                 ) && popping_enabled
                 {
                     pop_stmt_clicked = true;
+                    notifications.push(
+                        Instant::now(),
+                        NotificationLevel::Warn,
+                        "Removed last operation from the Sequence.",
+                    );
                 }
                 if let Some((color_token, style_token)) = popping_tokens {
                     color_token.pop(ui);
@@ -1012,6 +1058,11 @@ impl<'a> UiFrame<'a> {
                     ) && pushing_enabled
                     {
                         function_clicked = Some(func_ident);
+                        notifications.push(
+                            Instant::now(),
+                            NotificationLevel::Info,
+                            format!("Added new operation to the Sequence: {}.", func.info().name),
+                        );
                     }
 
                     if ui.is_item_hovered() && !func.info().description.is_empty() {
@@ -1114,6 +1165,11 @@ impl<'a> UiFrame<'a> {
         }
 
         if interpret_clicked {
+            notifications.push(
+                Instant::now(),
+                NotificationLevel::Info,
+                "Execution of the Sequence of operations has started...",
+            );
             session.interpret();
         }
 

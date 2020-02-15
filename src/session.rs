@@ -15,6 +15,8 @@ use crate::interpreter_server::{
 pub enum PollInterpreterResponseNotification {
     Add(VarIdent, Value),
     Remove(VarIdent, Value),
+    FinishedSuccessfully,
+    FinishedWithError(String),
 }
 
 /// An editing session.
@@ -39,7 +41,7 @@ pub struct Session {
 
     // Auxiliary side-arrays for prog. Determine mesh and mesh-array
     // vars visible from a stmt. The value is read by producing a
-    // slice from the begining of the array to the current stmt's
+    // slice from the beginning of the array to the current stmt's
     // index (exclusive), and filtering only `Some` values. E.g. 0th
     // stmt can not see any vars, 1st stmt can see vars produced by
     // the 0th stmt (if it is `Some`), etc.
@@ -73,7 +75,7 @@ impl Session {
             // table as we do here (the interpreter has its own
             // instance), this state will not be shared, which could
             // lead to unexpected behavior, if the state is mutated
-            // from multiple places. Fortunately, we currenly don't
+            // from multiple places. Fortunately, we currently don't
             // mutate the state here in the session (nor do we need
             // to), that's why the hack is harmless. The most clean
             // solution would be to split the stateful part of funcs
@@ -415,12 +417,19 @@ impl Session {
                                     // with the same parameters for which they previously
                                     // failed. We want to clear the error in this case.
                                     self.error = None;
+
+                                    callback(
+                                        PollInterpreterResponseNotification::FinishedSuccessfully,
+                                    );
                                 }
                                 Err(interpret_error) => {
-                                    log::error!(
-                                        "Interpreter failed with error: {}",
-                                        interpret_error
+                                    let error_message = format!("{}", interpret_error);
+                                    callback(
+                                        PollInterpreterResponseNotification::FinishedWithError(
+                                            error_message.clone(),
+                                        ),
                                     );
+                                    log::error!("Interpreter failed with error: {}", error_message);
 
                                     self.error = Some(interpret_error);
                                 }
