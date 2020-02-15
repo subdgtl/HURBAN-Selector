@@ -467,7 +467,7 @@ impl<'a> UiFrame<'a> {
         };
 
         const UTILITIES_WINDOW_WIDTH: f32 = 150.0;
-        const UTILITIES_WINDOW_HEIGHT: f32 = 210.0;
+        const UTILITIES_WINDOW_HEIGHT: f32 = 232.0;
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
@@ -527,6 +527,20 @@ impl<'a> UiFrame<'a> {
                                 status.save_path = Some(path);
                             }
                         }
+                    }
+                }
+
+                if ui.button(
+                    imgui::im_str!("Save project as..."),
+                    [-f32::MIN_POSITIVE, 0.0],
+                ) {
+                    if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
+                        "Save project",
+                        &format!("new_project.{}", project::PROJECT_EXTENSION),
+                        ext_filter,
+                        ext_description,
+                    ) {
+                        status.save_path = Some(path);
                     }
                 }
 
