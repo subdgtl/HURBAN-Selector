@@ -485,40 +485,36 @@ impl<'a> UiFrame<'a> {
                 let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
 
-                ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
-                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                if ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded) {
                     notifications.push(
                         current_time,
                         NotificationLevel::Info,
                         "Viewport mode changed to Shaded.",
                     );
                 }
-                ui.radio_button(imgui::im_str!("Wireframes"), draw_mode, DrawMeshMode::Edges);
-                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                if ui.radio_button(imgui::im_str!("Wireframes"), draw_mode, DrawMeshMode::Edges) {
                     notifications.push(
                         current_time,
                         NotificationLevel::Info,
                         "Viewport mode changed to Wireframes.",
                     );
                 }
-                ui.radio_button(
+                if ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
                     draw_mode,
                     DrawMeshMode::ShadedEdges,
-                );
-                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                ) {
                     notifications.push(
                         current_time,
                         NotificationLevel::Info,
                         "Viewport mode changed to Shaded with Edges (Wireframes).",
                     );
                 }
-                ui.radio_button(
+                if ui.radio_button(
                     imgui::im_str!("X-RAY"),
                     draw_mode,
                     DrawMeshMode::ShadedEdgesXray,
-                );
-                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                ) {
                     notifications.push(
                         current_time,
                         NotificationLevel::Info,

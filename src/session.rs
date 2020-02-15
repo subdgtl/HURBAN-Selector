@@ -14,9 +14,10 @@ use crate::interpreter_server::{
 /// about what values have been added since the last poll, and what
 /// values have been removed are no longer required.
 pub enum PollNotification {
-    Add(VarIdent, Value),
-    Remove(VarIdent, Value),
+    ValueAdded(VarIdent, Value),
+    ValueRemoved(VarIdent, Value),
     FinishedSuccessfully,
+    // FIXME: Replace String with InterpretError
     FinishedWithError(String),
 }
 
@@ -415,7 +416,7 @@ impl Session {
                                         let value = self.unused_values.remove(&var_ident).expect(
                                             "Value must be present if we want to remove it",
                                         );
-                                        callback(PollNotification::Remove(var_ident, value));
+                                        callback(PollNotification::ValueRemoved(var_ident, value));
                                     }
                                     for (var_ident, value) in to_reinsert {
                                         let inserted = self
@@ -426,7 +427,7 @@ impl Session {
                                             inserted,
                                             "Value must have been removed previously for reinsertion",
                                         );
-                                        callback(PollNotification::Add(var_ident, value))
+                                        callback(PollNotification::ValueAdded(var_ident, value))
                                     }
 
                                     for (var_ident, value) in interpret_value.unused_values {
@@ -437,7 +438,9 @@ impl Session {
                                             self.unused_values.entry(var_ident)
                                         {
                                             vacant.insert(value.clone());
-                                            callback(PollNotification::Add(var_ident, value));
+                                            callback(PollNotification::ValueAdded(
+                                                var_ident, value,
+                                            ));
                                         }
                                     }
 
@@ -449,11 +452,14 @@ impl Session {
                                     callback(PollNotification::FinishedSuccessfully);
                                 }
                                 Err(interpret_error) => {
-                                    let error_message = format!("{}", interpret_error);
-                                    callback(PollNotification::FinishedWithError(
-                                        error_message.clone(),
-                                    ));
-                                    log::error!("Interpreter failed with error: {}", error_message);
+                                    log::error!(
+                                        "Interpreter failed with error: {}",
+                                        interpret_error,
+                                    );
+                                    callback(PollNotification::FinishedWithError(format!(
+                                        "{}",
+                                        interpret_error
+                                    )));
 
                                     self.error = Some(interpret_error);
                                 }
