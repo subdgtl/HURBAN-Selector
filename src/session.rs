@@ -1,6 +1,7 @@
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
+use std::time::{Duration, Instant};
 
 use crate::interpreter::ast::{FuncIdent, Prog, Stmt, VarIdent};
 use crate::interpreter::{Func, InterpretError, LogMessage, Ty, Value};
@@ -12,7 +13,7 @@ use crate::interpreter_server::{
 /// A notification from the session to the surrounding environment
 /// about what values have been added since the last poll, and what
 /// values have been removed are no longer required.
-pub enum PollInterpreterResponseNotification {
+pub enum PollNotification {
     Add(VarIdent, Value),
     Remove(VarIdent, Value),
 }
@@ -27,6 +28,9 @@ pub enum PollInterpreterResponseNotification {
 /// for interpreter results is also non-blocking - if there is no
 /// response, nothing happens.
 pub struct Session {
+    autorun_delay: Option<Duration>,
+    last_uninterpreted_edit: Option<Instant>,
+
     interpreter_server: InterpreterServer,
     interpreter_interpret_request_in_flight: Option<RequestId>,
     interpreter_edit_prog_requests_in_flight: HashSet<RequestId>,
@@ -52,6 +56,9 @@ pub struct Session {
 impl Session {
     pub fn new() -> Self {
         Self {
+            autorun_delay: None,
+            last_uninterpreted_edit: None,
+
             interpreter_server: InterpreterServer::new(),
             interpreter_interpret_request_in_flight: None,
             interpreter_edit_prog_requests_in_flight: HashSet::new(),
@@ -85,11 +92,19 @@ impl Session {
         }
     }
 
+    pub fn autorun_delay(&self) -> Option<Duration> {
+        self.autorun_delay
+    }
+
+    pub fn set_autorun_delay(&mut self, autorun_delay: Option<Duration>) {
+        self.autorun_delay = autorun_delay;
+    }
+
     /// Pushes a new statement onto the program.
     ///
     /// # Panics
     /// Panics if the interpreter is busy.
-    pub fn push_prog_stmt(&mut self, stmt: Stmt) {
+    pub fn push_prog_stmt(&mut self, current_time: Instant, stmt: Stmt) {
         // This is because the current session could want to report
         // errors and we would like to show them somewhere
         assert!(
@@ -97,6 +112,7 @@ impl Session {
             "Can't submit a request while the interpreter is already interpreting",
         );
 
+        self.last_uninterpreted_edit = Some(current_time);
         self.prog.push_stmt(stmt.clone());
         self.log_messages.push(Vec::new());
         self.error = None;
@@ -119,7 +135,7 @@ impl Session {
     ///
     /// # Panics
     /// Panics if the interpreter is busy.
-    pub fn pop_prog_stmt(&mut self) {
+    pub fn pop_prog_stmt(&mut self, current_time: Instant) {
         // This is because the current session could want to report
         // errors and we would like to show them somewhere
         assert!(
@@ -127,6 +143,7 @@ impl Session {
             "Can't submit a request while the interpreter is already interpreting",
         );
 
+        self.last_uninterpreted_edit = Some(current_time);
         self.prog.pop_stmt();
         self.log_messages.pop();
         self.error = None;
@@ -149,7 +166,7 @@ impl Session {
     ///
     /// # Panics
     /// Panics if the interpreter is busy.
-    pub fn set_prog_stmt_at(&mut self, stmt_index: usize, stmt: Stmt) {
+    pub fn set_prog_stmt_at(&mut self, current_time: Instant, stmt_index: usize, stmt: Stmt) {
         // This is because the current session could want to report
         // errors and we would like to show them somewhere
         assert!(
@@ -169,6 +186,7 @@ impl Session {
             }
         }
 
+        self.last_uninterpreted_edit = Some(current_time);
         self.prog.set_stmt_at(stmt_index, stmt.clone());
         self.error = None;
 
@@ -283,18 +301,34 @@ impl Session {
             .replace(request_id);
     }
 
-    /// Poll the interpreter for responses and call the callback for
-    /// each notification generated this way.
+    /// Poll the interpreter for responses and call the callback for each
+    /// notification generated this way. Polls the interpreter until there are
+    /// no more messages in the response channel.
     ///
-    /// The notifications can ask the surrounding environment to start
-    /// or stop tracking a value with a variable identifier.
+    /// The notifications can ask the surrounding environment to start or stop
+    /// tracking a value with a variable identifier.
     ///
-    /// Polls the interpreter until there are no more messages in the
-    /// response channel.
-    pub fn poll_interpreter_response<C>(&mut self, mut callback: C)
+    /// If `autorun_delay` is not `None`, this also tries to run the interpreter
+    /// if it is not already busy and sufficient time has passed since the last
+    /// program edit.
+    pub fn poll<C>(&mut self, current_time: Instant, mut callback: C)
     where
-        C: FnMut(PollInterpreterResponseNotification),
+        C: FnMut(PollNotification),
     {
+        if let Some(delay) = self.autorun_delay {
+            if let Some(last_uninterpreted_edit) = self.last_uninterpreted_edit {
+                // Note: used `Instant::saturating_duration_since` so that this
+                // doesn't panic when caller passes inconsistent time, e.g. the
+                // edit time is later than current time.
+                if current_time.saturating_duration_since(last_uninterpreted_edit) > delay
+                    && !self.interpreter_busy()
+                {
+                    self.last_uninterpreted_edit = None;
+                    self.interpret();
+                }
+            }
+        }
+
         // Loop over all responses
 
         // This is allowed, because we might add other kinds of errors
@@ -379,9 +413,7 @@ impl Session {
                                         let value = self.unused_values.remove(&var_ident).expect(
                                             "Value must be present if we want to remove it",
                                         );
-                                        callback(PollInterpreterResponseNotification::Remove(
-                                            var_ident, value,
-                                        ));
+                                        callback(PollNotification::Remove(var_ident, value));
                                     }
                                     for (var_ident, value) in to_reinsert {
                                         let inserted = self
@@ -392,9 +424,7 @@ impl Session {
                                             inserted,
                                             "Value must have been removed previously for reinsertion",
                                         );
-                                        callback(PollInterpreterResponseNotification::Add(
-                                            var_ident, value,
-                                        ))
+                                        callback(PollNotification::Add(var_ident, value))
                                     }
 
                                     for (var_ident, value) in interpret_value.unused_values {
@@ -405,9 +435,7 @@ impl Session {
                                             self.unused_values.entry(var_ident)
                                         {
                                             vacant.insert(value.clone());
-                                            callback(PollInterpreterResponseNotification::Add(
-                                                var_ident, value,
-                                            ));
+                                            callback(PollNotification::Add(var_ident, value));
                                         }
                                     }
 
@@ -419,7 +447,7 @@ impl Session {
                                 Err(interpret_error) => {
                                     log::error!(
                                         "Interpreter failed with error: {}",
-                                        interpret_error
+                                        interpret_error,
                                     );
 
                                     self.error = Some(interpret_error);
