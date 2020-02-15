@@ -614,7 +614,7 @@ impl<'a> UiFrame<'a> {
                         Saves the current project into a .hurban file. \
                         When used for the first time, opens a system dialog to specify save file location.\n\
                         \n\
-                        The .hurban project file contain only the operation sequence. It does not contain any \
+                        The .hurban project file contains only the operation sequence. It does not contain any \
                         actual geometry, but rather just the sequence of operations that generates the geometry \
                         and references to the external files to import. \
                         It is advised to keep the files to import next to the .hurban project file \
@@ -641,7 +641,7 @@ impl<'a> UiFrame<'a> {
                         Opens the sequence of operations saved in a .hurban file. \
                         The current unsaved project will be lost.\n\
                         \n\
-                        The .hurban project file contain only the operation sequence. It does not contain any \
+                        The .hurban project file contains only the operation sequence. It does not contain any \
                         actual geometry, but rather just the sequence of operations that generates the geometry \
                         and references to the external files to import. \
                         It is advised to keep the files to import next to the .hurban project file \
@@ -695,7 +695,7 @@ impl<'a> UiFrame<'a> {
                             "SEQUENCE OF OPERATIONS\n\
                             \n\
                             An ordered list of operations that generate the viewport geometry. \
-                            Then the sequence is run, the operations are being executed one after \
+                            When the sequence is run, the operations are being executed one after \
                             another from top down. Each operation can be customized by setting the \
                             input parameter values or specifying the input data (mesh geometry, \
                             mesh group, path to file).\n\
