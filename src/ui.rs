@@ -561,6 +561,31 @@ impl<'a> UiFrame<'a> {
         status
     }
 
+    pub fn draw_error_modal(&self, project_error: &Option<project::ProjectError>) -> bool {
+        let ui = &self.imgui_ui;
+        let mut modal_closed = false;
+
+        ui.open_popup(imgui::im_str!("Error"));
+        ui.popup_modal(imgui::im_str!("Error"))
+            .resizable(false)
+            .build(|| {
+                let error_message = project_error
+                    .clone()
+                    .expect("Failed to read project error.")
+                    .to_string();
+
+                ui.text(error_message);
+
+                if ui.button(imgui::im_str!("OK"), [0.0, 0.0]) {
+                    modal_closed = true;
+
+                    ui.close_current_popup();
+                }
+            });
+
+        modal_closed
+    }
+
     // FIXME: @Refactoring Refactor this once we have full-featured
     // functionality. Until then, this is exploratory code and we
     // don't care.

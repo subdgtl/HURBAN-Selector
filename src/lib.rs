@@ -184,6 +184,7 @@ pub fn init_and_run(options: Options) -> ! {
     let mut ui = Ui::new(&window, options.theme);
 
     let mut project_path: Option<String> = None;
+    let mut project_error: Option<project::ProjectError> = None;
 
     let mut camera = Camera::new(
         initial_window_aspect_ratio,
@@ -259,6 +260,7 @@ pub fn init_and_run(options: Options) -> ! {
     let time_start = Instant::now();
     let mut time = time_start;
 
+    #[allow(clippy::cognitive_complexity)]
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
 
@@ -320,50 +322,67 @@ pub fn init_and_run(options: Options) -> ! {
 
                 if let Some(save_path) = menu_status.save_path {
                     log::info!("Saving project at {}", save_path);
+
                     let stmts = session.stmts().to_vec();
                     let project = project::Project { version: 1, stmts };
 
-                    project::save(&save_path, project);
-
-                    project_path = Some(save_path);
+                    match project::save(&save_path, project) {
+                        Ok(_) => project_path = Some(save_path),
+                        Err(err) => {
+                            log::error!("{}", err);
+                            project_error = Some(err);
+                        }
+                    }
                 }
 
                 if let Some(open_path) = menu_status.open_path {
                     log::info!("Opening new project at {}", open_path);
-                    let project = project::open(&open_path);
 
-                    scene_meshes.clear();
+                    match project::open(&open_path) {
+                        Ok(project) => {
+                            scene_meshes.clear();
 
-                    for (_, gpu_mesh_handle) in scene_gpu_mesh_handles.drain() {
-                        renderer.remove_scene_mesh(gpu_mesh_handle);
-                    }
+                            for (_, gpu_mesh_handle) in scene_gpu_mesh_handles.drain() {
+                                renderer.remove_scene_mesh(gpu_mesh_handle);
+                            }
 
-                    scene_bounding_box =
-                        BoundingBox::union(scene_meshes.values().map(|mesh| mesh.bounding_box()))
+                            scene_bounding_box = BoundingBox::union(
+                                scene_meshes.values().map(|mesh| mesh.bounding_box()),
+                            )
                             .unwrap_or_else(BoundingBox::unit);
 
-                    ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
-                    ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-                    renderer.remove_scene_mesh(
-                        ground_plane_gpu_mesh_handle
-                            .take()
-                            .expect("Ground plane must always be present"),
-                    );
-                    ground_plane_gpu_mesh_handle = Some(
-                        renderer
-                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
-                            .expect("Failed to add ground plane mesh"),
-                    );
+                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                            renderer.remove_scene_mesh(
+                                ground_plane_gpu_mesh_handle
+                                    .take()
+                                    .expect("Ground plane must always be present"),
+                            );
+                            ground_plane_gpu_mesh_handle = Some(
+                                renderer
+                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+                                    .expect("Failed to add ground plane mesh"),
+                            );
 
-                    let current_autorun_delay = session.autorun_delay();
-                    session = Session::new();
-                    session.set_autorun_delay(current_autorun_delay);
+                            let current_autorun_delay = session.autorun_delay();
+                            session = Session::new();
+                            session.set_autorun_delay(current_autorun_delay);
 
-                    for stmt in project.stmts {
-                        session.push_prog_stmt(time, stmt);
-                    }
+                            for stmt in project.stmts {
+                                session.push_prog_stmt(time, stmt);
+                            }
 
-                    project_path = Some(open_path);
+                            project_path = Some(open_path);
+                        }
+                        Err(err) => {
+                            log::error!("{}", err);
+                            project_error = Some(err);
+                        }
+                    };
+                }
+
+                if project_error.is_some() && ui_frame.draw_error_modal(&project_error) {
+                    project_error = None;
                 }
 
                 let window_size = window.inner_size().to_physical(window.hidpi_factor());
