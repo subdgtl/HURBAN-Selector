@@ -138,6 +138,21 @@ impl Func for FuncCreateUvSphere {
                 optional: false,
             },
             ParamInfo {
+                name: "Smooth normals",
+                description: "Sets the per-vertex mesh normals to be interpolated from \
+                connected face normals. As a result, the rendered geometry will have \
+                a smooth surface material even though the mesh itself may be coarse.\n\
+                \n\
+                When disabled, the geometry will be rendered as angular: each face will \
+                appear flat, exposing edges as sharp creases.\n\
+                \n\
+                The normal smoothing strategy does not affect the geometry itself.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
                 name: "Analyze resulting mesh",
                 description: "Reports detailed analytic information on the created mesh.\n\
                 The analysis may be slow, therefore it is by default off.",
@@ -163,7 +178,8 @@ impl Func for FuncCreateUvSphere {
         let scale = args[2].unwrap_float3();
         let n_parallels = args[3].unwrap_uint();
         let n_meridians = args[4].unwrap_uint();
-        let analyze = args[5].unwrap_boolean();
+        let smooth = args[5].unwrap_boolean();
+        let analyze = args[6].unwrap_boolean();
 
         if n_parallels < Self::MIN_PARALLELS {
             let error = FuncError::new(FuncCreateUvSphereError::TooFewParallels {
@@ -181,6 +197,12 @@ impl Func for FuncCreateUvSphere {
             return Err(error);
         }
 
+        let normal_strategy = if smooth {
+            NormalStrategy::Smooth
+        } else {
+            NormalStrategy::Sharp
+        };
+
         let value = primitive::create_uv_sphere(
             Point3::from(center),
             Rotation3::from_euler_angles(
@@ -191,7 +213,7 @@ impl Func for FuncCreateUvSphere {
             Vector3::from(scale),
             n_parallels,
             n_meridians,
-            NormalStrategy::Smooth,
+            normal_strategy,
         );
 
         if analyze {
