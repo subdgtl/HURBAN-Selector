@@ -4,7 +4,9 @@ use std::time::{Duration, Instant};
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
-use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
+use crate::convert::{
+    cast_i32, cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32,
+};
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
 use crate::project;
@@ -18,6 +20,19 @@ const WRAP_POS_TOOLTIP_TEXT_PIXELS: f32 = 400.0;
 const WRAP_POS_CONSOLE_TEXT_PIXELS: f32 = 380.0;
 
 const MARGIN: f32 = 10.0;
+
+const OPERATIONS_WINDOW_WIDTH: f32 = 400.0;
+const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.33;
+
+const PIPELINE_WINDOW_WIDTH: f32 = OPERATIONS_WINDOW_WIDTH;
+const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 1.0 - OPERATIONS_WINDOW_HEIGHT_MULT;
+const PIPELINE_OPERATION_CONSOLE_HEIGHT: f32 = 40.0;
+
+const MENU_WINDOW_WIDTH: f32 = 150.0;
+const MENU_WINDOW_HEIGHT: f32 = 212.0;
+
+const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
+const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
@@ -392,9 +407,6 @@ impl<'a> UiFrame<'a> {
 
         let ui = &self.imgui_ui;
 
-        const NOTIFICATIONS_WINDOW_WIDTH: f32 = 400.0;
-        const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.12;
-
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -472,8 +484,6 @@ impl<'a> UiFrame<'a> {
             open_path: None,
         };
 
-        const UTILITIES_WINDOW_WIDTH: f32 = 150.0;
-        const UTILITIES_WINDOW_HEIGHT: f32 = 210.0;
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
@@ -483,11 +493,11 @@ impl<'a> UiFrame<'a> {
             .resizable(false)
             .collapsible(false)
             .size(
-                [UTILITIES_WINDOW_WIDTH, UTILITIES_WINDOW_HEIGHT],
+                [MENU_WINDOW_WIDTH, MENU_WINDOW_HEIGHT],
                 imgui::Condition::Always,
             )
             .position(
-                [window_inner_width + MARGIN - UTILITIES_WINDOW_WIDTH, MARGIN],
+                [window_inner_width + MARGIN - MENU_WINDOW_WIDTH, MARGIN],
                 imgui::Condition::Always,
             )
             .build(ui, || {
@@ -635,6 +645,8 @@ impl<'a> UiFrame<'a> {
                     &format!("H.U.R.B.A.N. selector project (.{})", project::PROJECT_EXTENSION);
                 let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
+                ui.separator();
+
                 if ui.button(imgui::im_str!("Save Project"), [-f32::MIN_POSITIVE, 0.0]) {
                     match project_path {
                         Some(project_path_str) => {
@@ -715,9 +727,6 @@ impl<'a> UiFrame<'a> {
             .resize_with(session.stmts().len(), Default::default);
 
         let function_table = session.function_table();
-
-        const PIPELINE_WINDOW_WIDTH: f32 = 400.0;
-        const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 0.7;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -883,10 +892,24 @@ impl<'a> UiFrame<'a> {
                                         ParamRefinement::Int(param_refinement_int) => {
                                             let mut int_lit = arg.unwrap_literal().unwrap_int();
 
-                                            if ui.input_int(&input_label, &mut int_lit)
-                                                .read_only(interpreter_busy)
-                                                .build()
-                                            {
+                                            let mut drag_int = ui
+                                                                .drag_int(&input_label, &mut int_lit)
+                                                                .speed(0.05);
+
+                                            // FIXME: Report bug: both, min and max must be set
+                                            if let Some(min_value) = param_refinement_int.min_value {
+                                                drag_int = drag_int.min(min_value);
+                                            } else {
+                                                drag_int = drag_int.min(i32::min_value());
+                                            }
+
+                                            if let Some(max_value) = param_refinement_int.max_value {
+                                                drag_int = drag_int.max(max_value);
+                                            } else {
+                                                drag_int = drag_int.max(i32::max_value());
+                                            }
+
+                                            if drag_int.build() {
                                                 int_lit = param_refinement_int.clamp(int_lit);
                                                 change = Some((
                                                     stmt_index,
@@ -899,10 +922,23 @@ impl<'a> UiFrame<'a> {
                                             let uint_lit = arg.unwrap_literal().unwrap_uint();
                                             let mut int_value = clamp_cast_u32_to_i32(uint_lit);
 
-                                            if ui.input_int(&input_label, &mut int_value)
-                                                .read_only(interpreter_busy)
-                                                .build()
-                                            {
+                                            let mut drag_int = ui
+                                                                .drag_int(&input_label, &mut int_value)
+                                                                .speed(0.05);
+
+                                            if let Some(min_value) = param_refinement_uint.min_value {
+                                                drag_int = drag_int.min(cast_i32(min_value));
+                                            } else {
+                                                drag_int = drag_int.min(0);
+                                            }
+
+                                            if let Some(max_value) = param_refinement_uint.max_value {
+                                                drag_int = drag_int.max(cast_i32(max_value));
+                                            } else {
+                                                drag_int = drag_int.max(i32::max_value());
+                                            }
+
+                                            if drag_int.build() {
                                                 let uint_value = clamp_cast_i32_to_u32(int_value);
                                                 let uint_value = param_refinement_uint.clamp(uint_value);
                                                 change = Some((
@@ -915,8 +951,24 @@ impl<'a> UiFrame<'a> {
                                         ParamRefinement::Float(param_refinement_float) => {
                                             let mut float_lit = arg.unwrap_literal().unwrap_float();
 
-                                            if ui.input_float(&input_label, &mut float_lit)
-                                                .read_only(interpreter_busy)
+                                            let mut drag_float = ui
+                                                                .drag_float(&input_label, &mut float_lit)
+                                                                .speed(0.05)
+                                                                .power(2.0);
+
+                                            if let Some(min_value) = param_refinement_float.min_value {
+                                                drag_float = drag_float.min(min_value);
+                                            } else {
+                                                drag_float = drag_float.min(f32::MIN);
+                                            }
+
+                                            if let Some(max_value) = param_refinement_float.max_value {
+                                                drag_float = drag_float.max(max_value);
+                                            } else {
+                                                drag_float = drag_float.max(f32::MAX);
+                                            }
+
+                                            if drag_float
                                                 .build()
                                             {
                                                 float_lit = param_refinement_float.clamp(float_lit);
@@ -931,9 +983,28 @@ impl<'a> UiFrame<'a> {
                                             let mut float2_lit =
                                                 arg.unwrap_literal().unwrap_float2();
 
-                                            if ui
-                                                .input_float2(&input_label, &mut float2_lit)
-                                                .read_only(interpreter_busy)
+                                            let mut drag_float2 = ui
+                                                                .drag_float2(&input_label, &mut float2_lit)
+                                                                .speed(0.05)
+                                                                .power(2.0);
+
+                                            if let (Some(min_value_x), Some(min_value_y)) =
+                                                (param_refinement_float2.min_value_x,
+                                                    param_refinement_float2.min_value_y) {
+                                                drag_float2 = drag_float2.min(min_value_x.min(min_value_y));
+                                            } else {
+                                                drag_float2 = drag_float2.min(f32::MIN);
+                                            }
+
+                                            if let (Some(max_value_x), Some(max_value_y)) =
+                                                (param_refinement_float2.max_value_x,
+                                                    param_refinement_float2.max_value_y) {
+                                                drag_float2 = drag_float2.max(max_value_x.max(max_value_y));
+                                            } else {
+                                                drag_float2 = drag_float2.max(f32::MAX);
+                                            }
+
+                                            if drag_float2
                                                 .build()
                                             {
                                                 float2_lit = param_refinement_float2.clamp(float2_lit);
@@ -950,9 +1021,30 @@ impl<'a> UiFrame<'a> {
                                             let mut float3_lit =
                                                 arg.unwrap_literal().unwrap_float3();
 
-                                            if ui
-                                                .input_float3(&input_label, &mut float3_lit)
-                                                .read_only(interpreter_busy)
+                                            let mut drag_float3 = ui
+                                                .drag_float3(&input_label, &mut float3_lit)
+                                                .speed(0.05)
+                                                .power(2.0);
+
+                                            if let (Some(min_value_x), Some(min_value_y), Some(min_value_z)) =
+                                                (param_refinement_float3.min_value_x,
+                                                    param_refinement_float3.min_value_y,
+                                                    param_refinement_float3.min_value_z) {
+                                                drag_float3 = drag_float3.min(min_value_x.min(min_value_y).min(min_value_z));
+                                            } else {
+                                                drag_float3 = drag_float3.min(f32::MIN);
+                                            }
+
+                                            if let (Some(max_value_x), Some(max_value_y), Some(max_value_z)) =
+                                                (param_refinement_float3.max_value_x,
+                                                    param_refinement_float3.max_value_y,
+                                                    param_refinement_float3.max_value_z) {
+                                                drag_float3 = drag_float3.max(max_value_x.max(max_value_y).max(max_value_z));
+                                            } else {
+                                                drag_float3 = drag_float3.max(f32::MAX);
+                                            }
+
+                                            if drag_float3
                                                 .build()
                                             {
                                                 float3_lit = param_refinement_float3.clamp(float3_lit);
@@ -1048,7 +1140,7 @@ impl<'a> UiFrame<'a> {
 
                                 let console_id = imgui::im_str!("##console{}", stmt_index);
                                 if let Some(window_token) = imgui::ChildWindow::new(&console_id)
-                                    .size([0.0, 80.0])
+                                    .size([0.0, PIPELINE_OPERATION_CONSOLE_HEIGHT])
                                     .scrollable(true)
                                     .scroll_bar(true)
                                     .always_vertical_scrollbar(true)
@@ -1131,9 +1223,6 @@ impl<'a> UiFrame<'a> {
     ) {
         let ui = &self.imgui_ui;
         let function_table = session.function_table();
-
-        const OPERATIONS_WINDOW_WIDTH: f32 = 400.0;
-        const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.3;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -1300,7 +1389,18 @@ impl<'a> UiFrame<'a> {
                     Some(push_disabled_style(ui))
                 };
                 ui.columns(3, imgui::im_str!("Add operations columns"), false);
+
+                let mut previous_group_number = 0;
+                let mut column_counter = 0;
                 for (func_ident, func) in function_table {
+                    let current_group_number = func_ident.0 / 1000_u64;
+                    if current_group_number != previous_group_number {
+                        while column_counter % 3 != 0 {
+                            ui.next_column();
+                            column_counter += 1;
+                        }
+                        ui.separator();
+                    }
                     if ui.button(
                         &imgui::im_str!("{}", func.info().name),
                         [-f32::MIN_POSITIVE, 20.0],
@@ -1323,7 +1423,11 @@ impl<'a> UiFrame<'a> {
                     }
 
                     ui.next_column();
+                    column_counter += 1;
+
+                    previous_group_number = current_group_number;
                 }
+
                 if let Some((color_token, style_token)) = pushing_tokens {
                     color_token.pop(ui);
                     style_token.pop(ui);
