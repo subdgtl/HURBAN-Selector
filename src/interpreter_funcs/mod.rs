@@ -137,6 +137,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     );
     funcs.insert(FUNC_ID_BOOLEAN_UNION, Box::new(FuncBooleanUnion));
     funcs.insert(FUNC_ID_BOOLEAN_DIFFERENCE, Box::new(FuncBooleanDifference));
+    funcs.insert(FUNC_ID_VOXEL_TRANSFORM, Box::new(FuncVoxelTransform));
 
     // Hybridization funcs
     funcs.insert(FUNC_ID_INTERPOLATED_UNION, Box::new(FuncInterpolatedUnion));

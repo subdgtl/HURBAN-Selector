@@ -128,7 +128,7 @@ pub fn init_and_run(options: Options) -> ! {
         {
             log::info!("Running in fullscreen mode on macOS, opening borderless fullscreen");
             winit::window::WindowBuilder::new()
-                .with_title("H.U.R.B.A.N. Selector")
+                .with_title("H.U.R.B.A.N. selector")
                 .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
                 .build(&event_loop)
                 .expect("Failed to create window")
@@ -143,7 +143,7 @@ pub fn init_and_run(options: Options) -> ! {
                     video_mode,
                 );
                 winit::window::WindowBuilder::new()
-                    .with_title("H.U.R.B.A.N. Selector")
+                    .with_title("H.U.R.B.A.N. selector")
                     .with_fullscreen(Some(winit::window::Fullscreen::Exclusive(video_mode)))
                     .with_window_icon(Some(icon))
                     .build(&event_loop)
@@ -151,7 +151,7 @@ pub fn init_and_run(options: Options) -> ! {
             } else {
                 log::info!("Didn't find compatible video mode, opening borderless fullscreen");
                 winit::window::WindowBuilder::new()
-                    .with_title("H.U.R.B.A.N. Selector")
+                    .with_title("H.U.R.B.A.N. selector")
                     .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
                     .with_window_icon(Some(icon))
                     .build(&event_loop)
@@ -162,7 +162,7 @@ pub fn init_and_run(options: Options) -> ! {
         log::info!("Running in windowed mode");
 
         winit::window::WindowBuilder::new()
-            .with_title("H.U.R.B.A.N. Selector")
+            .with_title("H.U.R.B.A.N. selector")
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
             .with_window_icon(Some(icon))
             .build(&event_loop)
