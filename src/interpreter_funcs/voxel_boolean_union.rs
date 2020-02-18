@@ -18,6 +18,7 @@ use crate::mesh::scalar_field::ScalarField;
 pub enum FuncBooleanUnionError {
     WeldFailed,
     EmptyScalarField,
+    VoxelDimensionsZero,
 }
 
 impl fmt::Display for FuncBooleanUnionError {
@@ -31,6 +32,9 @@ impl fmt::Display for FuncBooleanUnionError {
                 f,
                 "Scalar field from input meshes or the resulting mesh is empty"
             ),
+            FuncBooleanUnionError::VoxelDimensionsZero => {
+                write!(f, "One or more voxel dimensions are zero")
+            }
         }
     }
 }
@@ -157,6 +161,15 @@ impl Func for FuncBooleanUnion {
         let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[4].unwrap_boolean();
         let analyze = args[5].unwrap_boolean();
+
+        if voxel_dimensions
+            .iter()
+            .any(|dimension| approx::relative_eq!(*dimension, 0.0))
+        {
+            let error = FuncError::new(FuncBooleanUnionError::VoxelDimensionsZero);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
 
         let mut scalar_field1 =
             ScalarField::from_mesh(mesh1, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);

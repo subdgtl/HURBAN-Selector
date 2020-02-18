@@ -18,6 +18,7 @@ use crate::mesh::scalar_field::ScalarField;
 pub enum FuncVoxelizeError {
     WeldFailed,
     EmptyScalarField,
+    VoxelDimensionsZero,
 }
 
 impl fmt::Display for FuncVoxelizeError {
@@ -28,6 +29,9 @@ impl fmt::Display for FuncVoxelizeError {
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
             FuncVoxelizeError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
+            FuncVoxelizeError::VoxelDimensionsZero => {
+                write!(f, "One or more voxel dimensions are zero")
+            }
         }
     }
 }
@@ -145,6 +149,15 @@ impl Func for FuncVoxelize {
         let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[3].unwrap_boolean();
         let analyze = args[4].unwrap_boolean();
+
+        if voxel_dimensions
+            .iter()
+            .any(|dimension| approx::relative_eq!(*dimension, 0.0))
+        {
+            let error = FuncError::new(FuncVoxelizeError::VoxelDimensionsZero);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
 
         let mut scalar_field =
             ScalarField::from_mesh(mesh, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);

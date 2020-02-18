@@ -89,13 +89,13 @@ impl Func for FuncInterpolatedUnion {
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
-                    default_value_x: Some(1.0),
+                    default_value_x: Some(0.25),
                     min_value_x: Some(f32::MIN_POSITIVE),
                     max_value_x: None,
-                    default_value_y: Some(1.0),
+                    default_value_y: Some(0.25),
                     min_value_y: Some(f32::MIN_POSITIVE),
                     max_value_y: None,
-                    default_value_z: Some(1.0),
+                    default_value_z: Some(0.25),
                     min_value_z: Some(f32::MIN_POSITIVE),
                     max_value_z: None,
                 }),
@@ -155,11 +155,11 @@ impl Func for FuncInterpolatedUnion {
         let analyze = args[5].unwrap_boolean();
 
         let mut scalar_field1 =
-            ScalarField::from_mesh(mesh1, &Vector3::from(voxel_dimensions), 0_i16, 5);
+            ScalarField::from_mesh(mesh1, &Vector3::from(voxel_dimensions), 0_i16, 1);
         let scalar_field2 =
-            ScalarField::from_mesh(mesh2, &Vector3::from(voxel_dimensions), 0_i16, 5);
+            ScalarField::from_mesh(mesh2, &Vector3::from(voxel_dimensions), 0_i16, 1);
 
-        let boolean_union_range = 0..0;
+        let boolean_union_range = 0..=0;
 
         let meshing_range = if fill {
             (Bound::Unbounded, Bound::Included(0))

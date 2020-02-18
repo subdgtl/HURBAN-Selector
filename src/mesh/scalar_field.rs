@@ -504,52 +504,51 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         U: RangeBounds<T>,
     {
         // Find volume common to both scalar fields.
-        if let Some(self_volume_bounding_box) = self.volume_bounding_box(volume_value_range_self) {
-            if let Some(other_volume_bounding_box) =
-                other.volume_bounding_box(volume_value_range_other)
-            {
-                if let Some(bounding_box) = BoundingBox::intersection(
-                    [self_volume_bounding_box, other_volume_bounding_box]
-                        .iter()
-                        .copied(),
-                ) {
-                    // Resize (keep or shrink) the existing scalar field so that
-                    // that can possibly contain intersection voxels.
-                    self.resize_to_voxel_space_bounding_box(&bounding_box);
+        if let (Some(self_volume_bounding_box), Some(other_volume_bounding_box)) = (
+            self.volume_bounding_box(volume_value_range_self),
+            other.volume_bounding_box(volume_value_range_other),
+        ) {
+            if let Some(bounding_box) = BoundingBox::intersection(
+                [self_volume_bounding_box, other_volume_bounding_box]
+                    .iter()
+                    .copied(),
+            ) {
+                // Resize (keep or shrink) the existing scalar field so that
+                // that can possibly contain intersection voxels.
+                self.resize_to_voxel_space_bounding_box(&bounding_box);
 
-                    let block_start = bounding_box.minimum_point();
-                    let diagonal = bounding_box.diagonal();
-                    let block_dimensions = Vector3::new(
-                        cast_u32(diagonal.x),
-                        cast_u32(diagonal.y),
-                        cast_u32(diagonal.z),
+                let block_start = bounding_box.minimum_point();
+                let diagonal = bounding_box.diagonal();
+                let block_dimensions = Vector3::new(
+                    cast_u32(diagonal.x),
+                    cast_u32(diagonal.y),
+                    cast_u32(diagonal.z),
+                );
+                // Iterate through the block of space common to both scalar fields.
+                for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+                    // Perform boolean AND on voxel values of both scalar fields.
+                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                        one_dimensional,
+                        &block_start,
+                        &block_dimensions,
+                        &self.voxel_dimensions,
                     );
-                    // Iterate through the block of space common to both scalar fields.
-                    for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
-                        // Perform boolean AND on voxel values of both scalar fields.
-                        let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                            one_dimensional,
-                            &block_start,
-                            &block_dimensions,
-                            &self.voxel_dimensions,
-                        );
-                        let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
-                            &cartesian_coordinate,
-                            &other.voxel_dimensions,
-                        );
+                    let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                        &cartesian_coordinate,
+                        &other.voxel_dimensions,
+                    );
 
-                        if !other.is_value_at_absolute_voxel_coordinate_within_closed_range(
-                            &absolute_coordinate_other,
-                            volume_value_range_other,
-                        ) {
-                            *voxel = None;
-                        }
+                    if !other.is_value_at_absolute_voxel_coordinate_within_closed_range(
+                        &absolute_coordinate_other,
+                        volume_value_range_other,
+                    ) {
+                        *voxel = None;
                     }
-                    self.shrink_to_fit(volume_value_range_self);
-                    // Return here because any other option needs to wipe the
-                    // current scalar field.
-                    return;
                 }
+                self.shrink_to_fit(volume_value_range_self);
+                // Return here because any other option needs to wipe the
+                // current scalar field.
+                return;
             }
         }
 
@@ -758,23 +757,25 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                 &other.voxel_dimensions,
             );
 
-            // FIXME: Don't panic for None voxels. Keep them None instead.
-            let value_self = voxel.expect("The value is None");
+            *voxel = if let (Some(value_self), Some(value_other)) = (
+                &voxel,
+                other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other),
+            ) {
+                let value_self_f32 = value_self.to_f32().expect("Conversion to f32 failed");
+                let value_other_f32 = value_other.to_f32().expect("Conversion to f32 failed");
+                let self_to_other_range = value_self_f32..value_other_f32;
 
-            *voxel = other
-                .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
-                .map(|value_other| {
-                    T::from_f32(
-                        math::remap(
-                            interpolation_factor,
-                            &(0.0..1.0),
-                            &(value_self.to_f32().expect("Conversion to f32 failed")
-                                ..value_other.to_f32().expect("Conversion to f32 failed")),
-                        )
-                        .expect("The target interval is infinite"),
-                    )
-                    .expect("Conversion from f32 failed")
-                });
+                let value_interpolated_from_self_to_other =
+                    math::remap(interpolation_factor, &(0.0..1.0), &self_to_other_range)
+                        .expect("The target interval is infinite");
+
+                Some(
+                    T::from_f32(value_interpolated_from_self_to_other)
+                        .expect("Conversion from f32 failed"),
+                )
+            } else {
+                None
+            };
         }
     }
 
