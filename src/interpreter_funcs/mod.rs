@@ -22,6 +22,7 @@ use self::transform::FuncTransform;
 use self::voxel_boolean_difference::FuncBooleanDifference;
 use self::voxel_boolean_intersection::FuncBooleanIntersection;
 use self::voxel_boolean_union::FuncBooleanUnion;
+use self::voxel_interpolated_union::FuncInterpolatedUnion;
 use self::voxel_transform::FuncVoxelTransform;
 use self::voxelize::FuncVoxelize;
 use self::weld::FuncWeld;
@@ -45,6 +46,7 @@ mod transform;
 mod voxel_boolean_difference;
 mod voxel_boolean_intersection;
 mod voxel_boolean_union;
+mod voxel_interpolated_union;
 mod voxel_transform;
 mod voxelize;
 mod weld;
@@ -54,38 +56,42 @@ mod weld;
 // Also note: the number in the identifier currently also defines the
 // order of the operation in the UI.
 
-// Manipulation funcs
-pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(0);
-pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(1);
-pub const FUNC_ID_EXTRACT_LARGEST: FuncIdent = FuncIdent(2);
-pub const FUNC_ID_SNAP_TO_GROUND: FuncIdent = FuncIdent(3);
-pub const FUNC_ID_ALIGN: FuncIdent = FuncIdent(4);
+// Creation funcs: 0xxx
+pub const FUNC_ID_CREATE_PLANE: FuncIdent = FuncIdent(0);
+pub const FUNC_ID_CREATE_BOX: FuncIdent = FuncIdent(1);
+pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(2);
 
-// Create funcs
-pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(1000);
-pub const FUNC_ID_CREATE_PLANE: FuncIdent = FuncIdent(1001);
-pub const FUNC_ID_CREATE_BOX: FuncIdent = FuncIdent(1002);
-
-// Import/Export funcs
+// Import/Export funcs: 2xxx
 pub const FUNC_ID_IMPORT_OBJ_MESH: FuncIdent = FuncIdent(2000);
+pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(2001);
+pub const FUNC_ID_EXTRACT_LARGEST: FuncIdent = FuncIdent(2002);
 
-// Smoothing funcs
-pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(3000);
-pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(3001);
+// Manipulation funcs: 4xxx
+pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(4000);
+pub const FUNC_ID_ALIGN: FuncIdent = FuncIdent(4001);
+pub const FUNC_ID_SNAP_TO_GROUND: FuncIdent = FuncIdent(4002);
 
-// Tool funcs
-// FIXME: Fill id 9000
-pub const FUNC_ID_DISJOINT_MESH: FuncIdent = FuncIdent(9001);
-pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(9002);
-pub const FUNC_ID_WELD: FuncIdent = FuncIdent(9003);
-pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(9004);
-pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(9005);
-pub const FUNC_ID_JOIN_GROUP: FuncIdent = FuncIdent(9006);
-pub const FUNC_ID_VOXELIZE: FuncIdent = FuncIdent(9007);
-pub const FUNC_ID_BOOLEAN_INTERSECTION: FuncIdent = FuncIdent(9008);
-pub const FUNC_ID_BOOLEAN_DIFFERENCE: FuncIdent = FuncIdent(9009);
-pub const FUNC_ID_BOOLEAN_UNION: FuncIdent = FuncIdent(9010);
-pub const FUNC_ID_VOXEL_TRANSFORM: FuncIdent = FuncIdent(9011);
+// Smoothing funcs: 6xxx
+pub const FUNC_ID_LAPLACIAN_SMOOTHING: FuncIdent = FuncIdent(6000);
+pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(6001);
+
+// Voxel-based funcs: 8xxx
+pub const FUNC_ID_VOXELIZE: FuncIdent = FuncIdent(8000);
+pub const FUNC_ID_BOOLEAN_INTERSECTION: FuncIdent = FuncIdent(8001);
+pub const FUNC_ID_BOOLEAN_UNION: FuncIdent = FuncIdent(8002);
+pub const FUNC_ID_BOOLEAN_DIFFERENCE: FuncIdent = FuncIdent(8003);
+pub const FUNC_ID_VOXEL_TRANSFORM: FuncIdent = FuncIdent(8004);
+
+// Hybridization funcs: 10xxx
+pub const FUNC_ID_INTERPOLATED_UNION: FuncIdent = FuncIdent(10000);
+
+// Tool funcs: 12xxx
+pub const FUNC_ID_DISJOINT_MESH: FuncIdent = FuncIdent(12000);
+pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(12001);
+pub const FUNC_ID_JOIN_GROUP: FuncIdent = FuncIdent(12002);
+pub const FUNC_ID_WELD: FuncIdent = FuncIdent(12003);
+pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(12004);
+pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(12005);
 
 /// Returns the global set of function definitions available to the
 /// editor.
@@ -96,17 +102,10 @@ pub const FUNC_ID_VOXEL_TRANSFORM: FuncIdent = FuncIdent(9011);
 pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
 
-    // Manipulation funcs
-    funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncTransform));
-    funcs.insert(FUNC_ID_EXTRACT, Box::new(FuncExtract));
-    funcs.insert(FUNC_ID_EXTRACT_LARGEST, Box::new(FuncExtractLargest));
-    funcs.insert(FUNC_ID_SNAP_TO_GROUND, Box::new(FuncSnapToGround));
-    funcs.insert(FUNC_ID_ALIGN, Box::new(FuncAlign));
-
     // Create funcs
-    funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncCreateUvSphere));
     funcs.insert(FUNC_ID_CREATE_PLANE, Box::new(FuncCreatePlane));
     funcs.insert(FUNC_ID_CREATE_BOX, Box::new(FuncCreateBox));
+    funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncCreateUvSphere));
 
     // Import/Export funcs
     funcs.insert(
@@ -115,6 +114,13 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
             EndlessCache::default(),
         ))),
     );
+    funcs.insert(FUNC_ID_EXTRACT, Box::new(FuncExtract));
+    funcs.insert(FUNC_ID_EXTRACT_LARGEST, Box::new(FuncExtractLargest));
+
+    // Manipulation funcs
+    funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncTransform));
+    funcs.insert(FUNC_ID_ALIGN, Box::new(FuncAlign));
+    funcs.insert(FUNC_ID_SNAP_TO_GROUND, Box::new(FuncSnapToGround));
 
     // Smoothing funcs
     funcs.insert(
@@ -123,24 +129,29 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     );
     funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncLoopSubdivision));
 
+    // Voxel-based funcs: 8xxx
+    funcs.insert(FUNC_ID_VOXELIZE, Box::new(FuncVoxelize));
+    funcs.insert(
+        FUNC_ID_BOOLEAN_INTERSECTION,
+        Box::new(FuncBooleanIntersection),
+    );
+    funcs.insert(FUNC_ID_BOOLEAN_UNION, Box::new(FuncBooleanUnion));
+    funcs.insert(FUNC_ID_BOOLEAN_DIFFERENCE, Box::new(FuncBooleanDifference));
+    funcs.insert(FUNC_ID_VOXEL_TRANSFORM, Box::new(FuncVoxelTransform));
+
+    // Hybridization funcs
+    funcs.insert(FUNC_ID_INTERPOLATED_UNION, Box::new(FuncInterpolatedUnion));
+
     // Tool funcs
     funcs.insert(FUNC_ID_DISJOINT_MESH, Box::new(FuncDisjointMesh));
     funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncJoinMeshes));
+    funcs.insert(FUNC_ID_JOIN_GROUP, Box::new(FuncJoinGroup));
     funcs.insert(FUNC_ID_WELD, Box::new(FuncWeld));
     funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncRevertMeshFaces));
     funcs.insert(
         FUNC_ID_SYNCHRONIZE_MESH_FACES,
         Box::new(FuncSynchronizeMeshFaces),
     );
-    funcs.insert(FUNC_ID_JOIN_GROUP, Box::new(FuncJoinGroup));
-    funcs.insert(FUNC_ID_VOXELIZE, Box::new(FuncVoxelize));
-    funcs.insert(
-        FUNC_ID_BOOLEAN_INTERSECTION,
-        Box::new(FuncBooleanIntersection),
-    );
-    funcs.insert(FUNC_ID_BOOLEAN_DIFFERENCE, Box::new(FuncBooleanDifference));
-    funcs.insert(FUNC_ID_BOOLEAN_UNION, Box::new(FuncBooleanUnion));
-    funcs.insert(FUNC_ID_VOXEL_TRANSFORM, Box::new(FuncVoxelTransform));
 
     funcs
 }

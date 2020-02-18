@@ -712,6 +712,72 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         self.shrink_to_fit(volume_value_range_self)
     }
 
+    /// Perform boolean union while interpolating to the other scalar field.
+    // FIXME: More thorough description
+    pub fn interpolated_union_of_distance_fields<U>(
+        &mut self,
+        volume_value_range_self: &U,
+        other: &ScalarField<T>,
+        volume_value_range_other: &U,
+        interpolation_factor: f32,
+    ) where
+        U: RangeBounds<T>,
+    {
+        let mut other_clone = other.clone();
+        let bounding_box_self = self.bounding_box_cartesian();
+        let bounding_box_other = other_clone.bounding_box_cartesian();
+
+        if let Some(bounding_box) = BoundingBox::union(vec![bounding_box_self, bounding_box_other])
+        {
+            self.resize_to_cartesian_bounding_box(&bounding_box);
+            other_clone.resize_to_cartesian_bounding_box(&bounding_box);
+            self.compute_distance_filed(volume_value_range_self);
+            other_clone.compute_distance_filed(volume_value_range_other);
+
+            self.interpolate_to(&other_clone, interpolation_factor);
+        } else {
+            // Wipe the current scalar field if none of the scalar fields
+            // contained any volume voxels.
+            self.wipe();
+        }
+    }
+
+    /// Interpolate values of the current scalar field to the values of the
+    /// other scalar field.
+    // FIXME: More thorough description
+    pub fn interpolate_to(&mut self, other: &ScalarField<T>, interpolation_factor: f32) {
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+                &self.voxel_dimensions,
+            );
+            let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                &cartesian_coordinate,
+                &other.voxel_dimensions,
+            );
+
+            // FIXME: Don't panic for None voxels. Keep them None instead.
+            let value_self = voxel.expect("The value is None");
+
+            *voxel = other
+                .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
+                .map(|value_other| {
+                    T::from_f32(
+                        math::remap(
+                            interpolation_factor,
+                            &(0.0..1.0),
+                            &(value_self.to_f32().expect("Conversion to f32 failed")
+                                ..value_other.to_f32().expect("Conversion to f32 failed")),
+                        )
+                        .expect("The target interval is infinite"),
+                    )
+                    .expect("Conversion from f32 failed")
+                });
+        }
+    }
+
     /// Gets the value of a voxel on absolute voxel coordinates (relative to the
     /// voxel space origin).
     ///
@@ -850,6 +916,24 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             cast_u32(diagonal.z),
         );
         self.resize(&bounding_box.minimum_point(), &block_dimensions);
+    }
+
+    /// Resize the current scalar field to match the input bounding box in
+    /// voxel-space units
+    pub fn resize_to_cartesian_bounding_box(&mut self, bounding_box: &BoundingBox<f32>) {
+        let minimum_point = cartesian_to_absolute_voxel_coordinate(
+            &bounding_box.minimum_point(),
+            &self.voxel_dimensions,
+        );
+        let diagonal = bounding_box.diagonal();
+        let block_dimensions_i32 =
+            cartesian_to_absolute_voxel_coordinate(&Point3::from(diagonal), &self.voxel_dimensions);
+        let block_dimensions_u32 = Vector3::new(
+            cast_u32(block_dimensions_i32.x),
+            cast_u32(block_dimensions_i32.y),
+            cast_u32(block_dimensions_i32.z),
+        );
+        self.resize(&minimum_point, &block_dimensions_u32);
     }
 
     /// Resize the scalar field block to exactly fit the volumetric geometry.
@@ -1042,6 +1126,26 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             .min(self.voxel_dimensions.y.min(self.voxel_dimensions.z));
         // and weld naked edges.
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
+    }
+
+    #[allow(dead_code)]
+    pub fn bounding_box(&self) -> BoundingBox<i32> {
+        BoundingBox::new(&self.block_start, &self.block_end())
+    }
+
+    pub fn bounding_box_cartesian(&self) -> BoundingBox<f32> {
+        let block_start_cartesian = Point3::new(
+            self.block_start.x as f32 * self.voxel_dimensions.x,
+            self.block_start.y as f32 * self.voxel_dimensions.y,
+            self.block_start.z as f32 * self.voxel_dimensions.z,
+        );
+        let block_end = self.block_end();
+        let block_end_cartesian = Point3::new(
+            block_end.x as f32 * self.voxel_dimensions.x,
+            block_end.y as f32 * self.voxel_dimensions.y,
+            block_end.z as f32 * self.voxel_dimensions.z,
+        );
+        BoundingBox::new(&block_start_cartesian, &block_end_cartesian)
     }
 
     /// Returns the bounding box of the mesh produced by `ScalarField::to_mesh`
