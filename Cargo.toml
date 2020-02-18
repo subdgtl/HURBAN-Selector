@@ -38,6 +38,7 @@ tinyfiledialogs = "3.3.5"
 tobj = { version = "0.1.10", features = ["log"] }
 wgpu = { version = "0.4.0", features = ["vulkan"] }
 winit = "0.20.0-alpha5"
+noise = "0.6.0"
 
 [dev-dependencies]
 insta = "0.12.0"

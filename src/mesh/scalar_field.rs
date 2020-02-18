@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::f32;
 use std::ops::Neg;
-use std::ops::RangeBounds;
+use std::ops::{Range, RangeBounds};
 
 use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
 use num_traits::{Bounded, FromPrimitive, Num, ToPrimitive};
@@ -425,6 +425,18 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         }
 
         None
+    }
+
+    pub fn absolute_range_x(&self) -> Range<i32> {
+        self.block_start.x..self.block_end().x
+    }
+
+    pub fn absolute_range_y(&self) -> Range<i32> {
+        self.block_start.y..self.block_end().y
+    }
+
+    pub fn absolute_range_z(&self) -> Range<i32> {
+        self.block_start.z..self.block_end().z
     }
 
     /// Clears the scalar field, sets its block dimensions to zero.
