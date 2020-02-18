@@ -4,6 +4,27 @@ use crate::bounding_box::BoundingBox;
 use crate::interpreter::{LogMessage, MeshArrayValue};
 use crate::mesh::{analysis, Mesh, UnorientedEdge};
 
+pub fn report_bounding_box_analysis(mesh: &Mesh, log: &mut dyn FnMut(LogMessage)) {
+    let bbox = mesh.bounding_box();
+    let bbox_center = bbox.center();
+    let bbox_dimensions = bbox.diagonal();
+    let bbox_diagonal_length = bbox_dimensions.norm();
+
+    log(LogMessage::info("Bounding box properties:"));
+    log(LogMessage::info(format!(
+        "Center = [{:.2}, {:.2}, {:.2}]",
+        bbox_center.x, bbox_center.y, bbox_center.z,
+    )));
+    log(LogMessage::info(format!(
+        "Dimensions = [{:.2}, {:.2}, {:.2}]",
+        bbox_dimensions.x, bbox_dimensions.y, bbox_dimensions.z,
+    )));
+    log(LogMessage::info(format!(
+        "Diagonal length = {:.2}",
+        bbox_diagonal_length
+    )));
+}
+
 pub fn report_mesh_analysis(mesh: &Mesh, log: &mut dyn FnMut(LogMessage)) {
     let vertex_count = mesh.vertices().len();
     let normal_count = mesh.normals().len();
@@ -11,10 +32,6 @@ pub fn report_mesh_analysis(mesh: &Mesh, log: &mut dyn FnMut(LogMessage)) {
     let edges: HashSet<UnorientedEdge> = mesh.unoriented_edges_iter().collect();
     let edge_count = edges.len();
 
-    let bbox = mesh.bounding_box();
-    let bbox_center = bbox.center();
-    let bbox_dimensions = bbox.diagonal();
-    let bbox_diagonal_length = bbox_dimensions.norm();
     let has_no_orphan_normals = mesh.has_no_orphan_normals();
     let has_no_orphan_vertices = mesh.has_no_orphan_vertices();
     let is_triangulated = mesh.is_triangulated();
@@ -98,20 +115,6 @@ pub fn report_mesh_analysis(mesh: &Mesh, log: &mut dyn FnMut(LogMessage)) {
             non_manifold_count
         )));
     }
-
-    log(LogMessage::info("Bounding box properties:"));
-    log(LogMessage::info(format!(
-        "Center = [{:.2}, {:.2}, {:.2}]",
-        bbox_center.x, bbox_center.y, bbox_center.z,
-    )));
-    log(LogMessage::info(format!(
-        "Dimensions = [{:.2}, {:.2}, {:.2}]",
-        bbox_dimensions.x, bbox_dimensions.y, bbox_dimensions.z,
-    )));
-    log(LogMessage::info(format!(
-        "Diagonal length = {:.2}",
-        bbox_diagonal_length
-    )));
 }
 
 pub fn report_group_analysis(group: &MeshArrayValue, log: &mut dyn FnMut(LogMessage)) {

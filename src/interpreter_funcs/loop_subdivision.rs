@@ -93,7 +93,15 @@ impl Func for FuncLoopSubdivision {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
                               The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
@@ -115,7 +123,8 @@ impl Func for FuncLoopSubdivision {
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_refcounted_mesh();
         let iterations = cmp::min(args[1].unwrap_uint(), Self::MAX_ITERATIONS);
-        let analyze = args[2].unwrap_boolean();
+        let analyze_bbox = args[2].unwrap_boolean();
+        let analyze_mesh = args[3].unwrap_boolean();
 
         if iterations == 0 {
             log(LogMessage::info("Zero iterations, the mesh hasn't changed"));
@@ -147,7 +156,10 @@ impl Func for FuncLoopSubdivision {
                 }
             }
 
-            if analyze {
+            if analyze_bbox {
+                analytics::report_bounding_box_analysis(&current_mesh, log);
+            }
+            if analyze_mesh {
                 analytics::report_mesh_analysis(&current_mesh, log);
             }
 

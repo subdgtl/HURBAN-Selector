@@ -80,7 +80,15 @@ impl Func for FuncCreatePlane {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
                               The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
@@ -103,7 +111,8 @@ impl Func for FuncCreatePlane {
         let center = args[0].unwrap_float3();
         let rotate = args[1].unwrap_float3();
         let scale = args[2].unwrap_float2();
-        let analyze = args[3].unwrap_boolean();
+        let analyze_bbox = args[3].unwrap_boolean();
+        let analyze_mesh = args[4].unwrap_boolean();
 
         let rotation = Rotation3::from_euler_angles(
             rotate[0].to_radians(),
@@ -119,7 +128,10 @@ impl Func for FuncCreatePlane {
 
         let value = primitive::create_mesh_plane(plane, Vector2::from(scale));
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
 

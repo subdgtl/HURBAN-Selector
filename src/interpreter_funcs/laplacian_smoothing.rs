@@ -60,7 +60,15 @@ impl Func for FuncLaplacianSmoothing {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
                               The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
@@ -82,7 +90,8 @@ impl Func for FuncLaplacianSmoothing {
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let iterations = args[1].unwrap_uint();
-        let analyze = args[2].unwrap_boolean();
+        let analyze_bbox = args[2].unwrap_boolean();
+        let analyze_mesh = args[3].unwrap_boolean();
 
         let v2v = topology::compute_vertex_to_vertex_topology(mesh);
 
@@ -95,7 +104,10 @@ impl Func for FuncLaplacianSmoothing {
             NormalStrategy::Smooth,
         );
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
 
