@@ -1,4 +1,4 @@
-#define AppSetupName 'HURBAN Selector'
+#define AppSetupName 'H.U.R.B.A.N. selector'
 #define AppVersion '1.0'
 #define AppExeName 'hurban_selector.exe'
 
@@ -6,7 +6,7 @@
 AppName={#AppSetupName}
 AppVersion={#AppVersion}
 AppVerName={#AppSetupName} {#AppVersion}
-AppCopyright=Copyright © 2018-2019 Subdigital
+AppCopyright=Copyright Â© 2018-2019 Subdigital
 VersionInfoCompany=Subdigital
 AppPublisher=Subdigital
 AppPublisherURL=https://www.sub.digital/
