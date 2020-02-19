@@ -93,6 +93,22 @@ impl Func for FuncLoopSubdivision {
                 optional: false,
             },
             ParamInfo {
+                name: "Smooth normals",
+                description:
+                    "Sets the per-vertex mesh normals to be interpolated from \
+                     connected face normals. As a result, the rendered geometry will have \
+                     a smooth surface material even though the mesh itself may be coarse.\n\
+                     \n\
+                     When disabled, the geometry will be rendered as angular: each face will \
+                     appear flat, exposing edges as sharp creases.\n\
+                     \n\
+                     The normal smoothing strategy does not affect the geometry itself.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
                 name: "Analyze resulting mesh",
                 description: "Reports detailed analytic information on the created mesh.\n\
                               The analysis may be slow, therefore it is by default off.",
@@ -115,28 +131,44 @@ impl Func for FuncLoopSubdivision {
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_refcounted_mesh();
         let iterations = cmp::min(args[1].unwrap_uint(), Self::MAX_ITERATIONS);
-        let analyze = args[2].unwrap_boolean();
+        let smooth = args[2].unwrap_boolean();
+        let analyze = args[3].unwrap_boolean();
 
         if iterations == 0 {
             log(LogMessage::info("Zero iterations, the mesh hasn't changed"));
             return Ok(Value::Mesh(mesh));
         }
 
-        let mut v2v = topology::compute_vertex_to_vertex_topology(&mesh);
-        let mut v2f = topology::compute_vertex_to_face_topology(&mesh);
-        let mut f2f = topology::compute_face_to_face_topology(&mesh, &v2f);
-        if let Some(mut current_mesh) =
-            smoothing::loop_subdivision(&mesh, &v2v, &f2f, NormalStrategy::Smooth)
-        {
+        let mut vertex_to_vertex_topology = topology::compute_vertex_to_vertex_topology(&mesh);
+        let mut vertex_to_face_topology = topology::compute_vertex_to_face_topology(&mesh);
+        let mut face_to_face_topology =
+            topology::compute_face_to_face_topology(&mesh, &vertex_to_face_topology);
+
+        let normal_strategy = if smooth {
+            NormalStrategy::Smooth
+        } else {
+            NormalStrategy::Sharp
+        };
+
+        if let Some(mut current_mesh) = smoothing::loop_subdivision(
+            &mesh,
+            &vertex_to_vertex_topology,
+            &face_to_face_topology,
+            normal_strategy,
+        ) {
             for _ in 1..iterations {
-                v2v = topology::compute_vertex_to_vertex_topology(&current_mesh);
-                v2f = topology::compute_vertex_to_face_topology(&current_mesh);
-                f2f = topology::compute_face_to_face_topology(&current_mesh, &v2f);
+                vertex_to_vertex_topology =
+                    topology::compute_vertex_to_vertex_topology(&current_mesh);
+                vertex_to_face_topology = topology::compute_vertex_to_face_topology(&current_mesh);
+                face_to_face_topology = topology::compute_face_to_face_topology(
+                    &current_mesh,
+                    &vertex_to_face_topology,
+                );
                 current_mesh = match smoothing::loop_subdivision(
                     &current_mesh,
-                    &v2v,
-                    &f2f,
-                    NormalStrategy::Smooth,
+                    &vertex_to_vertex_topology,
+                    &face_to_face_topology,
+                    normal_strategy,
                 ) {
                     Some(m) => m,
                     None => {
