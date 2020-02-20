@@ -84,15 +84,11 @@ impl Func for FuncVoxelize {
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: Some(f32::MIN_POSITIVE),
+                    max_value: None,
                     default_value_x: Some(1.0),
-                    min_value_x: Some(f32::MIN_POSITIVE),
-                    max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: Some(f32::MIN_POSITIVE),
-                    max_value_y: None,
                     default_value_z: Some(1.0),
-                    min_value_z: Some(f32::MIN_POSITIVE),
-                    max_value_z: None,
                 }),
                 optional: false,
             },

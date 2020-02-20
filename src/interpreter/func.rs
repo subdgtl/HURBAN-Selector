@@ -160,17 +160,15 @@ impl FloatParamRefinement {
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Float2ParamRefinement {
+    pub min_value: Option<f32>,
+    pub max_value: Option<f32>,
     pub default_value_x: Option<f32>,
-    pub min_value_x: Option<f32>,
-    pub max_value_x: Option<f32>,
     pub default_value_y: Option<f32>,
-    pub min_value_y: Option<f32>,
-    pub max_value_y: Option<f32>,
 }
 
 impl Float2ParamRefinement {
     pub fn clamp(&self, value: [f32; 2]) -> [f32; 2] {
-        let x = if let Some(min_x) = self.min_value_x {
+        let x = if let Some(min_x) = self.min_value {
             if value[0] < min_x {
                 min_x
             } else {
@@ -180,7 +178,7 @@ impl Float2ParamRefinement {
             value[0]
         };
 
-        let y = if let Some(min_y) = self.min_value_y {
+        let y = if let Some(min_y) = self.min_value {
             if value[1] < min_y {
                 min_y
             } else {
@@ -196,20 +194,16 @@ impl Float2ParamRefinement {
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Float3ParamRefinement {
+    pub min_value: Option<f32>,
+    pub max_value: Option<f32>,
     pub default_value_x: Option<f32>,
-    pub min_value_x: Option<f32>,
-    pub max_value_x: Option<f32>,
     pub default_value_y: Option<f32>,
-    pub min_value_y: Option<f32>,
-    pub max_value_y: Option<f32>,
     pub default_value_z: Option<f32>,
-    pub min_value_z: Option<f32>,
-    pub max_value_z: Option<f32>,
 }
 
 impl Float3ParamRefinement {
     pub fn clamp(&self, value: [f32; 3]) -> [f32; 3] {
-        let x = if let Some(min_x) = self.min_value_x {
+        let x = if let Some(min_x) = self.min_value {
             if value[0] < min_x {
                 min_x
             } else {
@@ -219,7 +213,7 @@ impl Float3ParamRefinement {
             value[0]
         };
 
-        let y = if let Some(min_y) = self.min_value_y {
+        let y = if let Some(min_y) = self.min_value {
             if value[1] < min_y {
                 min_y
             } else {
@@ -229,7 +223,7 @@ impl Float3ParamRefinement {
             value[1]
         };
 
-        let z = if let Some(min_z) = self.min_value_z {
+        let z = if let Some(min_z) = self.min_value {
             if value[2] < min_z {
                 min_z
             } else {
