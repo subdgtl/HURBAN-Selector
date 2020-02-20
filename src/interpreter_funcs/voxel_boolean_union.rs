@@ -138,7 +138,7 @@ impl Func for FuncBooleanUnion {
             },
             ParamInfo {
                 name: "Prevent Unsafe Settings",
-                description: "Stop computation and throw warning if the calculation may be too slow.",
+                description: "Stop computation and throw error if the calculation may be too slow.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
@@ -210,7 +210,7 @@ impl Func for FuncBooleanUnion {
                 vy * 1.1,
                 vz * 1.1,
             ));
-            log(LogMessage::warn(format!("Error: {}", error)));
+            log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
