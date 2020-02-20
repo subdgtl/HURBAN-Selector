@@ -73,7 +73,15 @@ impl Func for FuncExtract {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
                               The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
@@ -95,7 +103,8 @@ impl Func for FuncExtract {
     ) -> Result<Value, FuncError> {
         let mesh_array = args[0].unwrap_mesh_array();
         let index = args[1].unwrap_uint();
-        let analyze = args[2].unwrap_boolean();
+        let analyze_bbox = args[2].unwrap_boolean();
+        let analyze_mesh = args[3].unwrap_boolean();
 
         if mesh_array.is_empty() {
             let error = FuncError::new(FuncExtractError::Empty);
@@ -113,7 +122,10 @@ impl Func for FuncExtract {
                 .get_refcounted(index)
                 .expect("Array must not be empty");
 
-            if analyze {
+            if analyze_bbox {
+                analytics::report_bounding_box_analysis(&value, log);
+            }
+            if analyze_mesh {
                 analytics::report_mesh_analysis(&value, log);
             }
 

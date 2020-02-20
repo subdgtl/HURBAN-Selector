@@ -70,15 +70,11 @@ impl Func for FuncCreateUvSphere {
                 name: "Center",
                 description: "Center of the sphere in absolute model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -86,15 +82,11 @@ impl Func for FuncCreateUvSphere {
                 name: "Rotate (deg)",
                 description: "Rotation of the sphere in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -103,15 +95,11 @@ impl Func for FuncCreateUvSphere {
                 description: "Scale of the sphere as a relative factor.\n\
                 The original size of the sphere is 1x1x1 model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(1.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(1.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -153,9 +141,17 @@ impl Func for FuncCreateUvSphere {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                The analysis may be slow, therefore it is by default off.",
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -179,7 +175,8 @@ impl Func for FuncCreateUvSphere {
         let n_parallels = args[3].unwrap_uint();
         let n_meridians = args[4].unwrap_uint();
         let smooth = args[5].unwrap_boolean();
-        let analyze = args[6].unwrap_boolean();
+        let analyze_bbox = args[6].unwrap_boolean();
+        let analyze_mesh = args[7].unwrap_boolean();
 
         if n_parallels < Self::MIN_PARALLELS {
             let error = FuncError::new(FuncCreateUvSphereError::TooFewParallels {
@@ -216,7 +213,10 @@ impl Func for FuncCreateUvSphere {
             normal_strategy,
         );
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
 

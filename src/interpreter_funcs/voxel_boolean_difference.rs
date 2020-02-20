@@ -14,11 +14,14 @@ use crate::interpreter::{
 };
 use crate::mesh::scalar_field::ScalarField;
 
+const VOXEL_COUNT_THRESHOLD: u32 = 50000;
+
 #[derive(Debug, PartialEq)]
 pub enum FuncBooleanDifferenceError {
     WeldFailed,
     EmptyScalarField,
     VoxelDimensionsZero,
+    TooManyVoxels(u32, f32, f32, f32),
 }
 
 impl fmt::Display for FuncBooleanDifferenceError {
@@ -34,6 +37,11 @@ impl fmt::Display for FuncBooleanDifferenceError {
             FuncBooleanDifferenceError::VoxelDimensionsZero => {
                 write!(f, "One or more voxel dimensions are zero")
             }
+            FuncBooleanDifferenceError::TooManyVoxels(max_count, x, y, z) => write!(
+                f,
+                "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
+                max_count, x, y, z
+            ),
         }
     }
 }
@@ -94,15 +102,11 @@ impl Func for FuncBooleanDifference {
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: Some(f32::MIN_POSITIVE),
+                    max_value: None,
                     default_value_x: Some(1.0),
-                    min_value_x: Some(f32::MIN_POSITIVE),
-                    max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: Some(f32::MIN_POSITIVE),
-                    max_value_y: None,
                     default_value_z: Some(1.0),
-                    min_value_z: Some(f32::MIN_POSITIVE),
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -135,9 +139,25 @@ impl Func for FuncBooleanDifference {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Prevent Unsafe Settings",
+                description: "Stop computation and throw error if the calculation may be too slow.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                The analysis may be slow, therefore it is by default off.",
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -161,7 +181,48 @@ impl Func for FuncBooleanDifference {
         let growth_u32 = args[3].unwrap_uint();
         let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[4].unwrap_boolean();
-        let analyze = args[5].unwrap_boolean();
+        let error_if_large = args[5].unwrap_boolean();
+        let analyze_bbox = args[6].unwrap_boolean();
+        let analyze_mesh = args[7].unwrap_boolean();
+
+        let bbox_diagonal1 = mesh1.bounding_box().diagonal();
+        let voxel_count1 = (bbox_diagonal1.x / voxel_dimensions[0]).ceil() as u32
+            * (bbox_diagonal1.y / voxel_dimensions[1]).ceil() as u32
+            * (bbox_diagonal1.z / voxel_dimensions[2]).ceil() as u32;
+
+        let bbox_diagonal2 = mesh2.bounding_box().diagonal();
+        let voxel_count2 = (bbox_diagonal2.x / voxel_dimensions[0]).ceil() as u32
+            * (bbox_diagonal2.y / voxel_dimensions[1]).ceil() as u32
+            * (bbox_diagonal2.z / voxel_dimensions[2]).ceil() as u32;
+
+        let (voxel_count, bbox_diagonal) = if voxel_count1 > voxel_count2 {
+            (voxel_count1, bbox_diagonal1)
+        } else {
+            (voxel_count2, bbox_diagonal2)
+        };
+
+        log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
+
+        if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
+            let vy_over_vx = voxel_dimensions[1] / voxel_dimensions[0];
+            let vz_over_vx = voxel_dimensions[2] / voxel_dimensions[0];
+            let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
+                / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
+                .cbrt();
+            let vy = vx * vy_over_vx;
+            let vz = vx * vz_over_vx;
+
+            // The equation doesn't take rounding into consideration, hence the
+            // arbitrary multiplication by 1.1.
+            let error = FuncError::new(FuncBooleanDifferenceError::TooManyVoxels(
+                VOXEL_COUNT_THRESHOLD,
+                vx * 1.1,
+                vy * 1.1,
+                vz * 1.1,
+            ));
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
 
         if voxel_dimensions
             .iter()
@@ -196,7 +257,10 @@ impl Func for FuncBooleanDifference {
 
         match scalar_field1.to_mesh(&meshing_range) {
             Some(value) => {
-                if analyze {
+                if analyze_bbox {
+                    analytics::report_bounding_box_analysis(&value, log);
+                }
+                if analyze_mesh {
                     analytics::report_mesh_analysis(&value, log);
                 }
                 Ok(Value::Mesh(Arc::new(value)))

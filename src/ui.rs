@@ -988,18 +988,16 @@ impl<'a> UiFrame<'a> {
                                                                 .speed(0.05)
                                                                 .power(2.0);
 
-                                            if let (Some(min_value_x), Some(min_value_y)) =
-                                                (param_refinement_float2.min_value_x,
-                                                    param_refinement_float2.min_value_y) {
-                                                drag_float2 = drag_float2.min(min_value_x.min(min_value_y));
+                                            if let Some(min_value) =
+                                                param_refinement_float2.min_value {
+                                                drag_float2 = drag_float2.min(min_value);
                                             } else {
                                                 drag_float2 = drag_float2.min(f32::MIN);
                                             }
 
-                                            if let (Some(max_value_x), Some(max_value_y)) =
-                                                (param_refinement_float2.max_value_x,
-                                                    param_refinement_float2.max_value_y) {
-                                                drag_float2 = drag_float2.max(max_value_x.max(max_value_y));
+                                            if let Some(max_value) =
+                                                param_refinement_float2.max_value {
+                                                drag_float2 = drag_float2.max(max_value);
                                             } else {
                                                 drag_float2 = drag_float2.max(f32::MAX);
                                             }
@@ -1026,20 +1024,16 @@ impl<'a> UiFrame<'a> {
                                                 .speed(0.05)
                                                 .power(2.0);
 
-                                            if let (Some(min_value_x), Some(min_value_y), Some(min_value_z)) =
-                                                (param_refinement_float3.min_value_x,
-                                                    param_refinement_float3.min_value_y,
-                                                    param_refinement_float3.min_value_z) {
-                                                drag_float3 = drag_float3.min(min_value_x.min(min_value_y).min(min_value_z));
+                                            if let Some(min_value)=
+                                                param_refinement_float3.min_value {
+                                                drag_float3 = drag_float3.min(min_value);
                                             } else {
                                                 drag_float3 = drag_float3.min(f32::MIN);
                                             }
 
-                                            if let (Some(max_value_x), Some(max_value_y), Some(max_value_z)) =
-                                                (param_refinement_float3.max_value_x,
-                                                    param_refinement_float3.max_value_y,
-                                                    param_refinement_float3.max_value_z) {
-                                                drag_float3 = drag_float3.max(max_value_x.max(max_value_y).max(max_value_z));
+                                            if let Some(max_value) =
+                                                param_refinement_float3.max_value{
+                                                drag_float3 = drag_float3.max(max_value);
                                             } else {
                                                 drag_float3 = drag_float3.max(f32::MAX);
                                             }
