@@ -14,11 +14,14 @@ use crate::interpreter::{
 };
 use crate::mesh::scalar_field::ScalarField;
 
+const VOXEL_COUNT_THRESHOLD: u32 = 50000;
+
 #[derive(Debug, PartialEq)]
 pub enum FuncVoxelNoiseError {
     WeldFailed,
     EmptyScalarField,
     VoxelDimensionsZero,
+    TooManyVoxels(u32, f32, f32, f32),
 }
 
 impl fmt::Display for FuncVoxelNoiseError {
@@ -28,12 +31,13 @@ impl fmt::Display for FuncVoxelNoiseError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncVoxelNoiseError::EmptyScalarField => {
-                write!(f, "The resulting scalar field is empty")
-            }
-            FuncVoxelNoiseError::VoxelDimensionsZero => {
-                write!(f, "One or more voxel dimensions are zero")
-            }
+            FuncVoxelNoiseError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
+            FuncVoxelNoiseError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
+            FuncVoxelNoiseError::TooManyVoxels(max_count, x, y, z) => write!(
+                f,
+                "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
+                max_count, x, y, z
+            ),
         }
     }
 }
@@ -61,15 +65,11 @@ impl Func for FuncVoxelNoise {
                 name: "Block Start",
                 description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(-1.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(-1.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(-1.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -77,15 +77,11 @@ impl Func for FuncVoxelNoise {
                 name: "Block End",
                 description: "",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(1.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(1.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -96,15 +92,11 @@ impl Func for FuncVoxelNoise {
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: Some(f32::MIN_POSITIVE),
+                    max_value: None,
                     default_value_x: Some(0.1),
-                    min_value_x: Some(f32::MIN_POSITIVE),
-                    max_value_x: None,
                     default_value_y: Some(0.1),
-                    min_value_y: Some(f32::MIN_POSITIVE),
-                    max_value_y: None,
                     default_value_z: Some(0.1),
-                    min_value_z: Some(f32::MIN_POSITIVE),
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -132,19 +124,33 @@ impl Func for FuncVoxelNoise {
                 name: "Volume range",
                 description: "",
                 refinement: ParamRefinement::Float2(Float2ParamRefinement {
+                    min_value: Some(-1.0),
+                    max_value: Some(1.0),
                     default_value_x: Some(-0.5),
-                    min_value_x: Some(-1.0),
-                    max_value_x: Some(1.0),
                     default_value_y: Some(0.5),
-                    min_value_y: Some(-1.0),
-                    max_value_y: Some(1.0),
                 }),
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Prevent Unsafe Settings",
+                description: "Stop computation and throw error if the calculation may be too slow.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                The analysis may be slow, therefore it is by default off.",
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -168,7 +174,10 @@ impl Func for FuncVoxelNoise {
         let noise_scale = args[3].unwrap_float() as f64;
         let time_offset = args[4].unwrap_float() as f64;
         let volume_range_raw = args[5].unwrap_float2();
-        let analyze = args[6].unwrap_boolean();
+        let error_if_large = args[6].unwrap_boolean();
+        let analyze_bbox = args[7].unwrap_boolean();
+        let analyze_mesh = args[8].unwrap_boolean();
+
         let meshing_range = (volume_range_raw[0] as f64)..=(volume_range_raw[1] as f64);
 
         if voxel_dimensions
@@ -181,6 +190,34 @@ impl Func for FuncVoxelNoise {
         }
 
         let bbox = BoundingBox::new(&block_start, &block_end);
+
+        let bbox_diagonal = bbox.diagonal();
+        let voxel_count = (bbox_diagonal.x / voxel_dimensions[0]).ceil() as u32
+            * (bbox_diagonal.y / voxel_dimensions[1]).ceil() as u32
+            * (bbox_diagonal.z / voxel_dimensions[2]).ceil() as u32;
+
+        log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
+
+        if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
+            let vy_over_vx = voxel_dimensions[1] / voxel_dimensions[0];
+            let vz_over_vx = voxel_dimensions[2] / voxel_dimensions[0];
+            let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
+                / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
+                .cbrt();
+            let vy = vx * vy_over_vx;
+            let vz = vx * vz_over_vx;
+
+            // The equation doesn't take rounding into consideration, hence the
+            // arbitrary multiplication by 1.1.
+            let error = FuncError::new(FuncVoxelNoiseError::TooManyVoxels(
+                VOXEL_COUNT_THRESHOLD,
+                vx * 1.1,
+                vy * 1.1,
+                vz * 1.1,
+            ));
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
 
         let mut scalar_field: ScalarField<f64> =
             ScalarField::from_cartesian_bounding_box(&bbox, &Vector3::from(voxel_dimensions));
@@ -212,7 +249,10 @@ impl Func for FuncVoxelNoise {
 
         match scalar_field.to_mesh(&meshing_range) {
             Some(value) => {
-                if analyze {
+                if analyze_bbox {
+                    analytics::report_bounding_box_analysis(&value, log);
+                }
+                if analyze_mesh {
                     analytics::report_mesh_analysis(&value, log);
                 }
                 Ok(Value::Mesh(Arc::new(value)))
