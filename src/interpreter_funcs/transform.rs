@@ -86,7 +86,15 @@ impl Func for FuncTransform {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
                               The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
@@ -113,7 +121,8 @@ impl Func for FuncTransform {
         let scale = Vector3::from(args[3].unwrap_float3());
         let transform_around_local_center = args[4].unwrap_boolean();
 
-        let analyze = args[5].unwrap_boolean();
+        let analyze_bbox = args[5].unwrap_boolean();
+        let analyze_mesh = args[6].unwrap_boolean();
 
         let user_rotation = Rotation::from_euler_angles(
             rotate[0].to_radians(),
@@ -164,7 +173,10 @@ impl Func for FuncTransform {
             )
         };
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
 

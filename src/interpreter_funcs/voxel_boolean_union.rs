@@ -6,16 +6,20 @@ use std::sync::Arc;
 use nalgebra::Vector3;
 
 use crate::analytics;
+use crate::bounding_box::BoundingBox;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::voxel_cloud::VoxelCloud;
 
+const VOXEL_COUNT_THRESHOLD: u32 = 50000;
+
 #[derive(Debug, PartialEq)]
 pub enum FuncBooleanUnionError {
     WeldFailed,
     EmptyVoxelCloud,
+    TooManyVoxels(u32, f32, f32, f32),
 }
 
 impl fmt::Display for FuncBooleanUnionError {
@@ -28,6 +32,11 @@ impl fmt::Display for FuncBooleanUnionError {
             FuncBooleanUnionError::EmptyVoxelCloud => write!(
                 f,
                 "A voxel cloud from input meshes or the resulting mesh is empty"
+            ),
+            FuncBooleanUnionError::TooManyVoxels(max_count, x, y, z) => write!(
+                f,
+                "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
+                max_count, x, y, z
             ),
         }
     }
@@ -124,9 +133,25 @@ impl Func for FuncBooleanUnion {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Prevent Unsafe Settings",
+                description: "Stop computation and throw error if the calculation may be too slow.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                The analysis may be slow, therefore it is by default off.",
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -149,7 +174,41 @@ impl Func for FuncBooleanUnion {
         let voxel_dimensions = args[2].unwrap_float3();
         let growth_iterations = args[3].unwrap_uint();
         let fill = args[4].unwrap_boolean();
-        let analyze = args[5].unwrap_boolean();
+        let error_if_large = args[5].unwrap_boolean();
+        let analyze_bbox = args[6].unwrap_boolean();
+        let analyze_mesh = args[7].unwrap_boolean();
+
+        let bbox1 = mesh1.bounding_box();
+        let bbox2 = mesh2.bounding_box();
+        let bbox =
+            BoundingBox::union([bbox1, bbox2].iter().copied()).expect("Failed to create union box");
+        let bbox_diagonal = bbox.diagonal();
+        let voxel_count = (bbox_diagonal.x / voxel_dimensions[0]).ceil() as u32
+            * (bbox_diagonal.y / voxel_dimensions[1]).ceil() as u32
+            * (bbox_diagonal.z / voxel_dimensions[2]).ceil() as u32;
+
+        log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
+
+        if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
+            let vy_over_vx = voxel_dimensions[1] / voxel_dimensions[0];
+            let vz_over_vx = voxel_dimensions[2] / voxel_dimensions[0];
+            let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
+                / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
+                .cbrt();
+            let vy = vx * vy_over_vx;
+            let vz = vx * vz_over_vx;
+
+            // The equation doesn't take rounding into consideration, hence the
+            // arbitrary multiplication by 1.1.
+            let error = FuncError::new(FuncBooleanUnionError::TooManyVoxels(
+                VOXEL_COUNT_THRESHOLD,
+                vx * 1.1,
+                vy * 1.1,
+                vz * 1.1,
+            ));
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
 
         let mut voxel_cloud1 = VoxelCloud::from_mesh(mesh1, &Vector3::from(voxel_dimensions));
         let mut voxel_cloud2 = VoxelCloud::from_mesh(mesh2, &Vector3::from(voxel_dimensions));
@@ -173,7 +232,10 @@ impl Func for FuncBooleanUnion {
 
         match voxel_cloud1.to_mesh() {
             Some(value) => {
-                if analyze {
+                if analyze_bbox {
+                    analytics::report_bounding_box_analysis(&value, log);
+                }
+                if analyze_mesh {
                     analytics::report_mesh_analysis(&value, log);
                 }
                 Ok(Value::Mesh(Arc::new(value)))
