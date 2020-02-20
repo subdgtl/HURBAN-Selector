@@ -71,6 +71,14 @@ pub struct MenuStatus {
     pub reset_viewport: bool,
     pub save_path: Option<String>,
     pub open_path: Option<String>,
+    pub show_prevent_override_modal: bool,
+}
+
+pub enum SaveModalResult {
+    Save,
+    DontSave,
+    Cancel,
+    Nothing,
 }
 
 /// Thin wrapper around imgui and its winit platform. Its main responsibilty
@@ -457,13 +465,14 @@ impl<'a> UiFrame<'a> {
         &self,
         screenshot_modal_open: &mut bool,
         draw_mode: &mut DrawMeshMode,
-        project_path: Option<&str>,
+        project_status: &mut project::ProjectStatus,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
         let mut status = MenuStatus {
             reset_viewport: false,
             save_path: None,
             open_path: None,
+            show_prevent_override_modal: false,
         };
 
         const UTILITIES_WINDOW_WIDTH: f32 = 150.0;
@@ -513,7 +522,7 @@ impl<'a> UiFrame<'a> {
                 let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
                 if ui.button(imgui::im_str!("Save project"), [-f32::MIN_POSITIVE, 0.0]) {
-                    match project_path {
+                    match project_status.path.clone() {
                         Some(project_path_str) => {
                             status.save_path = Some(project_path_str.to_string())
                         }
@@ -544,14 +553,23 @@ impl<'a> UiFrame<'a> {
                     }
                 }
 
-                if ui.button(imgui::im_str!("Open project"), [-f32::MIN_POSITIVE, 0.0]) {
-                    if let Some(path) = tinyfiledialogs::open_file_dialog(
+                if ui.button(imgui::im_str!("Open project"), [-f32::MIN_POSITIVE, 0.0])
+                    || project_status.open_requested
+                {
+                    if project_status.changed_since_last_save
+                        && project_status.prevent_overwrite_status.is_none()
+                    {
+                        status.show_prevent_override_modal = true;
+                    } else if let Some(path) = tinyfiledialogs::open_file_dialog(
                         "Open project",
                         "",
                         Some((ext_filter, ext_description)),
                     ) {
                         status.open_path = Some(path);
                     }
+
+                    project_status.prevent_overwrite_status = None;
+                    project_status.open_requested = false;
                 }
 
                 regular_font_token.pop(ui);
@@ -584,6 +602,50 @@ impl<'a> UiFrame<'a> {
             });
 
         modal_closed
+    }
+
+    pub fn draw_prevent_overwrite_modal(&self) -> SaveModalResult {
+        let ui = &self.imgui_ui;
+        let mut save_modal_result = SaveModalResult::Nothing;
+
+        ui.open_popup(imgui::im_str!("Unsaved changes"));
+        ui.popup_modal(imgui::im_str!("Unsaved changes"))
+            .resizable(false)
+            .build(|| {
+                ui.text("Your changes will be lost if you don't save them.");
+
+                if ui.button(imgui::im_str!("Don't save"), [0.0, 0.0]) {
+                    save_modal_result = SaveModalResult::DontSave;
+
+                    ui.close_current_popup();
+                }
+
+                if ui.button(imgui::im_str!("Cancel"), [0.0, 0.0]) {
+                    save_modal_result = SaveModalResult::Cancel;
+
+                    ui.close_current_popup();
+                }
+
+                if ui.button(imgui::im_str!("Save"), [0.0, 0.0]) {
+                    save_modal_result = SaveModalResult::Save;
+
+                    ui.close_current_popup();
+                }
+            });
+
+        save_modal_result
+    }
+
+    pub fn draw_save_dialog(&self) -> Option<String> {
+        let ext_description = &format!("HURBAN Selector project (.{})", project::PROJECT_EXTENSION);
+        let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
+
+        tinyfiledialogs::save_file_dialog_with_filter(
+            "Save project",
+            &format!("new_project.{}", project::PROJECT_EXTENSION),
+            ext_filter,
+            ext_description,
+        )
     }
 
     // FIXME: @Refactoring Refactor this once we have full-featured

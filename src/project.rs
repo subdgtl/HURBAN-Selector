@@ -12,6 +12,28 @@ use crate::interpreter::ast;
 pub const PROJECT_EXTENSION: &str = "hurban";
 
 #[derive(Debug, Clone)]
+pub enum NextAction {
+    Exit,
+    OpenProject,
+}
+
+#[derive(Debug, Default)]
+pub struct ProjectStatus {
+    pub path: Option<String>,
+    pub error: Option<ProjectError>,
+    pub open_requested: bool,
+    pub changed_since_last_save: bool,
+    pub prevent_overwrite_status: Option<NextAction>,
+}
+
+impl ProjectStatus {
+    pub fn save(&mut self, path: &str) {
+        self.path = Some(path.to_string());
+        self.changed_since_last_save = false;
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum ProjectError {
     SerializingError(ron::ser::Error),
     DeserializingError(ron::de::Error),

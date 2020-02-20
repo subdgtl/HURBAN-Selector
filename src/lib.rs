@@ -21,11 +21,12 @@ use crate::interpreter::{Value, VarIdent};
 use crate::mesh::Mesh;
 use crate::notifications::{NotificationLevel, Notifications};
 use crate::plane::Plane;
+use crate::project::ProjectStatus;
 use crate::renderer::{
     DirectionalLight, DrawMeshMode, GpuMesh, GpuMeshHandle, Options as RendererOptions, Renderer,
 };
 use crate::session::{PollNotification, Session};
-use crate::ui::{ScreenshotOptions, Ui};
+use crate::ui::{SaveModalResult, ScreenshotOptions, Ui};
 
 pub mod geometry;
 pub mod importer;
@@ -184,11 +185,9 @@ pub fn init_and_run(options: Options) -> ! {
 
     let mut ui = Ui::new(&window, options.theme);
 
-    let mut project_path: Option<String> = None;
-    let mut project_error: Option<project::ProjectError> = None;
-    let mut changed_since_last_save = true;
+    let mut project_status = project::ProjectStatus::default();
 
-    change_window_title(&window, &project_path, changed_since_last_save);
+    change_window_title(&window, &project_status);
 
     let mut camera = Camera::new(
         initial_window_aspect_ratio,
@@ -319,10 +318,15 @@ pub fn init_and_run(options: Options) -> ! {
                 let menu_status = ui_frame.draw_menu_window(
                     &mut screenshot_modal_open,
                     &mut renderer_draw_mesh_mode,
-                    project_path.as_ref().map(|p| p.as_str()),
+                    &mut project_status,
                 );
                 let reset_viewport =
                     input_state.camera_reset_viewport || menu_status.reset_viewport;
+
+                if menu_status.show_prevent_override_modal {
+                    project_status.prevent_overwrite_status =
+                        Some(crate::project::NextAction::OpenProject);
+                }
 
                 if let Some(save_path) = menu_status.save_path {
                     log::info!("Saving project at {}", save_path);
@@ -332,14 +336,13 @@ pub fn init_and_run(options: Options) -> ! {
 
                     match project::save(&save_path, project) {
                         Ok(_) => {
-                            project_path = Some(save_path);
-                            changed_since_last_save = false;
+                            project_status.save(&save_path);
 
-                            change_window_title(&window, &project_path, changed_since_last_save);
+                            change_window_title(&window, &project_status);
                         }
                         Err(err) => {
                             log::error!("{}", err);
-                            project_error = Some(err);
+                            project_status.error = Some(err);
                         }
                     }
                 }
@@ -381,17 +384,19 @@ pub fn init_and_run(options: Options) -> ! {
                                 session.push_prog_stmt(time, stmt);
                             }
 
-                            project_path = Some(open_path);
+                            project_status.path = Some(open_path);
                         }
                         Err(err) => {
                             log::error!("{}", err);
-                            project_error = Some(err);
+                            project_status.error = Some(err);
                         }
                     };
                 }
 
-                if project_error.is_some() && ui_frame.draw_error_modal(&project_error) {
-                    project_error = None;
+                if project_status.error.is_some()
+                    && ui_frame.draw_error_modal(&project_status.error)
+                {
+                    project_status.error = None;
                 }
 
                 let window_size = window.inner_size().to_physical(window.hidpi_factor());
@@ -404,15 +409,64 @@ pub fn init_and_run(options: Options) -> ! {
                 ui_frame.draw_notifications_window(&notifications.borrow());
 
                 if ui_frame.draw_pipeline_window(time, &mut session) {
-                    changed_since_last_save = true;
+                    project_status.changed_since_last_save = true;
 
-                    change_window_title(&window, &project_path, changed_since_last_save);
+                    change_window_title(&window, &project_status);
                 }
 
                 if ui_frame.draw_operations_window(time, &mut session, DURATION_AUTORUN_DELAY) {
-                    changed_since_last_save = true;
+                    project_status.changed_since_last_save = true;
 
-                    change_window_title(&window, &project_path, changed_since_last_save);
+                    change_window_title(&window, &project_status);
+                }
+
+                if let Some(prevent_override_status2) =
+                    project_status.prevent_overwrite_status.clone()
+                {
+                    match ui_frame.draw_prevent_overwrite_modal() {
+                        SaveModalResult::Cancel => {
+                            project_status.prevent_overwrite_status = None;
+                        }
+                        SaveModalResult::DontSave => match prevent_override_status2 {
+                            project::NextAction::Exit => {
+                                *control_flow = winit::event_loop::ControlFlow::Exit
+                            }
+                            project::NextAction::OpenProject => {
+                                project_status.open_requested = true
+                            }
+                        },
+                        SaveModalResult::Save => {
+                            let save_path = match project_status.path.clone() {
+                                Some(project_path) => Some(project_path),
+                                None => ui_frame.draw_save_dialog(),
+                            };
+
+                            if let Some(save_path) = save_path {
+                                let stmts = session.stmts().to_vec();
+                                let project = project::Project { version: 1, stmts };
+
+                                match project::save(&save_path, project) {
+                                    Ok(_) => match prevent_override_status2 {
+                                        project::NextAction::Exit => {
+                                            *control_flow = winit::event_loop::ControlFlow::Exit
+                                        }
+                                        project::NextAction::OpenProject => {
+                                            project_status.save(&save_path);
+                                            project_status.open_requested = true
+                                        }
+                                    },
+                                    Err(err) => {
+                                        log::error!("{}", err);
+
+                                        project_status.error = Some(err);
+                                    }
+                                }
+                            }
+
+                            project_status.prevent_overwrite_status = None;
+                        }
+                        SaveModalResult::Nothing => {}
+                    }
                 }
 
                 if reset_viewport {
@@ -430,7 +484,11 @@ pub fn init_and_run(options: Options) -> ! {
                 };
 
                 if input_state.close_requested {
-                    *control_flow = winit::event_loop::ControlFlow::Exit;
+                    if project_status.changed_since_last_save {
+                        project_status.prevent_overwrite_status = Some(project::NextAction::Exit);
+                    } else {
+                        *control_flow = winit::event_loop::ControlFlow::Exit;
+                    }
                 }
 
                 if let Some(logical_size) = input_state.window_resized {
@@ -881,14 +939,10 @@ fn compute_ground_plane_mesh(scene_bounding_box: &BoundingBox<f32>) -> Mesh {
     )
 }
 
-fn change_window_title(
-    window: &winit::window::Window,
-    project_path: &Option<String>,
-    changed_since_last_save: bool,
-) {
+fn change_window_title(window: &winit::window::Window, project_status: &ProjectStatus) {
     use std::path::Path;
 
-    let filename = match project_path {
+    let filename = match &project_status.path {
         Some(project_path) => Path::new(project_path)
             .file_name()
             .expect("Failed to parse file name of the project.")
@@ -896,7 +950,7 @@ fn change_window_title(
             .expect("Project file name isn't valid UTF-8."),
         None => "unsaved project",
     };
-    let title = if changed_since_last_save {
+    let title = if project_status.changed_since_last_save {
         format!("{} - *{}", BASE_WINDOW_TITLE, filename)
     } else {
         format!("{} - {}", BASE_WINDOW_TITLE, filename)
