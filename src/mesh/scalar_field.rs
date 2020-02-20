@@ -479,7 +479,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     {
         self.voxels
             .iter()
-            .any(|voxel| is_voxel_within_closed_range(voxel, volume_value_range))
+            .any(|voxel| is_voxel_within_range(voxel, volume_value_range))
     }
 
     /// Computes boolean intersection (logical AND operation) of the current and
@@ -542,7 +542,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                         &other.voxel_dimensions,
                     );
 
-                    if !other.is_value_at_absolute_voxel_coordinate_within_closed_range(
+                    if !other.is_value_at_absolute_voxel_coordinate_within_range(
                         &absolute_coordinate_other,
                         volume_value_range_other,
                     ) {
@@ -622,7 +622,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
                 // If the current scalar field doesn't contain a volume voxel at
                 // the current position
-                if !is_voxel_within_closed_range(voxel, volume_value_range_self) {
+                if !is_voxel_within_range(voxel, volume_value_range_self) {
                     let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                         one_dimensional,
                         &self.block_start,
@@ -692,7 +692,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
             // If the current scalar field contains a volume voxel at the
             // current position
-            if is_voxel_within_closed_range(voxel, volume_value_range_self) {
+            if is_voxel_within_range(voxel, volume_value_range_self) {
                 let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                     one_dimensional,
                     &self.block_start,
@@ -705,7 +705,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                     &other.voxel_dimensions,
                 );
                 // and so does the other scalar field
-                if other.is_value_at_absolute_voxel_coordinate_within_closed_range(
+                if other.is_value_at_absolute_voxel_coordinate_within_range(
                     &absolute_coordinate_other,
                     volume_value_range_other,
                 ) {
@@ -717,11 +717,11 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         self.shrink_to_fit(volume_value_range_self)
     }
 
-    /// Computes interpolated values of two scalar fields. The current scalar
-    /// field will be mutated and resized to encompass values from both scalar
-    /// fields. The two scalar fields do not have to contain voxels of the same
-    /// size. Prior to interpolation, the scalar fields will be recomputed to
-    /// distance fields. The interpolation is linear.
+    /// Computes interpolated values of two scalar fields. Prior to
+    /// interpolation, the scalar fields will be recomputed to distance fields.
+    /// The current scalar field will be mutated and resized to encompass values
+    /// from both scalar fields. The two scalar fields do not have to contain
+    /// voxels of the same size.  The interpolation is linear.
     ///
     /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
     /// between the current value to the other value.
@@ -849,7 +849,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     /// treat (perform boolean operations or materialize into mesh) on various
     /// numerical ranges. Such range is specified ad-hoc by parameter
     /// `volume_value_range`.
-    pub fn is_value_at_absolute_voxel_coordinate_within_closed_range<U>(
+    pub fn is_value_at_absolute_voxel_coordinate_within_range<U>(
         &self,
         absolute_coordinate: &Point3<i32>,
         volume_value_range: &U,
@@ -857,7 +857,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     where
         U: RangeBounds<T>,
     {
-        is_voxel_within_closed_range(
+        is_voxel_within_range(
             &self.value_at_absolute_voxel_coordinate(absolute_coordinate),
             volume_value_range,
         )
@@ -868,8 +868,6 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     ///
     /// # Panics
     /// Panics if absolute coordinate out of bounds
-    // FIXME: Consider growing the scalar field to contain
-    // the newly added voxel
     pub fn set_value_at_absolute_voxel_coordinate(
         &mut self,
         absolute_coordinate: &Point3<i32>,
@@ -895,53 +893,54 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     /// Resize the scalar field block to match new block start and block
     /// dimensions.
     ///
-    /// This clips the outstanding parts of the original scalar field.
+    /// This clips the outstanding parts of the original scalar field and fills
+    /// the newly added parts with None (no voxel).
     pub fn resize(
         &mut self,
         resized_block_start: &Point3<i32>,
         resized_block_dimensions: &Vector3<u32>,
     ) {
         // Don't resize if the scalar field dimensions haven't changed.
-        if resized_block_start != &self.block_start
-            || resized_block_dimensions != &self.block_dimensions
+        if resized_block_start == &self.block_start
+            || resized_block_dimensions == &self.block_dimensions
         {
-            // Short cut if resizing to an empty scalar field.
-            if resized_block_dimensions == &Vector3::zeros() {
-                self.wipe();
-                return;
-            }
+            return;
+        }
 
-            let original_values = self.voxels.clone();
-            let original_block_start = self.block_start;
-            let original_block_dimensions = self.block_dimensions;
+        // Wipe if resizing to an empty scalar field.
+        if resized_block_dimensions == &Vector3::zeros() {
+            self.wipe();
+            return;
+        }
 
-            self.block_start = *resized_block_start;
-            self.block_dimensions = *resized_block_dimensions;
+        let original_values = self.voxels.clone();
+        let original_block_start = self.block_start;
+        let original_block_dimensions = self.block_dimensions;
 
-            let resized_values_len = cast_usize(
-                resized_block_dimensions.x
-                    * resized_block_dimensions.y
-                    * resized_block_dimensions.z,
+        self.block_start = *resized_block_start;
+        self.block_dimensions = *resized_block_dimensions;
+
+        let resized_values_len = cast_usize(
+            resized_block_dimensions.x * resized_block_dimensions.y * resized_block_dimensions.z,
+        );
+
+        self.voxels.resize(resized_values_len, None);
+
+        for (resized_one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                resized_one_dimensional,
+                resized_block_start,
+                resized_block_dimensions,
             );
 
-            self.voxels.resize(resized_values_len, None);
-
-            for resized_index in 0..self.voxels.len() {
-                let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
-                    resized_index,
-                    resized_block_start,
-                    resized_block_dimensions,
-                );
-
-                self.voxels[resized_index] = match absolute_voxel_to_one_dimensional_coordinate(
-                    &absolute_coordinate,
-                    &original_block_start,
-                    &original_block_dimensions,
-                ) {
-                    Some(original_index) => original_values[original_index],
-                    _ => None,
-                }
-            }
+            *voxel = match absolute_voxel_to_one_dimensional_coordinate(
+                &absolute_coordinate,
+                &original_block_start,
+                &original_block_dimensions,
+            ) {
+                Some(original_one_dimensional) => original_values[original_one_dimensional],
+                None => None,
+            };
         }
     }
 
@@ -958,7 +957,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     }
 
     /// Resize the current scalar field to match the input bounding box in
-    /// voxel-space units
+    /// cartesian units
     pub fn resize_to_cartesian_bounding_box(&mut self, bounding_box: &BoundingBox<f32>) {
         let minimum_point = cartesian_to_absolute_voxel_coordinate(
             &bounding_box.minimum_point(),
@@ -1003,11 +1002,12 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     }
 
     /// Computes a simple triangulated welded mesh from the current state of the
-    /// scalar field.
+    /// scalar field. The mesh will be made of orthogonal voxels.
     ///
-    /// For watertight meshes this creates both, outer and inner boundary mesh.
-    /// There is also a high risk of generating a non-manifold mesh if some
-    /// voxels touch only diagonally.
+    /// For watertight volumetric geometry (i.e. from a watertight source mesh)
+    /// this creates both, outer and inner boundary mesh. There is also a high
+    /// risk of generating a non-manifold mesh if some voxels touch only
+    /// diagonally.
     ///
     /// The `volume_value_range` is an interval defining which values of the
     /// scalar field should be considered to be a volume. The
@@ -1115,7 +1115,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         // Iterate through the scalar field
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
             // If the current voxel is a volume voxel
-            if is_voxel_within_closed_range(voxel, volume_value_range) {
+            if is_voxel_within_range(voxel, volume_value_range) {
                 let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                     one_dimensional,
                     &self.block_start,
@@ -1138,7 +1138,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                     // If the neighbor voxel is not within the volume range,
                     // the boundary side of the voxel box should be
                     // materialized.
-                    if !is_voxel_within_closed_range(&neighbor_voxel, volume_value_range) {
+                    if !is_voxel_within_range(&neighbor_voxel, volume_value_range) {
                         // Add a rectangle
                         plane_meshes.push(primitive::create_mesh_plane(
                             Plane::from_origin_and_plane(
@@ -1167,11 +1167,21 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
+    /// Compute bounding box from scalar field. The bounding box will contain
+    /// the entire block of the voxel space described by the current scalar
+    /// field, regardless if it contains any voxels.
+    ///
+    /// The Bounding box will be defined in voxel units.
     #[allow(dead_code)]
     pub fn bounding_box(&self) -> BoundingBox<i32> {
         BoundingBox::new(&self.block_start, &self.block_end())
     }
 
+    /// Compute bounding box from scalar field. The bounding box will contain
+    /// the entire block of the voxel space described by the current scalar
+    /// field, regardless if it contains any voxels.
+    ///
+    /// The Bounding box will be defined in cartesian units.
     pub fn bounding_box_cartesian(&self) -> BoundingBox<f32> {
         let block_start_cartesian = Point3::new(
             self.block_start.x as f32 * self.voxel_dimensions.x,
@@ -1188,7 +1198,9 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     }
 
     /// Returns the bounding box of the mesh produced by `ScalarField::to_mesh`
-    /// for this scalar field in world space cartesian units.
+    /// for the current scalar field.
+    ///
+    /// The Bounding box will be defined in cartesian units.
     ///
     /// The `volume_value_range` is an interval defining which values of the
     /// scalar field should be considered to be a volume. The
@@ -1264,7 +1276,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     /// Compute discrete distance field. Each voxel will be set a value equal to
     /// its distance from the original volume. The voxels that were originally
     /// volume voxels, will be set to value 0. Voxels inside the closed volumes
-    /// will have a value with a negative sign.
+    /// will have the distance value with a negative sign.
     ///
     /// The `volume_value_range` is an interval defining which values of the
     /// scalar field should be considered to be a volume. The
@@ -1310,7 +1322,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             );
 
             // If the voxel is void
-            if !is_voxel_within_closed_range(voxel, volume_value_range) {
+            if !is_voxel_within_range(voxel, volume_value_range) {
                 // If any of these is true, the coordinate is at the boundary of the
                 // scalar field block
                 if relative_coordinate.x == 0
@@ -1348,7 +1360,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             for neighbor_offset in &neighbor_offsets {
                 let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
                 // If the neighbor doesn't contain any volume
-                if !self.is_value_at_absolute_voxel_coordinate_within_closed_range(
+                if !self.is_value_at_absolute_voxel_coordinate_within_range(
                     &neighbor_absolute_coordinate,
                     volume_value_range,
                 ) {
@@ -1394,7 +1406,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                 ) {
                     // and hasn't been discovered yet and is void,
                     if !discovered_for_distance_field[one_dimensional_neighbor]
-                        && !self.is_value_at_absolute_voxel_coordinate_within_closed_range(
+                        && !self.is_value_at_absolute_voxel_coordinate_within_range(
                             &neighbor_absolute_coordinate,
                             volume_value_range,
                         )
@@ -1420,7 +1432,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     }
 
     /// Computes boundaries of volumes contained in scalar field. Returns tuple
-    /// (block_start, block_dimensions). For empty scalar fields returns the
+    /// `(block_start, block_dimensions)`. For empty scalar fields returns the
     /// original block start and zero block dimensions.
     ///
     /// The `volume_value_range` is an interval defining which values of the
@@ -1446,7 +1458,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         let mut absolute_max: Point3<i32> =
             Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
-            if is_voxel_within_closed_range(voxel, volume_value_range) {
+            if is_voxel_within_range(voxel, volume_value_range) {
                 let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                     one_dimensional,
                     &self.block_start,
@@ -1514,26 +1526,16 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     }
 }
 
-/// Returns true if the value of a voxel is within given range.
-///
-/// The `volume_value_range` is an interval defining which values of the
-/// scalar field should be considered to be a volume. The
-/// `ScalarField::from_mesh` generates a scalar field, which marks volume
-/// voxels with value `0`. `compute_distance_field` marks each voxel with a
-/// value representing the voxel's distance from the original volume,
-/// therefore the voxels right at the shell of the volume are marked 0, the
-/// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-/// the scalar field is populated with meaningful values, it is possible to
-/// treat (perform boolean operations or materialize into mesh) on various
-/// numerical ranges. Such range is specified ad-hoc by parameter
-/// `volume_value_range`.
-fn is_voxel_within_closed_range<T, U>(voxel: &Option<T>, volume_value_range: &U) -> bool
+/// Returns true if the value of a voxel is within given value range. Returns
+/// `false` if the voxel value is not within the `value_range` or if the voxel
+/// does not exist or is out of scalar field's bounds.
+fn is_voxel_within_range<T, U>(voxel: &Option<T>, value_range: &U) -> bool
 where
     T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + ToPrimitive,
     U: RangeBounds<T>,
 {
     match voxel {
-        Some(value) => volume_value_range.contains(value),
+        Some(value) => value_range.contains(value),
         None => false,
     }
 }
