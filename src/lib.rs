@@ -385,6 +385,9 @@ pub fn init_and_run(options: Options) -> ! {
                             }
 
                             project_status.path = Some(open_path);
+                            project_status.changed_since_last_save = false;
+
+                            change_window_title(&window, &project_status);
                         }
                         Err(err) => {
                             log::error!("{}", err);
