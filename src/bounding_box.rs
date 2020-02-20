@@ -14,7 +14,7 @@ where
     maximum_point: Point3<T>,
 }
 
-impl<T: Bounded + Num + Scalar + PartialOrd> BoundingBox<T> {
+impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
     /// Creates a new bounding box. The two input points will be deconstructed
     /// and a new couple of points will be created: minimum point with minimum
     /// values of x, y, z and maximum point with maximum values of x, y, z. The

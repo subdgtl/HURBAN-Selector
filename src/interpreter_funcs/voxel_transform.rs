@@ -14,11 +14,14 @@ use crate::interpreter::{
 };
 use crate::mesh::scalar_field::ScalarField;
 
+const VOXEL_COUNT_THRESHOLD: u32 = 50000;
+
 #[derive(Debug, PartialEq)]
 pub enum FuncVoxelTransformError {
     WeldFailed,
     TransformFailed,
     VoxelDimensionZero,
+    TooManyVoxels(u32, f32, f32, f32),
 }
 
 impl fmt::Display for FuncVoxelTransformError {
@@ -34,6 +37,11 @@ impl fmt::Display for FuncVoxelTransformError {
             FuncVoxelTransformError::VoxelDimensionZero => {
                 write!(f, "Voxel dimension is not larger than zero")
             }
+            FuncVoxelTransformError::TooManyVoxels(max_count, x, y, z) => write!(
+                f,
+                "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
+                max_count, x, y, z
+            ),
         }
     }
 }
@@ -125,15 +133,11 @@ impl Func for FuncVoxelTransform {
                 name: "Move",
                 description: "Translation (movement) in X, Y and Z direction.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
-                    default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
+                    min_value: None,
+                    max_value: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
+                    default_value_x: Some(0.0),
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -141,15 +145,11 @@ impl Func for FuncVoxelTransform {
                 name: "Rotate (deg)",
                 description: "Rotation around the X, Y and Z axis in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -157,22 +157,34 @@ impl Func for FuncVoxelTransform {
                 name: "Scale",
                 description: "Relative scaling factors for the world X, Y and Z axis.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(1.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(1.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Prevent Unsafe Settings",
+                description: "Stop computation and throw error if the calculation may be too slow.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                The analysis may be slow, therefore it is by default off.",
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -198,7 +210,9 @@ impl Func for FuncVoxelTransform {
         let translate = Vector3::from(args[4].unwrap_float3());
         let rotate = args[5].unwrap_float3();
         let scale = args[6].unwrap_float3();
-        let analyze = args[7].unwrap_boolean();
+        let error_if_large = args[7].unwrap_boolean();
+        let analyze_bbox = args[8].unwrap_boolean();
+        let analyze_mesh = args[9].unwrap_boolean();
 
         if voxel_dimension <= 0.0 {
             return {
@@ -206,6 +220,34 @@ impl Func for FuncVoxelTransform {
                 log(LogMessage::error(format!("Error: {}", error)));
                 Err(error)
             };
+        }
+
+        let bbox_diagonal = mesh.bounding_box().diagonal();
+        let voxel_count = (bbox_diagonal.x / voxel_dimension).ceil() as u32
+            * (bbox_diagonal.y / voxel_dimension).ceil() as u32
+            * (bbox_diagonal.z / voxel_dimension).ceil() as u32;
+
+        log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
+
+        if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
+            let vy_over_vx = voxel_dimension / voxel_dimension;
+            let vz_over_vx = voxel_dimension / voxel_dimension;
+            let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
+                / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
+                .cbrt();
+            let vy = vx * vy_over_vx;
+            let vz = vx * vz_over_vx;
+
+            // The equation doesn't take rounding into consideration, hence the
+            // arbitrary multiplication by 1.1.
+            let error = FuncError::new(FuncVoxelTransformError::TooManyVoxels(
+                VOXEL_COUNT_THRESHOLD,
+                vx * 1.1,
+                vy * 1.1,
+                vz * 1.1,
+            ));
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         let mut scalar_field = ScalarField::from_mesh(
@@ -241,7 +283,10 @@ impl Func for FuncVoxelTransform {
 
             match transformed_sf.to_mesh(&meshing_range) {
                 Some(value) => {
-                    if analyze {
+                    if analyze_bbox {
+                        analytics::report_bounding_box_analysis(&value, log);
+                    }
+                    if analyze_mesh {
                         analytics::report_mesh_analysis(&value, log);
                     }
                     Ok(Value::Mesh(Arc::new(value)))

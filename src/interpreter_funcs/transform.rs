@@ -44,15 +44,11 @@ impl Func for FuncTransform {
                 name: "Move",
                 description: "Translation (movement) in X, Y and Z direction.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -60,15 +56,11 @@ impl Func for FuncTransform {
                 name: "Rotate (deg)",
                 description: "Rotation around the X, Y and Z axis in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -76,15 +68,11 @@ impl Func for FuncTransform {
                 name: "Scale",
                 description: "Relative scaling factors for the world X, Y and Z axis.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(1.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(1.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
@@ -98,7 +86,15 @@ impl Func for FuncTransform {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
                               The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
@@ -125,7 +121,8 @@ impl Func for FuncTransform {
         let scale = Vector3::from(args[3].unwrap_float3());
         let transform_around_local_center = args[4].unwrap_boolean();
 
-        let analyze = args[5].unwrap_boolean();
+        let analyze_bbox = args[5].unwrap_boolean();
+        let analyze_mesh = args[6].unwrap_boolean();
 
         let user_rotation = Rotation::from_euler_angles(
             rotate[0].to_radians(),
@@ -176,7 +173,10 @@ impl Func for FuncTransform {
             )
         };
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
 

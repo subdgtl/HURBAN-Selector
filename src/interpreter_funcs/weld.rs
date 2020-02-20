@@ -67,7 +67,7 @@ impl Func for FuncWeld {
                 name: "Tolerance",
                 description:
                     "Limit distance of two vertices to be welded into one.\n\
-                    \n\
+                     \n\
                      Weld may result in invalid (non-manifold or collapsed) mesh in cases, \
                      when the welding tolerance is too high.",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
@@ -78,14 +78,20 @@ impl Func for FuncWeld {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
-                description: "Reports detailed analytic information on the created mesh.\n\
-                \n\
-                The analysis may be slow but it is crucial to check the validity of welding, \
-                therefore it is by default on and may be turned off only after the correct welding \
-                tolerance has been set.",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
+                description:
+                    "Reports detailed analytic information on the created mesh.\n\
+                     The analysis may be slow but it is crucial to check the validity of welding.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: false,
                 }),
                 optional: false,
             },
@@ -103,10 +109,14 @@ impl Func for FuncWeld {
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let tolerance = args[1].unwrap_float();
-        let analyze = args[2].unwrap_boolean();
+        let analyze_bbox = args[2].unwrap_boolean();
+        let analyze_mesh = args[3].unwrap_boolean();
 
         if let Some(value) = tools::weld(&mesh, tolerance) {
-            if analyze {
+            if analyze_bbox {
+                analytics::report_bounding_box_analysis(&value, log);
+            }
+            if analyze_mesh {
                 analytics::report_mesh_analysis(&value, log);
             }
             Ok(Value::Mesh(Arc::new(value)))
