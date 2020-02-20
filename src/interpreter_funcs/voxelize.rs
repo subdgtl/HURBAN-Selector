@@ -32,9 +32,7 @@ impl fmt::Display for FuncVoxelizeError {
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
             FuncVoxelizeError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
-            FuncVoxelizeError::VoxelDimensionsZero => {
-                write!(f, "One or more voxel dimensions are zero")
-            },
+            FuncVoxelizeError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
             FuncVoxelizeError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",

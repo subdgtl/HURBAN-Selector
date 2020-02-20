@@ -222,7 +222,7 @@ impl Func for FuncInterpolatedUnion {
             (Bound::Included(0), Bound::Included(0))
         };
 
-        scalar_field1.interpolated_union_of_distance_fields(
+        scalar_field1.interpolated_union_of_scalar_fields(
             &boolean_union_range,
             &scalar_field2,
             &boolean_union_range,

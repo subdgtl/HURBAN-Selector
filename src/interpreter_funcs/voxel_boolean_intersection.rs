@@ -31,12 +31,8 @@ impl fmt::Display for FuncBooleanIntersectionError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncBooleanIntersectionError::EmptyScalarField => {
-                write!(f, "The resulting scalar field is empty")
-            }
-            FuncBooleanIntersectionError::VoxelDimensionsZero => {
-                write!(f, "One or more voxel dimensions are zero")
-            }
+            FuncBooleanIntersectionError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
+            FuncBooleanIntersectionError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
             FuncBooleanIntersectionError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",

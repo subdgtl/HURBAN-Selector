@@ -31,12 +31,8 @@ impl fmt::Display for FuncVoxelTransformError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncVoxelTransformError::TransformFailed => {
-                write!(f, "Scalar field transformation failed")
-            }
-            FuncVoxelTransformError::VoxelDimensionZero => {
-                write!(f, "Voxel dimension is not larger than zero")
-            }
+            FuncVoxelTransformError::TransformFailed =>write!(f, "Scalar field transformation failed"),
+            FuncVoxelTransformError::VoxelDimensionZero => write!(f, "Voxel dimension is not larger than zero"),
             FuncVoxelTransformError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",

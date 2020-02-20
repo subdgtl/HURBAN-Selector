@@ -31,12 +31,8 @@ impl fmt::Display for FuncBooleanDifferenceError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncBooleanDifferenceError::EmptyScalarField => {
-                write!(f, "The resulting scalar field is empty")
-            }
-            FuncBooleanDifferenceError::VoxelDimensionsZero => {
-                write!(f, "One or more voxel dimensions are zero")
-            }
+            FuncBooleanDifferenceError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
+            FuncBooleanDifferenceError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
             FuncBooleanDifferenceError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",

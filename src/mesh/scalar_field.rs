@@ -26,12 +26,11 @@ use super::{primitive, tools, Face, Mesh};
 /// certain value range will become mesh boxes.
 ///
 /// The block of voxel space stored in the scalar field is delimited by its
-/// beginning and its dimensions, both in the units of the voxels. All voxels
-/// have the same dimensions, which can be different in each direction. The
-/// voxel space is a discrete grid and can't start half way in a voxel,
-/// therefore its beginning as well as the voxel positions are defined in the
-/// voxel-space coordinates. The voxel space starts at the cartesian space
-/// origin with voxel coordinates 0, 0, 0.
+/// beginning and its dimensions, both defined in discrete voxel units - counts
+/// of voxels in each direction. All voxels in one field have the same
+/// dimensions, which can be different in each direction. The voxel space is a
+/// discrete grid and can't start half way in a voxel. The voxel space starts at
+/// the cartesian space origin with absolute voxel coordinates `[0, 0, 0]`.
 ///
 /// The Scalar field manifests itself as infinite, however an attempt to set a
 /// value outside of the block will cause the program to panic. Reading a value
@@ -49,9 +48,9 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     ScalarField<T>
 {
     /// Define a new empty block of voxel space, which begins at
-    /// `block_start`(in discrete voxel units), has dimensions
+    /// `block_start`(in discrete absolute voxel units), has dimensions
     /// `block_dimensions` (in discrete voxel units) and contains voxels sized
-    /// `voxel_dimensions` (in model space units).
+    /// `voxel_dimensions` (in cartesian model-space units).
     ///
     /// # Panics
     /// Panics if any of the voxel dimensions is below or equal to zero.
@@ -112,10 +111,10 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
 
     /// Creates a scalar field from an existing mesh. The voxels intersecting
     /// the mesh (volume voxels) will be set to `value_on_mesh_surface`, the
-    /// empty voxels (void voxels) will be set to None.
-    /// The `growth_offset` defines how much bigger the scalar field be
-    /// initialized. This is useful if the distance field is about to be
-    /// calculated.
+    /// empty voxels (void voxels) will be set to None. The `growth_offset`
+    /// defines how much bigger the scalar field be when initialized. This is
+    /// useful if the distance field is about to be calculated for purposes of
+    /// voxel growth.
     ///
     /// # Panics
     /// Panics if any of the voxel dimensions is below or equal to zero.
@@ -182,7 +181,8 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                                     &point_b,
                                     &point_c,
                                 );
-                                // and set a voxel containing the point to be on
+                                // and set a voxel containing the point to the
+                                // volume value `value_on_mesh_surface`
                                 let absolute_coordinate = cartesian_to_absolute_voxel_coordinate(
                                     &cartesian,
                                     voxel_dimensions,
@@ -201,6 +201,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         scalar_field
     }
 
+    /// Resamples the source scalar field with voxels of a different size.
     /// Creates a new scalar field with arbitrary voxel dimensions from another
     /// scalar field.
     ///
@@ -230,6 +231,17 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
             "One mor more voxel dimensions is below or equal to zero"
         );
+
+        // If the target scalar field should be identical
+        if approx::relative_eq!(*voxel_dimensions, source_scalar_field.voxel_dimensions) {
+            // return identical copy of self.
+            return Some(ScalarField {
+                block_start: source_scalar_field.block_start,
+                block_dimensions: source_scalar_field.block_dimensions,
+                voxel_dimensions: source_scalar_field.voxel_dimensions,
+                voxels: source_scalar_field.voxels.to_vec(),
+            });
+        }
 
         // Make a bounding box of the source bounding box's mesh volume. This
         // will be the volume to be scanned for any voxels.
@@ -261,9 +273,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                         .value_at_absolute_voxel_coordinate(&absolute_coordinate_source);
                 }
 
-                // FIXME: @Optimization Due to overly safe
-                // mesh_volume_bounding_box_cartesian, the scalar field may be
-                // unnecessarily big. In some cases it might be not easy to
+                // FIXME: @Optimization In some cases it might be not easy to
                 // determine the minimal needed bounding box due to the
                 // differences in the voxel sizes. Leaving the scalar field
                 // bigger should be also considered.
@@ -341,7 +351,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         if let Some(source_sf_bounding_box) =
             source_scalar_field.mesh_volume_bounding_box_cartesian(volume_value_range)
         {
-            // FIXME: Heterogenous voxels (with different with, height and
+            // FIXME: Heterogenous voxels (with different width, height and
             // depth) require non-trivial compensation of final scalar field
             // position after rotating if the volume equilibrium is not at the
             // world origin.
@@ -378,9 +388,11 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             if let Ok(reversed_user_transformation) =
                 compound_transformation.pseudo_inverse(f32::EPSILON)
             {
-                for (one_dimensional, voxel) in target_scalar_field.voxels.iter_mut().enumerate() {
+                for (one_dimensional_target, voxel_target) in
+                    target_scalar_field.voxels.iter_mut().enumerate()
+                {
                     let cartesian_coordinate_target = one_dimensional_to_cartesian_coordinate(
-                        one_dimensional,
+                        one_dimensional_target,
                         &target_scalar_field.block_start,
                         &target_scalar_field.block_dimensions,
                         &target_scalar_field.voxel_dimensions,
@@ -398,7 +410,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                         &transformed_voxel_center_cartesian,
                         &source_scalar_field.voxel_dimensions,
                     );
-                    *voxel = source_scalar_field
+                    *voxel_target = source_scalar_field
                         .value_at_absolute_voxel_coordinate(&absolute_coordinate);
                 }
 
@@ -412,9 +424,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
 
                 target_scalar_field.block_start += voxel_final_translation_vector;
 
-                // FIXME: @Optimization Due to overly safe
-                // mesh_volume_bounding_box_cartesian, the scalar field may be
-                // unnecessarily big. In some cases it might be not easy to
+                // FIXME: @Optimization In some cases it might be not easy to
                 // determine the minimal needed bounding box due to the
                 // differences in the voxel sizes. Leaving the scalar field
                 // bigger should be also considered.
@@ -435,19 +445,12 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     }
 
     /// Returns scalar field block end in absolute voxel coordinates.
-    #[allow(dead_code)]
     fn block_end(&self) -> Point3<i32> {
         Point3::new(
             self.block_start.x + cast_i32(self.block_dimensions.x) - 1,
             self.block_start.y + cast_i32(self.block_dimensions.y) - 1,
             self.block_start.z + cast_i32(self.block_dimensions.z) - 1,
         )
-    }
-
-    /// Returns single voxel dimensions in cartesian units.
-    #[allow(dead_code)]
-    pub fn voxel_dimensions(&self) -> Vector3<f32> {
-        self.voxel_dimensions
     }
 
     /// Checks if the scalar field contains any volume (non-empty) voxel.
@@ -482,7 +485,8 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     /// Computes boolean intersection (logical AND operation) of the current and
     /// another scalar field. The current scalar field will be mutated and
     /// resized to the size and position of an intersection of the two scalar
-    /// fields' volumes.
+    /// fields' volumes. The two scalar fields do not have to contain voxels of
+    /// the same size.
     ///
     /// The `volume_value_range` is an interval defining which values of the
     /// scalar field should be considered to be a volume. The
@@ -552,7 +556,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             }
         }
 
-        // If the two scalar fields don't intersect or one of them is empty,
+        // If the two scalar fields do not intersect or one of them is empty,
         // then wipe the resulting scalar field.
         self.wipe();
     }
@@ -561,7 +565,8 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     /// current scalar field will be mutated and resized to contain both input
     /// scalar fields' volumes. The values from the other scalar field which are
     /// considered a volume, will be remapped to the volume value range of the
-    /// source scalar field.
+    /// source scalar field. The two scalar fields do not have to contain voxels
+    /// of the same size.
     ///
     /// The `volume_value_range` is an interval defining which values of the
     /// scalar field should be considered to be a volume. The
@@ -633,14 +638,14 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                     // cartesian coordinate of the current voxel, then remap the
                     // other value to the volume value range of the current
                     // scalar field and set the voxel to the value.
-                    if let Some(value_other) =
+                    if let Some(voxel_other) =
                         other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
                     {
-                        if volume_value_range_other.contains(&value_other) {
+                        if volume_value_range_other.contains(&voxel_other) {
                             // If the remap fails, the program should panic.
                             *voxel = Some(
                                 math::remap(
-                                    value_other,
+                                    voxel_other,
                                     volume_value_range_other,
                                     volume_value_range_self,
                                 )
@@ -660,8 +665,9 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
 
     /// Computes boolean difference of the current scalar field minus the other
     /// scalar field. The current scalar field will be modified so that voxels,
-    /// that are on in both scalar fields will be turned off, while the rest
-    /// remains intact.
+    /// that are within volume value range in both scalar fields will be set to
+    /// None in the current scalar field, while the rest remains intact. The two
+    /// scalar fields do not have to contain voxels of the same size.
     ///
     /// The `volume_value_range` is an interval defining which values of the
     /// scalar field should be considered to be a volume. The
@@ -711,8 +717,33 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         self.shrink_to_fit(volume_value_range_self)
     }
 
-    /// Perform boolean union while interpolating to the other scalar field.
-    // FIXME: More thorough description
+    /// Computes interpolated values of two scalar fields. The current scalar
+    /// field will be mutated and resized to encompass values from both scalar
+    /// fields. The two scalar fields do not have to contain voxels of the same
+    /// size. Prior to interpolation, the scalar fields will be recomputed to
+    /// distance fields. The interpolation is linear.
+    ///
+    /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
+    /// between the current value to the other value.
+    ///
+    /// The `volume_value_range` is an interval defining which values of the
+    /// scalar field should be considered to be a volume. The
+    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
+    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
+    /// value representing the voxel's distance from the original volume,
+    /// therefore the voxels right at the shell of the volume are marked 0, the
+    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
+    /// the scalar field is populated with meaningful values, it is possible to
+    /// treat (perform boolean operations or materialize into mesh) on various
+    /// numerical ranges. Such range is specified ad-hoc by parameter
+    /// `volume_value_range`.
+    ///
+    /// # Panics
+    /// Panics if one of the volume value ranges is infinite.
+    ///
+    /// # Warning
+    /// If the input scalar fields are far apart, the resulting scalar field may
+    /// be huge.
     pub fn interpolated_union_of_distance_fields<U>(
         &mut self,
         volume_value_range_self: &U,
@@ -742,8 +773,15 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     }
 
     /// Interpolate values of the current scalar field to the values of the
-    /// other scalar field.
-    // FIXME: More thorough description
+    /// other scalar field. The current scalar field will not be resized, so
+    /// only the overlapping areas will be will be interpolated. If the voxel in
+    /// the current or the other scalar field is Non (does not contain any voxel
+    /// or does not exist), the output value will be also None. The two scalar
+    /// fields do not have to contain voxels of the same size. The interpolation
+    /// is linear.
+    ///
+    /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
+    /// between the current value to the other value.
     pub fn interpolate_to(&mut self, other: &ScalarField<T>, interpolation_factor: f32) {
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
             let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
@@ -1403,73 +1441,75 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     where
         U: RangeBounds<T>,
     {
-        let mut min: Vector3<i32> =
-            Vector3::new(i32::max_value(), i32::max_value(), i32::max_value());
-        let mut max: Vector3<i32> =
-            Vector3::new(i32::min_value(), i32::min_value(), i32::min_value());
+        let mut absolute_min: Point3<i32> =
+            Point3::new(i32::max_value(), i32::max_value(), i32::max_value());
+        let mut absolute_max: Point3<i32> =
+            Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
             if is_voxel_within_closed_range(voxel, volume_value_range) {
-                let relative_coordinate = one_dimensional_to_relative_voxel_coordinate(
+                let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                     one_dimensional,
+                    &self.block_start,
                     &self.block_dimensions,
                 );
 
-                if relative_coordinate.x < min.x {
-                    min.x = relative_coordinate.x;
+                if absolute_coordinate.x < absolute_min.x {
+                    absolute_min.x = absolute_coordinate.x;
                 }
-                if relative_coordinate.x > max.x {
-                    max.x = relative_coordinate.x;
+                if absolute_coordinate.x > absolute_max.x {
+                    absolute_max.x = absolute_coordinate.x;
                 }
-                if relative_coordinate.y < min.y {
-                    min.y = relative_coordinate.y;
+                if absolute_coordinate.y < absolute_min.y {
+                    absolute_min.y = absolute_coordinate.y;
                 }
-                if relative_coordinate.y > max.y {
-                    max.y = relative_coordinate.y;
+                if absolute_coordinate.y > absolute_max.y {
+                    absolute_max.y = absolute_coordinate.y;
                 }
-                if relative_coordinate.z < min.z {
-                    min.z = relative_coordinate.z;
+                if absolute_coordinate.z < absolute_min.z {
+                    absolute_min.z = absolute_coordinate.z;
                 }
-                if relative_coordinate.z > max.z {
-                    max.z = relative_coordinate.z;
+                if absolute_coordinate.z > absolute_max.z {
+                    absolute_max.z = absolute_coordinate.z;
                 }
             }
         }
-        // It's enough to check one of the voxels because if anything is found,
-        // all the voxels would change.
-        if min.x == i32::max_value() {
+        // If the scalar field doesn't contain any voxels, all of the min/max
+        // values should remain unchanged. It's enough to check one of the
+        // values because if anything is found, all the values would change.
+        if absolute_min.x == i32::max_value() {
             assert_eq!(
-                min.y,
+                absolute_min.y,
                 i32::max_value(),
                 "scalar field emptiness check failed"
             );
             assert_eq!(
-                min.z,
+                absolute_min.z,
                 i32::max_value(),
                 "scalar field emptiness check failed"
             );
             assert_eq!(
-                max.x,
+                absolute_max.x,
                 i32::min_value(),
                 "scalar field emptiness check failed"
             );
             assert_eq!(
-                max.y,
+                absolute_max.y,
                 i32::min_value(),
                 "scalar field emptiness check failed"
             );
             assert_eq!(
-                max.z,
+                absolute_max.z,
                 i32::min_value(),
                 "scalar field emptiness check failed"
             );
             None
         } else {
             let block_dimensions = Vector3::new(
-                clamp_cast_i32_to_u32(max.x - min.x + 1),
-                clamp_cast_i32_to_u32(max.y - min.y + 1),
-                clamp_cast_i32_to_u32(max.z - min.z + 1),
+                clamp_cast_i32_to_u32(absolute_max.x - absolute_min.x),
+                clamp_cast_i32_to_u32(absolute_max.y - absolute_min.y),
+                clamp_cast_i32_to_u32(absolute_max.z - absolute_min.z),
             );
-            Some(((self.block_start + min), block_dimensions))
+            Some((absolute_min, block_dimensions))
         }
     }
 }

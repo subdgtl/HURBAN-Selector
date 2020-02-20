@@ -36,9 +36,7 @@ impl fmt::Display for FuncBooleanUnionError {
                 f,
                 "Scalar field from input meshes or the resulting mesh is empty"
             ),
-            FuncBooleanUnionError::VoxelDimensionsZero => {
-                write!(f, "One or more voxel dimensions are zero")
-            },
+            FuncBooleanUnionError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
             FuncBooleanUnionError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
