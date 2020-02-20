@@ -67,11 +67,17 @@ struct ConsoleState {
     message_count: usize,
 }
 
+pub enum OverwriteModalTrigger {
+    NewProject,
+    OpenProject,
+}
+
 pub struct MenuStatus {
     pub reset_viewport: bool,
+    pub new_project: bool,
     pub save_path: Option<String>,
     pub open_path: Option<String>,
-    pub show_prevent_override_modal: bool,
+    pub prevent_override_modal: Option<OverwriteModalTrigger>,
 }
 
 pub enum SaveModalResult {
@@ -470,13 +476,14 @@ impl<'a> UiFrame<'a> {
         let ui = &self.imgui_ui;
         let mut status = MenuStatus {
             reset_viewport: false,
+            new_project: false,
             save_path: None,
             open_path: None,
-            show_prevent_override_modal: false,
+            prevent_override_modal: None,
         };
 
         const UTILITIES_WINDOW_WIDTH: f32 = 150.0;
-        const UTILITIES_WINDOW_HEIGHT: f32 = 232.0;
+        const UTILITIES_WINDOW_HEIGHT: f32 = 252.0;
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
@@ -521,6 +528,21 @@ impl<'a> UiFrame<'a> {
                     &format!("HURBAN Selector project (.{})", project::PROJECT_EXTENSION);
                 let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
+                if ui.button(imgui::im_str!("New project"), [-f32::MIN_POSITIVE, 0.0])
+                    || project_status.new_requested
+                {
+                    if project_status.changed_since_last_save
+                        && project_status.prevent_overwrite_status.is_none()
+                    {
+                        status.prevent_override_modal = Some(OverwriteModalTrigger::NewProject);
+                    } else {
+                        status.new_project = true;
+                    }
+
+                    project_status.prevent_overwrite_status = None;
+                    project_status.new_requested = false;
+                }
+
                 if ui.button(imgui::im_str!("Save project"), [-f32::MIN_POSITIVE, 0.0]) {
                     match project_status.path.clone() {
                         Some(project_path_str) => {
@@ -559,7 +581,7 @@ impl<'a> UiFrame<'a> {
                     if project_status.changed_since_last_save
                         && project_status.prevent_overwrite_status.is_none()
                     {
-                        status.show_prevent_override_modal = true;
+                        status.prevent_override_modal = Some(OverwriteModalTrigger::OpenProject);
                     } else if let Some(path) = tinyfiledialogs::open_file_dialog(
                         "Open project",
                         "",

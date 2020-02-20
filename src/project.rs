@@ -14,6 +14,7 @@ pub const PROJECT_EXTENSION: &str = "hurban";
 #[derive(Debug, Clone)]
 pub enum NextAction {
     Exit,
+    NewProject,
     OpenProject,
 }
 
@@ -21,6 +22,7 @@ pub enum NextAction {
 pub struct ProjectStatus {
     pub path: Option<String>,
     pub error: Option<ProjectError>,
+    pub new_requested: bool,
     pub open_requested: bool,
     pub changed_since_last_save: bool,
     pub prevent_overwrite_status: Option<NextAction>,

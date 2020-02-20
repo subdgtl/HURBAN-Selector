@@ -26,7 +26,7 @@ use crate::renderer::{
     DirectionalLight, DrawMeshMode, GpuMesh, GpuMeshHandle, Options as RendererOptions, Renderer,
 };
 use crate::session::{PollNotification, Session};
-use crate::ui::{SaveModalResult, ScreenshotOptions, Ui};
+use crate::ui::{OverwriteModalTrigger, SaveModalResult, ScreenshotOptions, Ui};
 
 pub mod geometry;
 pub mod importer;
@@ -323,9 +323,49 @@ pub fn init_and_run(options: Options) -> ! {
                 let reset_viewport =
                     input_state.camera_reset_viewport || menu_status.reset_viewport;
 
-                if menu_status.show_prevent_override_modal {
-                    project_status.prevent_overwrite_status =
-                        Some(crate::project::NextAction::OpenProject);
+                if let Some(prevent_override_modal_trigger) = menu_status.prevent_override_modal {
+                    project_status.prevent_overwrite_status = match prevent_override_modal_trigger {
+                        OverwriteModalTrigger::NewProject => {
+                            Some(crate::project::NextAction::NewProject)
+                        }
+                        OverwriteModalTrigger::OpenProject => {
+                            Some(crate::project::NextAction::OpenProject)
+                        }
+                    }
+                }
+
+                if menu_status.new_project {
+                    scene_meshes.clear();
+
+                    for (_, gpu_mesh_handle) in scene_gpu_mesh_handles.drain() {
+                        renderer.remove_scene_mesh(gpu_mesh_handle);
+                    }
+
+                    scene_bounding_box =
+                        BoundingBox::union(scene_meshes.values().map(|mesh| mesh.bounding_box()))
+                            .unwrap_or_else(BoundingBox::unit);
+
+                    ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                    ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                    renderer.remove_scene_mesh(
+                        ground_plane_gpu_mesh_handle
+                            .take()
+                            .expect("Ground plane must always be present"),
+                    );
+                    ground_plane_gpu_mesh_handle = Some(
+                        renderer
+                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh), true)
+                            .expect("Failed to add ground plane mesh"),
+                    );
+
+                    let current_autorun_delay = session.autorun_delay();
+                    session = Session::new();
+                    session.set_autorun_delay(current_autorun_delay);
+
+                    project_status.path = None;
+                    project_status.changed_since_last_save = false;
+
+                    change_window_title(&window, &project_status);
                 }
 
                 if let Some(save_path) = menu_status.save_path {
@@ -434,6 +474,9 @@ pub fn init_and_run(options: Options) -> ! {
                             project::NextAction::Exit => {
                                 *control_flow = winit::event_loop::ControlFlow::Exit
                             }
+                            project::NextAction::NewProject => {
+                                project_status.new_requested = true;
+                            }
                             project::NextAction::OpenProject => {
                                 project_status.open_requested = true
                             }
@@ -452,6 +495,10 @@ pub fn init_and_run(options: Options) -> ! {
                                     Ok(_) => match prevent_override_status2 {
                                         project::NextAction::Exit => {
                                             *control_flow = winit::event_loop::ControlFlow::Exit
+                                        }
+                                        project::NextAction::NewProject => {
+                                            project_status.save(&save_path);
+                                            project_status.new_requested = true;
                                         }
                                         project::NextAction::OpenProject => {
                                             project_status.save(&save_path);
