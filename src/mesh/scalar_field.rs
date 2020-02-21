@@ -303,7 +303,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     pub fn from_scalar_field_transformed<U>(
         source_scalar_field: &ScalarField<T>,
         volume_value_range: &U,
-        voxel_dimension: f32,
+        voxel_dimensions: &Vector3<f32>,
         cartesian_translation: &Vector3<f32>,
         rotation: &Rotation3<f32>,
         scale_factor: &Vector3<f32>,
@@ -320,10 +320,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             && approx::relative_eq!(scale_factor, &Vector3::new(1.0, 1.0, 1.0))
         {
             // and the voxel dimensions don't change
-            if approx::relative_eq!(voxel_dimension, source_scalar_field.voxel_dimensions.x)
-                && approx::relative_eq!(voxel_dimension, source_scalar_field.voxel_dimensions.y)
-                && approx::relative_eq!(voxel_dimension, source_scalar_field.voxel_dimensions.z)
-            {
+            if approx::relative_eq!(voxel_dimensions, &source_scalar_field.voxel_dimensions) {
                 // return identical copy of self
                 return Some(ScalarField {
                     block_start: source_scalar_field.block_start,
@@ -336,14 +333,14 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                 return ScalarField::from_scalar_field(
                     source_scalar_field,
                     volume_value_range,
-                    &Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension),
+                    voxel_dimensions,
                 );
             }
         }
 
         assert!(
-            voxel_dimension > 0.0,
-            "Voxel dimension is below or equal to zero"
+            voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
+            "One mor more voxel dimensions is below or equal to zero"
         );
 
         // Make a bounding box of the source scalar field's mesh volume. This
@@ -351,12 +348,6 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         if let Some(source_sf_bounding_box) =
             source_scalar_field.mesh_volume_bounding_box_cartesian(volume_value_range)
         {
-            // FIXME: Heterogenous voxels (with different width, height and
-            // depth) require non-trivial compensation of final scalar field
-            // position after rotating if the volume equilibrium is not at the
-            // world origin.
-            let voxel_dimensions = Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension);
-
             let vector_to_origin = Vector3::zeros() - source_sf_bounding_box.center().coords;
 
             // Transform the source mesh volume bounding box and calculate a new
@@ -2077,7 +2068,7 @@ mod tests {
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             &(0..=0),
-            0.25,
+            &Vector3::new(0.25, 0.25, 0.25),
             &Vector3::zeros(),
             &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -2099,7 +2090,7 @@ mod tests {
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             &(0..=0),
-            0.25,
+            &Vector3::new(0.25, 0.25, 0.25),
             &Vector3::zeros(),
             &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -2121,7 +2112,7 @@ mod tests {
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             &(0..=0),
-            0.25,
+            &Vector3::new(0.25, 0.25, 0.25),
             &Vector3::zeros(),
             &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -2143,7 +2134,7 @@ mod tests {
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             &(0..=0),
-            0.25,
+            &Vector3::new(0.25, 0.25, 0.25),
             &Vector3::new(0.1, 0.1, 0.1),
             &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -2168,7 +2159,7 @@ mod tests {
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             &(0..=0),
-            0.25,
+            &Vector3::new(0.25, 0.25, 0.25),
             &Vector3::new(0.0, 0.0, 0.25),
             &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -2193,7 +2184,7 @@ mod tests {
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             &(0..=0),
-            0.25,
+            &Vector3::new(0.25, 0.25, 0.25),
             &Vector3::new(0.4, 0.6, 0.7),
             &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
             &Vector3::new(1.0, 1.0, 1.0),
@@ -2218,7 +2209,7 @@ mod tests {
         let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             &(0..=0),
-            0.25,
+            &Vector3::new(0.25, 0.25, 0.25),
             &Vector3::new(0.4, 0.6, 0.7),
             &Rotation3::from_euler_angles(25.0, 37.0, 42.0),
             &Vector3::new(1.5, 1.76, 0.5),
