@@ -555,7 +555,6 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
                 return;
             }
         }
-
         // If the two scalar fields do not intersect or one of them is empty,
         // then wipe the resulting scalar field.
         self.wipe();
@@ -902,7 +901,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     ) {
         // Don't resize if the scalar field dimensions haven't changed.
         if resized_block_start == &self.block_start
-            || resized_block_dimensions == &self.block_dimensions
+            && resized_block_dimensions == &self.block_dimensions
         {
             return;
         }
@@ -1264,9 +1263,11 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             |(volume_start, volume_dimensions)| {
                 let volume_end = volume_start
                     + Vector3::new(
-                        cast_i32(volume_dimensions.x),
-                        cast_i32(volume_dimensions.y),
-                        cast_i32(volume_dimensions.z),
+                        // Voxels occupy also the end voxel position in the
+                        // grid, hence +1.
+                        cast_i32(volume_dimensions.x) + 1,
+                        cast_i32(volume_dimensions.y) + 1,
+                        cast_i32(volume_dimensions.z) + 1,
                     );
                 BoundingBox::new(&volume_start, &volume_end)
             },
@@ -1517,9 +1518,9 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             None
         } else {
             let block_dimensions = Vector3::new(
-                clamp_cast_i32_to_u32(absolute_max.x - absolute_min.x),
-                clamp_cast_i32_to_u32(absolute_max.y - absolute_min.y),
-                clamp_cast_i32_to_u32(absolute_max.z - absolute_min.z),
+                clamp_cast_i32_to_u32(absolute_max.x - absolute_min.x + 1),
+                clamp_cast_i32_to_u32(absolute_max.y - absolute_min.y + 1),
+                clamp_cast_i32_to_u32(absolute_max.z - absolute_min.z + 1),
             );
             Some((absolute_min, block_dimensions))
         }
