@@ -1777,7 +1777,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scalar_field_boolean_intersection_all_true() {
+    fn test_scalar_field_boolean_intersection_all_volume() {
         let mut sf_a = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(3, 3, 3),
@@ -1804,7 +1804,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scalar_field_boolean_intersection_one_false() {
+    fn test_scalar_field_boolean_intersection_one_void() {
         let mut sf_a = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(3, 3, 3),
@@ -1833,7 +1833,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scalar_field_boolean_union_one_false() {
+    fn test_scalar_field_boolean_union_shifted() {
         let mut sf_a = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(3, 3, 3),
@@ -1914,7 +1914,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scalar_field_resize_zero_to_nonzero_all_none() {
+    fn test_scalar_field_resize_zero_to_nonzero_all_void() {
         let mut scalar_field: ScalarField<i16> = ScalarField::new(
             &Point3::origin(),
             &Vector3::zeros(),
