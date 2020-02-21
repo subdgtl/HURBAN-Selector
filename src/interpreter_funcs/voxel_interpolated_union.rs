@@ -94,6 +94,7 @@ impl Func for FuncInterpolatedUnion {
             ParamInfo {
                 name: "Voxel Size",
                 description: "Size of a single cell in the regular three-dimensional voxel grid.\n\
+                \n\
                 High values produce coarser results, low values may increase precision but produce \
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",

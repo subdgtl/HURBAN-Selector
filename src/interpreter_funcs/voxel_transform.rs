@@ -9,7 +9,7 @@ use nalgebra::{Rotation, Vector3};
 use crate::analytics;
 use crate::convert::clamp_cast_u32_to_i16;
 use crate::interpreter::{
-    BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncError,
+    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError,
     FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::scalar_field::ScalarField;
@@ -84,16 +84,18 @@ impl Func for FuncVoxelTransform {
                 optional: false,
             },
             ParamInfo {
-                name: "Voxel Size",
+                name: "Voxel Dimensions",
                 description: "Size of a single cell in the regular three-dimensional voxel grid.\n\
                 \n\
                 High values produce coarser results, low values may increase precision but produce \
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
-                refinement: ParamRefinement::Float(FloatParamRefinement {
-                    default_value: Some(1.0),
+                refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     min_value: Some(f32::MIN_POSITIVE),
                     max_value: None,
+                    default_value_x: Some(0.25),
+                    default_value_y: Some(0.25),
+                    default_value_z: Some(0.25),
                 }),
                 optional: false,
             },
@@ -199,7 +201,7 @@ impl Func for FuncVoxelTransform {
         log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
-        let voxel_dimension = args[1].unwrap_float();
+        let voxel_dimensions = args[1].unwrap_float3();
         let growth_u32 = args[2].unwrap_uint();
         let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[3].unwrap_boolean();
@@ -210,7 +212,7 @@ impl Func for FuncVoxelTransform {
         let analyze_bbox = args[8].unwrap_boolean();
         let analyze_mesh = args[9].unwrap_boolean();
 
-        if voxel_dimension <= 0.0 {
+        if voxel_dimensions.iter().any(|dim| dim <= &0.0) {
             return {
                 let error = FuncError::new(FuncVoxelTransformError::VoxelDimensionZero);
                 log(LogMessage::error(format!("Error: {}", error)));
@@ -219,15 +221,15 @@ impl Func for FuncVoxelTransform {
         }
 
         let bbox_diagonal = mesh.bounding_box().diagonal();
-        let voxel_count = (bbox_diagonal.x / voxel_dimension).ceil() as u32
-            * (bbox_diagonal.y / voxel_dimension).ceil() as u32
-            * (bbox_diagonal.z / voxel_dimension).ceil() as u32;
+        let voxel_count = (bbox_diagonal.x / voxel_dimensions[0]).ceil() as u32
+            * (bbox_diagonal.y / voxel_dimensions[1]).ceil() as u32
+            * (bbox_diagonal.z / voxel_dimensions[2]).ceil() as u32;
 
         log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
 
         if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
-            let vy_over_vx = voxel_dimension / voxel_dimension;
-            let vz_over_vx = voxel_dimension / voxel_dimension;
+            let vy_over_vx = voxel_dimensions[1] / voxel_dimensions[0];
+            let vz_over_vx = voxel_dimensions[2] / voxel_dimensions[0];
             let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
                 / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
                 .cbrt();
@@ -246,9 +248,11 @@ impl Func for FuncVoxelTransform {
             return Err(error);
         }
 
+        let voxel_dimensions_vector = Vector3::from(voxel_dimensions);
+
         let mut scalar_field = ScalarField::from_mesh(
             mesh,
-            &Vector3::new(voxel_dimension, voxel_dimension, voxel_dimension),
+            &voxel_dimensions_vector,
             0_i16,
             growth_u32,
         );
@@ -266,7 +270,7 @@ impl Func for FuncVoxelTransform {
         if let Some(transformed_sf) = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             &(0..=0),
-            voxel_dimension,
+            &voxel_dimensions_vector,
             &translate,
             &rotation,
             &scaling,
