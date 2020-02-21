@@ -65,6 +65,9 @@ struct Colors {
     log_message_error: [f32; 4],
     header_error: [f32; 4],
     header_error_hovered: [f32; 4],
+    tooltip_text: [f32; 4],
+    notification_window: [f32; 4],
+    popup_window_background: [f32; 4],
 }
 
 #[derive(Debug, Default)]
@@ -118,11 +121,14 @@ impl Ui {
             combo_box_selected_item: style[imgui::StyleColor::Header],
             combo_box_selected_item_hovered: style[imgui::StyleColor::HeaderHovered],
             combo_box_selected_item_active: style[imgui::StyleColor::HeaderActive],
-            log_message_info: [0.70, 0.70, 0.70, 1.0],
+            log_message_info: [0.3, 0.3, 0.3, 1.0],
             log_message_warn: [0.80, 0.80, 0.05, 1.0],
             log_message_error: [1.0, 0.15, 0.05, 1.0],
             header_error: [0.85, 0.15, 0.05, 0.4],
             header_error_hovered: [1.00, 0.15, 0.05, 0.4],
+            tooltip_text: [1.0, 1.0, 1.0, 1.0],
+            notification_window: [0.0, 0.0, 0.0, 0.1],
+            popup_window_background: [0.0, 0.0, 0.0, 0.1],
         };
 
         style.window_padding = [4.0, 4.0];
@@ -145,6 +151,9 @@ impl Ui {
             style.scrollbar_rounding = 0.0;
             style.grab_rounding = 0.0;
 
+            let black = [0.0, 0.0, 0.0, 1.0];
+            let white = [1.0, 1.0, 1.0, 1.0];
+            let white_80_transparent = [1.0, 1.0, 1.0, 0.8];
             let light = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0xff]);
             let light_transparent = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0x40]);
             let orange = cast_u8_color_to_f32([0xf2, 0x80, 0x37, 0xff]);
@@ -153,17 +162,20 @@ impl Ui {
             let orange_dark = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0xff]);
             let orange_dark_transparent = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0x40]);
             let green_light = [0.4, 0.8, 0.5, 1.0];
-            let green_light_transparent = [0.4, 0.8, 0.5, 0.4];
             let green_dark = [0.1, 0.5, 0.2, 1.0];
+            let green_dark_transparent = [0.1, 0.5, 0.2, 0.4];
+            let red = [1.0, 0.0, 0.0, 1.0];
+            let red_transparent = [1.0, 0.0, 0.0, 0.4];
+            let transparent = [0.0, 0.0, 0.0, 0.0];
 
-            style[imgui::StyleColor::Text] = orange;
+            style[imgui::StyleColor::Text] = orange_dark;
             style[imgui::StyleColor::TextDisabled] = orange_light;
-            style[imgui::StyleColor::WindowBg] = light_transparent;
-            style[imgui::StyleColor::PopupBg] = light;
-            style[imgui::StyleColor::Border] = light_transparent;
+            style[imgui::StyleColor::WindowBg] = white_80_transparent;
+            style[imgui::StyleColor::PopupBg] = orange;
+            style[imgui::StyleColor::Border] = transparent;
             style[imgui::StyleColor::FrameBg] = light_transparent;
-            style[imgui::StyleColor::FrameBgHovered] = light_transparent;
-            style[imgui::StyleColor::FrameBgActive] = light_transparent;
+            style[imgui::StyleColor::FrameBgHovered] = orange_light_transparent;
+            style[imgui::StyleColor::FrameBgActive] = orange_light_transparent;
             style[imgui::StyleColor::TitleBg] = light_transparent;
             style[imgui::StyleColor::TitleBgActive] = light_transparent;
             style[imgui::StyleColor::TitleBgCollapsed] = light_transparent;
@@ -181,14 +193,14 @@ impl Ui {
             style[imgui::StyleColor::Header] = light_transparent;
             style[imgui::StyleColor::HeaderHovered] = light_transparent;
             style[imgui::StyleColor::HeaderActive] = light_transparent;
-            style[imgui::StyleColor::Separator] = orange_light;
-            style[imgui::StyleColor::SeparatorHovered] = orange_light;
-            style[imgui::StyleColor::SeparatorActive] = orange_light;
+            style[imgui::StyleColor::Separator] = orange;
+            style[imgui::StyleColor::SeparatorHovered] = orange;
+            style[imgui::StyleColor::SeparatorActive] = orange;
             style[imgui::StyleColor::ResizeGrip] = orange;
             style[imgui::StyleColor::ResizeGripHovered] = orange_light;
             style[imgui::StyleColor::ResizeGripActive] = orange_light;
             style[imgui::StyleColor::Tab] = light_transparent;
-            style[imgui::StyleColor::TabHovered] = light_transparent;
+            style[imgui::StyleColor::TabHovered] = orange_light_transparent;
             style[imgui::StyleColor::TabActive] = light_transparent;
             style[imgui::StyleColor::TabUnfocused] = light_transparent;
             style[imgui::StyleColor::TabUnfocusedActive] = light_transparent;
@@ -196,19 +208,26 @@ impl Ui {
             style[imgui::StyleColor::TextSelectedBg] = orange_light_transparent;
             style[imgui::StyleColor::NavHighlight] = light_transparent;
 
-            colors.special_button_text = orange;
-            colors.special_button = green_light_transparent;
-            colors.special_button_hovered = green_light;
-            colors.special_button_active = green_dark;
+            colors.special_button_text = white;
+            colors.special_button = green_light;
+            colors.special_button_hovered = green_dark;
+            colors.special_button_active = green_dark_transparent;
 
             colors.combo_box_selected_item = light;
             colors.combo_box_selected_item_hovered = orange_light;
             colors.combo_box_selected_item_active = orange_dark;
 
-            colors.log_message_warn = [0.90, 0.75, 0.05, 1.0];
+            colors.tooltip_text = white;
 
-            colors.header_error = [0.9, 0.0, 0.0, 0.2];
-            colors.header_error_hovered = [1.0, 0.0, 0.0, 0.3];
+            colors.log_message_warn = black;
+            colors.log_message_error = red;
+
+            colors.header_error = red_transparent;
+            colors.header_error_hovered = red;
+
+            colors.notification_window = white_80_transparent;
+
+            colors.popup_window_background = white_80_transparent;
         }
 
         imgui_context.set_ini_filename(None);
@@ -324,6 +343,11 @@ impl<'a> UiFrame<'a> {
     ) -> bool {
         let ui = &self.imgui_ui;
 
+        let window_style = ui.push_style_color(
+            imgui::StyleColor::PopupBg,
+            self.colors.popup_window_background,
+        );
+
         let window_name = imgui::im_str!("Screenshot");
         if *screenshot_modal_open {
             ui.open_popup(window_name);
@@ -341,7 +365,7 @@ impl<'a> UiFrame<'a> {
         let bold_font_token = ui.push_font(self.font_ids.bold);
         ui.popup_modal(window_name)
             .opened(screenshot_modal_open)
-            .movable(false)
+            .movable(true)
             .resizable(false)
             .collapsible(false)
             .always_auto_resize(true)
@@ -354,7 +378,7 @@ impl<'a> UiFrame<'a> {
                 ];
 
                 if ui
-                    .input_int2(imgui::im_str!("Dimensions"), &mut dimensions)
+                    .input_int2(imgui::im_str!("Dimensions (px)"), &mut dimensions)
                     .build()
                 {
                     screenshot_options.width = clamp_cast_i32_to_u32(dimensions[0]);
@@ -374,22 +398,30 @@ impl<'a> UiFrame<'a> {
                 }
 
                 ui.checkbox(
-                    imgui::im_str!("Transparent"),
+                    imgui::im_str!("Transparent Background"),
                     &mut screenshot_options.transparent,
                 );
-
-                ui.text(imgui::im_str!(
-                    "Attempting to take screenshots may crash the program."
-                ));
-                ui.text(imgui::im_str!("Be sure to save your work."));
 
                 if ui.button(imgui::im_str!("Take Screenshot"), [0.0, 0.0]) {
                     take_screenshot_clicked = true;
                 }
 
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(
+                            self.colors.log_message_warn,
+                            "WARNING: Attempting to take screenshots may crash the program.\n\
+                             Be sure to save your work.",
+                        );
+                        wrap_token.pop(ui);
+                    });
+                }
+
                 regular_font_token.pop(ui);
             });
         bold_font_token.pop(ui);
+        window_style.pop(ui);
 
         if take_screenshot_clicked {
             *screenshot_modal_open = false;
@@ -416,10 +448,8 @@ impl<'a> UiFrame<'a> {
         let notifications_window_vertical_position =
             MARGIN * 2.0 + (1.0 - NOTIFICATIONS_WINDOW_HEIGHT_MULT) * window_inner_height;
 
-        let color_token = ui.push_style_colors(&[
-            (imgui::StyleColor::Border, [0.0, 0.0, 0.0, 0.1]),
-            (imgui::StyleColor::WindowBg, [0.0, 0.0, 0.0, 0.1]),
-        ]);
+        let color_token =
+            ui.push_style_colors(&[(imgui::StyleColor::WindowBg, self.colors.notification_window)]);
 
         imgui::Window::new(imgui::im_str!("Notifications"))
             .title_bar(false)
@@ -504,10 +534,12 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("MAIN MENU\n\
+                        let regular_font_token = ui.push_font(self.font_ids.regular);
+                        ui.text_colored(self.colors.tooltip_text, "MAIN MENU\n\
                         \n\
                         Viewport information and settings.\n\
                         Screenshot and file management.");
+                        regular_font_token.pop(ui);
                         wrap_token.pop(ui);
                     });
                 }
@@ -516,7 +548,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("FRAMES PER SECOND\n\
+                        ui.text_colored(self.colors.tooltip_text, "FRAMES PER SECOND\n\
                         \n\
                         Shows the rendering performance of the current model on the current computer. \
                         The desired value for standard computers is 60 FPS \
@@ -540,7 +572,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("SHADED VIEWPORT MODE\n\
+                        ui.text_colored(self.colors.tooltip_text, "SHADED VIEWPORT MODE\n\
                         \n\
                         The geometry will be shaded with solid color and no edges will be highlighted.");
                         wrap_token.pop(ui);
@@ -557,7 +589,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("WIREFRAME VIEWPORT MODE\n\
+                        ui.text_colored(self.colors.tooltip_text, "WIREFRAME VIEWPORT MODE\n\
                         \n\
                         The geometry will be rendered as a wireframe model, the surface will be \
                         fully transparent and only edges will be highlighted.");
@@ -579,7 +611,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("SHADED WITH EDGES VIEWPORT MODE\n\
+                        ui.text_colored(self.colors.tooltip_text, "SHADED WITH EDGES VIEWPORT MODE\n\
                         \n\
                         The geometry will be shaded with solid color and visible edges will be highlighted.");
                         wrap_token.pop(ui);
@@ -600,7 +632,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("SHADED WITH X-RAY EDGES VIEWPORT MODE\n\
+                        ui.text_colored(self.colors.tooltip_text, "SHADED WITH X-RAY EDGES VIEWPORT MODE\n\
                         \n\
                         The geometry will be shaded with solid color and all edges, \
                         including the ones hidden behind the solid color of the surfaces, \
@@ -621,7 +653,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("RESET VIEWPORT CAMERA\n\
+                        ui.text_colored(self.colors.tooltip_text, "RESET VIEWPORT CAMERA\n\
                         \n\
                         Set the viewport camera to look at all visible geometry in the scene.");
                         wrap_token.pop(ui);
@@ -634,7 +666,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("TAKE SCREENSHOT\n\
+                        ui.text_colored(self.colors.tooltip_text, "TAKE SCREENSHOT\n\
                         \n\
                         Opens the dialog for saving the current viewport into a PNG file.");
                         wrap_token.pop(ui);
@@ -668,7 +700,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("SAVE PROJECT INTO A .hurban FILE\n\
+                        ui.text_colored(self.colors.tooltip_text, "SAVE PROJECT INTO A .hurban FILE\n\
                         \n\
                         Saves the current project into a .hurban file. \
                         When used for the first time, opens a system dialog to specify save file location.\n\
@@ -695,7 +727,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("OPEN PROJECT FROM A .hurban FILE\n\
+                        ui.text_colored(self.colors.tooltip_text, "OPEN PROJECT FROM A .hurban FILE\n\
                         \n\
                         Opens the sequence of operations saved in a .hurban file. \
                         The current unsaved project will be lost.\n\
@@ -747,7 +779,8 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text(
+                        let regular_font_token = ui.push_font(self.font_ids.regular);
+                        ui.text_colored(self.colors.tooltip_text,
                             "SEQUENCE OF OPERATIONS\n\
                             \n\
                             An ordered list of operations that generate the viewport geometry. \
@@ -776,6 +809,7 @@ impl<'a> UiFrame<'a> {
                             but also a tool-building platform and the project files ara not only geometries but \
                             also tools.",
                         );
+                        regular_font_token.pop(ui);
                         wrap_token.pop(ui);
                     });
                 }
@@ -793,6 +827,7 @@ impl<'a> UiFrame<'a> {
                                     (imgui::StyleColor::Header, self.colors.header_error),
                                     (imgui::StyleColor::HeaderHovered, self.colors.header_error_hovered),
                                     (imgui::StyleColor::HeaderActive, self.colors.header_error_hovered),
+                                    (imgui::StyleColor::Text, self.colors.tooltip_text),
                                 ]))
                             } else {
                                 None
@@ -810,6 +845,7 @@ impl<'a> UiFrame<'a> {
 
                             if ui.is_item_hovered() {
                                 if let Some(error) = error {
+                                    let tooltip_bgcolor_token = ui.push_style_color(imgui::StyleColor::PopupBg, self.colors.header_error_hovered);
                                     ui.tooltip(|| {
                                         let wrap_token = ui
                                             .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
@@ -824,7 +860,7 @@ impl<'a> UiFrame<'a> {
                                         imstring_buffer.push_str(&error.to_string());
 
                                         ui.text_colored(
-                                            [1.0, 0.0, 0.0, 1.0],
+                                            self.colors.tooltip_text,
                                             &*imstring_buffer,
                                         );
 
@@ -832,11 +868,12 @@ impl<'a> UiFrame<'a> {
 
                                         wrap_token.pop(ui);
                                     });
+                                    tooltip_bgcolor_token.pop(ui);
                                 } else if !func.info().description.is_empty() {
                                     ui.tooltip(|| {
                                         let wrap_token = ui
                                             .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                                        ui.text(func.info().description);
+                                            ui.text_colored(self.colors.tooltip_text, func.info().description);
                                         wrap_token.pop(ui);
                                     })
                                 }
@@ -1126,7 +1163,7 @@ impl<'a> UiFrame<'a> {
                                         ui.tooltip(|| {
                                             let wrap_token = ui
                                                 .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                                            ui.text(param_info.description);
+                                                ui.text_colored(self.colors.tooltip_text, param_info.description);
                                             wrap_token.pop(ui);
                                         });
                                     }
@@ -1253,9 +1290,11 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("AVAILABLE OPERATIONS\n\
+                        let regular_font_token = ui.push_font(self.font_ids.regular);
+                        ui.text_colored(self.colors.tooltip_text, "AVAILABLE OPERATIONS\n\
                         \n\
                         A list of available operations to be stacked into a sequence of operations.");
+                        regular_font_token.pop(ui);
                         wrap_token.pop(ui);
                     });
                 }
@@ -1270,6 +1309,7 @@ impl<'a> UiFrame<'a> {
                         imgui::StyleColor::ButtonHovered,
                         self.colors.special_button_hovered,
                     ),
+                    (imgui::StyleColor::TextDisabled, self.colors.special_button_text),
                     (
                         imgui::StyleColor::ButtonActive,
                         self.colors.special_button_active,
@@ -1295,21 +1335,16 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("RUN RECOMPUTATION OF THE SEQUENCE OF OPERATIONS\n\
+                        ui.text_colored(self.colors.tooltip_text, "RUN RECOMPUTATION OF THE SEQUENCE OF OPERATIONS\n\
                         \n\
                         Executes the list of operations stacked in the Sequence of operations one \
                         after another from top down. The Sequence of operations editing is disabled \
                         during the computation. If any operation fails due to invalid input parameters, \
                         the computation stops and the error will be reported in the console log of the \
                         respective operation.");
-                        let text_color_token = ui.push_style_color(
-                            imgui::StyleColor::Text,
-                            self.colors.log_message_warn,
-                        );
-                        ui.text("\n\
+                        ui.text_colored(self.colors.log_message_warn,"\n\
                         WARNING: The execution cannot be stopped. If it takes long time or crashes, \
                         the unsaved progress of the .hurban project file will be lost!");
-                        text_color_token.pop(ui);
                         wrap_token.pop(ui);
                     });
                 }
@@ -1341,7 +1376,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("REMOVE LAST OPERATION FROM THE SEQUENCE\n\
+                        ui.text_colored(self.colors.tooltip_text, "REMOVE LAST OPERATION FROM THE SEQUENCE\n\
                         \n\
                         Only the last operation in the sequence of operations can be removed. \
                         The removal cannot be undone!");
@@ -1356,21 +1391,16 @@ impl<'a> UiFrame<'a> {
                     if ui.is_item_hovered() {
                         ui.tooltip(|| {
                             let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                            ui.text("RUN RECOMPUTATION OF THE SEQUENCE OF OPERATIONS AUTOMATICALLY\n\
+                            ui.text_colored(self.colors.tooltip_text, "RUN RECOMPUTATION OF THE SEQUENCE OF OPERATIONS AUTOMATICALLY\n\
                             \n\
                             Executes the list of operations stacked in the Sequence of \
                             operations one after another from top down automatically whenever a \
                             parameter or an operation changes in the Sequence of operations.");
-                            let text_color_token = ui.push_style_color(
-                                imgui::StyleColor::Text,
-                                self.colors.log_message_warn,
-                            );
-                            ui.text("\n\
+                            ui.text_colored(self.colors.log_message_warn, "\n\
                             WARNING: The execution may take long or even hang the computer! If \
                             not sure how heavy is the geometry, turn the automatic recomputation off. \
                             The execution cannot be stopped. If it takes long time or crashes, \
                             the unsaved progress of the .hurban project file will be lost!");
-                            text_color_token.pop(ui);
                             wrap_token.pop(ui);
                         });
                     }
@@ -1411,7 +1441,7 @@ impl<'a> UiFrame<'a> {
                     if ui.is_item_hovered() && !func.info().description.is_empty() {
                         ui.tooltip(|| {
                             let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                            ui.text(func.info().description);
+                            ui.text_colored(self.colors.tooltip_text, func.info().description);
                             wrap_token.pop(ui);
                         });
                     }
