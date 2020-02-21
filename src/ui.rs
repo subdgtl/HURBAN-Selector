@@ -449,7 +449,7 @@ impl<'a> UiFrame<'a> {
             MARGIN * 2.0 + (1.0 - NOTIFICATIONS_WINDOW_HEIGHT_MULT) * window_inner_height;
 
         let color_token =
-            ui.push_style_colors(&[(imgui::StyleColor::WindowBg, self.colors.notification_window)]);
+            ui.push_style_color(imgui::StyleColor::WindowBg, self.colors.notification_window);
 
         imgui::Window::new(imgui::im_str!("Notifications"))
             .title_bar(false)
