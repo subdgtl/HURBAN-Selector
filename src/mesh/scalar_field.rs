@@ -1518,6 +1518,40 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     }
 }
 
+/// Returns number of voxels created when `ScalarField::from_mesh()` called.
+pub fn evaluate_voxel_count(
+    mesh_bounding_box: &BoundingBox<f32>,
+    voxel_dimensions: &Vector3<f32>,
+) -> u32 {
+    let min_absolute = cartesian_to_absolute_voxel_coordinate(
+        &mesh_bounding_box.minimum_point(),
+        voxel_dimensions,
+    );
+    let max_absolute = cartesian_to_absolute_voxel_coordinate(
+        &mesh_bounding_box.maximum_point(),
+        voxel_dimensions,
+    );
+    let diagonal_absolute = max_absolute - min_absolute.coords + Vector3::new(1, 1, 1);
+    cast_u32(diagonal_absolute.x * diagonal_absolute.y * diagonal_absolute.z)
+}
+
+/// Computes voxel dimensions with similar proportions to
+/// `current_voxel_dimensions` so that the `mesh_bounding_box` contains roughly
+/// `voxel_count_threshold` voxels.
+pub fn suggest_voxel_size_to_fit_bbox_within_voxel_count2(
+    voxel_count: u32,
+    current_voxel_dimensions: &Vector3<f32>,
+    voxel_count_threshold: u32,
+) -> Vector3<f32> {
+    let voxel_scaling_ratio_3d = voxel_count as f32 / voxel_count_threshold as f32;
+    let voxel_scaling_ratio_1d = voxel_scaling_ratio_3d.cbrt();
+    // When changing the voxel dimensions, also the bounding box dimensions
+    // change, therefore the equation is not simple. Therefore a safe buffer of
+    // 1.1 is a quick fix.
+    // FIXME: Come up with a precise equation
+    current_voxel_dimensions * voxel_scaling_ratio_1d * 1.1
+}
+
 /// Returns true if the value of a voxel is within given value range. Returns
 /// `false` if the voxel value is not within the `value_range` or if the voxel
 /// does not exist or is out of scalar field's bounds.

@@ -9,10 +9,10 @@ use nalgebra::{Rotation, Vector3};
 use crate::analytics;
 use crate::convert::clamp_cast_u32_to_i16;
 use crate::interpreter::{
-    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError,
-    FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
+    BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
+    LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::scalar_field::ScalarField;
+use crate::mesh::scalar_field::{self, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 
@@ -91,7 +91,7 @@ impl Func for FuncVoxelTransform {
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
-                    min_value: Some(f32::MIN_POSITIVE),
+                    min_value: Some(0.005),
                     max_value: None,
                     default_value_x: Some(0.25),
                     default_value_y: Some(0.25),
@@ -201,7 +201,7 @@ impl Func for FuncVoxelTransform {
         log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
-        let voxel_dimensions = args[1].unwrap_float3();
+        let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
         let growth_u32 = args[2].unwrap_uint();
         let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[3].unwrap_boolean();
@@ -220,42 +220,30 @@ impl Func for FuncVoxelTransform {
             };
         }
 
-        let bbox_diagonal = mesh.bounding_box().diagonal();
-        let voxel_count = (bbox_diagonal.x / voxel_dimensions[0]).ceil() as u32
-            * (bbox_diagonal.y / voxel_dimensions[1]).ceil() as u32
-            * (bbox_diagonal.z / voxel_dimensions[2]).ceil() as u32;
+        let bbox = mesh.bounding_box();
+        let voxel_count = scalar_field::evaluate_voxel_count(&bbox, &voxel_dimensions);
 
         log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
 
         if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
-            let vy_over_vx = voxel_dimensions[1] / voxel_dimensions[0];
-            let vz_over_vx = voxel_dimensions[2] / voxel_dimensions[0];
-            let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
-                / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
-                .cbrt();
-            let vy = vx * vy_over_vx;
-            let vz = vx * vz_over_vx;
+            let suggested_voxel_size =
+                scalar_field::suggest_voxel_size_to_fit_bbox_within_voxel_count2(
+                    voxel_count,
+                    &voxel_dimensions,
+                    VOXEL_COUNT_THRESHOLD,
+                );
 
-            // The equation doesn't take rounding into consideration, hence the
-            // arbitrary multiplication by 1.1.
             let error = FuncError::new(FuncVoxelTransformError::TooManyVoxels(
                 VOXEL_COUNT_THRESHOLD,
-                vx * 1.1,
-                vy * 1.1,
-                vz * 1.1,
+                suggested_voxel_size.x,
+                suggested_voxel_size.y,
+                suggested_voxel_size.z,
             ));
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
-        let voxel_dimensions_vector = Vector3::from(voxel_dimensions);
-
-        let mut scalar_field = ScalarField::from_mesh(
-            mesh,
-            &voxel_dimensions_vector,
-            0_i16,
-            growth_u32,
-        );
+        let mut scalar_field = ScalarField::from_mesh(mesh, &voxel_dimensions, 0_i16, growth_u32);
 
         scalar_field.compute_distance_filed(&(0..=0));
 
@@ -270,7 +258,7 @@ impl Func for FuncVoxelTransform {
         if let Some(transformed_sf) = ScalarField::from_scalar_field_transformed(
             &scalar_field,
             &(0..=0),
-            &voxel_dimensions_vector,
+            &voxel_dimensions,
             &translate,
             &rotation,
             &scaling,

@@ -12,7 +12,7 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncError,
     FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh::scalar_field::ScalarField;
+use crate::mesh::scalar_field::{self, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 
@@ -20,6 +20,7 @@ const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 pub enum FuncInterpolatedUnionError {
     WeldFailed,
     EmptyScalarField,
+    VoxelDimensionsZero,
     TooManyVoxels(u32, f32, f32, f32),
 }
 
@@ -34,6 +35,7 @@ impl fmt::Display for FuncInterpolatedUnionError {
                 f,
                 "Scalar field from input meshes or the resulting mesh is empty"
             ),
+            FuncInterpolatedUnionError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
             FuncInterpolatedUnionError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
@@ -99,7 +101,7 @@ impl Func for FuncInterpolatedUnion {
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
-                    min_value: Some(f32::MIN_POSITIVE),
+                    min_value: Some(0.005),
                     max_value: None,
                     default_value_x: Some(0.25),
                     default_value_y: Some(0.25),
@@ -110,6 +112,7 @@ impl Func for FuncInterpolatedUnion {
             ParamInfo {
                 name: "Fill Closed Volumes",
                 description: "Treats the insides of watertight mesh geometries as volumes.\n\
+                \n\
                 If this option is off, the resulting voxelized mesh geometries will have two \
                 separate mesh shells: one for outer surface, the other for inner surface of \
                 hollow watertight mesh.",
@@ -171,49 +174,50 @@ impl Func for FuncInterpolatedUnion {
     ) -> Result<Value, FuncError> {
         let mesh1 = args[0].unwrap_mesh();
         let mesh2 = args[1].unwrap_mesh();
-        let voxel_dimensions = args[2].unwrap_float3();
+        let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
         let fill = args[3].unwrap_boolean();
         let factor = args[4].unwrap_float();
         let error_if_large = args[5].unwrap_boolean();
         let analyze_bbox = args[6].unwrap_boolean();
         let analyze_mesh = args[7].unwrap_boolean();
 
+        if voxel_dimensions
+            .iter()
+            .any(|dimension| approx::relative_eq!(*dimension, 0.0))
+        {
+            let error = FuncError::new(FuncInterpolatedUnionError::VoxelDimensionsZero);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
+
         let bbox1 = mesh1.bounding_box();
         let bbox2 = mesh2.bounding_box();
         let bbox =
             BoundingBox::union([bbox1, bbox2].iter().copied()).expect("Failed to create union box");
-        let bbox_diagonal = bbox.diagonal();
-        let voxel_count = (bbox_diagonal.x / voxel_dimensions[0]).ceil() as u32
-            * (bbox_diagonal.y / voxel_dimensions[1]).ceil() as u32
-            * (bbox_diagonal.z / voxel_dimensions[2]).ceil() as u32;
+        let voxel_count = scalar_field::evaluate_voxel_count(&bbox, &voxel_dimensions);
 
         log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
 
         if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
-            let vy_over_vx = voxel_dimensions[1] / voxel_dimensions[0];
-            let vz_over_vx = voxel_dimensions[2] / voxel_dimensions[0];
-            let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
-                / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
-                .cbrt();
-            let vy = vx * vy_over_vx;
-            let vz = vx * vz_over_vx;
+            let suggested_voxel_size =
+                scalar_field::suggest_voxel_size_to_fit_bbox_within_voxel_count2(
+                    voxel_count,
+                    &voxel_dimensions,
+                    VOXEL_COUNT_THRESHOLD,
+                );
 
-            // The equation doesn't take rounding into consideration, hence the
-            // arbitrary multiplication by 1.1.
             let error = FuncError::new(FuncInterpolatedUnionError::TooManyVoxels(
                 VOXEL_COUNT_THRESHOLD,
-                vx * 1.1,
-                vy * 1.1,
-                vz * 1.1,
+                suggested_voxel_size.x,
+                suggested_voxel_size.y,
+                suggested_voxel_size.z,
             ));
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
-        let mut scalar_field1 =
-            ScalarField::from_mesh(mesh1, &Vector3::from(voxel_dimensions), 0_i16, 1);
-        let scalar_field2 =
-            ScalarField::from_mesh(mesh2, &Vector3::from(voxel_dimensions), 0_i16, 1);
+        let mut scalar_field1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0_i16, 1);
+        let scalar_field2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0_i16, 1);
 
         let boolean_union_range = 0..=0;
 
