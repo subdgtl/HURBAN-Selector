@@ -1303,7 +1303,6 @@ impl<'a> UiFrame<'a> {
                 ui.columns(2, imgui::im_str!("Controls columns"), false);
 
                 let pipeline_button_color_token = ui.push_style_colors(&[
-                    (imgui::StyleColor::Text, self.colors.special_button_text),
                     (imgui::StyleColor::Button, self.colors.special_button),
                     (
                         imgui::StyleColor::ButtonHovered,
@@ -1313,6 +1312,7 @@ impl<'a> UiFrame<'a> {
                         imgui::StyleColor::ButtonActive,
                         self.colors.special_button_active,
                     ),
+                    (imgui::StyleColor::Text, self.colors.special_button_text),
                     (imgui::StyleColor::TextDisabled, self.colors.special_button_text),
                 ]);
                 let running_tokens = if running_enabled {
