@@ -1,3 +1,4 @@
+use std::error;
 use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
@@ -43,6 +44,8 @@ pub enum ProjectError {
     PermissionDenied,
     UnexpectedError,
 }
+
+impl error::Error for ProjectError {}
 
 impl fmt::Display for ProjectError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
