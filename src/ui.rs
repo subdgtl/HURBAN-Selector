@@ -640,7 +640,7 @@ impl<'a> UiFrame<'a> {
                         if *viewport_draw_used_values {
                             "Viewport now draws used geometry."
                         } else {
-                            "Viewport now doesn't draw used geomery."
+                            "Viewport now doesn't draw used geometry."
                         }
                     );
                 }
@@ -649,9 +649,11 @@ impl<'a> UiFrame<'a> {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
                         ui.text("DRAW USED GEOMETRY IN VIEWPORT\n\
                         \n\
+                        When enabled, used geometry will be drawn with \
+                        a transparent material.\n
+                        \n
                         Used geometry is geometry that has been referenced as a parameter \
-                        in an operation. When enabled, used geometry will be drawn with \
-                        a transparent material.");
+                        in an operation.");
                         wrap_token.pop(ui);
                     });
                 }
