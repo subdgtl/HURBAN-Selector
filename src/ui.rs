@@ -1028,13 +1028,15 @@ impl<'a> UiFrame<'a> {
             });
         bold_font_token.pop(ui);
 
+        let changed = change.is_some();
+
         // FIXME: Debounce changes to parameters
 
         // Only submit the change if interpreter is not busy. Not all
         // imgui components can be made read-only, so we can not trust
         // it.
         if !interpreter_busy {
-            if let Some((stmt_index, arg_index, expr)) = change.clone() {
+            if let Some((stmt_index, arg_index, expr)) = change {
                 let stmt = &session.stmts()[stmt_index];
                 match stmt {
                     ast::Stmt::VarDecl(var_decl) => {
@@ -1052,7 +1054,7 @@ impl<'a> UiFrame<'a> {
             }
         }
 
-        change.is_some()
+        changed
     }
 
     pub fn draw_operations_window(
