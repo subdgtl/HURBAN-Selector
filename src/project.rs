@@ -12,7 +12,7 @@ use crate::interpreter::ast;
 
 pub const PROJECT_EXTENSION: &str = "hurban";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum NextAction {
     Exit,
     NewProject,

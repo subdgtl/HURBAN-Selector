@@ -464,9 +464,7 @@ pub fn init_and_run(options: Options) -> ! {
                     change_window_title(&window, &project_status);
                 }
 
-                if let Some(prevent_overwrite_status) =
-                    project_status.prevent_overwrite_status.clone()
-                {
+                if let Some(prevent_overwrite_status) = project_status.prevent_overwrite_status {
                     match ui_frame.draw_prevent_overwrite_modal() {
                         SaveModalResult::Cancel => {
                             project_status.prevent_overwrite_status = None;
