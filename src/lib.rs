@@ -1035,11 +1035,11 @@ fn change_window_title(window: &winit::window::Window, project_status: &ProjectS
             .expect("Project file name isn't valid UTF-8."),
         None => "unsaved project",
     };
-    let title = if project_status.changed_since_last_save {
-        format!("{} - *{}", BASE_WINDOW_TITLE, filename)
+    let join_str = if project_status.changed_since_last_save {
+        " - *"
     } else {
-        format!("{} - {}", BASE_WINDOW_TITLE, filename)
+        " - "
     };
 
-    window.set_title(&title);
+    window.set_title(&[BASE_WINDOW_TITLE, filename].join(join_str));
 }
