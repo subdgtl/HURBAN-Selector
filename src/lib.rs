@@ -237,7 +237,12 @@ pub fn init_and_run(options: Options) -> ! {
             backend: options.gpu_backend,
             power_preference: options.gpu_power_preference,
             flat_material_color: [0.0, 0.0, 0.0, 0.1],
-            transparent_matcap_shaded_material_alpha: 0.2,
+            // FIXME: These different alphas are to workaround a blending bug in
+            // the renderer. Fix the blending bug.
+            transparent_matcap_shaded_material_alpha: match options.theme {
+                Theme::Dark => 0.5,
+                Theme::Funky => 0.15,
+            },
         },
     );
 
@@ -658,7 +663,13 @@ pub fn init_and_run(options: Options) -> ! {
                             scene_gpu_mesh_handles
                                 .values()
                                 .filter(|(used, _)| viewport_draw_used_values || !used)
-                                .map(|(_, handle)| (handle, Material::Edges)),
+                                .map(|(used, handle)| {
+                                    if *used {
+                                        (handle, Material::TransparentMatcapShaded)
+                                    } else {
+                                        (handle, Material::Edges)
+                                    }
+                                }),
                         );
                     }
                     ViewportDrawMode::Shaded => {
@@ -684,7 +695,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 .filter(|(used, _)| viewport_draw_used_values || !used)
                                 .map(|(used, handle)| {
                                     if *used {
-                                        (handle, Material::TransparentMatcapShadedEdges)
+                                        (handle, Material::TransparentMatcapShaded)
                                     } else {
                                         (handle, Material::MatcapShadedEdges)
                                     }
@@ -710,7 +721,7 @@ pub fn init_and_run(options: Options) -> ! {
                             false,
                             scene_gpu_mesh_handles
                                 .values()
-                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .filter(|(used, _)| !used)
                                 .map(|(_, handle)| (handle, Material::EdgesXray)),
                         );
                     }
@@ -781,7 +792,13 @@ pub fn init_and_run(options: Options) -> ! {
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
-                                    .map(|(_, handle)| (handle, Material::Edges)),
+                                    .map(|(used, handle)| {
+                                        if *used {
+                                            (handle, Material::TransparentMatcapShaded)
+                                        } else {
+                                            (handle, Material::Edges)
+                                        }
+                                    }),
                             );
                         }
                         ViewportDrawMode::Shaded => {
@@ -809,7 +826,7 @@ pub fn init_and_run(options: Options) -> ! {
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
                                     .map(|(used, handle)| {
                                         if *used {
-                                            (handle, Material::TransparentMatcapShadedEdges)
+                                            (handle, Material::TransparentMatcapShaded)
                                         } else {
                                             (handle, Material::MatcapShadedEdges)
                                         }
@@ -837,7 +854,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 false,
                                 scene_gpu_mesh_handles
                                     .values()
-                                    .filter(|(used, _)| viewport_draw_used_values || !used)
+                                    .filter(|(used, _)| !used)
                                     .map(|(_, handle)| (handle, Material::EdgesXray)),
                             );
                         }
