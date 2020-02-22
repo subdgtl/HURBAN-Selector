@@ -845,7 +845,7 @@ impl<'a> UiFrame<'a> {
 
                             if ui.is_item_hovered() {
                                 if let Some(error) = error {
-                                    let tooltip_bgcolor_token = ui.push_style_color(imgui::StyleColor::PopupBg, self.colors.header_error_hovered);
+                                    let color_token = ui.push_style_color(imgui::StyleColor::PopupBg, self.colors.header_error_hovered);
                                     ui.tooltip(|| {
                                         let wrap_token = ui
                                             .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
@@ -868,7 +868,7 @@ impl<'a> UiFrame<'a> {
 
                                         wrap_token.pop(ui);
                                     });
-                                    tooltip_bgcolor_token.pop(ui);
+                                    color_token.pop(ui);
                                 } else if !func.info().description.is_empty() {
                                     ui.tooltip(|| {
                                         let wrap_token = ui
@@ -1309,11 +1309,11 @@ impl<'a> UiFrame<'a> {
                         imgui::StyleColor::ButtonHovered,
                         self.colors.special_button_hovered,
                     ),
-                    (imgui::StyleColor::TextDisabled, self.colors.special_button_text),
                     (
                         imgui::StyleColor::ButtonActive,
                         self.colors.special_button_active,
                     ),
+                    (imgui::StyleColor::TextDisabled, self.colors.special_button_text),
                 ]);
                 let running_tokens = if running_enabled {
                     None
