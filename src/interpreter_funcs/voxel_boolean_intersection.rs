@@ -12,7 +12,7 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::scalar_field::ScalarField;
+use crate::mesh::scalar_field::{self, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 
@@ -31,12 +31,8 @@ impl fmt::Display for FuncBooleanIntersectionError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncBooleanIntersectionError::EmptyScalarField => {
-                write!(f, "The resulting scalar field is empty")
-            }
-            FuncBooleanIntersectionError::VoxelDimensionsZero => {
-                write!(f, "One or more voxel dimensions are zero")
-            }
+            FuncBooleanIntersectionError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
+            FuncBooleanIntersectionError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
             FuncBooleanIntersectionError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
@@ -97,11 +93,12 @@ impl Func for FuncBooleanIntersection {
             ParamInfo {
                 name: "Voxel Size",
                 description: "Size of a single cell in the regular three-dimensional voxel grid.\n\
+                \n\
                 High values produce coarser results, low values may increase precision but produce \
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
-                    min_value: Some(f32::MIN_POSITIVE),
+                    min_value: Some(0.005),
                     max_value: None,
                     default_value_x: Some(1.0),
                     default_value_y: Some(1.0),
@@ -176,52 +173,13 @@ impl Func for FuncBooleanIntersection {
     ) -> Result<Value, FuncError> {
         let mesh1 = args[0].unwrap_mesh();
         let mesh2 = args[1].unwrap_mesh();
-        let voxel_dimensions = args[2].unwrap_float3();
+        let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
         let growth_u32 = args[3].unwrap_uint();
         let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
         let fill = args[4].unwrap_boolean();
         let error_if_large = args[5].unwrap_boolean();
         let analyze_bbox = args[6].unwrap_boolean();
         let analyze_mesh = args[7].unwrap_boolean();
-
-        let bbox_diagonal1 = mesh1.bounding_box().diagonal();
-        let voxel_count1 = (bbox_diagonal1.x / voxel_dimensions[0]).ceil() as u32
-            * (bbox_diagonal1.y / voxel_dimensions[1]).ceil() as u32
-            * (bbox_diagonal1.z / voxel_dimensions[2]).ceil() as u32;
-
-        let bbox_diagonal2 = mesh2.bounding_box().diagonal();
-        let voxel_count2 = (bbox_diagonal2.x / voxel_dimensions[0]).ceil() as u32
-            * (bbox_diagonal2.y / voxel_dimensions[1]).ceil() as u32
-            * (bbox_diagonal2.z / voxel_dimensions[2]).ceil() as u32;
-
-        let (voxel_count, bbox_diagonal) = if voxel_count1 > voxel_count2 {
-            (voxel_count1, bbox_diagonal1)
-        } else {
-            (voxel_count2, bbox_diagonal2)
-        };
-
-        log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
-
-        if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
-            let vy_over_vx = voxel_dimensions[1] / voxel_dimensions[0];
-            let vz_over_vx = voxel_dimensions[2] / voxel_dimensions[0];
-            let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
-                / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
-                .cbrt();
-            let vy = vx * vy_over_vx;
-            let vz = vx * vz_over_vx;
-
-            // The equation doesn't take rounding into consideration, hence the
-            // arbitrary multiplication by 1.1.
-            let error = FuncError::new(FuncBooleanIntersectionError::TooManyVoxels(
-                VOXEL_COUNT_THRESHOLD,
-                vx * 1.1,
-                vy * 1.1,
-                vz * 1.1,
-            ));
-            log(LogMessage::error(format!("Error: {}", error)));
-            return Err(error);
-        }
 
         if voxel_dimensions
             .iter()
@@ -232,10 +190,40 @@ impl Func for FuncBooleanIntersection {
             return Err(error);
         }
 
-        let mut scalar_field1 =
-            ScalarField::from_mesh(mesh1, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);
-        let mut scalar_field2 =
-            ScalarField::from_mesh(mesh2, &Vector3::from(voxel_dimensions), 0_i16, growth_u32);
+        let bbox1 = mesh1.bounding_box();
+        let voxel_count1 = scalar_field::evaluate_voxel_count(&bbox1, &voxel_dimensions);
+
+        let bbox2 = mesh2.bounding_box();
+        let voxel_count2 = scalar_field::evaluate_voxel_count(&bbox2, &voxel_dimensions);
+
+        let voxel_count = if voxel_count1 > voxel_count2 {
+            voxel_count1
+        } else {
+            voxel_count2
+        };
+
+        log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
+
+        if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
+            let suggested_voxel_size =
+                scalar_field::suggest_voxel_size_to_fit_bbox_within_voxel_count2(
+                    voxel_count,
+                    &voxel_dimensions,
+                    VOXEL_COUNT_THRESHOLD,
+                );
+
+            let error = FuncError::new(FuncBooleanIntersectionError::TooManyVoxels(
+                VOXEL_COUNT_THRESHOLD,
+                suggested_voxel_size.x,
+                suggested_voxel_size.y,
+                suggested_voxel_size.z,
+            ));
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
+
+        let mut scalar_field1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0_i16, growth_u32);
+        let mut scalar_field2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0_i16, growth_u32);
 
         scalar_field1.compute_distance_filed(&(0..=0));
         scalar_field2.compute_distance_filed(&(0..=0));
