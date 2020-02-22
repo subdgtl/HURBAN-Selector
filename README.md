@@ -3,7 +3,7 @@
 [![Build Status](https://dev.azure.com/subdgtl/HURBAN-Selector/_apis/build/status/Master%20and%20PR?branchName=master)](https://dev.azure.com/subdgtl/HURBAN-Selector/_build/latest?definitionId=1&branchName=master)
 
 H.U.R.B.A.N. selector is a software experiment sponsored by the [Slovak
-Center of Design](https://www.scd.sk/). It is meant to test the
+Design Center](https://www.scd.sk/). It is meant to test the
 hypothesis that creating new designs and shapes is subconsciously
 inspired by our previous experience. There is a trial and error phase
 in the design process where many variations on the same shape are

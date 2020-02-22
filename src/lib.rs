@@ -211,6 +211,8 @@ pub fn init_and_run(options: Options) -> ! {
         transparent: true,
     };
 
+    let mut about_modal_open = false;
+
     let clear_color = match options.theme {
         Theme::Dark => [0.1, 0.1, 0.1, 1.0],
         Theme::Funky => [1.0, 1.0, 1.0, 1.0],
@@ -313,6 +315,7 @@ pub fn init_and_run(options: Options) -> ! {
                 let menu_status = ui_frame.draw_menu_window(
                     time,
                     &mut screenshot_modal_open,
+                    &mut about_modal_open,
                     &mut renderer_draw_mesh_mode,
                     project_path.as_ref().map(|p| p.as_str()),
                     &mut notifications.borrow_mut(),
@@ -387,6 +390,9 @@ pub fn init_and_run(options: Options) -> ! {
                     window_size.width.round() as u32,
                     window_size.height.round() as u32,
                 );
+
+                ui_frame.draw_about_window(&mut about_modal_open);
+
                 ui_frame.draw_notifications_window(&notifications.borrow());
 
                 ui_frame.draw_pipeline_window(time, &mut session);
