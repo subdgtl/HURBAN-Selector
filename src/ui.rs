@@ -504,6 +504,7 @@ impl<'a> UiFrame<'a> {
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
+        #[allow(clippy::cognitive_complexity)]
         imgui::Window::new(imgui::im_str!("Menu"))
             .movable(false)
             .resizable(false)
