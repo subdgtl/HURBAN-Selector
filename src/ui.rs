@@ -520,7 +520,7 @@ impl<'a> UiFrame<'a> {
                 status.reset_viewport =
                     ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
 
-                if ui.button(imgui::im_str!("Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
+                if ui.button(imgui::im_str!("Save Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
                     *screenshot_modal_open = true;
                 }
 
@@ -528,7 +528,7 @@ impl<'a> UiFrame<'a> {
                     &format!("HURBAN selector project (.{})", project::PROJECT_EXTENSION);
                 let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
-                if ui.button(imgui::im_str!("New project"), [-f32::MIN_POSITIVE, 0.0])
+                if ui.button(imgui::im_str!("New"), [-f32::MIN_POSITIVE, 0.0])
                     || project_status.new_requested
                 {
                     if project_status.changed_since_last_save
@@ -543,14 +543,14 @@ impl<'a> UiFrame<'a> {
                     project_status.new_requested = false;
                 }
 
-                if ui.button(imgui::im_str!("Save project"), [-f32::MIN_POSITIVE, 0.0]) {
+                if ui.button(imgui::im_str!("Save"), [-f32::MIN_POSITIVE, 0.0]) {
                     match &project_status.path {
                         Some(project_path_str) => {
                             status.save_path = Some(project_path_str.to_string())
                         }
                         None => {
                             if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
-                                "Save project",
+                                "Save",
                                 &format!("new_project.{}", project::PROJECT_EXTENSION),
                                 ext_filter,
                                 ext_description,
@@ -561,12 +561,9 @@ impl<'a> UiFrame<'a> {
                     }
                 }
 
-                if ui.button(
-                    imgui::im_str!("Save project as..."),
-                    [-f32::MIN_POSITIVE, 0.0],
-                ) {
+                if ui.button(imgui::im_str!("Save as..."), [-f32::MIN_POSITIVE, 0.0]) {
                     if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
-                        "Save project",
+                        "Save",
                         &format!("new_project.{}", project::PROJECT_EXTENSION),
                         ext_filter,
                         ext_description,
@@ -575,7 +572,7 @@ impl<'a> UiFrame<'a> {
                     }
                 }
 
-                if ui.button(imgui::im_str!("Open project"), [-f32::MIN_POSITIVE, 0.0])
+                if ui.button(imgui::im_str!("Open"), [-f32::MIN_POSITIVE, 0.0])
                     || project_status.open_requested
                 {
                     if project_status.changed_since_last_save
@@ -583,7 +580,7 @@ impl<'a> UiFrame<'a> {
                     {
                         status.prevent_overwrite_modal = Some(OverwriteModalTrigger::OpenProject);
                     } else if let Some(path) = tinyfiledialogs::open_file_dialog(
-                        "Open project",
+                        "Open",
                         "",
                         Some((ext_filter, ext_description)),
                     ) {
@@ -636,20 +633,24 @@ impl<'a> UiFrame<'a> {
             .build(|| {
                 ui.text("Your changes will be lost if you don't save them.");
 
-                if ui.button(imgui::im_str!("Don't save"), [0.0, 0.0]) {
+                if ui.button(imgui::im_str!("Save"), [0.0, 0.0]) {
+                    save_modal_result = SaveModalResult::Save;
+
+                    ui.close_current_popup();
+                }
+
+                ui.same_line(0.0);
+
+                if ui.button(imgui::im_str!("Discard changes"), [0.0, 0.0]) {
                     save_modal_result = SaveModalResult::DontSave;
 
                     ui.close_current_popup();
                 }
 
+                ui.same_line(0.0);
+
                 if ui.button(imgui::im_str!("Cancel"), [0.0, 0.0]) {
                     save_modal_result = SaveModalResult::Cancel;
-
-                    ui.close_current_popup();
-                }
-
-                if ui.button(imgui::im_str!("Save"), [0.0, 0.0]) {
-                    save_modal_result = SaveModalResult::Save;
 
                     ui.close_current_popup();
                 }
@@ -663,7 +664,7 @@ impl<'a> UiFrame<'a> {
         let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
         tinyfiledialogs::save_file_dialog_with_filter(
-            "Save project",
+            "Save",
             &format!("new_project.{}", project::PROJECT_EXTENSION),
             ext_filter,
             ext_description,
