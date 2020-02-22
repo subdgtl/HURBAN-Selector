@@ -316,9 +316,11 @@ pub fn init_and_run(options: Options) -> ! {
                 camera.zoom_step(input_state.camera_zoom_steps);
 
                 let menu_status = ui_frame.draw_menu_window(
+                    time,
                     &mut screenshot_modal_open,
                     &mut renderer_draw_mesh_mode,
                     &mut project_status,
+                    &mut notifications.borrow_mut(),
                 );
                 let reset_viewport =
                     input_state.camera_reset_viewport || menu_status.reset_viewport;
@@ -380,6 +382,12 @@ pub fn init_and_run(options: Options) -> ! {
                             project_status.save(&save_path);
 
                             change_window_title(&window, &project_status);
+
+                            notifications.borrow_mut().push(
+                                time,
+                                NotificationLevel::Info,
+                                format!("Project saved as {}", &save_path),
+                            );
                         }
                         Err(err) => {
                             log::error!("{}", err);
@@ -425,10 +433,16 @@ pub fn init_and_run(options: Options) -> ! {
                                 session.push_prog_stmt(time, stmt);
                             }
 
-                            project_status.path = Some(open_path);
+                            project_status.path = Some(open_path.clone());
                             project_status.changed_since_last_save = false;
 
                             change_window_title(&window, &project_status);
+
+                            notifications.borrow_mut().push(
+                                time,
+                                NotificationLevel::Info,
+                                format!("Opened project {}", &open_path),
+                            );
                         }
                         Err(err) => {
                             log::error!("{}", err);
@@ -458,7 +472,12 @@ pub fn init_and_run(options: Options) -> ! {
                     change_window_title(&window, &project_status);
                 }
 
-                if ui_frame.draw_operations_window(time, &mut session, DURATION_AUTORUN_DELAY) {
+                if ui_frame.draw_operations_window(
+                    time,
+                    &mut session,
+                    &mut notifications.borrow_mut(),
+                    DURATION_AUTORUN_DELAY,
+                ) {
                     project_status.changed_since_last_save = true;
 
                     change_window_title(&window, &project_status);
@@ -567,7 +586,7 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 session.poll(time, |callback_value| match callback_value {
-                    PollNotification::Add(var_ident, value) => match value {
+                    PollNotification::ValueAdded(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
@@ -630,7 +649,7 @@ pub fn init_and_run(options: Options) -> ! {
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
-                    PollNotification::Remove(var_ident, value) => match value {
+                    PollNotification::ValueRemoved(var_ident, value) => match value {
                         Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
@@ -691,6 +710,23 @@ pub fn init_and_run(options: Options) -> ! {
                         }
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
+                    PollNotification::FinishedSuccessfully => {
+                        notifications.borrow_mut().push(
+                            time,
+                            NotificationLevel::Info,
+                            "Execution of the Sequence of operations finished successfully.",
+                        );
+                    }
+                    PollNotification::FinishedWithError(error_message) => {
+                        notifications.borrow_mut().push(
+                            time,
+                            NotificationLevel::Error,
+                            format!(
+                                "Execution of the Sequence of operations finished with error: {}",
+                                error_message
+                            ),
+                        );
+                    }
                 });
 
                 if let Some(interp) = camera_interpolation {

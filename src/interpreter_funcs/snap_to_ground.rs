@@ -63,7 +63,15 @@ impl Func for FuncSnapToGround {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
                               The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
@@ -86,7 +94,8 @@ impl Func for FuncSnapToGround {
         let mesh = args[0].unwrap_refcounted_mesh();
         let move_to_origin = args[1].unwrap_boolean();
         let snap_to_ground = args[2].unwrap_boolean();
-        let analyze = args[3].unwrap_boolean();
+        let analyze_bbox = args[3].unwrap_boolean();
+        let analyze_mesh = args[4].unwrap_boolean();
 
         let value = if move_to_origin || snap_to_ground {
             let bbox = mesh.bounding_box();
@@ -119,7 +128,10 @@ impl Func for FuncSnapToGround {
             mesh
         };
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
         Ok(Value::Mesh(value))

@@ -4,7 +4,9 @@ use std::time::{Duration, Instant};
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 
-use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
+use crate::convert::{
+    cast_i32, cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32,
+};
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
 use crate::project;
@@ -18,6 +20,19 @@ const WRAP_POS_TOOLTIP_TEXT_PIXELS: f32 = 400.0;
 const WRAP_POS_CONSOLE_TEXT_PIXELS: f32 = 380.0;
 
 const MARGIN: f32 = 10.0;
+
+const OPERATIONS_WINDOW_WIDTH: f32 = 400.0;
+const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.33;
+
+const PIPELINE_WINDOW_WIDTH: f32 = OPERATIONS_WINDOW_WIDTH;
+const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 1.0 - OPERATIONS_WINDOW_HEIGHT_MULT;
+const PIPELINE_OPERATION_CONSOLE_HEIGHT: f32 = 40.0;
+
+const MENU_WINDOW_WIDTH: f32 = 150.0;
+const MENU_WINDOW_HEIGHT: f32 = 254.0;
+
+const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
+const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
@@ -87,7 +102,7 @@ pub enum SaveModalResult {
     Nothing,
 }
 
-/// Thin wrapper around imgui and its winit platform. Its main responsibilty
+/// Thin wrapper around imgui and its winit platform. Its main responsibility
 /// is to create UI frames which draw the UI itself.
 pub struct Ui {
     imgui_context: imgui::Context,
@@ -406,9 +421,6 @@ impl<'a> UiFrame<'a> {
 
         let ui = &self.imgui_ui;
 
-        const NOTIFICATIONS_WINDOW_WIDTH: f32 = 400.0;
-        const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.12;
-
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -450,6 +462,10 @@ impl<'a> UiFrame<'a> {
                             imgui::StyleColor::Text,
                             self.colors.log_message_warn,
                         ),
+                        NotificationLevel::Error => ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_error,
+                        ),
                     };
 
                     ui.text_wrapped(&imgui::im_str!("{}", notification.text));
@@ -469,9 +485,11 @@ impl<'a> UiFrame<'a> {
 
     pub fn draw_menu_window(
         &self,
+        current_time: Instant,
         screenshot_modal_open: &mut bool,
         draw_mode: &mut DrawMeshMode,
         project_status: &mut project::ProjectStatus,
+        notifications: &mut Notifications,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
         let mut status = MenuStatus {
@@ -482,8 +500,6 @@ impl<'a> UiFrame<'a> {
             prevent_overwrite_modal: None,
         };
 
-        const UTILITIES_WINDOW_WIDTH: f32 = 150.0;
-        const UTILITIES_WINDOW_HEIGHT: f32 = 252.0;
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
@@ -493,39 +509,158 @@ impl<'a> UiFrame<'a> {
             .resizable(false)
             .collapsible(false)
             .size(
-                [UTILITIES_WINDOW_WIDTH, UTILITIES_WINDOW_HEIGHT],
+                [MENU_WINDOW_WIDTH, MENU_WINDOW_HEIGHT],
                 imgui::Condition::Always,
             )
             .position(
-                [window_inner_width + MARGIN - UTILITIES_WINDOW_WIDTH, MARGIN],
+                [window_inner_width + MARGIN - MENU_WINDOW_WIDTH, MARGIN],
                 imgui::Condition::Always,
             )
             .build(ui, || {
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("MAIN MENU\n\
+                        \n\
+                        Viewport information and settings.\n\
+                        Screenshot and file management.");
+                        wrap_token.pop(ui);
+                    });
+                }
                 let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("FRAMES PER SECOND\n\
+                        \n\
+                        Shows the rendering performance of the current model on the current computer. \
+                        The desired value for standard computers is 60 FPS \
+                        some monitors may limit this value to 30 FPS \
+                        and some gaming machines may support higher rates.\n\
+                        \n\
+                        If the FPS suddenly drops, it is na indication that the current model \
+                        is already too heavy (contains too many vertices and faces) \
+                        and for sake of performance and safety, it should be reduced.");
+                        wrap_token.pop(ui);
+                    });
+                }
 
-                ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
-                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawMeshMode::Edges);
-                ui.radio_button(
+                if ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Shaded.",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("SHADED VIEWPORT MODE\n\
+                        \n\
+                        The geometry will be shaded with solid color and no edges will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                if ui.radio_button(imgui::im_str!("Wireframes"), draw_mode, DrawMeshMode::Edges) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Wireframes.",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("WIREFRAME VIEWPORT MODE\n\
+                        \n\
+                        The geometry will be rendered as a wireframe model, the surface will be \
+                        fully transparent and only edges will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                if ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
                     draw_mode,
                     DrawMeshMode::ShadedEdges,
-                );
-                ui.radio_button(
+                ) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Shaded with Edges (Wireframes).",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("SHADED WITH EDGES VIEWPORT MODE\n\
+                        \n\
+                        The geometry will be shaded with solid color and visible edges will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                if ui.radio_button(
                     imgui::im_str!("X-RAY"),
                     draw_mode,
                     DrawMeshMode::ShadedEdgesXray,
-                );
+                ) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to X-Ray: Shaded with internal Edges (Wireframes).",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("SHADED WITH X-RAY EDGES VIEWPORT MODE\n\
+                        \n\
+                        The geometry will be shaded with solid color and all edges, \
+                        including the ones hidden behind the solid color of the surfaces, \
+                        will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
 
                 status.reset_viewport =
                     ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
+                if status.reset_viewport {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport camera reset to fit all visible geometry.",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("RESET VIEWPORT CAMERA\n\
+                        \n\
+                        Set the viewport camera to look at all visible geometry in the scene.");
+                        wrap_token.pop(ui);
+                    });
+                }
 
                 if ui.button(imgui::im_str!("Save Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
                     *screenshot_modal_open = true;
                 }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("TAKE SCREENSHOT\n\
+                        \n\
+                        Opens the dialog for saving the current viewport into a PNG file.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                ui.separator();
 
                 let ext_description =
-                    &format!("HURBAN selector project (.{})", project::PROJECT_EXTENSION);
+                    &format!("H.U.R.B.A.N. selector project (.{})", project::PROJECT_EXTENSION);
                 let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
                 if ui.button(imgui::im_str!("New"), [-f32::MIN_POSITIVE, 0.0])
@@ -561,6 +696,23 @@ impl<'a> UiFrame<'a> {
                     }
                 }
 
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("SAVE PROJECT INTO A .hurban FILE\n\
+                        \n\
+                        Saves the current project into a .hurban file. \
+                        When used for the first time, opens a system dialog to specify save file location.\n\
+                        \n\
+                        The .hurban project file contains only the operation sequence. It does not contain any \
+                        actual geometry, but rather just the sequence of operations that generates the geometry \
+                        and references to the external files to import. \
+                        It is advised to keep the files to import next to the .hurban project file \
+                        and distribute them together.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
                 if ui.button(imgui::im_str!("Save as..."), [-f32::MIN_POSITIVE, 0.0]) {
                     if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
                         "Save",
@@ -589,6 +741,23 @@ impl<'a> UiFrame<'a> {
 
                     project_status.prevent_overwrite_status = None;
                     project_status.open_requested = false;
+                }
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("OPEN PROJECT FROM A .hurban FILE\n\
+                        \n\
+                        Opens the sequence of operations saved in a .hurban file. \
+                        The current unsaved project will be lost.\n\
+                        \n\
+                        The .hurban project file contains only the operation sequence. It does not contain any \
+                        actual geometry, but rather just the sequence of operations that generates the geometry \
+                        and references to the external files to import. \
+                        It is advised to keep the files to import next to the .hurban project file \
+                        and distribute them together.");
+                        wrap_token.pop(ui);
+                    });
                 }
 
                 regular_font_token.pop(ui);
@@ -683,9 +852,6 @@ impl<'a> UiFrame<'a> {
 
         let function_table = session.function_table();
 
-        const PIPELINE_WINDOW_WIDTH: f32 = 400.0;
-        const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 0.7;
-
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
 
@@ -702,6 +868,41 @@ impl<'a> UiFrame<'a> {
             .size([PIPELINE_WINDOW_WIDTH, pipeline_window_height], imgui::Condition::Always)
             .position([MARGIN, MARGIN], imgui::Condition::Always)
             .build(ui, || {
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text(
+                            "SEQUENCE OF OPERATIONS\n\
+                            \n\
+                            An ordered list of operations that generate the viewport geometry. \
+                            When the sequence is run, the operations are being executed one after \
+                            another from top down. Each operation can be customized by setting the \
+                            input parameter values or specifying the input data (mesh geometry, \
+                            mesh group, path to file).\n\
+                            \n\
+                            Each operation in the sequence generates data: either a mesh geometry or \
+                            a mesh group which can be later used in a subsequent operation. Only unused \
+                            (freshly generated) geometry (mesh or group) is rendered in the viewport, \
+                            however even the geometry, which has been already used, can be reused in \
+                            subsequent operations. Operations can take as an input only that geometry, \
+                            which has been generated in the preceding operations in the sequence.\n\
+                            \n\
+                            It is possible to change any input parameters of any operation at any time, \
+                            not only after the operation has been added to the sequence. \
+                            This is useful when some parameters need to be adjusted only after the results \
+                            of subsequent operations can be visually evaluated. This approach is a gateway \
+                            to full-fledged parametric modeling paradigm.\n\
+                            \n\
+                            The .hurban project files can be build as a tool for achieving certain manipulations \
+                            with mesh geometry and because they don't contain the imported mesh models, \
+                            one sequence of operations (one project file) can be reused for various input mesh \
+                            models. Hence, H.U.R.B.A.N. selector is not only a geometry transformation tool, \
+                            but also a tool-building platform and the project files ara not only geometries but \
+                            also tools.",
+                        );
+                        wrap_token.pop(ui);
+                    });
+                }
                 let regular_font_token = ui.push_font(self.font_ids.regular);
                 for (stmt_index, stmt) in session.stmts().iter().enumerate() {
                     match stmt {
@@ -815,10 +1016,24 @@ impl<'a> UiFrame<'a> {
                                         ParamRefinement::Int(param_refinement_int) => {
                                             let mut int_lit = arg.unwrap_literal().unwrap_int();
 
-                                            if ui.input_int(&input_label, &mut int_lit)
-                                                .read_only(interpreter_busy)
-                                                .build()
-                                            {
+                                            let mut drag_int = ui
+                                                                .drag_int(&input_label, &mut int_lit)
+                                                                .speed(0.05);
+
+                                            // FIXME: Report bug: both, min and max must be set
+                                            if let Some(min_value) = param_refinement_int.min_value {
+                                                drag_int = drag_int.min(min_value);
+                                            } else {
+                                                drag_int = drag_int.min(i32::min_value());
+                                            }
+
+                                            if let Some(max_value) = param_refinement_int.max_value {
+                                                drag_int = drag_int.max(max_value);
+                                            } else {
+                                                drag_int = drag_int.max(i32::max_value());
+                                            }
+
+                                            if drag_int.build() {
                                                 int_lit = param_refinement_int.clamp(int_lit);
                                                 change = Some((
                                                     stmt_index,
@@ -831,10 +1046,23 @@ impl<'a> UiFrame<'a> {
                                             let uint_lit = arg.unwrap_literal().unwrap_uint();
                                             let mut int_value = clamp_cast_u32_to_i32(uint_lit);
 
-                                            if ui.input_int(&input_label, &mut int_value)
-                                                .read_only(interpreter_busy)
-                                                .build()
-                                            {
+                                            let mut drag_int = ui
+                                                                .drag_int(&input_label, &mut int_value)
+                                                                .speed(0.05);
+
+                                            if let Some(min_value) = param_refinement_uint.min_value {
+                                                drag_int = drag_int.min(cast_i32(min_value));
+                                            } else {
+                                                drag_int = drag_int.min(0);
+                                            }
+
+                                            if let Some(max_value) = param_refinement_uint.max_value {
+                                                drag_int = drag_int.max(cast_i32(max_value));
+                                            } else {
+                                                drag_int = drag_int.max(i32::max_value());
+                                            }
+
+                                            if drag_int.build() {
                                                 let uint_value = clamp_cast_i32_to_u32(int_value);
                                                 let uint_value = param_refinement_uint.clamp(uint_value);
                                                 change = Some((
@@ -847,8 +1075,24 @@ impl<'a> UiFrame<'a> {
                                         ParamRefinement::Float(param_refinement_float) => {
                                             let mut float_lit = arg.unwrap_literal().unwrap_float();
 
-                                            if ui.input_float(&input_label, &mut float_lit)
-                                                .read_only(interpreter_busy)
+                                            let mut drag_float = ui
+                                                                .drag_float(&input_label, &mut float_lit)
+                                                                .speed(0.05)
+                                                                .power(2.0);
+
+                                            if let Some(min_value) = param_refinement_float.min_value {
+                                                drag_float = drag_float.min(min_value);
+                                            } else {
+                                                drag_float = drag_float.min(f32::MIN);
+                                            }
+
+                                            if let Some(max_value) = param_refinement_float.max_value {
+                                                drag_float = drag_float.max(max_value);
+                                            } else {
+                                                drag_float = drag_float.max(f32::MAX);
+                                            }
+
+                                            if drag_float
                                                 .build()
                                             {
                                                 float_lit = param_refinement_float.clamp(float_lit);
@@ -863,9 +1107,26 @@ impl<'a> UiFrame<'a> {
                                             let mut float2_lit =
                                                 arg.unwrap_literal().unwrap_float2();
 
-                                            if ui
-                                                .input_float2(&input_label, &mut float2_lit)
-                                                .read_only(interpreter_busy)
+                                            let mut drag_float2 = ui
+                                                                .drag_float2(&input_label, &mut float2_lit)
+                                                                .speed(0.05)
+                                                                .power(2.0);
+
+                                            if let Some(min_value) =
+                                                param_refinement_float2.min_value {
+                                                drag_float2 = drag_float2.min(min_value);
+                                            } else {
+                                                drag_float2 = drag_float2.min(f32::MIN);
+                                            }
+
+                                            if let Some(max_value) =
+                                                param_refinement_float2.max_value {
+                                                drag_float2 = drag_float2.max(max_value);
+                                            } else {
+                                                drag_float2 = drag_float2.max(f32::MAX);
+                                            }
+
+                                            if drag_float2
                                                 .build()
                                             {
                                                 float2_lit = param_refinement_float2.clamp(float2_lit);
@@ -882,9 +1143,26 @@ impl<'a> UiFrame<'a> {
                                             let mut float3_lit =
                                                 arg.unwrap_literal().unwrap_float3();
 
-                                            if ui
-                                                .input_float3(&input_label, &mut float3_lit)
-                                                .read_only(interpreter_busy)
+                                            let mut drag_float3 = ui
+                                                .drag_float3(&input_label, &mut float3_lit)
+                                                .speed(0.05)
+                                                .power(2.0);
+
+                                            if let Some(min_value)=
+                                                param_refinement_float3.min_value {
+                                                drag_float3 = drag_float3.min(min_value);
+                                            } else {
+                                                drag_float3 = drag_float3.min(f32::MIN);
+                                            }
+
+                                            if let Some(max_value) =
+                                                param_refinement_float3.max_value{
+                                                drag_float3 = drag_float3.max(max_value);
+                                            } else {
+                                                drag_float3 = drag_float3.max(f32::MAX);
+                                            }
+
+                                            if drag_float3
                                                 .build()
                                             {
                                                 float3_lit = param_refinement_float3.clamp(float3_lit);
@@ -980,7 +1258,7 @@ impl<'a> UiFrame<'a> {
 
                                 let console_id = imgui::im_str!("##console{}", stmt_index);
                                 if let Some(window_token) = imgui::ChildWindow::new(&console_id)
-                                    .size([0.0, 80.0])
+                                    .size([0.0, PIPELINE_OPERATION_CONSOLE_HEIGHT])
                                     .scrollable(true)
                                     .scroll_bar(true)
                                     .always_vertical_scrollbar(true)
@@ -1062,13 +1340,11 @@ impl<'a> UiFrame<'a> {
         &self,
         current_time: Instant,
         session: &mut Session,
+        notifications: &mut Notifications,
         duration_autorun_delay: Duration,
     ) -> bool {
         let ui = &self.imgui_ui;
         let function_table = session.function_table();
-
-        const OPERATIONS_WINDOW_WIDTH: f32 = 400.0;
-        const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.3;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -1102,6 +1378,16 @@ impl<'a> UiFrame<'a> {
                 imgui::Condition::Always,
             )
             .build(ui, || {
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("AVAILABLE OPERATIONS\n\
+                        \n\
+                        A list of available operations to be stacked into a sequence of operations.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
                 let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.columns(2, imgui::im_str!("Controls columns"), false);
 
@@ -1134,6 +1420,28 @@ impl<'a> UiFrame<'a> {
                 }
                 pipeline_button_color_token.pop(ui);
 
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("RUN RECOMPUTATION OF THE SEQUENCE OF OPERATIONS\n\
+                        \n\
+                        Executes the list of operations stacked in the Sequence of operations one \
+                        after another from top down. The Sequence of operations editing is disabled \
+                        during the computation. If any operation fails due to invalid input parameters, \
+                        the computation stops and the error will be reported in the console log of the \
+                        respective operation.");
+                        let text_color_token = ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_warn,
+                        );
+                        ui.text("\n\
+                        WARNING: The execution cannot be stopped. If it takes long time or crashes, \
+                        the unsaved progress of the .hurban project file will be lost!");
+                        text_color_token.pop(ui);
+                        wrap_token.pop(ui);
+                    });
+                }
+
                 ui.next_column();
 
                 let popping_tokens = if popping_enabled {
@@ -1147,15 +1455,53 @@ impl<'a> UiFrame<'a> {
                 ) && popping_enabled
                 {
                     pop_stmt_clicked = true;
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Warn,
+                        "Removed last operation from the Sequence.",
+                    );
                 }
                 if let Some((color_token, style_token)) = popping_tokens {
                     color_token.pop(ui);
                     style_token.pop(ui);
                 }
 
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("REMOVE LAST OPERATION FROM THE SEQUENCE\n\
+                        \n\
+                        Only the last operation in the sequence of operations can be removed. \
+                        The removal cannot be undone!");
+                        wrap_token.pop(ui);
+                    });
+                }
+
                 ui.columns(1, imgui::im_str!("Autorun columns"), false);
                 autorun_clicked =
                     ui.checkbox(imgui::im_str!("Run automatically"), &mut autorun_enabled);
+
+                    if ui.is_item_hovered() {
+                        ui.tooltip(|| {
+                            let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                            ui.text("RUN RECOMPUTATION OF THE SEQUENCE OF OPERATIONS AUTOMATICALLY\n\
+                            \n\
+                            Executes the list of operations stacked in the Sequence of \
+                            operations one after another from top down automatically whenever a \
+                            parameter or an operation changes in the Sequence of operations.");
+                            let text_color_token = ui.push_style_color(
+                                imgui::StyleColor::Text,
+                                self.colors.log_message_warn,
+                            );
+                            ui.text("\n\
+                            WARNING: The execution may take long or even hang the computer! If \
+                            not sure how heavy is the geometry, turn the automatic recomputation off. \
+                            The execution cannot be stopped. If it takes long time or crashes, \
+                            the unsaved progress of the .hurban project file will be lost!");
+                            text_color_token.pop(ui);
+                            wrap_token.pop(ui);
+                        });
+                    }
 
                 ui.separator();
 
@@ -1165,13 +1511,29 @@ impl<'a> UiFrame<'a> {
                     Some(push_disabled_style(ui))
                 };
                 ui.columns(3, imgui::im_str!("Add operations columns"), false);
+
+                let mut previous_group_number = 0;
+                let mut column_counter = 0;
                 for (func_ident, func) in function_table {
+                    let current_group_number = func_ident.0 / 1000_u64;
+                    if current_group_number != previous_group_number {
+                        while column_counter % 3 != 0 {
+                            ui.next_column();
+                            column_counter += 1;
+                        }
+                        ui.separator();
+                    }
                     if ui.button(
                         &imgui::im_str!("{}", func.info().name),
                         [-f32::MIN_POSITIVE, 20.0],
                     ) && pushing_enabled
                     {
                         function_clicked = Some(func_ident);
+                        notifications.push(
+                            current_time,
+                            NotificationLevel::Info,
+                            format!("Added new operation to the Sequence: {}.", func.info().name),
+                        );
                     }
 
                     if ui.is_item_hovered() && !func.info().description.is_empty() {
@@ -1183,7 +1545,11 @@ impl<'a> UiFrame<'a> {
                     }
 
                     ui.next_column();
+                    column_counter += 1;
+
+                    previous_group_number = current_group_number;
                 }
+
                 if let Some((color_token, style_token)) = pushing_tokens {
                     color_token.pop(ui);
                     style_token.pop(ui);
@@ -1277,6 +1643,11 @@ impl<'a> UiFrame<'a> {
         }
 
         if interpret_clicked {
+            notifications.push(
+                current_time,
+                NotificationLevel::Info,
+                "Execution of the Sequence of operations has started...",
+            );
             session.interpret();
         }
 
