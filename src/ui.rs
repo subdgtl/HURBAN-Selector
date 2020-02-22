@@ -525,7 +525,7 @@ impl<'a> UiFrame<'a> {
                 }
 
                 let ext_description =
-                    &format!("HURBAN Selector project (.{})", project::PROJECT_EXTENSION);
+                    &format!("HURBAN selector project (.{})", project::PROJECT_EXTENSION);
                 let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
                 if ui.button(imgui::im_str!("New project"), [-f32::MIN_POSITIVE, 0.0])
@@ -659,7 +659,7 @@ impl<'a> UiFrame<'a> {
     }
 
     pub fn draw_save_dialog(&self) -> Option<String> {
-        let ext_description = &format!("HURBAN Selector project (.{})", project::PROJECT_EXTENSION);
+        let ext_description = &format!("HURBAN selector project (.{})", project::PROJECT_EXTENSION);
         let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
         tinyfiledialogs::save_file_dialog_with_filter(

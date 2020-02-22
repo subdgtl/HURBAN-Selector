@@ -53,7 +53,7 @@ mod ui;
 const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
 const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
 const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(100);
-const BASE_WINDOW_TITLE: &str = "H.U.R.B.A.N. Selector";
+const BASE_WINDOW_TITLE: &str = "H.U.R.B.A.N. selector";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
