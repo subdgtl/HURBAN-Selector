@@ -77,7 +77,7 @@ pub struct MenuStatus {
     pub new_project: bool,
     pub save_path: Option<String>,
     pub open_path: Option<String>,
-    pub prevent_override_modal: Option<OverwriteModalTrigger>,
+    pub prevent_overwrite_modal: Option<OverwriteModalTrigger>,
 }
 
 pub enum SaveModalResult {
@@ -479,7 +479,7 @@ impl<'a> UiFrame<'a> {
             new_project: false,
             save_path: None,
             open_path: None,
-            prevent_override_modal: None,
+            prevent_overwrite_modal: None,
         };
 
         const UTILITIES_WINDOW_WIDTH: f32 = 150.0;
@@ -534,7 +534,7 @@ impl<'a> UiFrame<'a> {
                     if project_status.changed_since_last_save
                         && project_status.prevent_overwrite_status.is_none()
                     {
-                        status.prevent_override_modal = Some(OverwriteModalTrigger::NewProject);
+                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::NewProject);
                     } else {
                         status.new_project = true;
                     }
@@ -581,7 +581,7 @@ impl<'a> UiFrame<'a> {
                     if project_status.changed_since_last_save
                         && project_status.prevent_overwrite_status.is_none()
                     {
-                        status.prevent_override_modal = Some(OverwriteModalTrigger::OpenProject);
+                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::OpenProject);
                     } else if let Some(path) = tinyfiledialogs::open_file_dialog(
                         "Open project",
                         "",

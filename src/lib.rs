@@ -323,8 +323,9 @@ pub fn init_and_run(options: Options) -> ! {
                 let reset_viewport =
                     input_state.camera_reset_viewport || menu_status.reset_viewport;
 
-                if let Some(prevent_override_modal_trigger) = menu_status.prevent_override_modal {
-                    project_status.prevent_overwrite_status = match prevent_override_modal_trigger {
+                if let Some(prevent_overwrite_modal_trigger) = menu_status.prevent_overwrite_modal {
+                    project_status.prevent_overwrite_status = match prevent_overwrite_modal_trigger
+                    {
                         OverwriteModalTrigger::NewProject => {
                             Some(crate::project::NextAction::NewProject)
                         }
@@ -463,14 +464,14 @@ pub fn init_and_run(options: Options) -> ! {
                     change_window_title(&window, &project_status);
                 }
 
-                if let Some(prevent_override_status2) =
+                if let Some(prevent_overwrite_status) =
                     project_status.prevent_overwrite_status.clone()
                 {
                     match ui_frame.draw_prevent_overwrite_modal() {
                         SaveModalResult::Cancel => {
                             project_status.prevent_overwrite_status = None;
                         }
-                        SaveModalResult::DontSave => match prevent_override_status2 {
+                        SaveModalResult::DontSave => match prevent_overwrite_status {
                             project::NextAction::Exit => {
                                 *control_flow = winit::event_loop::ControlFlow::Exit
                             }
@@ -492,7 +493,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 let project = project::Project { version: 1, stmts };
 
                                 match project::save(&save_path, project) {
-                                    Ok(_) => match prevent_override_status2 {
+                                    Ok(_) => match prevent_overwrite_status {
                                         project::NextAction::Exit => {
                                             *control_flow = winit::event_loop::ControlFlow::Exit
                                         }
