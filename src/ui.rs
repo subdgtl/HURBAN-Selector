@@ -544,7 +544,7 @@ impl<'a> UiFrame<'a> {
                 }
 
                 if ui.button(imgui::im_str!("Save project"), [-f32::MIN_POSITIVE, 0.0]) {
-                    match project_status.path.clone() {
+                    match &project_status.path {
                         Some(project_path_str) => {
                             status.save_path = Some(project_path_str.to_string())
                         }
