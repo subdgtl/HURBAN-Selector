@@ -469,6 +469,7 @@ impl<'a> UiFrame<'a> {
         take_screenshot_clicked
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_about_window(
         &self,
         about_modal_open: &mut bool,
