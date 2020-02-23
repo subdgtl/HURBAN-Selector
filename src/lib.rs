@@ -239,7 +239,7 @@ pub fn init_and_run(options: Options) -> ! {
         transparent: true,
     };
 
-    let mut about_modal_open = false;
+    let mut about_modal_open = true;
 
     let clear_color = match options.theme {
         Theme::Dark => [0.1, 0.1, 0.1, 1.0],
