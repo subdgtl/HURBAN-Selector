@@ -183,7 +183,7 @@ pub fn init_and_run(options: Options) -> ! {
 
         winit::window::WindowBuilder::new()
             .with_title(BASE_WINDOW_TITLE)
-            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+            .with_maximized(true)
             .with_window_icon(Some(icon))
             .build(&event_loop)
             .expect("Failed to create window")
@@ -826,6 +826,9 @@ pub fn init_and_run(options: Options) -> ! {
                             NotificationLevel::Info,
                             "Execution of the Operation pipeline finished successfully.",
                         );
+
+                        camera_interpolation =
+                            Some(CameraInterpolation::new(&camera, &scene_bounding_box, time));
                     }
 
                     PollNotification::FinishedWithError(error_message) => {
