@@ -19,15 +19,15 @@ pub fn default_project() -> Project {
                         ast::Expr::Lit(ast::LitExpr::Boolean(false)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(true)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(false)),
-                        ],
-                    ),
-                )),
-                ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                    ast::VarIdent(1),
-                    ast::CallExpr::new(
-                        FUNC_ID_IMPORT_OBJ_JOIN,
-                        vec![
-                            ast::Expr::Lit(ast::LitExpr::String("c:\\auticko.obj".to_string())),
+                    ],
+                ),
+            )),
+            ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+                ast::VarIdent(1),
+                ast::CallExpr::new(
+                    FUNC_ID_IMPORT_OBJ_JOIN,
+                    vec![
+                        ast::Expr::Lit(ast::LitExpr::String("c:\\auticko.obj".to_string())),
                         ast::Expr::Lit(ast::LitExpr::Boolean(false)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(false)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(true)),

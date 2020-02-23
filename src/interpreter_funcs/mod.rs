@@ -7,12 +7,7 @@ use self::align::FuncAlign;
 use self::create_box::FuncCreateBox;
 use self::create_plane::FuncCreatePlane;
 use self::create_uv_sphere::FuncCreateUvSphere;
-use self::disjoint_mesh::FuncDisjointMesh;
-use self::extract::FuncExtract;
-use self::extract_largest::FuncExtractLargest;
 use self::import_obj_join::FuncImportObjJoin;
-use self::import_obj_mesh::FuncImportObjMesh;
-use self::join_group::FuncJoinGroup;
 use self::join_meshes::FuncJoinMeshes;
 use self::laplacian_smoothing::FuncLaplacianSmoothing;
 use self::loop_subdivision::FuncLoopSubdivision;
@@ -66,9 +61,6 @@ pub const FUNC_ID_CREATE_BOX: FuncIdent = FuncIdent(1);
 pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(2);
 
 // Import/Export funcs: 2xxx
-pub const FUNC_ID_IMPORT_OBJ_MESH: FuncIdent = FuncIdent(2000);
-pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(2001);
-pub const FUNC_ID_EXTRACT_LARGEST: FuncIdent = FuncIdent(2002);
 pub const FUNC_ID_IMPORT_OBJ_JOIN: FuncIdent = FuncIdent(2003);
 
 // Manipulation funcs: 4xxx
@@ -92,9 +84,7 @@ pub const FUNC_ID_VOXEL_NOISE: FuncIdent = FuncIdent(8005);
 pub const FUNC_ID_INTERPOLATED_UNION: FuncIdent = FuncIdent(10000);
 
 // Tool funcs: 12xxx
-pub const FUNC_ID_DISJOINT_MESH: FuncIdent = FuncIdent(12000);
 pub const FUNC_ID_JOIN_MESHES: FuncIdent = FuncIdent(12001);
-pub const FUNC_ID_JOIN_GROUP: FuncIdent = FuncIdent(12002);
 pub const FUNC_ID_WELD: FuncIdent = FuncIdent(12003);
 pub const FUNC_ID_REVERT_MESH_FACES: FuncIdent = FuncIdent(12004);
 pub const FUNC_ID_SYNCHRONIZE_MESH_FACES: FuncIdent = FuncIdent(12005);
@@ -114,14 +104,6 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_CREATE_UV_SPHERE, Box::new(FuncCreateUvSphere));
 
     // Import/Export funcs
-    funcs.insert(
-        FUNC_ID_IMPORT_OBJ_MESH,
-        Box::new(FuncImportObjMesh::new(Importer::new(
-            EndlessCache::default(),
-        ))),
-    );
-    funcs.insert(FUNC_ID_EXTRACT, Box::new(FuncExtract));
-    funcs.insert(FUNC_ID_EXTRACT_LARGEST, Box::new(FuncExtractLargest));
     funcs.insert(
         FUNC_ID_IMPORT_OBJ_JOIN,
         Box::new(FuncImportObjJoin::new(Importer::new(
@@ -156,9 +138,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_INTERPOLATED_UNION, Box::new(FuncInterpolatedUnion));
 
     // Tool funcs
-    funcs.insert(FUNC_ID_DISJOINT_MESH, Box::new(FuncDisjointMesh));
     funcs.insert(FUNC_ID_JOIN_MESHES, Box::new(FuncJoinMeshes));
-    funcs.insert(FUNC_ID_JOIN_GROUP, Box::new(FuncJoinGroup));
     funcs.insert(FUNC_ID_WELD, Box::new(FuncWeld));
     funcs.insert(FUNC_ID_REVERT_MESH_FACES, Box::new(FuncRevertMeshFaces));
     funcs.insert(

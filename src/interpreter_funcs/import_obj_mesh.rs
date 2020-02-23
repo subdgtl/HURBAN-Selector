@@ -35,6 +35,7 @@ pub struct FuncImportObjMesh<C: ObjCache> {
 }
 
 impl<C: ObjCache> FuncImportObjMesh<C> {
+    #[allow(dead_code)]
     pub fn new(importer: Importer<C>) -> Self {
         Self { importer }
     }
