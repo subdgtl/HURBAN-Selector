@@ -50,6 +50,11 @@ mod pull;
 mod session;
 mod ui;
 
+static IMAGE_DATA_ICON: &[u8] = include_bytes!("../icons/64x64.ico");
+static IMAGE_DATA_JANCI: &[u8] = include_bytes!("../resources/janci.jpg");
+static IMAGE_DATA_JANPER: &[u8] = include_bytes!("../resources/janper.jpg");
+static IMAGE_DATA_ONDRO: &[u8] = include_bytes!("../resources/ondro.jpg");
+
 const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
 const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
 const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(100);
@@ -113,8 +118,15 @@ pub fn init_and_run(options: Options) -> ! {
     logger::init(options.app_log_level, options.lib_log_level);
 
     let event_loop = winit::event_loop::EventLoop::new();
-    let icon_file = include_bytes!("../icons/64x64.ico");
-    let icon = load_icon(icon_file);
+
+    let (img_icon, width_icon, height_icon) = decode_image_rgba8_unorm(IMAGE_DATA_ICON);
+    let (img_janci, width_janci, height_janci) = decode_image_rgba8_unorm(IMAGE_DATA_JANCI);
+    let (img_janper, width_janper, height_janper) = decode_image_rgba8_unorm(IMAGE_DATA_JANPER);
+    let (img_ondro, width_ondro, height_ondro) = decode_image_rgba8_unorm(IMAGE_DATA_ONDRO);
+
+    let icon = winit::window::Icon::from_rgba(img_icon, width_icon, height_icon)
+        .expect("Failed to create icon.");
+
     let window = if options.fullscreen {
         let monitor = event_loop.primary_monitor();
 
@@ -243,6 +255,10 @@ pub fn init_and_run(options: Options) -> ! {
             flat_shading_color: [0.0, 0.0, 0.0, 0.1],
         },
     );
+
+    let tex_janci = renderer.add_ui_texture_rgba8_unorm(width_janci, height_janci, &img_janci);
+    let tex_janper = renderer.add_ui_texture_rgba8_unorm(width_janper, height_janper, &img_janper);
+    let tex_ondro = renderer.add_ui_texture_rgba8_unorm(width_ondro, height_ondro, &img_ondro);
 
     let mut scene_bounding_box: BoundingBox<f32> = BoundingBox::unit();
     let mut scene_meshes: HashMap<ValuePath, Arc<Mesh>> = HashMap::new();
@@ -468,7 +484,7 @@ pub fn init_and_run(options: Options) -> ! {
                     window_size.height.round() as u32,
                 );
 
-                ui_frame.draw_about_window(&mut about_modal_open);
+                ui_frame.draw_about_window(&mut about_modal_open, tex_janci, tex_janper, tex_ondro);
 
                 ui_frame.draw_notifications_window(&notifications.borrow());
 
@@ -964,21 +980,16 @@ impl CameraInterpolation {
     }
 }
 
-fn load_icon(contents: &[u8]) -> winit::window::Icon {
-    let (icon_rgba, icon_width, icon_height) = {
-        let image = image::load_from_memory(contents).expect("Failed to load icon contents.");
-        let (width, height) = image.dimensions();
-        let mut rgba = Vec::with_capacity((width * height) as usize * 4);
+fn decode_image_rgba8_unorm(data: &[u8]) -> (Vec<u8>, u32, u32) {
+    let image = image::load_from_memory(data).expect("Failed to decode image.");
+    let (width, height) = image.dimensions();
+    let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
 
-        for (_, _, pixel) in image.pixels() {
-            rgba.extend_from_slice(&pixel.to_rgba().0);
-        }
+    for (_, _, pixel) in image.pixels() {
+        rgba.extend_from_slice(&pixel.to_rgba().0);
+    }
 
-        (rgba, width, height)
-    };
-
-    winit::window::Icon::from_rgba(icon_rgba, icon_width, icon_height)
-        .expect("Failed to create icon.")
+    (rgba, width, height)
 }
 
 fn compute_light(

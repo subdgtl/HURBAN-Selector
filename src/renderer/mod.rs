@@ -545,7 +545,6 @@ impl Renderer {
     ///
     /// It will be available for drawing in the subsequent render
     /// passes.
-    #[allow(dead_code)]
     pub fn add_ui_texture_rgba8_unorm(
         &mut self,
         width: u32,

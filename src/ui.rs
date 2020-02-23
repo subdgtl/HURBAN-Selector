@@ -446,7 +446,13 @@ impl<'a> UiFrame<'a> {
         take_screenshot_clicked
     }
 
-    pub fn draw_about_window(&self, about_modal_open: &mut bool) {
+    pub fn draw_about_window(
+        &self,
+        about_modal_open: &mut bool,
+        tex_janci: imgui::TextureId,
+        tex_janper: imgui::TextureId,
+        tex_ondro: imgui::TextureId,
+    ) {
         let ui = &self.imgui_ui;
 
         let window_name = imgui::im_str!("About");
@@ -477,6 +483,13 @@ impl<'a> UiFrame<'a> {
                      \n"
                 ));
                 regular_font_token.pop(ui);
+
+                imgui::Image::new(tex_janci, [195.0, 195.0]).build(ui);
+                ui.same_line_with_spacing(0.0, 5.0);
+                imgui::Image::new(tex_janper, [195.0, 195.0]).build(ui);
+                ui.same_line_with_spacing(0.0, 5.0);
+                imgui::Image::new(tex_ondro, [195.0, 195.0]).build(ui);
+
                 ui.text(imgui::im_str!("ABOUT"));
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(imgui::im_str!(
