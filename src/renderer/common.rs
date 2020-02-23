@@ -32,7 +32,7 @@ pub fn upload_texture_rgba8_unorm(
     let byte_count = cast_u32(data.len());
     let pixel_size = byte_count / width / height;
 
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
     encoder.copy_buffer_to_texture(
         wgpu::BufferCopyView {
             buffer: &buffer,
