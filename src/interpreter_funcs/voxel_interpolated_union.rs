@@ -174,7 +174,7 @@ impl Func for FuncInterpolatedUnion {
     ) -> Result<Value, FuncError> {
         let mesh1 = args[0].unwrap_mesh();
         let mesh2 = args[1].unwrap_mesh();
-        let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
+        let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
         let fill = args[3].unwrap_boolean();
         let factor = args[4].unwrap_float();
         let error_if_large = args[5].unwrap_boolean();
