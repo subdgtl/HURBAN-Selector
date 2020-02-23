@@ -14,7 +14,7 @@ fn main() {
                 panic!("Unsupported theme value requested: {}", unsupported_theme,)
             }
         })
-        .unwrap_or(hs::Theme::Dark);
+        .unwrap_or(hs::Theme::Funky);
 
     let fullscreen = env::var("HS_FULLSCREEN")
         .ok()

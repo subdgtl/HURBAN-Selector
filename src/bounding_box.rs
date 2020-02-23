@@ -146,6 +146,23 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
         BoundingBox::from_points(points)
     }
 
+    /// Grows (or shrinks for negative values) the bounding box by the given
+    /// offset distance.
+    pub fn offset(&self, offset: Vector3<T>) -> Self {
+        BoundingBox::new(
+            &Point3::new(
+                self.minimum_point.x - offset.x,
+                self.minimum_point.y - offset.y,
+                self.minimum_point.z - offset.z,
+            ),
+            &Point3::new(
+                self.maximum_point.x + offset.x,
+                self.maximum_point.y + offset.y,
+                self.maximum_point.z + offset.z,
+            ),
+        )
+    }
+
     /// Creates a new bounding box so that it encloses the block of space
     /// common to all the input bounding boxes, including the current one.
     ///
