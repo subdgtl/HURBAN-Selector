@@ -473,22 +473,23 @@ impl<'a> UiFrame<'a> {
                 \n"));
                 ui.text(imgui::im_str!("CREDITS"));
                 let mut regular_font_token = ui.push_font(self.font_ids.regular);
-                ui.text_wrapped(imgui::im_str!(
-                     "Lead developer: Jan Toth <yanchi.toth@gmail.com>\n\
-                     Geometry developer: Jan Pernecky <jan@sub.digital>\n\
-                     Developer: Ondrej Slintak <ondrowan@gmail.com>\n\
+                ui.text("Lead developer: Jan Toth <yanchi.toth@gmail.com>");
+                ui.same_line(480.0);
+                imgui::Image::new(tex_janci, [100.0, 100.0]).build(ui);
+                ui.text("Geometry developer: Jan Pernecky <jan@sub.digital>");
+                ui.same_line(480.0);
+                imgui::Image::new(tex_janper, [100.0, 100.0]).build(ui);
+                ui.text("Developer: Ondrej Slintak <ondrowan@gmail.com>");
+                ui.same_line(480.0);
+                imgui::Image::new(tex_ondro, [100.0, 100.0]).build(ui);
+
+                ui.text_wrapped(imgui::im_str!("\n\
+                     \n\
                      \n\
                      Concept: Maros Schmidt, Slovak Design Center\n\
                      Production: Lucia Dubacova, Slovak Design Center\n\
-                     \n"
-                ));
+                     \n"));
                 regular_font_token.pop(ui);
-
-                imgui::Image::new(tex_janci, [195.0, 195.0]).build(ui);
-                ui.same_line_with_spacing(0.0, 5.0);
-                imgui::Image::new(tex_janper, [195.0, 195.0]).build(ui);
-                ui.same_line_with_spacing(0.0, 5.0);
-                imgui::Image::new(tex_ondro, [195.0, 195.0]).build(ui);
 
                 ui.text(imgui::im_str!("ABOUT"));
                 regular_font_token = ui.push_font(self.font_ids.regular);
