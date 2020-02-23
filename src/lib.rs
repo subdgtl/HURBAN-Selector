@@ -714,7 +714,7 @@ pub fn init_and_run(options: Options) -> ! {
                         notifications.borrow_mut().push(
                             time,
                             NotificationLevel::Info,
-                            "Execution of the Sequence of operations finished successfully.",
+                            "Execution of the Operation pipeline finished successfully.",
                         );
                     }
                     PollNotification::FinishedWithError(error_message) => {
@@ -722,7 +722,7 @@ pub fn init_and_run(options: Options) -> ! {
                             time,
                             NotificationLevel::Error,
                             format!(
-                                "Execution of the Sequence of operations finished with error: {}",
+                                "Execution of the Operation pipeline finished with error: {}",
                                 error_message
                             ),
                         );
