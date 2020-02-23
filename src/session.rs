@@ -455,7 +455,7 @@ impl Session {
     ///   remove and add them to notify the outside of the change (for both used
     ///   and unused sets),
     /// - Detect which values should be transitioned from the used set to unused
-    ///   and miami vice versa.
+    ///   and vice versa.
     fn process_interpret_value<C>(&mut self, interpret_value: InterpretValue, mut callback: C)
     where
         C: FnMut(PollNotification),
