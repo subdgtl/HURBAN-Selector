@@ -10,7 +10,6 @@ use crate::convert::{
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
 use crate::project;
-use crate::renderer::DrawMeshMode;
 use crate::session::Session;
 
 const FONT_OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
@@ -28,8 +27,8 @@ const PIPELINE_WINDOW_WIDTH: f32 = OPERATIONS_WINDOW_WIDTH;
 const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 1.0 - OPERATIONS_WINDOW_HEIGHT_MULT;
 const PIPELINE_OPERATION_CONSOLE_HEIGHT: f32 = 40.0;
 
-const MENU_WINDOW_WIDTH: f32 = 150.0;
-const MENU_WINDOW_HEIGHT: f32 = 277.0;
+const MENU_WINDOW_WIDTH: f32 = 160.0;
+const MENU_WINDOW_HEIGHT: f32 = 298.0;
 
 const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
 const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
@@ -40,6 +39,16 @@ const ABOUT_WINDOW_WIDTH: f32 = 600.0;
 pub enum Theme {
     Dark,
     Funky,
+}
+
+/// The draw mode applied to a group of objects in the viewport. Not always a
+/// 1:1 mapping with renderer materials.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewportDrawMode {
+    Wireframe,
+    Shaded,
+    ShadedWireframe,
+    ShadedWireframeXray,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -93,6 +102,7 @@ pub enum OverwriteModalTrigger {
 }
 
 pub struct MenuStatus {
+    pub viewport_draw_used_values_changed: bool,
     pub reset_viewport: bool,
     pub new_project: bool,
     pub save_path: Option<String>,
@@ -631,17 +641,20 @@ impl<'a> UiFrame<'a> {
         color_token.pop(ui);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_menu_window(
         &self,
         current_time: Instant,
         screenshot_modal_open: &mut bool,
         about_modal_open: &mut bool,
-        draw_mode: &mut DrawMeshMode,
+        viewport_draw_mode: &mut ViewportDrawMode,
+        viewport_draw_used_values: &mut bool,
         project_status: &mut project::ProjectStatus,
         notifications: &mut Notifications,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
         let mut status = MenuStatus {
+            viewport_draw_used_values_changed: false,
             reset_viewport: false,
             new_project: false,
             save_path: None,
@@ -698,7 +711,11 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                if ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded) {
+                if ui.radio_button(
+                    imgui::im_str!("Shaded"),
+                    viewport_draw_mode,
+                    ViewportDrawMode::Shaded,
+                ) {
                     notifications.push(
                         current_time,
                         NotificationLevel::Info,
@@ -715,7 +732,11 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                if ui.radio_button(imgui::im_str!("Wireframes"), draw_mode, DrawMeshMode::Edges) {
+                if ui.radio_button(
+                    imgui::im_str!("Wireframes"),
+                    viewport_draw_mode,
+                    ViewportDrawMode::Wireframe,
+                ) {
                     notifications.push(
                         current_time,
                         NotificationLevel::Info,
@@ -735,8 +756,8 @@ impl<'a> UiFrame<'a> {
 
                 if ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
-                    draw_mode,
-                    DrawMeshMode::ShadedEdges,
+                    viewport_draw_mode,
+                    ViewportDrawMode::ShadedWireframe,
                 ) {
                     notifications.push(
                         current_time,
@@ -756,8 +777,8 @@ impl<'a> UiFrame<'a> {
 
                 if ui.radio_button(
                     imgui::im_str!("X-RAY"),
-                    draw_mode,
-                    DrawMeshMode::ShadedEdgesXray,
+                    viewport_draw_mode,
+                    ViewportDrawMode::ShadedWireframeXray,
                 ) {
                     notifications.push(
                         current_time,
@@ -773,6 +794,35 @@ impl<'a> UiFrame<'a> {
                         The geometry will be shaded with solid color and all edges, \
                         including the ones hidden behind the solid color of the surfaces, \
                         will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                status.viewport_draw_used_values_changed = ui.checkbox(
+                    imgui::im_str!("Draw used geometry"),
+                    viewport_draw_used_values,
+                );
+                if status.viewport_draw_used_values_changed {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        if *viewport_draw_used_values {
+                            "Viewport now draws used geometry."
+                        } else {
+                            "Viewport now doesn't draw used geometry."
+                        }
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text("DRAW USED GEOMETRY IN VIEWPORT\n\
+                        \n\
+                        When enabled, used geometry will be drawn with \
+                        a transparent material.\n
+                        \n
+                        Used geometry is geometry that has been referenced as a parameter \
+                        in an operation.");
                         wrap_token.pop(ui);
                     });
                 }
@@ -802,7 +852,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "TAKE SCREENSHOT\n\
+                        ui.text_colored(self.colors.tooltip_text, "SAVE SCREENSHOT\n\
                         \n\
                         Opens the dialog for saving the current viewport into a PNG file.");
                         wrap_token.pop(ui);
@@ -830,6 +880,18 @@ impl<'a> UiFrame<'a> {
                     project_status.new_requested = false;
                 }
 
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "RESET THE PIPELINE\n\
+                        \n\
+                        Closes the current project and starts a new one. \n\
+                        \n\
+                        The new project is not saved by default and has to be saved manually.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
                 if ui.button(imgui::im_str!("Save"), [-f32::MIN_POSITIVE, 0.0]) {
                     match &project_status.path {
                         Some(project_path_str) => {
@@ -851,12 +913,12 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "SAVE PROJECT INTO A .hurban FILE\n\
+                        ui.text_colored(self.colors.tooltip_text, "SAVE PROJECT INTO THE CURRENT A .hurban FILE\n\
                         \n\
                         Saves the current project into a .hurban file. \
                         When used for the first time, opens a system dialog to specify save file location.\n\
                         \n\
-                        The .hurban project file contains only the operation sequence. It does not contain any \
+                        The .hurban project file contains only the operation pipeline. It does not contain any \
                         actual geometry, but rather just the sequence of operations that generates the geometry \
                         and references to the external files to import. \
                         It is advised to keep the files to import next to the .hurban project file \
@@ -874,6 +936,23 @@ impl<'a> UiFrame<'a> {
                     ) {
                         status.save_path = Some(path);
                     }
+                }
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "SAVE PROJECT INTO A NEW .hurban FILE\n\
+                        \n\
+                        Saves the current project into a .hurban file. \
+                        Opens a system dialog to specify save file location.\n\
+                        \n\
+                        The .hurban project file contains only the operation pipeline. It does not contain any \
+                        actual geometry, but rather just the sequence of operations that generates the geometry \
+                        and references to the external files to import. \
+                        It is advised to keep the files to import next to the .hurban project file \
+                        and distribute them together.");
+                        wrap_token.pop(ui);
+                    });
                 }
 
                 if ui.button(imgui::im_str!("Open"), [-f32::MIN_POSITIVE, 0.0])
@@ -900,10 +979,9 @@ impl<'a> UiFrame<'a> {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
                         ui.text_colored(self.colors.tooltip_text, "OPEN PROJECT FROM A .hurban FILE\n\
                         \n\
-                        Opens the sequence of operations saved in a .hurban file. \
-                        The current unsaved project will be lost.\n\
+                        Opens the sequence of operations saved in a .hurban file.\n\
                         \n\
-                        The .hurban project file contains only the operation sequence. It does not contain any \
+                        The .hurban project file contains only the operation pipeline. It does not contain any \
                         actual geometry, but rather just the sequence of operations that generates the geometry \
                         and references to the external files to import. \
                         It is advised to keep the files to import next to the .hurban project file \
@@ -962,35 +1040,42 @@ impl<'a> UiFrame<'a> {
     pub fn draw_prevent_overwrite_modal(&self) -> SaveModalResult {
         let ui = &self.imgui_ui;
         let mut save_modal_result = SaveModalResult::Nothing;
-
+        let window_color_token = ui.push_style_color(
+            imgui::StyleColor::PopupBg,
+            self.colors.popup_window_background,
+        );
         ui.open_popup(imgui::im_str!("Unsaved changes"));
         ui.popup_modal(imgui::im_str!("Unsaved changes"))
             .resizable(false)
             .build(|| {
-                ui.text("Your changes will be lost if you don't save them.");
+                ui.text("To preserve unsaved changes in the pipeline please save the project.");
 
-                if ui.button(imgui::im_str!("Save"), [0.0, 0.0]) {
+                let width_unit = ui.window_size()[0] / 11.0;
+
+                if ui.button(imgui::im_str!("Save"), [width_unit * 3.0, 0.0]) {
                     save_modal_result = SaveModalResult::Save;
 
                     ui.close_current_popup();
                 }
 
-                ui.same_line(0.0);
+                ui.same_line(width_unit * 4.0);
 
-                if ui.button(imgui::im_str!("Discard changes"), [0.0, 0.0]) {
+                if ui.button(imgui::im_str!("Discard changes"), [width_unit * 3.0, 0.0]) {
                     save_modal_result = SaveModalResult::DontSave;
 
                     ui.close_current_popup();
                 }
 
-                ui.same_line(0.0);
+                ui.same_line(width_unit * 8.0);
 
-                if ui.button(imgui::im_str!("Cancel"), [0.0, 0.0]) {
+                if ui.button(imgui::im_str!("Cancel"), [width_unit * 3.0, 0.0]) {
                     save_modal_result = SaveModalResult::Cancel;
 
                     ui.close_current_popup();
                 }
             });
+
+        window_color_token.pop(ui);
 
         save_modal_result
     }
@@ -1028,7 +1113,7 @@ impl<'a> UiFrame<'a> {
         let mut change = None;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
-        imgui::Window::new(imgui::im_str!("Sequence of operations"))
+        imgui::Window::new(imgui::im_str!("Operation pipeline"))
             .movable(false)
             .resizable(false)
             .collapsible(false)
@@ -1040,23 +1125,23 @@ impl<'a> UiFrame<'a> {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
                         let regular_font_token = ui.push_font(self.font_ids.regular);
                         ui.text_colored(self.colors.tooltip_text,
-                            "SEQUENCE OF OPERATIONS\n\
+                            "OPERATION PIPELINE\n\
                             \n\
-                            An ordered list of operations that generate the viewport geometry. \
-                            When the sequence is run, the operations are being executed one after \
+                            An ordered sequence of operations that generate the viewport geometry. \
+                            When the pipeline is run, the operations are being executed one after \
                             another from top down. Each operation can be customized by setting the \
                             input parameter values or specifying the input data (mesh geometry, \
                             mesh group, path to file).\n\
                             \n\
-                            Each operation in the sequence generates data: either a mesh geometry or \
+                            Each operation in the pipeline generates data: either a mesh geometry or \
                             a mesh group which can be later used in a subsequent operation. Only unused \
                             (freshly generated) geometry (mesh or group) is rendered in the viewport, \
                             however even the geometry, which has been already used, can be reused in \
                             subsequent operations. Operations can take as an input only that geometry, \
-                            which has been generated in the preceding operations in the sequence.\n\
+                            which has been generated in the preceding operations in the pipeline.\n\
                             \n\
                             It is possible to change any input parameters of any operation at any time, \
-                            not only after the operation has been added to the sequence. \
+                            not only after the operation has been added to the pipeline. \
                             This is useful when some parameters need to be adjusted only after the results \
                             of subsequent operations can be visually evaluated. This approach is a gateway \
                             to full-fledged parametric modeling paradigm.\n\
@@ -1556,7 +1641,8 @@ impl<'a> UiFrame<'a> {
                         let regular_font_token = ui.push_font(self.font_ids.regular);
                         ui.text_colored(self.colors.tooltip_text, "AVAILABLE OPERATIONS\n\
                         \n\
-                        A list of available operations to be stacked into a sequence of operations.");
+                        A list of available operations to be stacked into the sequence of operations \
+                        in the Operation pipeline.");
                         regular_font_token.pop(ui);
                         wrap_token.pop(ui);
                     });
@@ -1598,10 +1684,10 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "RUN RECOMPUTATION OF THE SEQUENCE OF OPERATIONS\n\
+                        ui.text_colored(self.colors.tooltip_text, "RUN RECOMPUTATION OF THE OPERATION PIPELINE\n\
                         \n\
-                        Executes the list of operations stacked in the Sequence of operations one \
-                        after another from top down. The Sequence of operations editing is disabled \
+                        Executes the list of operations stacked in the Operation pipeline one \
+                        after another from top down. The Operation pipeline editing is disabled \
                         during the computation. If any operation fails due to invalid input parameters, \
                         the computation stops and the error will be reported in the console log of the \
                         respective operation.");
@@ -1628,7 +1714,7 @@ impl<'a> UiFrame<'a> {
                     notifications.push(
                         current_time,
                         NotificationLevel::Warn,
-                        "Removed last operation from the Sequence.",
+                        "Removed last operation from the Operation pipeline.",
                     );
                 }
                 if let Some((color_token, style_token)) = popping_tokens {
@@ -1639,10 +1725,17 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "REMOVE LAST OPERATION FROM THE SEQUENCE\n\
+                        ui.text_colored(self.colors.tooltip_text, "REMOVE LAST OPERATION FROM THE OPERATION PIPELINE\n\
                         \n\
-                        Only the last operation in the sequence of operations can be removed. \
+                        Only the last operation in the sequence of operations stacked into \
+                        the Operation pipeline can be removed.");
+                        let text_color_token = ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_warn,
+                        );
+                        ui.text("\n\
                         The removal cannot be undone!");
+                        text_color_token.pop(ui);
                         wrap_token.pop(ui);
                     });
                 }
@@ -1654,7 +1747,7 @@ impl<'a> UiFrame<'a> {
                     if ui.is_item_hovered() {
                         ui.tooltip(|| {
                             let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                            ui.text_colored(self.colors.tooltip_text, "RUN RECOMPUTATION OF THE SEQUENCE OF OPERATIONS AUTOMATICALLY\n\
+                            ui.text_colored(self.colors.tooltip_text, "RUN RECOMPUTATION OF THE OPERATION PIPELINE AUTOMATICALLY\n\
                             \n\
                             Executes the list of operations stacked in the Sequence of \
                             operations one after another from top down automatically whenever a \
@@ -1697,7 +1790,7 @@ impl<'a> UiFrame<'a> {
                         notifications.push(
                             current_time,
                             NotificationLevel::Info,
-                            format!("Added new operation to the Sequence: {}.", func.info().name),
+                            format!("Added new operation to the Operation pipeline: {}.", func.info().name),
                         );
                     }
 
@@ -1811,7 +1904,7 @@ impl<'a> UiFrame<'a> {
             notifications.push(
                 current_time,
                 NotificationLevel::Info,
-                "Execution of the Sequence of operations has started...",
+                "Execution of the Operation pipeline has started...",
             );
             session.interpret();
         }
