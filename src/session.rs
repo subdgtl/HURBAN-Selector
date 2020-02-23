@@ -4,7 +4,7 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 use crate::interpreter::ast::{FuncIdent, Prog, Stmt, VarIdent};
-use crate::interpreter::{Func, InterpretError, LogMessage, Ty, Value};
+use crate::interpreter::{Func, InterpretError, InterpretValue, LogMessage, Ty, Value};
 use crate::interpreter_funcs;
 use crate::interpreter_server::{
     InterpreterRequest, InterpreterResponse, InterpreterServer, PollResponseError, RequestId,
@@ -14,11 +14,25 @@ use crate::interpreter_server::{
 /// about what values have been added since the last poll, and what
 /// values have been removed are no longer required.
 pub enum PollNotification {
-    ValueAdded(VarIdent, Value),
-    ValueRemoved(VarIdent, Value),
+    UsedValueAdded(VarIdent, Value),
+    UsedValueRemoved(VarIdent, Value),
+    UnusedValueAdded(VarIdent, Value),
+    UnusedValueRemoved(VarIdent, Value),
     FinishedSuccessfully,
     // FIXME: Replace String with InterpretError
     FinishedWithError(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum DiffEvent {
+    AddUsed(VarIdent, Value),
+    RemoveUsed(VarIdent),
+    VerifyUsed(VarIdent, Value),
+    TransitionUsedToUnused(VarIdent, Value),
+    AddUnused(VarIdent, Value),
+    RemoveUnused(VarIdent),
+    VerifyUnused(VarIdent, Value),
+    TransitionUnusedToUsed(VarIdent, Value),
 }
 
 /// An editing session.
@@ -42,7 +56,12 @@ pub struct Session {
     log_messages: Vec<Vec<LogMessage>>,
     error: Option<InterpretError>,
 
+    used_values: HashMap<VarIdent, Value>,
     unused_values: HashMap<VarIdent, Value>,
+
+    // Working memory for diffing interpreter responses
+    diff_events: Vec<DiffEvent>,
+    diff_processed_idents: HashSet<VarIdent>,
 
     // Auxiliary side-arrays for prog. Determine mesh and mesh-array
     // vars visible from a stmt. The value is read by producing a
@@ -66,10 +85,14 @@ impl Session {
             interpreter_interpret_request_in_flight: None,
             interpreter_edit_prog_requests_in_flight: HashSet::new(),
 
+            diff_events: Vec::with_capacity(64),
+            diff_processed_idents: HashSet::with_capacity(64),
+
             prog: Prog::new(Vec::new()),
             log_messages: Vec::new(),
             error: None,
 
+            used_values: HashMap::new(),
             unused_values: HashMap::new(),
 
             var_visibility_mesh: Vec::new(),
@@ -362,87 +385,7 @@ impl Session {
 
                             match interpret_outcome.result {
                                 Ok(interpret_value) => {
-                                    // Now we track whether the usage of any value changed. Adding
-                                    // an operation to the pipeline can:
-                                    // - create a new unused_value
-                                    // - create a new used_value
-                                    // - change an existing unused_value to used_value
-                                    //
-                                    // Removing an operation from the pipeline can:
-                                    // - remove an existing unused_value
-                                    // - remove an existing used_value
-                                    // - change an existing used_value to unused_value
-                                    //
-                                    // We diff the old and new sets and perform the following
-                                    // operations:
-                                    // - Detect which values should be removed and `Remove` them
-                                    // - Detect which values should be retained, but they
-                                    //   changed, we both `Remove` and `Add` them to notify
-                                    //   the outside of the change
-                                    // - Detect which values should be added and `Add` them
-
-                                    // FIXME: Currently, we only call the add/remove
-                                    // handlers with when a value enters or leaves the
-                                    // unused_values set. This can be easily copy-paste
-                                    // extended to handle used_values the same way.
-
-                                    let mut to_remove =
-                                        Vec::with_capacity(self.unused_values.len());
-                                    let mut to_reinsert =
-                                        Vec::with_capacity(self.unused_values.len());
-                                    for (current_var_ident, current_value) in &self.unused_values {
-                                        if let Some((var_ident, value)) = interpret_value
-                                            .unused_values
-                                            .iter()
-                                            .find(|(var_ident, _)| var_ident == current_var_ident)
-                                        {
-                                            // The value is present under the same
-                                            // identifier in both new and old value set,
-                                            // but it could have changed! If it did, we
-                                            // both remove the old value and add the new.
-                                            if value != current_value {
-                                                to_remove.push(*var_ident);
-                                                to_reinsert.push((*var_ident, value.clone()));
-                                            }
-                                        } else {
-                                            // The value is no longer present in the new
-                                            // value set, let's remove it!
-                                            to_remove.push(*current_var_ident);
-                                        }
-                                    }
-
-                                    // Process values to remove and values to reinsert
-                                    for var_ident in to_remove {
-                                        let value = self.unused_values.remove(&var_ident).expect(
-                                            "Value must be present if we want to remove it",
-                                        );
-                                        callback(PollNotification::ValueRemoved(var_ident, value));
-                                    }
-                                    for (var_ident, value) in to_reinsert {
-                                        let inserted = self
-                                            .unused_values
-                                            .insert(var_ident, value.clone())
-                                            .is_none();
-                                        assert!(
-                                            inserted,
-                                            "Value must have been removed previously for reinsertion",
-                                        );
-                                        callback(PollNotification::ValueAdded(var_ident, value))
-                                    }
-
-                                    for (var_ident, value) in interpret_value.unused_values {
-                                        // Only add and emit events for values that we
-                                        // didn't have before. We handled re-insertions
-                                        // earlier by comparing the values.
-                                        if let Entry::Vacant(vacant) =
-                                            self.unused_values.entry(var_ident)
-                                        {
-                                            vacant.insert(value.clone());
-                                            callback(PollNotification::ValueAdded(
-                                                var_ident, value,
-                                            ));
-                                        }
-                                    }
+                                    self.process_interpret_value(interpret_value, &mut callback);
 
                                     // Impure funcs (think import) can sometimes succeed
                                     // with the same parameters for which they previously
@@ -456,12 +399,12 @@ impl Session {
                                         "Interpreter failed with error: {}",
                                         interpret_error,
                                     );
-                                    callback(PollNotification::FinishedWithError(format!(
-                                        "{}",
-                                        interpret_error
-                                    )));
+
+                                    let error_message = format!("{}", interpret_error);
 
                                     self.error = Some(interpret_error);
+
+                                    callback(PollNotification::FinishedWithError(error_message));
                                 }
                             }
 
@@ -483,6 +426,179 @@ impl Session {
                 Err(PollResponseError::Pending) => {
                     // No more responses, break out of the loop
                     break;
+                }
+            }
+        }
+    }
+
+    /// Tracks whether the usage of any value changed and calls callback with
+    /// corresponding notification.
+    ///
+    /// Executing a program with new added statements can:
+    ///
+    /// - Create a new unused value
+    /// - Create a new used value
+    /// - Transition an existing unused value to used value
+    ///
+    /// Executing a program with statements removed can:
+    ///
+    /// - Remove an existing unused value
+    /// - Remove an existing used value
+    /// - Transition an existing used value to unused value
+    ///
+    /// We diff the old and new sets and perform the following operations:
+    ///
+    /// - Detect which values should be added and add them (for both used and unused sets),
+    /// - Detect which values should be removed and remove them (for both used
+    ///   and unused sets),
+    /// - Detect which values should be retained, but they changed, we both
+    ///   remove and add them to notify the outside of the change (for both used
+    ///   and unused sets),
+    /// - Detect which values should be transitioned from the used set to unused
+    ///   and vice versa.
+    fn process_interpret_value<C>(&mut self, interpret_value: InterpretValue, mut callback: C)
+    where
+        C: FnMut(PollNotification),
+    {
+        // To correctly diff new state against old, we need to keep a copy of
+        // the old state around. Therefore, we perform changes in 2 stages:
+        //
+        // 1) Generate a list of diff events by comparing new and old sets,
+        // 2) Interpret the list of diff events and modify the old set and fire
+        //    callbacks with corresponding notifications.
+
+        let InterpretValue {
+            used_values,
+            unused_values,
+            ..
+        } = interpret_value;
+
+        let events = &mut self.diff_events;
+        let processed_idents = &mut self.diff_processed_idents;
+
+        // Look at new used values to detect addition, verification and transition events.
+        for (var_ident, value) in used_values {
+            let contained_in_used = self.used_values.contains_key(&var_ident);
+            let contained_in_unused = self.unused_values.contains_key(&var_ident);
+
+            match (contained_in_used, contained_in_unused) {
+                (true, true) => panic!("Value can't be both used and unused"),
+                (true, false) => events.push(DiffEvent::VerifyUsed(var_ident, value)),
+                (false, true) => events.push(DiffEvent::TransitionUnusedToUsed(var_ident, value)),
+                (false, false) => events.push(DiffEvent::AddUsed(var_ident, value)),
+            }
+
+            processed_idents.insert(var_ident);
+        }
+
+        // Look at new unused values to detect addition, verification, and transition events.
+        for (var_ident, value) in unused_values {
+            let contained_in_used = self.used_values.contains_key(&var_ident);
+            let contained_in_unused = self.unused_values.contains_key(&var_ident);
+
+            match (contained_in_used, contained_in_unused) {
+                (true, true) => panic!("Value can't be both used and unused"),
+                (true, false) => events.push(DiffEvent::TransitionUsedToUnused(var_ident, value)),
+                (false, true) => events.push(DiffEvent::VerifyUnused(var_ident, value)),
+                (false, false) => events.push(DiffEvent::AddUnused(var_ident, value)),
+            }
+
+            processed_idents.insert(var_ident);
+        }
+
+        // See if there is a value in the old used set we haven't seen yet. If
+        // so, it has to be a removal event.
+        for var_ident in self.used_values.keys() {
+            if !processed_idents.contains(var_ident) {
+                events.push(DiffEvent::RemoveUsed(*var_ident));
+            }
+        }
+
+        // See if there is a value in the old unused set we haven't seen yet. If
+        // so, it has to be a removal event.
+        for var_ident in self.unused_values.keys() {
+            if !processed_idents.contains(var_ident) {
+                events.push(DiffEvent::RemoveUnused(*var_ident));
+            }
+        }
+
+        // Process all the events, update internal state, call callback with
+        // change notifications. Make sure working memory is cleared for next
+        // iteration.
+        processed_idents.clear();
+        for event in events.drain(..) {
+            match event {
+                DiffEvent::AddUsed(var_ident, value) => {
+                    self.used_values.insert(var_ident, value.clone());
+                    callback(PollNotification::UsedValueAdded(var_ident, value));
+                }
+                DiffEvent::RemoveUsed(var_ident) => {
+                    let value = self
+                        .used_values
+                        .remove(&var_ident)
+                        .expect("Values scheduled for removal must be present");
+                    callback(PollNotification::UsedValueRemoved(var_ident, value));
+                }
+                DiffEvent::VerifyUsed(var_ident, value) => {
+                    match self.used_values.entry(var_ident) {
+                        Entry::Occupied(mut occupied) => {
+                            if occupied.get() != &value {
+                                let old_value = occupied.get().clone();
+                                occupied.insert(value.clone());
+
+                                callback(PollNotification::UsedValueRemoved(var_ident, old_value));
+                                callback(PollNotification::UsedValueAdded(var_ident, value));
+                            }
+                        }
+                        _ => panic!("Values scheduled for verification must be present"),
+                    }
+                }
+                DiffEvent::TransitionUsedToUnused(var_ident, value) => {
+                    let old_value = self
+                        .used_values
+                        .remove(&var_ident)
+                        .expect("Values scheduled for transition must be present");
+                    self.unused_values.insert(var_ident, value.clone());
+
+                    callback(PollNotification::UsedValueRemoved(var_ident, old_value));
+                    callback(PollNotification::UnusedValueAdded(var_ident, value));
+                }
+                DiffEvent::AddUnused(var_ident, value) => {
+                    self.unused_values.insert(var_ident, value.clone());
+                    callback(PollNotification::UnusedValueAdded(var_ident, value));
+                }
+                DiffEvent::RemoveUnused(var_ident) => {
+                    let value = self
+                        .unused_values
+                        .remove(&var_ident)
+                        .expect("Values scheduled for removal must be present");
+                    callback(PollNotification::UnusedValueRemoved(var_ident, value));
+                }
+                DiffEvent::VerifyUnused(var_ident, value) => {
+                    match self.unused_values.entry(var_ident) {
+                        Entry::Occupied(mut occupied) => {
+                            if occupied.get() != &value {
+                                let old_value = occupied.get().clone();
+                                occupied.insert(value.clone());
+
+                                callback(PollNotification::UnusedValueRemoved(
+                                    var_ident, old_value,
+                                ));
+                                callback(PollNotification::UnusedValueAdded(var_ident, value));
+                            }
+                        }
+                        _ => panic!("Values scheduled for verification must be present"),
+                    }
+                }
+                DiffEvent::TransitionUnusedToUsed(var_ident, value) => {
+                    let old_value = self
+                        .unused_values
+                        .remove(&var_ident)
+                        .expect("Values scheduled for transition must be present");
+                    self.used_values.insert(var_ident, value.clone());
+
+                    callback(PollNotification::UnusedValueRemoved(var_ident, old_value));
+                    callback(PollNotification::UsedValueAdded(var_ident, value));
                 }
             }
         }
