@@ -343,7 +343,7 @@ impl<'a> UiFrame<'a> {
     ) -> bool {
         let ui = &self.imgui_ui;
 
-        let window_style = ui.push_style_color(
+        let window_color_token = ui.push_style_color(
             imgui::StyleColor::PopupBg,
             self.colors.popup_window_background,
         );
@@ -421,7 +421,7 @@ impl<'a> UiFrame<'a> {
                 regular_font_token.pop(ui);
             });
         bold_font_token.pop(ui);
-        window_style.pop(ui);
+        window_color_token.pop(ui);
 
         if take_screenshot_clicked {
             *screenshot_modal_open = false;
