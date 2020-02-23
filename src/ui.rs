@@ -29,7 +29,7 @@ const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 1.0 - OPERATIONS_WINDOW_HEIGHT_MULT;
 const PIPELINE_OPERATION_CONSOLE_HEIGHT: f32 = 40.0;
 
 const MENU_WINDOW_WIDTH: f32 = 150.0;
-const MENU_WINDOW_HEIGHT: f32 = 212.0;
+const MENU_WINDOW_HEIGHT: f32 = 254.0;
 
 const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
 const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
@@ -82,10 +82,24 @@ struct ConsoleState {
     message_count: usize,
 }
 
+pub enum OverwriteModalTrigger {
+    NewProject,
+    OpenProject,
+}
+
 pub struct MenuStatus {
     pub reset_viewport: bool,
+    pub new_project: bool,
     pub save_path: Option<String>,
     pub open_path: Option<String>,
+    pub prevent_overwrite_modal: Option<OverwriteModalTrigger>,
+}
+
+pub enum SaveModalResult {
+    Save,
+    DontSave,
+    Cancel,
+    Nothing,
 }
 
 /// Thin wrapper around imgui and its winit platform. Its main responsibility
@@ -474,20 +488,23 @@ impl<'a> UiFrame<'a> {
         current_time: Instant,
         screenshot_modal_open: &mut bool,
         draw_mode: &mut DrawMeshMode,
-        project_path: Option<&str>,
+        project_status: &mut project::ProjectStatus,
         notifications: &mut Notifications,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
         let mut status = MenuStatus {
             reset_viewport: false,
+            new_project: false,
             save_path: None,
             open_path: None,
+            prevent_overwrite_modal: None,
         };
 
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
+        #[allow(clippy::cognitive_complexity)]
         imgui::Window::new(imgui::im_str!("Menu"))
             .movable(false)
             .resizable(false)
@@ -628,7 +645,7 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                if ui.button(imgui::im_str!("Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
+                if ui.button(imgui::im_str!("Save Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
                     *screenshot_modal_open = true;
                 }
                 if ui.is_item_hovered() {
@@ -641,20 +658,35 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
+                ui.separator();
+
                 let ext_description =
                     &format!("H.U.R.B.A.N. selector project (.{})", project::PROJECT_EXTENSION);
                 let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
-                ui.separator();
+                if ui.button(imgui::im_str!("New"), [-f32::MIN_POSITIVE, 0.0])
+                    || project_status.new_requested
+                {
+                    if project_status.changed_since_last_save
+                        && project_status.prevent_overwrite_status.is_none()
+                    {
+                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::NewProject);
+                    } else {
+                        status.new_project = true;
+                    }
 
-                if ui.button(imgui::im_str!("Save Project"), [-f32::MIN_POSITIVE, 0.0]) {
-                    match project_path {
+                    project_status.prevent_overwrite_status = None;
+                    project_status.new_requested = false;
+                }
+
+                if ui.button(imgui::im_str!("Save"), [-f32::MIN_POSITIVE, 0.0]) {
+                    match &project_status.path {
                         Some(project_path_str) => {
                             status.save_path = Some(project_path_str.to_string())
                         }
                         None => {
                             if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
-                                "Save Project",
+                                "Save",
                                 &format!("new_project.{}", project::PROJECT_EXTENSION),
                                 ext_filter,
                                 ext_description,
@@ -682,14 +714,34 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                if ui.button(imgui::im_str!("Open Project"), [-f32::MIN_POSITIVE, 0.0]) {
-                    if let Some(path) = tinyfiledialogs::open_file_dialog(
-                        "Open Project",
+                if ui.button(imgui::im_str!("Save as..."), [-f32::MIN_POSITIVE, 0.0]) {
+                    if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
+                        "Save",
+                        &format!("new_project.{}", project::PROJECT_EXTENSION),
+                        ext_filter,
+                        ext_description,
+                    ) {
+                        status.save_path = Some(path);
+                    }
+                }
+
+                if ui.button(imgui::im_str!("Open"), [-f32::MIN_POSITIVE, 0.0])
+                    || project_status.open_requested
+                {
+                    if project_status.changed_since_last_save
+                        && project_status.prevent_overwrite_status.is_none()
+                    {
+                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::OpenProject);
+                    } else if let Some(path) = tinyfiledialogs::open_file_dialog(
+                        "Open",
                         "",
                         Some((ext_filter, ext_description)),
                     ) {
                         status.open_path = Some(path);
                     }
+
+                    project_status.prevent_overwrite_status = None;
+                    project_status.open_requested = false;
                 }
 
                 if ui.is_item_hovered() {
@@ -716,11 +768,84 @@ impl<'a> UiFrame<'a> {
         status
     }
 
+    pub fn draw_error_modal(&self, project_error: &Option<project::ProjectError>) -> bool {
+        let ui = &self.imgui_ui;
+        let mut modal_closed = false;
+
+        ui.open_popup(imgui::im_str!("Error"));
+        ui.popup_modal(imgui::im_str!("Error"))
+            .resizable(false)
+            .build(|| {
+                let error_message = project_error
+                    .clone()
+                    .expect("Failed to read project error.")
+                    .to_string();
+
+                ui.text(error_message);
+
+                if ui.button(imgui::im_str!("OK"), [0.0, 0.0]) {
+                    modal_closed = true;
+
+                    ui.close_current_popup();
+                }
+            });
+
+        modal_closed
+    }
+
+    pub fn draw_prevent_overwrite_modal(&self) -> SaveModalResult {
+        let ui = &self.imgui_ui;
+        let mut save_modal_result = SaveModalResult::Nothing;
+
+        ui.open_popup(imgui::im_str!("Unsaved changes"));
+        ui.popup_modal(imgui::im_str!("Unsaved changes"))
+            .resizable(false)
+            .build(|| {
+                ui.text("Your changes will be lost if you don't save them.");
+
+                if ui.button(imgui::im_str!("Save"), [0.0, 0.0]) {
+                    save_modal_result = SaveModalResult::Save;
+
+                    ui.close_current_popup();
+                }
+
+                ui.same_line(0.0);
+
+                if ui.button(imgui::im_str!("Discard changes"), [0.0, 0.0]) {
+                    save_modal_result = SaveModalResult::DontSave;
+
+                    ui.close_current_popup();
+                }
+
+                ui.same_line(0.0);
+
+                if ui.button(imgui::im_str!("Cancel"), [0.0, 0.0]) {
+                    save_modal_result = SaveModalResult::Cancel;
+
+                    ui.close_current_popup();
+                }
+            });
+
+        save_modal_result
+    }
+
+    pub fn draw_save_dialog(&self) -> Option<String> {
+        let ext_description = &format!("HURBAN selector project (.{})", project::PROJECT_EXTENSION);
+        let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
+
+        tinyfiledialogs::save_file_dialog_with_filter(
+            "Save",
+            &format!("new_project.{}", project::PROJECT_EXTENSION),
+            ext_filter,
+            ext_description,
+        )
+    }
+
     // FIXME: @Refactoring Refactor this once we have full-featured
     // functionality. Until then, this is exploratory code and we
     // don't care.
     #[allow(clippy::cognitive_complexity)]
-    pub fn draw_pipeline_window(&self, current_time: Instant, session: &mut Session) {
+    pub fn draw_pipeline_window(&self, current_time: Instant, session: &mut Session) -> bool {
         let ui = &self.imgui_ui;
         self.console_state
             .borrow_mut()
@@ -1183,6 +1308,8 @@ impl<'a> UiFrame<'a> {
             });
         bold_font_token.pop(ui);
 
+        let changed = change.is_some();
+
         // FIXME: Debounce changes to parameters
 
         // Only submit the change if interpreter is not busy. Not all
@@ -1206,6 +1333,8 @@ impl<'a> UiFrame<'a> {
                 }
             }
         }
+
+        changed
     }
 
     pub fn draw_operations_window(
@@ -1214,7 +1343,7 @@ impl<'a> UiFrame<'a> {
         session: &mut Session,
         notifications: &mut Notifications,
         duration_autorun_delay: Duration,
-    ) {
+    ) -> bool {
         let ui = &self.imgui_ui;
         let function_table = session.function_table();
 
@@ -1430,6 +1559,8 @@ impl<'a> UiFrame<'a> {
             });
         bold_font_token.pop(ui);
 
+        let function_added = function_clicked.is_some();
+
         if let Some(func_ident) = function_clicked {
             let func = &function_table[&func_ident];
             let mut args = Vec::with_capacity(func.param_info().len());
@@ -1532,6 +1663,8 @@ impl<'a> UiFrame<'a> {
                 session.set_autorun_delay(None);
             }
         }
+
+        function_added || pop_stmt_clicked
     }
 
     fn draw_var_combo_box(
