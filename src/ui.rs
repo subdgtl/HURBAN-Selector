@@ -33,6 +33,8 @@ const MENU_WINDOW_HEIGHT: f32 = 298.0;
 const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
 const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
 
+const SUBDIGITAL_LOGO_WINDOW_WIDTH: f32 = 100.0;
+
 const ABOUT_WINDOW_WIDTH: f32 = 600.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +63,7 @@ pub struct ScreenshotOptions {
 struct FontIds {
     regular: imgui::FontId,
     bold: imgui::FontId,
+    big_bold: imgui::FontId,
 }
 
 struct Colors {
@@ -79,6 +82,7 @@ struct Colors {
     tooltip_text: [f32; 4],
     notification_window: [f32; 4],
     popup_window_background: [f32; 4],
+    logo_window: [f32; 4],
 }
 
 #[derive(Debug, Default)]
@@ -155,6 +159,7 @@ impl Ui {
             tooltip_text: [1.0, 1.0, 1.0, 1.0],
             notification_window: [0.0, 0.0, 0.0, 0.1],
             popup_window_background: [0.0, 0.0, 0.0, 0.1],
+            logo_window: [0.0, 0.0, 0.0, 0.0],
         };
 
         style.window_padding = [4.0, 4.0];
@@ -279,6 +284,13 @@ impl Ui {
                 size_pixels: font_size,
                 config: None,
             }]);
+        let big_bold_font_id = imgui_context
+            .fonts()
+            .add_font(&[imgui::FontSource::TtfData {
+                data: FONT_OPENSANS_BOLD_BYTES,
+                size_pixels: font_size * 1.5,
+                config: None,
+            }]);
 
         imgui_context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
@@ -288,6 +300,7 @@ impl Ui {
             font_ids: FontIds {
                 regular: regular_font_id,
                 bold: bold_font_id,
+                big_bold: big_bold_font_id,
             },
             colors,
             pipeline_window_state: RefCell::new(PipelineWindowState::default()),
@@ -459,11 +472,19 @@ impl<'a> UiFrame<'a> {
     pub fn draw_about_window(
         &self,
         about_modal_open: &mut bool,
-        tex_janci: imgui::TextureId,
-        tex_janper: imgui::TextureId,
-        tex_ondro: imgui::TextureId,
+        tex_scheme: imgui::TextureId,
+        width_scheme: f32,
+        height_scheme: f32,
+        tex_logos: imgui::TextureId,
+        width_logos: f32,
+        height_logos: f32,
     ) {
         let ui = &self.imgui_ui;
+
+        let window_color_token = ui.push_style_color(
+            imgui::StyleColor::PopupBg,
+            self.colors.popup_window_background,
+        );
 
         let window_name = imgui::im_str!("About");
         if *about_modal_open {
@@ -478,28 +499,30 @@ impl<'a> UiFrame<'a> {
             .collapsible(false)
             .always_auto_resize(true)
             .build(|| {
+                let window_width = ui.window_size()[0];
+
                 let wrap_token = ui.push_text_wrap_pos(ABOUT_WINDOW_WIDTH);
-                ui.text(imgui::im_str!("H.U.R.B.A.N. selector by Subdigital s.r.o. (https://sub.digital), 2020\n\
-                \n"));
+
+                let big_bold_font_token = ui.push_font(self.font_ids.big_bold);
+                ui.text(imgui::im_str!("H.U.R.B.A.N. selector 1.0 beta"));
+                big_bold_font_token.pop(ui);
+                ui.text(imgui::im_str!("by Subdigital s.r.o. (https://sub.digital), 2020"));
+                ui.new_line();
                 ui.text(imgui::im_str!("CREDITS"));
                 let mut regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text("Lead developer: Jan Toth <yanchi.toth@gmail.com>");
-                ui.same_line(480.0);
-                imgui::Image::new(tex_janci, [100.0, 100.0]).build(ui);
                 ui.text("Geometry developer: Jan Pernecky <jan@sub.digital>");
-                ui.same_line(480.0);
-                imgui::Image::new(tex_janper, [100.0, 100.0]).build(ui);
                 ui.text("Developer: Ondrej Slintak <ondrowan@gmail.com>");
-                ui.same_line(480.0);
-                imgui::Image::new(tex_ondro, [100.0, 100.0]).build(ui);
-
-                ui.text_wrapped(imgui::im_str!("\n\
-                     \n\
-                     \n\
-                     Concept: Maros Schmidt, Slovak Design Center\n\
-                     Production: Lucia Dubacova, Slovak Design Center\n\
-                     \n"));
+                ui.text("Concept: Maros Schmidt, Slovak Design Center");
+                ui.text("Production: Lucia Dubacova, Slovak Design Center");
+                ui.new_line();
                 regular_font_token.pop(ui);
+
+                imgui::Image::new(
+                    tex_scheme,
+                    [window_width * 0.95, window_width * 0.95 / width_scheme * height_scheme],
+                ).build(ui);
+                ui.new_line();
 
                 ui.text(imgui::im_str!("ABOUT"));
                 regular_font_token = ui.push_font(self.font_ids.regular);
@@ -516,24 +539,10 @@ impl<'a> UiFrame<'a> {
                      modeling, containing implementations of various hybridization \
                      strategies for mesh models, allowing designers to smoothly interpolate \
                      between multiple mesh geometries and select the result with the most \
-                     desired features.\n\
-                     \n"
-                ));
+                     desired features."));
+                ui.new_line();
                 regular_font_token.pop(ui);
-                ui.text(imgui::im_str!("LICENSE"));
-                regular_font_token = ui.push_font(self.font_ids.regular);
-                ui.text_wrapped(imgui::im_str!(
-                    "The editor source code is provided under the GNU GENERAL PUBLIC \
-                     LICENSE, Version 3. If the research or implementation yields \
-                     interesting results, those will be extracted from the editor and \
-                     published and licensed separately, most likely under a more permissive \
-                     license such as MIT.\n\
-                     \n\
-                     The source code of H.U.R.B.A.N. selector can be found at GitHub \
-                     (https://github.com/subdgtl/HURBAN-Selector).\n\
-                     \n"
-                ));
-                regular_font_token.pop(ui);
+
                 ui.text(imgui::im_str!("DESCRIPTION"));
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(
@@ -557,19 +566,42 @@ impl<'a> UiFrame<'a> {
                     space for selection and algorithmic seeking of new forms. \n\
                     \n\
                     H.U.R.B.A.N. Selector is currently under development. It utilizes the Rust \
-                    programming language, and its source code is freely available to the community.\n\
-                    \n"));
+                    programming language, and its source code is freely available to the community."));
+                ui.new_line();
                 regular_font_token.pop(ui);
+
                 ui.text(imgui::im_str!("PARTNERS"));
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(imgui::im_str!(
                     "The Software is produced within the INTERREG V-A Slovakia - \
-                     Austria 2014 - 2020 “Design & Innovation” project"
+                     Austria 2014 - 2020 'Design & Innovation' project"
                 ));
+                regular_font_token.pop(ui);
+                ui.new_line();
+                imgui::Image::new(
+                    tex_logos,
+                    [window_width * 0.95, window_width * 0.95 / width_logos * height_logos],
+                ).build(ui);
+                ui.new_line();
+
+                ui.text(imgui::im_str!("LICENSE"));
+                regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text_wrapped(imgui::im_str!(
+                    "The editor source code is provided under the GNU GENERAL PUBLIC \
+                    LICENSE, Version 3. If the research or implementation yields \
+                    interesting results, those will be extracted from the editor and \
+                    published and licensed separately, most likely under a more permissive \
+                    license such as MIT.\n\
+                    \n\
+                    The source code of H.U.R.B.A.N. selector can be found at GitHub \
+                    (https://github.com/subdgtl/HURBAN-Selector)."));
+                    ui.new_line();
                 regular_font_token.pop(ui);
                 wrap_token.pop(ui);
             });
+
         bold_font_token.pop(ui);
+        window_color_token.pop(ui);
     }
 
     pub fn draw_notifications_window(&self, notifications: &Notifications) {
@@ -636,6 +668,63 @@ impl<'a> UiFrame<'a> {
                     notifications_state.notifications_count = notifications_count;
                     ui.set_scroll_here_y();
                 }
+            });
+
+        color_token.pop(ui);
+    }
+
+    pub fn draw_subdigital_logo(
+        &self,
+        tex_subdigital_logo: imgui::TextureId,
+        width_subdigital_logo: f32,
+        height_subdigital_logo: f32,
+    ) {
+        let ui = &self.imgui_ui;
+
+        let window_logical_size = ui.io().display_size;
+        let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
+        let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
+
+        let subdigital_logo_window_height_mult = height_subdigital_logo / width_subdigital_logo;
+
+        let subdigital_logo_window_height =
+            SUBDIGITAL_LOGO_WINDOW_WIDTH * subdigital_logo_window_height_mult;
+
+        let subdigital_logo_window_horizontal_position =
+            window_inner_width - SUBDIGITAL_LOGO_WINDOW_WIDTH;
+        let subdigital_logo_window_vertical_position =
+            window_inner_height - subdigital_logo_window_height * 0.8;
+
+        let color_token = ui.push_style_colors(&[
+            (imgui::StyleColor::WindowBg, self.colors.logo_window),
+            (imgui::StyleColor::Border, self.colors.logo_window),
+        ]);
+
+        imgui::Window::new(imgui::im_str!("Logo"))
+            .title_bar(false)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .size(
+                [
+                    SUBDIGITAL_LOGO_WINDOW_WIDTH + MARGIN,
+                    subdigital_logo_window_height,
+                ],
+                imgui::Condition::Always,
+            )
+            .position(
+                [
+                    subdigital_logo_window_horizontal_position,
+                    subdigital_logo_window_vertical_position,
+                ],
+                imgui::Condition::Always,
+            )
+            .build(ui, || {
+                imgui::Image::new(
+                    tex_subdigital_logo,
+                    [SUBDIGITAL_LOGO_WINDOW_WIDTH, subdigital_logo_window_height],
+                )
+                .build(ui);
             });
 
         color_token.pop(ui);
@@ -998,7 +1087,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("ABOUT H.U.R.B.A.N. selector\n\
+                        ui.text_colored(self.colors.tooltip_text, "ABOUT H.U.R.B.A.N. selector\n\
                         \n\
                         Program description and credits.");
                         wrap_token.pop(ui);

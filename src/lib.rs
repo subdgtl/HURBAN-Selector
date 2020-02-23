@@ -51,9 +51,10 @@ mod session;
 mod ui;
 
 static IMAGE_DATA_ICON: &[u8] = include_bytes!("../icons/64x64.ico");
-static IMAGE_DATA_JANCI: &[u8] = include_bytes!("../resources/janci.jpg");
-static IMAGE_DATA_JANPER: &[u8] = include_bytes!("../resources/janper.jpg");
-static IMAGE_DATA_ONDRO: &[u8] = include_bytes!("../resources/ondro.jpg");
+static IMAGE_DATA_SCHEME: &[u8] = include_bytes!("../resources/scheme.png");
+static IMAGE_DATA_LOGOS_BLACK: &[u8] = include_bytes!("../resources/logos.png");
+static IMAGE_DATA_LOGOS_WHITE: &[u8] = include_bytes!("../resources/logos_white.png");
+static IMAGE_DATA_SUBDIGITAL_LOGO: &[u8] = include_bytes!("../resources/subdigital.png");
 
 const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
 const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
@@ -120,9 +121,13 @@ pub fn init_and_run(options: Options) -> ! {
     let event_loop = winit::event_loop::EventLoop::new();
 
     let (img_icon, width_icon, height_icon) = decode_image_rgba8_unorm(IMAGE_DATA_ICON);
-    let (img_janci, width_janci, height_janci) = decode_image_rgba8_unorm(IMAGE_DATA_JANCI);
-    let (img_janper, width_janper, height_janper) = decode_image_rgba8_unorm(IMAGE_DATA_JANPER);
-    let (img_ondro, width_ondro, height_ondro) = decode_image_rgba8_unorm(IMAGE_DATA_ONDRO);
+    let (img_scheme, width_scheme, height_scheme) = decode_image_rgba8_unorm(IMAGE_DATA_SCHEME);
+    let (img_logos_black, width_logos_black, height_logos_black) =
+        decode_image_rgba8_unorm(IMAGE_DATA_LOGOS_BLACK);
+    let (img_logos_white, width_logos_white, height_logos_white) =
+        decode_image_rgba8_unorm(IMAGE_DATA_LOGOS_WHITE);
+    let (img_subdigital_logo, width_subdigital_logo, height_subdigital_logo) =
+        decode_image_rgba8_unorm(IMAGE_DATA_SUBDIGITAL_LOGO);
 
     let icon = winit::window::Icon::from_rgba(img_icon, width_icon, height_icon)
         .expect("Failed to create icon.");
@@ -263,9 +268,22 @@ pub fn init_and_run(options: Options) -> ! {
         },
     );
 
-    let tex_janci = renderer.add_ui_texture_rgba8_unorm(width_janci, height_janci, &img_janci);
-    let tex_janper = renderer.add_ui_texture_rgba8_unorm(width_janper, height_janper, &img_janper);
-    let tex_ondro = renderer.add_ui_texture_rgba8_unorm(width_ondro, height_ondro, &img_ondro);
+    let tex_scheme = renderer.add_ui_texture_rgba8_unorm(width_scheme, height_scheme, &img_scheme);
+    let tex_logos_black = renderer.add_ui_texture_rgba8_unorm(
+        width_logos_black,
+        height_logos_black,
+        &img_logos_black,
+    );
+    let tex_logos_white = renderer.add_ui_texture_rgba8_unorm(
+        width_logos_white,
+        height_logos_white,
+        &img_logos_white,
+    );
+    let tex_subdigital_logo = renderer.add_ui_texture_rgba8_unorm(
+        width_subdigital_logo,
+        height_subdigital_logo,
+        &img_subdigital_logo,
+    );
 
     let mut scene_bounding_box: BoundingBox<f32> = BoundingBox::unit();
     let mut scene_meshes: HashMap<ValuePath, (bool, Arc<Mesh>)> = HashMap::new();
@@ -348,6 +366,12 @@ pub fn init_and_run(options: Options) -> ! {
                     &mut viewport_draw_used_values,
                     &mut project_status,
                     &mut notifications.borrow_mut(),
+                );
+
+                ui_frame.draw_subdigital_logo(
+                    tex_subdigital_logo,
+                    width_subdigital_logo as f32,
+                    height_subdigital_logo as f32,
                 );
 
                 if menu_status.viewport_draw_used_values_changed {
@@ -520,7 +544,19 @@ pub fn init_and_run(options: Options) -> ! {
                     window_size.height.round() as u32,
                 );
 
-                ui_frame.draw_about_window(&mut about_modal_open, tex_janci, tex_janper, tex_ondro);
+                let (tex_logos, width_logos, height_logos) = match options.theme {
+                    Theme::Funky => (tex_logos_black, width_logos_black, height_logos_black),
+                    Theme::Dark => (tex_logos_white, width_logos_white, height_logos_white),
+                };
+                ui_frame.draw_about_window(
+                    &mut about_modal_open,
+                    tex_scheme,
+                    width_scheme as f32,
+                    height_scheme as f32,
+                    tex_logos,
+                    width_logos as f32,
+                    height_logos as f32,
+                );
 
                 ui_frame.draw_notifications_window(&notifications.borrow());
 
