@@ -158,7 +158,7 @@ impl Ui {
             header_error_hovered: [1.00, 0.15, 0.05, 0.4],
             tooltip_text: [1.0, 1.0, 1.0, 1.0],
             notification_window: [0.0, 0.0, 0.0, 0.1],
-            popup_window_background: [0.0, 0.0, 0.0, 0.1],
+            popup_window_background: [0.0, 0.0, 0.0, 0.4],
             logo_window: [0.0, 0.0, 0.0, 0.0],
         };
 
@@ -474,11 +474,11 @@ impl<'a> UiFrame<'a> {
         &self,
         about_modal_open: &mut bool,
         tex_scheme: imgui::TextureId,
-        width_scheme: f32,
-        height_scheme: f32,
+        width_scheme: u32,
+        height_scheme: u32,
         tex_logos: imgui::TextureId,
-        width_logos: f32,
-        height_logos: f32,
+        width_logos: u32,
+        height_logos: u32,
     ) {
         let ui = &self.imgui_ui;
 
@@ -505,7 +505,7 @@ impl<'a> UiFrame<'a> {
                 let wrap_token = ui.push_text_wrap_pos(ABOUT_WINDOW_WIDTH);
 
                 let big_bold_font_token = ui.push_font(self.font_ids.big_bold);
-                ui.text(imgui::im_str!("H.U.R.B.A.N. selector 1.0 beta"));
+                ui.text(imgui::im_str!("H.U.R.B.A.N. selector 0.1 alpha"));
                 big_bold_font_token.pop(ui);
                 ui.text(imgui::im_str!("by Subdigital s.r.o. (https://sub.digital), 2020"));
                 ui.new_line();
@@ -521,7 +521,7 @@ impl<'a> UiFrame<'a> {
 
                 imgui::Image::new(
                     tex_scheme,
-                    [window_width * 0.95, window_width * 0.95 / width_scheme * height_scheme],
+                    [window_width * 0.95, window_width * 0.95 / width_scheme as f32 * height_scheme as f32],
                 ).build(ui);
                 ui.new_line();
 
@@ -581,7 +581,7 @@ impl<'a> UiFrame<'a> {
                 ui.new_line();
                 imgui::Image::new(
                     tex_logos,
-                    [window_width * 0.95, window_width * 0.95 / width_logos * height_logos],
+                    [window_width * 0.95, window_width * 0.95 / width_logos as f32 * height_logos as f32],
                 ).build(ui);
                 ui.new_line();
 
@@ -677,8 +677,8 @@ impl<'a> UiFrame<'a> {
     pub fn draw_subdigital_logo(
         &self,
         tex_subdigital_logo: imgui::TextureId,
-        width_subdigital_logo: f32,
-        height_subdigital_logo: f32,
+        width_subdigital_logo: u32,
+        height_subdigital_logo: u32,
     ) {
         let ui = &self.imgui_ui;
 
@@ -686,7 +686,8 @@ impl<'a> UiFrame<'a> {
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
 
-        let subdigital_logo_window_height_mult = height_subdigital_logo / width_subdigital_logo;
+        let subdigital_logo_window_height_mult =
+            height_subdigital_logo as f32 / width_subdigital_logo as f32;
 
         let subdigital_logo_window_height =
             SUBDIGITAL_LOGO_WINDOW_WIDTH * subdigital_logo_window_height_mult;

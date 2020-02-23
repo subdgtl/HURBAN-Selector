@@ -54,7 +54,7 @@ static IMAGE_DATA_ICON: &[u8] = include_bytes!("../icons/64x64.ico");
 static IMAGE_DATA_SCHEME: &[u8] = include_bytes!("../resources/scheme.png");
 static IMAGE_DATA_LOGOS_BLACK: &[u8] = include_bytes!("../resources/logos.png");
 static IMAGE_DATA_LOGOS_WHITE: &[u8] = include_bytes!("../resources/logos_white.png");
-static IMAGE_DATA_SUBDIGITAL_LOGO: &[u8] = include_bytes!("../resources/subdigital.png");
+static IMAGE_DATA_SUBDIGITAL_LOGO: &[u8] = include_bytes!("../resources/subdigital_grey.png");
 
 const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
 const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
@@ -370,8 +370,8 @@ pub fn init_and_run(options: Options) -> ! {
 
                 ui_frame.draw_subdigital_logo(
                     tex_subdigital_logo,
-                    width_subdigital_logo as f32,
-                    height_subdigital_logo as f32,
+                    width_subdigital_logo,
+                    height_subdigital_logo,
                 );
 
                 if menu_status.viewport_draw_used_values_changed {
@@ -551,11 +551,11 @@ pub fn init_and_run(options: Options) -> ! {
                 ui_frame.draw_about_window(
                     &mut about_modal_open,
                     tex_scheme,
-                    width_scheme as f32,
-                    height_scheme as f32,
+                    width_scheme,
+                    height_scheme,
                     tex_logos,
-                    width_logos as f32,
-                    height_logos as f32,
+                    width_logos,
+                    height_logos,
                 );
 
                 ui_frame.draw_notifications_window(&notifications.borrow());
