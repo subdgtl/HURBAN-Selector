@@ -51,6 +51,12 @@ mod pull;
 mod session;
 mod ui;
 
+static IMAGE_DATA_ICON: &[u8] = include_bytes!("../icons/64x64.ico");
+static IMAGE_DATA_SCHEME: &[u8] = include_bytes!("../resources/scheme.png");
+static IMAGE_DATA_LOGOS_BLACK: &[u8] = include_bytes!("../resources/logos.png");
+static IMAGE_DATA_LOGOS_WHITE: &[u8] = include_bytes!("../resources/logos_white.png");
+static IMAGE_DATA_SUBDIGITAL_LOGO: &[u8] = include_bytes!("../resources/subdigital_grey.png");
+
 const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
 const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
 const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(100);
@@ -114,8 +120,19 @@ pub fn init_and_run(options: Options) -> ! {
     logger::init(options.app_log_level, options.lib_log_level);
 
     let event_loop = winit::event_loop::EventLoop::new();
-    let icon_file = include_bytes!("../icons/64x64.ico");
-    let icon = load_icon(icon_file);
+
+    let (img_icon, width_icon, height_icon) = decode_image_rgba8_unorm(IMAGE_DATA_ICON);
+    let (img_scheme, width_scheme, height_scheme) = decode_image_rgba8_unorm(IMAGE_DATA_SCHEME);
+    let (img_logos_black, width_logos_black, height_logos_black) =
+        decode_image_rgba8_unorm(IMAGE_DATA_LOGOS_BLACK);
+    let (img_logos_white, width_logos_white, height_logos_white) =
+        decode_image_rgba8_unorm(IMAGE_DATA_LOGOS_WHITE);
+    let (img_subdigital_logo, width_subdigital_logo, height_subdigital_logo) =
+        decode_image_rgba8_unorm(IMAGE_DATA_SUBDIGITAL_LOGO);
+
+    let icon = winit::window::Icon::from_rgba(img_icon, width_icon, height_icon)
+        .expect("Failed to create icon.");
+
     let window = if options.fullscreen {
         let monitor = event_loop.primary_monitor();
 
@@ -222,6 +239,8 @@ pub fn init_and_run(options: Options) -> ! {
         transparent: true,
     };
 
+    let mut about_modal_open = false;
+
     let clear_color = match options.theme {
         Theme::Dark => [0.1, 0.1, 0.1, 1.0],
         Theme::Funky => [1.0, 1.0, 1.0, 1.0],
@@ -254,6 +273,23 @@ pub fn init_and_run(options: Options) -> ! {
                 Theme::Funky => 0.15,
             },
         },
+    );
+
+    let tex_scheme = renderer.add_ui_texture_rgba8_unorm(width_scheme, height_scheme, &img_scheme);
+    let tex_logos_black = renderer.add_ui_texture_rgba8_unorm(
+        width_logos_black,
+        height_logos_black,
+        &img_logos_black,
+    );
+    let tex_logos_white = renderer.add_ui_texture_rgba8_unorm(
+        width_logos_white,
+        height_logos_white,
+        &img_logos_white,
+    );
+    let tex_subdigital_logo = renderer.add_ui_texture_rgba8_unorm(
+        width_subdigital_logo,
+        height_subdigital_logo,
+        &img_subdigital_logo,
     );
 
     let mut scene_bounding_box: BoundingBox<f32> = BoundingBox::unit();
@@ -332,10 +368,17 @@ pub fn init_and_run(options: Options) -> ! {
                 let menu_status = ui_frame.draw_menu_window(
                     time,
                     &mut screenshot_modal_open,
+                    &mut about_modal_open,
                     &mut viewport_draw_mode,
                     &mut viewport_draw_used_values,
                     &mut project_status,
                     &mut notifications.borrow_mut(),
+                );
+
+                ui_frame.draw_subdigital_logo(
+                    tex_subdigital_logo,
+                    width_subdigital_logo,
+                    height_subdigital_logo,
                 );
 
                 if menu_status.viewport_draw_used_values_changed {
@@ -507,6 +550,21 @@ pub fn init_and_run(options: Options) -> ! {
                     window_size.width.round() as u32,
                     window_size.height.round() as u32,
                 );
+
+                let (tex_logos, width_logos, height_logos) = match options.theme {
+                    Theme::Funky => (tex_logos_black, width_logos_black, height_logos_black),
+                    Theme::Dark => (tex_logos_white, width_logos_white, height_logos_white),
+                };
+                ui_frame.draw_about_window(
+                    &mut about_modal_open,
+                    tex_scheme,
+                    width_scheme,
+                    height_scheme,
+                    tex_logos,
+                    width_logos,
+                    height_logos,
+                );
+
                 ui_frame.draw_notifications_window(&notifications.borrow());
 
                 if ui_frame.draw_pipeline_window(time, &mut session) {
@@ -1136,21 +1194,16 @@ impl CameraInterpolation {
     }
 }
 
-fn load_icon(contents: &[u8]) -> winit::window::Icon {
-    let (icon_rgba, icon_width, icon_height) = {
-        let image = image::load_from_memory(contents).expect("Failed to load icon contents.");
-        let (width, height) = image.dimensions();
-        let mut rgba = Vec::with_capacity((width * height) as usize * 4);
+fn decode_image_rgba8_unorm(data: &[u8]) -> (Vec<u8>, u32, u32) {
+    let image = image::load_from_memory(data).expect("Failed to decode image.");
+    let (width, height) = image.dimensions();
+    let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
 
-        for (_, _, pixel) in image.pixels() {
-            rgba.extend_from_slice(&pixel.to_rgba().0);
-        }
+    for (_, _, pixel) in image.pixels() {
+        rgba.extend_from_slice(&pixel.to_rgba().0);
+    }
 
-        (rgba, width, height)
-    };
-
-    winit::window::Icon::from_rgba(icon_rgba, icon_width, icon_height)
-        .expect("Failed to create icon.")
+    (rgba, width, height)
 }
 
 fn compute_light(
