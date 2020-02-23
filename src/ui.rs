@@ -907,12 +907,11 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text("DRAW USED GEOMETRY IN VIEWPORT\n\
+                        ui.text_colored(self.colors.tooltip_text,"DRAW USED GEOMETRY IN VIEWPORT\n\
                         \n\
-                        When enabled, used geometry will be drawn with \
-                        a transparent material.\n
-                        \n
-                        Used geometry is geometry that has been referenced as a parameter \
+                        When enabled, used geometry will be drawn with a transparent material.\n\
+                        \n\
+                        Used geometry is geometry that has been already referenced as a parameter \
                         in an operation.");
                         wrap_token.pop(ui);
                     });
