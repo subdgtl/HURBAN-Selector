@@ -36,6 +36,7 @@ mod analytics;
 mod bounding_box;
 mod camera;
 mod convert;
+mod demo;
 mod input;
 mod interpreter;
 mod interpreter_funcs;
@@ -171,14 +172,14 @@ pub fn init_and_run(options: Options) -> ! {
             .expect("Failed to create window")
     };
 
-    let initial_window_size = window.inner_size().to_physical(window.hidpi_factor());
-    let initial_window_width = initial_window_size.width.round() as u32;
-    let initial_window_height = initial_window_size.height.round() as u32;
-    let initial_window_aspect_ratio =
-        initial_window_size.width as f32 / initial_window_size.height as f32;
+    let time_start = Instant::now();
 
     let mut session = Session::new();
+    for stmt in demo::default_project().stmts {
+        session.push_prog_stmt(time_start, stmt);
+    }
     session.set_autorun_delay(Some(DURATION_AUTORUN_DELAY));
+
     let mut input_manager = InputManager::new();
 
     let notifications = Rc::new(RefCell::new(Notifications::with_ttl(DURATION_NOTIFICATION)));
@@ -188,6 +189,12 @@ pub fn init_and_run(options: Options) -> ! {
     let mut project_status = project::ProjectStatus::default();
 
     change_window_title(&window, &project_status);
+
+    let initial_window_size = window.inner_size().to_physical(window.hidpi_factor());
+    let initial_window_width = initial_window_size.width.round() as u32;
+    let initial_window_height = initial_window_size.height.round() as u32;
+    let initial_window_aspect_ratio =
+        initial_window_size.width as f32 / initial_window_size.height as f32;
 
     let mut camera = Camera::new(
         initial_window_aspect_ratio,
