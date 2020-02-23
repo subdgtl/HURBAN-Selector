@@ -744,7 +744,7 @@ impl<'a> UiFrame<'a> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "SAVE PROJECT INTO THE CURENT A .hurban FILE\n\
+                        ui.text_colored(self.colors.tooltip_text, "SAVE PROJECT INTO THE CURRENT A .hurban FILE\n\
                         \n\
                         Saves the current project into a .hurban file. \
                         When used for the first time, opens a system dialog to specify save file location.\n\
