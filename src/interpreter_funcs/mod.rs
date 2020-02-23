@@ -10,6 +10,7 @@ use self::create_uv_sphere::FuncCreateUvSphere;
 use self::disjoint_mesh::FuncDisjointMesh;
 use self::extract::FuncExtract;
 use self::extract_largest::FuncExtractLargest;
+use self::import_obj_join::FuncImportObjJoin;
 use self::import_obj_mesh::FuncImportObjMesh;
 use self::join_group::FuncJoinGroup;
 use self::join_meshes::FuncJoinMeshes;
@@ -32,6 +33,7 @@ mod create_uv_sphere;
 mod disjoint_mesh;
 mod extract;
 mod extract_largest;
+mod import_obj_join;
 mod import_obj_mesh;
 mod join_group;
 mod join_meshes;
@@ -61,6 +63,7 @@ pub const FUNC_ID_CREATE_UV_SPHERE: FuncIdent = FuncIdent(2);
 pub const FUNC_ID_IMPORT_OBJ_MESH: FuncIdent = FuncIdent(2000);
 pub const FUNC_ID_EXTRACT: FuncIdent = FuncIdent(2001);
 pub const FUNC_ID_EXTRACT_LARGEST: FuncIdent = FuncIdent(2002);
+pub const FUNC_ID_IMPORT_OBJ_JOIN: FuncIdent = FuncIdent(2003);
 
 // Manipulation funcs: 4xxx
 pub const FUNC_ID_TRANSFORM: FuncIdent = FuncIdent(4000);
@@ -110,6 +113,12 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     );
     funcs.insert(FUNC_ID_EXTRACT, Box::new(FuncExtract));
     funcs.insert(FUNC_ID_EXTRACT_LARGEST, Box::new(FuncExtractLargest));
+    funcs.insert(
+        FUNC_ID_IMPORT_OBJ_JOIN,
+        Box::new(FuncImportObjJoin::new(Importer::new(
+            EndlessCache::default(),
+        ))),
+    );
 
     // Manipulation funcs
     funcs.insert(FUNC_ID_TRANSFORM, Box::new(FuncTransform));
