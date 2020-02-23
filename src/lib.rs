@@ -5,7 +5,6 @@ pub use crate::ui::Theme;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
-use std::iter;
 use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -659,79 +658,73 @@ pub fn init_and_run(options: Options) -> ! {
                 match viewport_draw_mode {
                     ViewportDrawMode::Wireframe => {
                         window_command_buffer.draw_meshes_to_primary_render_target(
-                            true,
                             scene_gpu_mesh_handles
                                 .values()
                                 .filter(|(used, _)| viewport_draw_used_values || !used)
                                 .map(|(used, handle)| {
                                     if *used {
-                                        (handle, Material::TransparentMatcapShaded)
+                                        (handle, Material::TransparentMatcapShaded, false)
                                     } else {
-                                        (handle, Material::Edges)
+                                        (handle, Material::Edges, true)
                                     }
                                 }),
                         );
                     }
                     ViewportDrawMode::Shaded => {
                         window_command_buffer.draw_meshes_to_primary_render_target(
-                            true,
                             scene_gpu_mesh_handles
                                 .values()
                                 .filter(|(used, _)| viewport_draw_used_values || !used)
                                 .map(|(used, handle)| {
                                     if *used {
-                                        (handle, Material::TransparentMatcapShaded)
+                                        (handle, Material::TransparentMatcapShaded, false)
                                     } else {
-                                        (handle, Material::MatcapShaded)
+                                        (handle, Material::MatcapShaded, true)
                                     }
                                 }),
                         );
                     }
                     ViewportDrawMode::ShadedWireframe => {
                         window_command_buffer.draw_meshes_to_primary_render_target(
-                            true,
                             scene_gpu_mesh_handles
                                 .values()
                                 .filter(|(used, _)| viewport_draw_used_values || !used)
                                 .map(|(used, handle)| {
                                     if *used {
-                                        (handle, Material::TransparentMatcapShaded)
+                                        (handle, Material::TransparentMatcapShaded, false)
                                     } else {
-                                        (handle, Material::MatcapShadedEdges)
+                                        (handle, Material::MatcapShadedEdges, true)
                                     }
                                 }),
                         );
                     }
                     ViewportDrawMode::ShadedWireframeXray => {
                         window_command_buffer.draw_meshes_to_primary_render_target(
-                            true,
                             scene_gpu_mesh_handles
                                 .values()
                                 .filter(|(used, _)| viewport_draw_used_values || !used)
                                 .map(|(used, handle)| {
                                     if *used {
-                                        (handle, Material::TransparentMatcapShaded)
+                                        (handle, Material::TransparentMatcapShaded, false)
                                     } else {
-                                        (handle, Material::MatcapShaded)
+                                        (handle, Material::MatcapShaded, true)
                                     }
                                 }),
                         );
 
                         window_command_buffer.draw_meshes_to_primary_render_target(
-                            false,
                             scene_gpu_mesh_handles
                                 .values()
                                 .filter(|(used, _)| !used)
-                                .map(|(_, handle)| (handle, Material::EdgesXray)),
+                                .map(|(_, handle)| (handle, Material::EdgesXray, false)),
                         );
                     }
                 }
 
                 window_command_buffer.draw_meshes_to_primary_render_target(
-                    false,
                     ground_plane_gpu_mesh_handle
                         .iter()
-                        .zip(iter::repeat(Material::FlatWithShadows)),
+                        .map(|handle| (handle, Material::FlatWithShadows, false)),
                 );
 
                 #[cfg(not(feature = "dist"))]
@@ -788,15 +781,14 @@ pub fn init_and_run(options: Options) -> ! {
                         ViewportDrawMode::Wireframe => {
                             screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
                                 &screenshot_render_target,
-                                true,
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
                                     .map(|(used, handle)| {
                                         if *used {
-                                            (handle, Material::TransparentMatcapShaded)
+                                            (handle, Material::TransparentMatcapShaded, false)
                                         } else {
-                                            (handle, Material::Edges)
+                                            (handle, Material::Edges, true)
                                         }
                                     }),
                             );
@@ -804,15 +796,14 @@ pub fn init_and_run(options: Options) -> ! {
                         ViewportDrawMode::Shaded => {
                             screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
                                 &screenshot_render_target,
-                                true,
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
                                     .map(|(used, handle)| {
                                         if *used {
-                                            (handle, Material::TransparentMatcapShaded)
+                                            (handle, Material::TransparentMatcapShaded, false)
                                         } else {
-                                            (handle, Material::MatcapShaded)
+                                            (handle, Material::MatcapShaded, true)
                                         }
                                     }),
                             );
@@ -820,15 +811,14 @@ pub fn init_and_run(options: Options) -> ! {
                         ViewportDrawMode::ShadedWireframe => {
                             screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
                                 &screenshot_render_target,
-                                true,
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
                                     .map(|(used, handle)| {
                                         if *used {
-                                            (handle, Material::TransparentMatcapShaded)
+                                            (handle, Material::TransparentMatcapShaded, false)
                                         } else {
-                                            (handle, Material::MatcapShadedEdges)
+                                            (handle, Material::MatcapShadedEdges, true)
                                         }
                                     }),
                             );
@@ -836,26 +826,24 @@ pub fn init_and_run(options: Options) -> ! {
                         ViewportDrawMode::ShadedWireframeXray => {
                             screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
                                 &screenshot_render_target,
-                                true,
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
                                     .map(|(used, handle)| {
                                         if *used {
-                                            (handle, Material::TransparentMatcapShaded)
+                                            (handle, Material::TransparentMatcapShaded, false)
                                         } else {
-                                            (handle, Material::MatcapShaded)
+                                            (handle, Material::MatcapShaded, true)
                                         }
                                     }),
                             );
 
                             screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
                                 &screenshot_render_target,
-                                false,
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| !used)
-                                    .map(|(_, handle)| (handle, Material::EdgesXray)),
+                                    .map(|(_, handle)| (handle, Material::EdgesXray, false)),
                             );
                         }
                     }

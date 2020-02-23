@@ -966,22 +966,21 @@ impl SceneRenderer {
     #[allow(clippy::too_many_arguments)]
     pub fn draw_meshes<'a, P>(
         &mut self,
-        cast_shadows: bool,
         color_and_depth_need_clearing: bool,
         clear_color: [f64; 4],
         encoder: &mut wgpu::CommandEncoder,
         msaa_attachment: Option<&wgpu::TextureView>,
         color_attachment: &wgpu::TextureView,
         depth_attachment: &wgpu::TextureView,
-        handle_material_pairs: P,
+        mesh_props: P,
     ) where
-        P: Iterator<Item = (&'a GpuMeshHandle, Material)> + Clone,
+        P: Iterator<Item = (&'a GpuMeshHandle, Material, bool)> + Clone,
     {
         self.render_list_opaque.clear();
         self.render_list_transparent.clear();
         self.render_list_xray.clear();
 
-        for (handle, material) in handle_material_pairs.clone() {
+        for (handle, material, _) in mesh_props.clone() {
             let mesh_resource = &self.mesh_resources[&handle.0];
             match material.transparency() {
                 MaterialTransparency::Opaque => {
@@ -1049,11 +1048,11 @@ impl SceneRenderer {
                 }),
             });
 
-            if cast_shadows {
-                shadow_pass.set_pipeline(&self.shadow_pass_pipeline);
-                shadow_pass.set_bind_group(0, &self.shadow_pass_bind_group, &[]);
+            shadow_pass.set_pipeline(&self.shadow_pass_pipeline);
+            shadow_pass.set_bind_group(0, &self.shadow_pass_bind_group, &[]);
 
-                for (handle, _) in handle_material_pairs {
+            for (handle, _, cast_shadows) in mesh_props {
+                if cast_shadows {
                     record(&self.mesh_resources, handle.0, &mut shadow_pass)
                 }
             }

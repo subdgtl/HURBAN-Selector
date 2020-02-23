@@ -667,15 +667,11 @@ impl CommandBuffer<'_> {
     /// objects rendered in subsequent calls (in addition to casting shadows on
     /// objects rendered within the same call), but the shadows won't be present
     /// on objects rendered in prior calls.
-    pub fn draw_meshes_to_primary_render_target<'a, P>(
-        &mut self,
-        cast_shadows: bool,
-        mesh_handle_material_pairs: P,
-    ) where
-        P: Iterator<Item = (&'a GpuMeshHandle, Material)> + Clone,
+    pub fn draw_meshes_to_primary_render_target<'a, P>(&mut self, mesh_props: P)
+    where
+        P: Iterator<Item = (&'a GpuMeshHandle, Material, bool)> + Clone,
     {
         self.scene_renderer.draw_meshes(
-            cast_shadows,
             self.primary_render_target_needs_clearing,
             self.clear_color,
             self.encoder
@@ -684,7 +680,7 @@ impl CommandBuffer<'_> {
             self.msaa_texture_view.as_ref(),
             &self.color_texture_view,
             &self.depth_texture_view,
-            mesh_handle_material_pairs,
+            mesh_props,
         );
 
         self.primary_render_target_needs_clearing = false;
@@ -708,10 +704,9 @@ impl CommandBuffer<'_> {
     pub fn draw_meshes_to_offscreen_render_target<'a, P>(
         &mut self,
         render_target_handle: &OffscreenRenderTargetHandle,
-        cast_shadows: bool,
-        mesh_handle_material_pairs: P,
+        mesh_props: P,
     ) where
-        P: Iterator<Item = (&'a GpuMeshHandle, Material)> + Clone,
+        P: Iterator<Item = (&'a GpuMeshHandle, Material, bool)> + Clone,
     {
         let offscreen_render_target = &self.offscreen_render_targets[&render_target_handle.0];
         let offscreen_render_target_needs_clearing = self
@@ -724,14 +719,13 @@ impl CommandBuffer<'_> {
             .expect("Need encoder to record drawing");
 
         self.scene_renderer.draw_meshes(
-            cast_shadows,
             offscreen_render_target_needs_clearing,
             self.clear_color,
             encoder,
             offscreen_render_target.msaa_texture_view.as_ref(),
             &offscreen_render_target.color_texture_view,
             &offscreen_render_target.depth_texture_view,
-            mesh_handle_material_pairs,
+            mesh_props,
         );
 
         encoder.copy_texture_to_buffer(
