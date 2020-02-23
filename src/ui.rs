@@ -41,7 +41,7 @@ pub enum Theme {
 
 /// The draw mode applied to a group of objects in the viewport. Not always a
 /// 1:1 mapping with renderer materials.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewportDrawMode {
     Wireframe,
     Shaded,
