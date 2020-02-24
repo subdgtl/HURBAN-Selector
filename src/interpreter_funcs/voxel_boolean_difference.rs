@@ -14,7 +14,7 @@ use crate::interpreter::{
 };
 use crate::mesh::scalar_field::{self, ScalarField};
 
-const VOXEL_COUNT_THRESHOLD: u32 = 50000;
+const VOXEL_COUNT_THRESHOLD: u32 = 100000;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncBooleanDifferenceError {

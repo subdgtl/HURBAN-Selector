@@ -14,7 +14,7 @@ pub fn default_project() -> Project {
                 ast::CallExpr::new(
                     FUNC_ID_IMPORT_OBJ_JOIN,
                     vec![
-                        ast::Expr::Lit(ast::LitExpr::String("c:\\tatra.obj".to_string())),
+                        ast::Expr::Lit(ast::LitExpr::String("c:\\Users\\nucma\\Documents\\tatra603x.obj".to_string())),
                         ast::Expr::Lit(ast::LitExpr::Boolean(false)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(false)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(true)),
@@ -27,7 +27,7 @@ pub fn default_project() -> Project {
                 ast::CallExpr::new(
                     FUNC_ID_IMPORT_OBJ_JOIN,
                     vec![
-                        ast::Expr::Lit(ast::LitExpr::String("c:\\auticko.obj".to_string())),
+                        ast::Expr::Lit(ast::LitExpr::String("c:\\Users\\nucma\\Documents\\Auticko.obj".to_string())),
                         ast::Expr::Lit(ast::LitExpr::Boolean(false)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(false)),
                         ast::Expr::Lit(ast::LitExpr::Boolean(true)),
