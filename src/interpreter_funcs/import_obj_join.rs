@@ -121,8 +121,8 @@ impl<C: ObjCache> Func for FuncImportObjJoin<C> {
         let path = args[0].unwrap_string();
         let move_to_origin = args[1].unwrap_boolean();
         let snap_to_ground = args[2].unwrap_boolean();
-        let analyze_bbox = args[1].unwrap_boolean();
-        let analyze_mesh = args[2].unwrap_boolean();
+        let analyze_bbox = args[3].unwrap_boolean();
+        let analyze_mesh = args[4].unwrap_boolean();
 
         let result = self.importer.import_obj(path);
         match result {
