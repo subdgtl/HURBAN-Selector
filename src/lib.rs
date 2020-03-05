@@ -188,12 +188,6 @@ pub fn init_and_run(options: Options) -> ! {
             .expect("Failed to create window")
     };
 
-    let initial_window_size = window.inner_size().to_physical(window.hidpi_factor());
-    let initial_window_width = initial_window_size.width.round() as u32;
-    let initial_window_height = initial_window_size.height.round() as u32;
-    let initial_window_aspect_ratio =
-        initial_window_size.width as f32 / initial_window_size.height as f32;
-
     let mut session = Session::new();
     session.set_autorun_delay(Some(DURATION_AUTORUN_DELAY));
     let mut input_manager = InputManager::new();
