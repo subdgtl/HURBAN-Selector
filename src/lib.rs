@@ -182,7 +182,7 @@ pub fn init_and_run(options: Options) -> ! {
 
         winit::window::WindowBuilder::new()
             .with_title(BASE_WINDOW_TITLE)
-            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+            .with_maximized(true)
             .with_window_icon(Some(icon))
             .build(&event_loop)
             .expect("Failed to create window")
@@ -205,6 +205,12 @@ pub fn init_and_run(options: Options) -> ! {
     let mut project_status = project::ProjectStatus::default();
 
     change_window_title(&window, &project_status);
+
+    let initial_window_size = window.inner_size().to_physical(window.hidpi_factor());
+    let initial_window_width = initial_window_size.width.round() as u32;
+    let initial_window_height = initial_window_size.height.round() as u32;
+    let initial_window_aspect_ratio =
+        initial_window_size.width as f32 / initial_window_size.height as f32;
 
     let mut camera = Camera::new(
         initial_window_aspect_ratio,
