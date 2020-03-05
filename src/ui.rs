@@ -544,11 +544,11 @@ impl<'a> UiFrame<'a> {
                     them create beyond the limits of their imagination given by memory/brain \
                     capacity as well as the ability to create different variations of form and \
                     compositions.\n\
-                     \n\
-                     The software is currently in very early development stages. It strives to be \
-                     a tool for simple parametric modeling using various \
-                     hybridization strategies for mesh and voxel models, allowing designers to \
-                     smoothly interpolate between multiple source models."));
+                    \n\
+                    The software is currently in very early development stages. It strives to be \
+                    a tool for simple parametric modeling using various \
+                    hybridization strategies for mesh and voxel models, allowing designers to \
+                    smoothly interpolate between multiple source models."));
                 ui.new_line();
                 regular_font_token.pop(ui);
 
@@ -556,7 +556,7 @@ impl<'a> UiFrame<'a> {
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(imgui::im_str!(
                     "The Software is produced within the INTERREG V-A Slovakia - \
-                     Austria 2014 - 2020 'Design & Innovation' project"
+                    Austria 2014 - 2020 'Design & Innovation' project"
                 ));
                 regular_font_token.pop(ui);
                 ui.new_line();
