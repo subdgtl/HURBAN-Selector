@@ -28,10 +28,14 @@ const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 1.0 - OPERATIONS_WINDOW_HEIGHT_MULT;
 const PIPELINE_OPERATION_CONSOLE_HEIGHT: f32 = 40.0;
 
 const MENU_WINDOW_WIDTH: f32 = 160.0;
-const MENU_WINDOW_HEIGHT: f32 = 277.0;
+const MENU_WINDOW_HEIGHT: f32 = 298.0;
 
 const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
 const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
+
+const SUBDIGITAL_LOGO_WINDOW_WIDTH: f32 = 100.0;
+
+const ABOUT_WINDOW_WIDTH: f32 = 600.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
@@ -59,6 +63,7 @@ pub struct ScreenshotOptions {
 struct FontIds {
     regular: imgui::FontId,
     bold: imgui::FontId,
+    big_bold: imgui::FontId,
 }
 
 struct Colors {
@@ -77,6 +82,7 @@ struct Colors {
     tooltip_text: [f32; 4],
     notification_window: [f32; 4],
     popup_window_background: [f32; 4],
+    logo_window: [f32; 4],
 }
 
 #[derive(Debug, Default)]
@@ -152,7 +158,8 @@ impl Ui {
             header_error_hovered: [1.00, 0.15, 0.05, 0.4],
             tooltip_text: [1.0, 1.0, 1.0, 1.0],
             notification_window: [0.0, 0.0, 0.0, 0.1],
-            popup_window_background: [0.0, 0.0, 0.0, 0.1],
+            popup_window_background: [0.0, 0.0, 0.0, 0.4],
+            logo_window: [0.0, 0.0, 0.0, 0.0],
         };
 
         style.window_padding = [4.0, 4.0];
@@ -277,6 +284,13 @@ impl Ui {
                 size_pixels: font_size,
                 config: None,
             }]);
+        let big_bold_font_id = imgui_context
+            .fonts()
+            .add_font(&[imgui::FontSource::TtfData {
+                data: FONT_OPENSANS_BOLD_BYTES,
+                size_pixels: font_size * 1.5,
+                config: None,
+            }]);
 
         imgui_context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
@@ -286,6 +300,7 @@ impl Ui {
             font_ids: FontIds {
                 regular: regular_font_id,
                 bold: bold_font_id,
+                big_bold: big_bold_font_id,
             },
             colors,
             pipeline_window_state: RefCell::new(PipelineWindowState::default()),
@@ -454,6 +469,142 @@ impl<'a> UiFrame<'a> {
         take_screenshot_clicked
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_about_window(
+        &self,
+        about_modal_open: &mut bool,
+        tex_scheme: imgui::TextureId,
+        width_scheme: u32,
+        height_scheme: u32,
+        tex_logos: imgui::TextureId,
+        width_logos: u32,
+        height_logos: u32,
+    ) {
+        let ui = &self.imgui_ui;
+
+        let window_color_token = ui.push_style_color(
+            imgui::StyleColor::PopupBg,
+            self.colors.popup_window_background,
+        );
+
+        let window_name = imgui::im_str!("About");
+        if *about_modal_open {
+            ui.open_popup(window_name);
+        }
+
+        let bold_font_token = ui.push_font(self.font_ids.bold);
+        ui.popup_modal(window_name)
+            .opened(about_modal_open)
+            .movable(true)
+            .resizable(false)
+            .collapsible(false)
+            .always_auto_resize(true)
+            .build(|| {
+                let window_width = ui.window_size()[0];
+
+                let wrap_token = ui.push_text_wrap_pos(ABOUT_WINDOW_WIDTH);
+
+                let big_bold_font_token = ui.push_font(self.font_ids.big_bold);
+                ui.text(imgui::im_str!("H.U.R.B.A.N. selector 0.1 alpha"));
+                big_bold_font_token.pop(ui);
+                ui.text(imgui::im_str!("by Subdigital s.r.o. (https://sub.digital), 2020"));
+                ui.new_line();
+                ui.text(imgui::im_str!("CREDITS"));
+                let mut regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text("Lead developer: Jan Toth <yanchi.toth@gmail.com>");
+                ui.text("Geometry developer: Jan Pernecky <jan@sub.digital>");
+                ui.text("Developer: Ondrej Slintak <ondrowan@gmail.com>");
+                ui.text("Concept: Maros Schmidt, Slovak Design Center");
+                ui.text("Production: Lucia Dubacova, Slovak Design Center");
+                ui.new_line();
+                regular_font_token.pop(ui);
+
+                imgui::Image::new(
+                    tex_scheme,
+                    [window_width * 0.95, window_width * 0.95 / width_scheme as f32 * height_scheme as f32],
+                ).build(ui);
+                ui.new_line();
+
+                ui.text(imgui::im_str!("ABOUT"));
+                regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text_wrapped(imgui::im_str!(
+                    "H.U.R.B.A.N. selector is a software \
+                     experiment sponsored by the Slovak Design Center (https://www.scd.sk/).\
+                     It is meant to test the hypothesis that creating new designs and shapes\
+                     is subconsciously inspired by our previous experience. There is a trial \
+                     and error phase in the design process where many variations on the same \
+                     shape are prototyped and chosen from.\n\
+                     \n\
+                     The software is currently in very early stages, but as it nears \
+                     completion, it will strive to be a tool for simple parametric \
+                     modeling, containing implementations of various hybridization \
+                     strategies for mesh models, allowing designers to smoothly interpolate \
+                     between multiple mesh geometries and select the result with the most \
+                     desired features."));
+                ui.new_line();
+                regular_font_token.pop(ui);
+
+                ui.text(imgui::im_str!("DESCRIPTION"));
+                regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text_wrapped(
+                    imgui::im_str!(
+                    "The H.U.R.B.A.N. Selector software is a part of the SDC's Inolab \
+                    Department's plan to create a research platform for designers to \
+                    test and verify new algorithms and create new forms.\n\
+                    \n\
+                    H.U.R.B.A.N. Selector is a software which allows hybridization of \
+                    multiple 3D models with the target to find new aesthetic forms. \
+                    It is intended for designers as a tool for experimenting. Therefore, \
+                    it acts as a gateway to full-fledged parametric design software. \
+                    A user builds an operation pipeline where each stacked operation allows \
+                    reconfiguration anytime influencing inputs and outputs of subsequent \
+                    operations.\n\
+                    \n\
+                    The program extends the creative possibilities of designers and helps \
+                    them create beyond the limits of their imagination given by memory/brain \
+                    capacity as well as the ability to create different variations of form and \
+                    compositions. Using H.U.R.B.A.N. Selector provides designers with more \
+                    space for selection and algorithmic seeking of new forms. \n\
+                    \n\
+                    H.U.R.B.A.N. Selector is currently under development. It utilizes the Rust \
+                    programming language, and its source code is freely available to the community."));
+                ui.new_line();
+                regular_font_token.pop(ui);
+
+                ui.text(imgui::im_str!("PARTNERS"));
+                regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text_wrapped(imgui::im_str!(
+                    "The Software is produced within the INTERREG V-A Slovakia - \
+                     Austria 2014 - 2020 'Design & Innovation' project"
+                ));
+                regular_font_token.pop(ui);
+                ui.new_line();
+                imgui::Image::new(
+                    tex_logos,
+                    [window_width * 0.95, window_width * 0.95 / width_logos as f32 * height_logos as f32],
+                ).build(ui);
+                ui.new_line();
+
+                ui.text(imgui::im_str!("LICENSE"));
+                regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text_wrapped(imgui::im_str!(
+                    "The editor source code is provided under the GNU GENERAL PUBLIC \
+                    LICENSE, Version 3. If the research or implementation yields \
+                    interesting results, those will be extracted from the editor and \
+                    published and licensed separately, most likely under a more permissive \
+                    license such as MIT.\n\
+                    \n\
+                    The source code of H.U.R.B.A.N. selector can be found at GitHub \
+                    (https://github.com/subdgtl/HURBAN-Selector)."));
+                    ui.new_line();
+                regular_font_token.pop(ui);
+                wrap_token.pop(ui);
+            });
+
+        bold_font_token.pop(ui);
+        window_color_token.pop(ui);
+    }
+
     pub fn draw_notifications_window(&self, notifications: &Notifications) {
         let notifications_count = notifications.iter().count();
         if notifications_count == 0 {
@@ -523,10 +674,70 @@ impl<'a> UiFrame<'a> {
         color_token.pop(ui);
     }
 
+    pub fn draw_subdigital_logo(
+        &self,
+        tex_subdigital_logo: imgui::TextureId,
+        width_subdigital_logo: u32,
+        height_subdigital_logo: u32,
+    ) {
+        let ui = &self.imgui_ui;
+
+        let window_logical_size = ui.io().display_size;
+        let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
+        let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
+
+        let subdigital_logo_window_height_mult =
+            height_subdigital_logo as f32 / width_subdigital_logo as f32;
+
+        let subdigital_logo_window_height =
+            SUBDIGITAL_LOGO_WINDOW_WIDTH * subdigital_logo_window_height_mult;
+
+        let subdigital_logo_window_horizontal_position =
+            window_inner_width - SUBDIGITAL_LOGO_WINDOW_WIDTH;
+        let subdigital_logo_window_vertical_position =
+            window_inner_height - subdigital_logo_window_height * 0.8;
+
+        let color_token = ui.push_style_colors(&[
+            (imgui::StyleColor::WindowBg, self.colors.logo_window),
+            (imgui::StyleColor::Border, self.colors.logo_window),
+        ]);
+
+        imgui::Window::new(imgui::im_str!("Logo"))
+            .title_bar(false)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .size(
+                [
+                    SUBDIGITAL_LOGO_WINDOW_WIDTH + MARGIN,
+                    subdigital_logo_window_height,
+                ],
+                imgui::Condition::Always,
+            )
+            .position(
+                [
+                    subdigital_logo_window_horizontal_position,
+                    subdigital_logo_window_vertical_position,
+                ],
+                imgui::Condition::Always,
+            )
+            .build(ui, || {
+                imgui::Image::new(
+                    tex_subdigital_logo,
+                    [SUBDIGITAL_LOGO_WINDOW_WIDTH, subdigital_logo_window_height],
+                )
+                .build(ui);
+            });
+
+        color_token.pop(ui);
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_menu_window(
         &self,
         current_time: Instant,
         screenshot_modal_open: &mut bool,
+        about_modal_open: &mut bool,
         viewport_draw_mode: &mut ViewportDrawMode,
         viewport_draw_used_values: &mut bool,
         project_status: &mut project::ProjectStatus,
@@ -866,6 +1077,21 @@ impl<'a> UiFrame<'a> {
                         and references to the external files to import. \
                         It is advised to keep the files to import next to the .hurban project file \
                         and distribute them together.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                ui.separator();
+
+                if ui.button(imgui::im_str!("About"), [-f32::MIN_POSITIVE, 0.0]) {
+                    *about_modal_open = true;
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "ABOUT H.U.R.B.A.N. selector\n\
+                        \n\
+                        Program description and credits.");
                         wrap_token.pop(ui);
                     });
                 }
