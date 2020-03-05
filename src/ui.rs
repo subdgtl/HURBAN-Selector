@@ -2076,6 +2076,10 @@ impl<'a> UiFrame<'a> {
                 imgui::StyleColor::HeaderActive,
                 self.colors.combo_box_selected_item_active,
             ),
+            (
+                imgui::StyleColor::PopupBg,
+                self.colors.popup_window_background,
+            ),
         ]);
         if let Some(combo_token) = combo.begin(ui) {
             for (index, var_ident) in visible_vars_iter.clone().enumerate() {
