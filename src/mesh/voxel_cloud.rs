@@ -619,7 +619,6 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
             };
         }
     }
-
 }
 
 /// Returns number of voxels created when `ScalarField::from_mesh()` called.
