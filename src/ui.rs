@@ -37,6 +37,8 @@ const SUBDIGITAL_LOGO_WINDOW_WIDTH: f32 = 100.0;
 
 const ABOUT_WINDOW_WIDTH: f32 = 600.0;
 
+const DRAG_SPEED: f32 = 0.01;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
     Dark,
@@ -498,7 +500,7 @@ impl<'a> UiFrame<'a> {
             .movable(true)
             .resizable(false)
             .collapsible(false)
-            .always_auto_resize(true)
+            .always_auto_resize(false)
             .build(|| {
                 let window_width = ui.window_size()[0];
 
@@ -528,46 +530,25 @@ impl<'a> UiFrame<'a> {
                 ui.text(imgui::im_str!("ABOUT"));
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(imgui::im_str!(
-                    "H.U.R.B.A.N. selector is a software \
-                     experiment sponsored by the Slovak Design Center (https://www.scd.sk/).\
-                     It is meant to test the hypothesis that creating new designs and shapes\
-                     is subconsciously inspired by our previous experience. There is a trial \
-                     and error phase in the design process where many variations on the same \
-                     shape are prototyped and chosen from.\n\
-                     \n\
-                     The software is currently in very early stages, but as it nears \
-                     completion, it will strive to be a tool for simple parametric \
-                     modeling, containing implementations of various hybridization \
-                     strategies for mesh models, allowing designers to smoothly interpolate \
-                     between multiple mesh geometries and select the result with the most \
-                     desired features."));
-                ui.new_line();
-                regular_font_token.pop(ui);
-
-                ui.text(imgui::im_str!("DESCRIPTION"));
-                regular_font_token = ui.push_font(self.font_ids.regular);
-                ui.text_wrapped(
-                    imgui::im_str!(
-                    "The H.U.R.B.A.N. Selector software is a part of the SDC's Inolab \
+                    "The H.U.R.B.A.N. Selector is a part of the SDC's Inolab \
                     Department's plan to create a research platform for designers to \
                     test and verify new algorithms and create new forms.\n\
                     \n\
-                    H.U.R.B.A.N. Selector is a software which allows hybridization of \
-                    multiple 3D models with the target to find new aesthetic forms. \
-                    It is intended for designers as a tool for experimenting. Therefore, \
-                    it acts as a gateway to full-fledged parametric design software. \
+                    H.U.R.B.A.N. Selector is an experimental software for \
+                    hybridization of multiple 3D models with an aim to find new \
+                    aesthetic forms. \
+                    It serves as a gateway to full-fledged parametric design software. \
                     A user builds an operation pipeline where each stacked operation allows \
                     reconfiguration anytime influencing inputs and outputs of subsequent \
-                    operations.\n\
-                    \n\
-                    The program extends the creative possibilities of designers and helps \
+                    operations. The program extends the creative possibilities of designers and helps \
                     them create beyond the limits of their imagination given by memory/brain \
                     capacity as well as the ability to create different variations of form and \
-                    compositions. Using H.U.R.B.A.N. Selector provides designers with more \
-                    space for selection and algorithmic seeking of new forms. \n\
+                    compositions.\n\
                     \n\
-                    H.U.R.B.A.N. Selector is currently under development. It utilizes the Rust \
-                    programming language, and its source code is freely available to the community."));
+                    The software is currently in very early development stages. It strives to be \
+                    a tool for simple parametric modeling using various \
+                    hybridization strategies for mesh and voxel models, allowing designers to \
+                    smoothly interpolate between multiple source models."));
                 ui.new_line();
                 regular_font_token.pop(ui);
 
@@ -575,7 +556,7 @@ impl<'a> UiFrame<'a> {
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(imgui::im_str!(
                     "The Software is produced within the INTERREG V-A Slovakia - \
-                     Austria 2014 - 2020 'Design & Innovation' project"
+                    Austria 2014 - 2020 'Design & Innovation' project"
                 ));
                 regular_font_token.pop(ui);
                 ui.new_line();
@@ -594,8 +575,8 @@ impl<'a> UiFrame<'a> {
                     published and licensed separately, most likely under a more permissive \
                     license such as MIT.\n\
                     \n\
-                    The source code of H.U.R.B.A.N. selector can be found at GitHub \
-                    (https://github.com/subdgtl/HURBAN-Selector)."));
+                    The source code of H.U.R.B.A.N. selector written in Rust can be found on \
+                    GitHub (https://github.com/subdgtl/HURBAN-Selector)."));
                     ui.new_line();
                 regular_font_token.pop(ui);
                 wrap_token.pop(ui);
@@ -1365,7 +1346,7 @@ impl<'a> UiFrame<'a> {
 
                                             let mut drag_int = ui
                                                                 .drag_int(&input_label, &mut int_lit)
-                                                                .speed(0.05);
+                                                                .speed(DRAG_SPEED);
 
                                             // FIXME: Report bug: both, min and max must be set
                                             if let Some(min_value) = param_refinement_int.min_value {
@@ -1395,7 +1376,7 @@ impl<'a> UiFrame<'a> {
 
                                             let mut drag_int = ui
                                                                 .drag_int(&input_label, &mut int_value)
-                                                                .speed(0.05);
+                                                                .speed(DRAG_SPEED);
 
                                             if let Some(min_value) = param_refinement_uint.min_value {
                                                 drag_int = drag_int.min(cast_i32(min_value));
@@ -1424,7 +1405,7 @@ impl<'a> UiFrame<'a> {
 
                                             let mut drag_float = ui
                                                                 .drag_float(&input_label, &mut float_lit)
-                                                                .speed(0.05)
+                                                                .speed(DRAG_SPEED)
                                                                 .power(2.0);
 
                                             if let Some(min_value) = param_refinement_float.min_value {
@@ -1456,7 +1437,7 @@ impl<'a> UiFrame<'a> {
 
                                             let mut drag_float2 = ui
                                                                 .drag_float2(&input_label, &mut float2_lit)
-                                                                .speed(0.05)
+                                                                .speed(DRAG_SPEED)
                                                                 .power(2.0);
 
                                             if let Some(min_value) =
@@ -1492,7 +1473,7 @@ impl<'a> UiFrame<'a> {
 
                                             let mut drag_float3 = ui
                                                 .drag_float3(&input_label, &mut float3_lit)
-                                                .speed(0.05)
+                                                .speed(DRAG_SPEED)
                                                 .power(2.0);
 
                                             if let Some(min_value)=
