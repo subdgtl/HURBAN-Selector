@@ -132,7 +132,6 @@ pub enum Expr {
     // arg would be the direct result of another func call. We use
     // `VarExpr` instead to refer to a previous result.
     Lit(LitExpr),
-    #[allow(dead_code)]
     Var(VarExpr),
 }
 
@@ -158,9 +157,7 @@ impl fmt::Display for Expr {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LitExpr {
     Nil,
-    #[allow(dead_code)]
     Boolean(bool),
-    #[allow(dead_code)]
     Int(i32),
     Uint(u32),
     Float(f32),
