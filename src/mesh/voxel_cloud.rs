@@ -43,8 +43,9 @@ pub struct ScalarField<T> {
     voxels: Vec<Option<T>>,
 }
 
-impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + ToPrimitive>
-    ScalarField<T>
+impl<T> ScalarField<T>
+where
+    T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + ToPrimitive,
 {
     /// Define a new empty block of voxel space, which begins at
     /// `block_start`(in discrete absolute voxel units), has dimensions
@@ -52,6 +53,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     /// `voxel_dimensions` (in cartesian model-space units).
     ///
     /// # Panics
+    ///
     /// Panics if any of the voxel dimensions is below or equal to zero.
     pub fn new(
         block_start: &Point3<i32>,
@@ -77,6 +79,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     /// units.
     ///
     /// # Panics
+    ///
     /// Panics if any of the voxel dimensions is below or equal to zero.
     pub fn from_cartesian_bounding_box(
         bounding_box: &BoundingBox<f32>,
@@ -108,14 +111,16 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         ScalarField::new(&block_start, &block_dimensions, voxel_dimensions)
     }
 
-    /// Creates a scalar field from an existing mesh. The voxels intersecting
-    /// the mesh (volume voxels) will be set to `value_on_mesh_surface`, the
-    /// empty voxels (void voxels) will be set to None. The `growth_offset`
-    /// defines how much bigger the scalar field be when initialized. This is
-    /// useful if the distance field is about to be calculated for purposes of
-    /// voxel growth.
+    /// Creates a scalar field from an existing mesh.
+    ///
+    /// The voxels intersecting the mesh (volume voxels) will be set to
+    /// `value_on_mesh_surface`, the empty voxels (void voxels) will be set to
+    /// None. The `growth_offset` defines how much bigger the scalar field be
+    /// when initialized. This is useful if the distance field is about to be
+    /// calculated for purposes of voxel growth.
     ///
     /// # Panics
+    ///
     /// Panics if any of the voxel dimensions is below or equal to zero.
     pub fn from_mesh(
         mesh: &Mesh,
@@ -273,6 +278,7 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
     /// (relative to the voxel space origin).
     ///
     /// # Panics
+    ///
     /// Panics if absolute coordinate out of bounds
     pub fn set_value_at_absolute_voxel_coordinate(
         &mut self,
@@ -462,10 +468,12 @@ impl<T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + To
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
-    /// Compute discrete distance field. Each voxel will be set a value equal to
-    /// its distance from the original volume. The voxels that were originally
-    /// volume voxels, will be set to value 0. Voxels inside the closed volumes
-    /// will have the distance value with a negative sign.
+    /// Compute discrete distance field.
+    ///
+    /// Each voxel will be set a value equal to its distance from the original
+    /// volume. The voxels that were originally volume voxels, will be set to
+    /// value 0. Voxels inside the closed volumes will have the distance value
+    /// with a negative sign.
     ///
     /// The `volume_value_range` is an interval defining which values of the
     /// scalar field should be considered to be a volume. The
@@ -655,7 +663,7 @@ pub fn suggest_voxel_size_to_fit_bbox_within_voxel_count(
     current_voxel_dimensions * voxel_scaling_ratio_1d * 1.1
 }
 
-/// Returns true if the value of a voxel is within given value range. Returns
+/// Returns `true` if the value of a voxel is within given value range. Returns
 /// `false` if the voxel value is not within the `value_range` or if the voxel
 /// does not exist or is out of scalar field's bounds.
 fn is_voxel_within_range<T, U>(voxel: &Option<T>, value_range: &U) -> bool
@@ -671,8 +679,6 @@ where
 
 /// Computes a voxel position relative to the block start (relative coordinate)
 /// from an index to the linear representation of the voxel block.
-///
-/// Returns None if out of bounds.
 fn one_dimensional_to_relative_voxel_coordinate(
     one_dimensional_coordinate: usize,
     block_dimensions: &Vector3<u32>,
@@ -688,8 +694,6 @@ fn one_dimensional_to_relative_voxel_coordinate(
 
 /// Computes a voxel position relative to the model space origin (absolute
 /// coordinate) from an index to the linear representation of the voxel block.
-///
-/// Returns None if out of bounds.
 fn one_dimensional_to_absolute_voxel_coordinate(
     one_dimensional_coordinate: usize,
     block_start: &Point3<i32>,
@@ -702,8 +706,6 @@ fn one_dimensional_to_absolute_voxel_coordinate(
 
 /// Computes a voxel position in world space cartesian units from an index to
 /// the linear representation of the voxel block.
-///
-/// Returns None if out of bounds.
 fn one_dimensional_to_cartesian_coordinate(
     one_dimensional_coordinate: usize,
     block_start: &Point3<i32>,
@@ -728,7 +730,8 @@ fn relative_voxel_to_absolute_voxel_coordinate(
 /// coordinates relative to the voxel block start.
 ///
 /// # Panics
-/// Panics if any of the voxel dimensions is zero.
+///
+/// Panics if any of the voxel dimensions is equal or below zero.
 fn relative_voxel_to_cartesian_coordinate(
     relative_coordinate: &Point3<i32>,
     block_start: &Point3<i32>,
@@ -751,6 +754,7 @@ fn relative_voxel_to_cartesian_coordinate(
 /// point.
 ///
 /// # Panics
+///
 /// Panics if any of the voxel dimensions is equal or below zero.
 fn cartesian_to_absolute_voxel_coordinate(
     point: &Point3<f32>,
@@ -879,23 +883,20 @@ mod tests {
 
     #[test]
     fn test_scalar_field_three_dimensional_to_one_dimensional_and_back_relative() {
-        let scalar_field: ScalarField<i16> = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(3, 4, 5),
-            &Vector3::new(1.5, 2.5, 3.5),
-        );
-        for z in 0..scalar_field.block_dimensions.z {
-            for y in 0..scalar_field.block_dimensions.y {
-                for x in 0..scalar_field.block_dimensions.x {
+        let block_dimensions = Vector3::new(3, 4, 5);
+
+        for z in 0..block_dimensions.z {
+            for y in 0..block_dimensions.y {
+                for x in 0..block_dimensions.x {
                     let relative_position = Point3::new(cast_i32(x), cast_i32(y), cast_i32(z));
                     let one_dimensional = relative_voxel_to_one_dimensional_coordinate(
                         &relative_position,
-                        &scalar_field.block_dimensions,
+                        &block_dimensions,
                     )
                     .unwrap();
                     let three_dimensional = one_dimensional_to_relative_voxel_coordinate(
                         one_dimensional,
-                        &scalar_field.block_dimensions,
+                        &block_dimensions,
                     );
 
                     assert_eq!(relative_position, three_dimensional);
