@@ -1,10 +1,8 @@
 use std::collections::VecDeque;
 use std::f32;
-use std::ops::Neg;
 use std::ops::RangeBounds;
 
 use nalgebra::{Point3, Vector2, Vector3};
-use num_traits::{Bounded, FromPrimitive, Num, ToPrimitive};
 
 use crate::bounding_box::BoundingBox;
 use crate::convert::{cast_i32, cast_u32, cast_usize};
@@ -36,17 +34,14 @@ use super::{primitive, tools, Face, Mesh};
 /// from beyond the bounds returns None, which is also a valid value even inside
 /// the block.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-pub struct ScalarField<T> {
+pub struct ScalarField {
     block_start: Point3<i32>,
     block_dimensions: Vector3<u32>,
     voxel_dimensions: Vector3<f32>,
-    voxels: Vec<Option<T>>,
+    voxels: Vec<Option<f32>>,
 }
 
-impl<T> ScalarField<T>
-where
-    T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + ToPrimitive,
-{
+impl ScalarField {
     /// Define a new empty block of voxel space, which begins at
     /// `block_start`(in discrete absolute voxel units), has dimensions
     /// `block_dimensions` (in discrete voxel units) and contains voxels sized
@@ -65,7 +60,7 @@ where
             "One or more voxel dimensions are 0.0"
         );
         let map_length = block_dimensions.x * block_dimensions.y * block_dimensions.z;
-        let voxels: Vec<Option<T>> = vec![None; cast_usize(map_length)];
+        let voxels: Vec<Option<f32>> = vec![None; cast_usize(map_length)];
 
         ScalarField {
             block_start: *block_start,
@@ -125,7 +120,7 @@ where
     pub fn from_mesh(
         mesh: &Mesh,
         voxel_dimensions: &Vector3<f32>,
-        value_on_mesh_surface: T,
+        value_on_mesh_surface: f32,
         growth_offset: u32,
     ) -> Self {
         assert!(
@@ -221,7 +216,7 @@ where
     /// `volume_value_range`.
     pub fn contains_voxels_within_range<U>(&self, volume_value_range: &U) -> bool
     where
-        U: RangeBounds<T>,
+        U: RangeBounds<f32>,
     {
         self.voxels
             .iter()
@@ -235,7 +230,7 @@ where
     pub fn value_at_absolute_voxel_coordinate(
         &self,
         absolute_coordinate: &Point3<i32>,
-    ) -> Option<T> {
+    ) -> Option<f32> {
         match absolute_voxel_to_one_dimensional_coordinate(
             absolute_coordinate,
             &self.block_start,
@@ -266,7 +261,7 @@ where
         volume_value_range: &U,
     ) -> bool
     where
-        U: RangeBounds<T>,
+        U: RangeBounds<f32>,
     {
         is_voxel_within_range(
             &self.value_at_absolute_voxel_coordinate(absolute_coordinate),
@@ -283,7 +278,7 @@ where
     pub fn set_value_at_absolute_voxel_coordinate(
         &mut self,
         absolute_coordinate: &Point3<i32>,
-        value: Option<T>,
+        value: Option<f32>,
     ) {
         let index = absolute_voxel_to_one_dimensional_coordinate(
             absolute_coordinate,
@@ -296,7 +291,7 @@ where
 
     /// Fills the current scalar field with the given value.
     #[allow(dead_code)]
-    pub fn fill_with(&mut self, value: Option<T>) {
+    pub fn fill_with(&mut self, value: Option<f32>) {
         for v in self.voxels.iter_mut() {
             *v = value;
         }
@@ -323,7 +318,7 @@ where
     /// `volume_value_range`.
     pub fn to_mesh<U>(&self, volume_value_range: &U) -> Option<Mesh>
     where
-        U: RangeBounds<T>,
+        U: RangeBounds<f32>,
     {
         if self.block_dimensions.x == 0
             || self.block_dimensions.y == 0
@@ -486,9 +481,9 @@ where
     /// treat (perform boolean operations or materialize into mesh) on various
     /// numerical ranges. Such range is specified ad-hoc by parameter
     /// `volume_value_range`.
-    pub fn compute_distance_filed<U>(&mut self, volume_value_range: &U)
+    pub fn compute_distance_fieled<U>(&mut self, volume_value_range: &U)
     where
-        U: RangeBounds<T>,
+        U: RangeBounds<f32>,
     {
         // Lookup table of neighbor coordinates
         let neighbor_offsets = [
@@ -499,13 +494,11 @@ where
             Vector3::new(0, 0, -1),
             Vector3::new(0, 0, 1),
         ];
-        let zero_t = T::from_u32(0).expect("Conversion from u32 failed");
-        let one_t = T::from_u32(1).expect("Conversion from u32 failed");
 
         // Contains indices into the voxel map
         let mut queue_to_find_outer: VecDeque<usize> = VecDeque::new();
         // Contains indices to the voxel map and their distance value
-        let mut queue_to_compute_distance: VecDeque<(usize, T)> = VecDeque::new();
+        let mut queue_to_compute_distance: VecDeque<(usize, f32)> = VecDeque::new();
         // Match the voxel map length
         let mut discovered_as_outer_and_empty = vec![false; self.voxels.len()];
         let mut discovered_for_distance_field = vec![false; self.voxels.len()];
@@ -537,7 +530,7 @@ where
             } else {
                 // Add the current voxel to the queue for distance field
                 // processing
-                queue_to_compute_distance.push_back((one_dimensional, zero_t));
+                queue_to_compute_distance.push_back((one_dimensional, 0.0));
                 // and mark it discovered.
                 discovered_for_distance_field[one_dimensional] = true;
             }
@@ -611,7 +604,7 @@ where
                         // put it into the processing queue with the distance
                         // one higher than the current
                         queue_to_compute_distance
-                            .push_back((one_dimensional_neighbor, distance + one_t));
+                            .push_back((one_dimensional_neighbor, distance + 1.0));
                         // and mark it discovered.
                         discovered_for_distance_field[one_dimensional_neighbor] = true;
                     }
@@ -666,10 +659,9 @@ pub fn suggest_voxel_size_to_fit_bbox_within_voxel_count(
 /// Returns `true` if the value of a voxel is within given value range. Returns
 /// `false` if the voxel value is not within the `value_range` or if the voxel
 /// does not exist or is out of scalar field's bounds.
-fn is_voxel_within_range<T, U>(voxel: &Option<T>, value_range: &U) -> bool
+fn is_voxel_within_range<U>(voxel: &Option<f32>, value_range: &U) -> bool
 where
-    T: Bounded + Copy + FromPrimitive + Neg<Output = T> + Num + PartialOrd + ToPrimitive,
-    U: RangeBounds<T>,
+    U: RangeBounds<f32>,
 {
     match voxel {
         Some(value) => value_range.contains(value),
@@ -860,7 +852,7 @@ mod tests {
             vertices,
             NormalStrategy::Sharp,
         );
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(1.0, 1.0, 1.0), 0_i16, 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(1.0, 1.0, 1.0), 0.0, 0);
 
         insta::assert_json_snapshot!("torus_after_voxelization_into_scalar_field", &scalar_field);
     }
@@ -876,7 +868,7 @@ mod tests {
             NormalStrategy::Sharp,
         );
 
-        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5), 0_i16, 0);
+        let scalar_field = ScalarField::from_mesh(&mesh, &Vector3::new(0.5, 0.5, 0.5), 0.0, 0);
 
         insta::assert_json_snapshot!("sphere_after_voxelization_into_scalar_field", &scalar_field);
     }
@@ -907,19 +899,19 @@ mod tests {
 
     #[test]
     fn test_scalar_field_get_set_for_single_voxel() {
-        let mut scalar_field: ScalarField<i16> = ScalarField::new(
+        let mut scalar_field: ScalarField = ScalarField::new(
             &Point3::origin(),
             &Vector3::new(1, 1, 1),
             &Vector3::new(1.0, 1.0, 1.0),
         );
         let before = scalar_field.value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0));
-        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0), Some(0));
+        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0), Some(0.0));
         let after = scalar_field
             .value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0))
             .unwrap();
 
         assert_eq!(before, None);
-        assert_eq!(after, 0);
+        assert_eq!(after, 0.0);
     }
 
     #[test]
@@ -929,9 +921,9 @@ mod tests {
             &Vector3::new(1, 1, 1),
             &Vector3::new(1.0, 1.0, 1.0),
         );
-        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0), Some(0));
+        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0), Some(0.0));
 
-        let voxel_mesh = scalar_field.to_mesh(&(0..=0)).unwrap();
+        let voxel_mesh = scalar_field.to_mesh(&(0.0..=0.0)).unwrap();
 
         let v2f = topology::compute_vertex_to_face_topology(&voxel_mesh);
         let f2f = topology::compute_face_to_face_topology(&voxel_mesh, &v2f);
