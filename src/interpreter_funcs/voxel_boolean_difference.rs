@@ -7,12 +7,11 @@ use std::sync::Arc;
 use nalgebra::Vector3;
 
 use crate::analytics;
-use crate::convert::clamp_cast_u32_to_i16;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::scalar_field::{self, ScalarField};
+use crate::mesh::voxel_cloud::{self, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 
@@ -176,7 +175,7 @@ impl Func for FuncBooleanDifference {
         let mesh2 = args[1].unwrap_mesh();
         let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
         let growth_u32 = args[3].unwrap_uint();
-        let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
+        let growth_f32 = growth_u32 as f32;
         let fill = args[4].unwrap_boolean();
         let error_if_large = args[5].unwrap_boolean();
         let analyze_bbox = args[6].unwrap_boolean();
@@ -192,10 +191,10 @@ impl Func for FuncBooleanDifference {
         }
 
         let bbox1 = mesh1.bounding_box();
-        let voxel_count1 = scalar_field::evaluate_voxel_count(&bbox1, &voxel_dimensions);
+        let voxel_count1 = voxel_cloud::evaluate_voxel_count(&bbox1, &voxel_dimensions);
 
         let bbox2 = mesh2.bounding_box();
-        let voxel_count2 = scalar_field::evaluate_voxel_count(&bbox2, &voxel_dimensions);
+        let voxel_count2 = voxel_cloud::evaluate_voxel_count(&bbox2, &voxel_dimensions);
 
         let voxel_count = if voxel_count1 > voxel_count2 {
             voxel_count1
@@ -207,7 +206,7 @@ impl Func for FuncBooleanDifference {
 
         if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
             let suggested_voxel_size =
-                scalar_field::suggest_voxel_size_to_fit_bbox_within_voxel_count2(
+                voxel_cloud::suggest_voxel_size_to_fit_bbox_within_voxel_count(
                     voxel_count,
                     &voxel_dimensions,
                     VOXEL_COUNT_THRESHOLD,
@@ -223,27 +222,27 @@ impl Func for FuncBooleanDifference {
             return Err(error);
         }
 
-        let mut scalar_field1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0_i16, growth_u32);
-        let mut scalar_field2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0_i16, growth_u32);
+        let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, growth_u32);
+        let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, growth_u32);
 
-        scalar_field1.compute_distance_filed(&(0..=0));
-        scalar_field2.compute_distance_filed(&(0..=0));
+        voxel_cloud1.compute_distance_field(&(0.0..=0.0));
+        voxel_cloud2.compute_distance_field(&(0.0..=0.0));
 
         let meshing_range = if fill {
-            (Bound::Unbounded, Bound::Included(growth_i16))
+            (Bound::Unbounded, Bound::Included(growth_f32))
         } else {
-            (Bound::Included(-growth_i16), Bound::Included(growth_i16))
+            (Bound::Included(-growth_f32), Bound::Included(growth_f32))
         };
 
-        scalar_field1.boolean_difference(&meshing_range, &scalar_field2, &meshing_range);
+        voxel_cloud1.boolean_difference(&meshing_range, &voxel_cloud2, &meshing_range);
 
-        if !scalar_field1.contains_voxels_within_range(&meshing_range) {
+        if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {
             let error = FuncError::new(FuncBooleanDifferenceError::EmptyScalarField);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
-        match scalar_field1.to_mesh(&meshing_range) {
+        match voxel_cloud1.to_mesh(&meshing_range) {
             Some(value) => {
                 if analyze_bbox {
                     analytics::report_bounding_box_analysis(&value, log);

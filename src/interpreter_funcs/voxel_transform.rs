@@ -7,12 +7,11 @@ use std::sync::Arc;
 use nalgebra::{Rotation, Vector3};
 
 use crate::analytics;
-use crate::convert::clamp_cast_u32_to_i16;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::scalar_field::{self, ScalarField};
+use crate::mesh::voxel_cloud::{self, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 
@@ -203,7 +202,7 @@ impl Func for FuncVoxelTransform {
         let mesh = args[0].unwrap_mesh();
         let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
         let growth_u32 = args[2].unwrap_uint();
-        let growth_i16 = clamp_cast_u32_to_i16(growth_u32);
+        let growth_f32 = growth_u32 as f32;
         let fill = args[3].unwrap_boolean();
         let translate = Vector3::from(args[4].unwrap_float3());
         let rotate = args[5].unwrap_float3();
@@ -221,13 +220,13 @@ impl Func for FuncVoxelTransform {
         }
 
         let bbox = mesh.bounding_box();
-        let voxel_count = scalar_field::evaluate_voxel_count(&bbox, &voxel_dimensions);
+        let voxel_count = voxel_cloud::evaluate_voxel_count(&bbox, &voxel_dimensions);
 
         log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
 
         if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
             let suggested_voxel_size =
-                scalar_field::suggest_voxel_size_to_fit_bbox_within_voxel_count2(
+                voxel_cloud::suggest_voxel_size_to_fit_bbox_within_voxel_count(
                     voxel_count,
                     &voxel_dimensions,
                     VOXEL_COUNT_THRESHOLD,
@@ -243,9 +242,9 @@ impl Func for FuncVoxelTransform {
             return Err(error);
         }
 
-        let mut scalar_field = ScalarField::from_mesh(mesh, &voxel_dimensions, 0_i16, growth_u32);
+        let mut voxel_cloud = ScalarField::from_mesh(mesh, &voxel_dimensions, 0.0, growth_u32);
 
-        scalar_field.compute_distance_filed(&(0..=0));
+        voxel_cloud.compute_distance_field(&(0.0..=0.0));
 
         let rotation = Rotation::from_euler_angles(
             rotate[0].to_radians(),
@@ -256,17 +255,17 @@ impl Func for FuncVoxelTransform {
         let scaling = Vector3::from(scale);
 
         if let Some(transformed_sf) = ScalarField::from_scalar_field_transformed(
-            &scalar_field,
-            &(0..=0),
+            &voxel_cloud,
+            &(0.0..=0.0),
             &voxel_dimensions,
             &translate,
             &rotation,
             &scaling,
         ) {
             let meshing_range = if fill {
-                (Bound::Unbounded, Bound::Included(growth_i16))
+                (Bound::Unbounded, Bound::Included(growth_f32))
             } else {
-                (Bound::Included(-growth_i16), Bound::Included(growth_i16))
+                (Bound::Included(-growth_f32), Bound::Included(growth_f32))
             };
 
             match transformed_sf.to_mesh(&meshing_range) {

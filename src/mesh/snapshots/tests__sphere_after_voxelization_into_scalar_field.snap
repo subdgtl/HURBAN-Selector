@@ -1,5 +1,5 @@
 ---
-source: src/mesh/scalar_field.rs
+source: src/mesh/voxel_cloud.rs
 expression: "&scalar_field"
 ---
 {
@@ -20,31 +20,31 @@ expression: "&scalar_field"
   ],
   "voxels": [
     null,
-    0,
+    0.0,
     null,
-    0,
-    0,
-    0,
+    0.0,
+    0.0,
+    0.0,
     null,
-    0,
+    0.0,
     null,
-    0,
-    0,
-    0,
-    0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
     null,
-    0,
-    0,
-    0,
-    0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
     null,
-    0,
+    0.0,
     null,
-    0,
-    0,
-    0,
+    0.0,
+    0.0,
+    0.0,
     null,
-    0,
+    0.0,
     null
   ]
 }

@@ -14,10 +14,10 @@ use crate::geometry;
 
 pub mod analysis;
 pub mod primitive;
-pub mod scalar_field;
 pub mod smoothing;
 pub mod tools;
 pub mod topology;
+pub mod voxel_cloud;
 
 #[derive(Debug, Clone, Copy)]
 pub enum NormalStrategy {
@@ -131,7 +131,7 @@ impl Mesh {
                             normals_collection_sharp.push(face_normal);
                         }
                         // FIXME: once we add other kinds of faces, they must
-                        // panic here 
+                        // panic here
                         //
                         // _ => panic!("Face must be a triangle, we just created
                         // it"),
