@@ -51,14 +51,12 @@ impl InputManager {
         ui_captured_keyboard: bool,
         ui_captured_mouse: bool,
     ) {
-        match event {
-            winit::event::Event::DeviceEvent { event, .. } => {
-                if let winit::event::DeviceEvent::ModifiersChanged(modifiers) = event {
+        if let winit::event::Event::WindowEvent { event, .. } = event {
+            match event {
+                winit::event::WindowEvent::ModifiersChanged(modifiers) => {
                     self.modifiers = *modifiers;
                 }
-            }
 
-            winit::event::Event::WindowEvent { event, .. } => match event {
                 winit::event::WindowEvent::CloseRequested => {
                     self.input_state.close_requested = true;
                 }
@@ -197,9 +195,7 @@ impl InputManager {
                 }
 
                 _ => (),
-            },
-
-            _ => (),
+            }
         }
     }
 }
