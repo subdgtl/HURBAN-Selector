@@ -13,6 +13,20 @@ impl Func for FuncJoinGroup {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Join Group",
+            description:
+                "JOIN MESH GROUP INTO A SINGLE MESH\n\
+                 \n\
+                 Joins all mesh geometries from a mesh group into a single mesh. \
+                 Creates a new mesh containing vertices and triangles \
+                 from all meshes in the mesh group. \
+                 The meshes will not be welded.\n\
+                 \n\
+                 Mesh group is displayed in the viewport as geometry but is \
+                 a distinct data type. Only some operations, such as this one, \
+                 can use mesh groups and most of them are intended to generate a proper mesh \
+                 from the mesh group.\n\
+                 \n\
+                 The resulting mesh geometry will be named 'Joined Mesh'.",
             return_value_name: "Joined Mesh",
         }
     }
@@ -25,11 +39,22 @@ impl Func for FuncJoinGroup {
         &[
             ParamInfo {
                 name: "Group",
+                description: "Input mesh group.",
                 refinement: ParamRefinement::MeshArray,
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -48,12 +73,16 @@ impl Func for FuncJoinGroup {
         log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh_arc_array = args[0].unwrap_mesh_array();
-        let analyze = args[1].unwrap_boolean();
+        let analyze_bbox = args[1].unwrap_boolean();
+        let analyze_mesh = args[2].unwrap_boolean();
 
         let meshes = mesh_arc_array.iter();
         let value = tools::join_multiple_meshes(meshes);
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
 

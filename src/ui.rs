@@ -1,23 +1,57 @@
 use std::cell::RefCell;
 use std::f32;
-use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
+use crate::convert::{
+    cast_i32, cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32,
+};
 use crate::imgui_winit_support::{HiDpiMode, WinitPlatform};
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
-use crate::renderer::DrawMeshMode;
+use crate::project;
 use crate::session::Session;
 
-const OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
-const OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Bold.ttf");
+const FONT_OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
+const FONT_OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Bold.ttf");
+
+const WRAP_POS_TOOLTIP_TEXT_PIXELS: f32 = 400.0;
+const WRAP_POS_CONSOLE_TEXT_PIXELS: f32 = 380.0;
 
 const MARGIN: f32 = 10.0;
+
+const OPERATIONS_WINDOW_WIDTH: f32 = 400.0;
+const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.33;
+
+const PIPELINE_WINDOW_WIDTH: f32 = OPERATIONS_WINDOW_WIDTH;
+const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 1.0 - OPERATIONS_WINDOW_HEIGHT_MULT;
+const PIPELINE_OPERATION_CONSOLE_HEIGHT: f32 = 40.0;
+
+const MENU_WINDOW_WIDTH: f32 = 160.0;
+const MENU_WINDOW_HEIGHT: f32 = 298.0;
+
+const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
+const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
+
+const SUBDIGITAL_LOGO_WINDOW_WIDTH: f32 = 100.0;
+
+const ABOUT_WINDOW_WIDTH: f32 = 600.0;
+
+const DRAG_SPEED: f32 = 0.01;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
     Dark,
     Funky,
+}
+
+/// The draw mode applied to a group of objects in the viewport. Not always a
+/// 1:1 mapping with renderer materials.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewportDrawMode {
+    Wireframe,
+    Shaded,
+    ShadedWireframe,
+    ShadedWireframeXray,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,6 +64,7 @@ pub struct ScreenshotOptions {
 struct FontIds {
     regular: imgui::FontId,
     bold: imgui::FontId,
+    big_bold: imgui::FontId,
 }
 
 struct Colors {
@@ -45,6 +80,15 @@ struct Colors {
     log_message_error: [f32; 4],
     header_error: [f32; 4],
     header_error_hovered: [f32; 4],
+    tooltip_text: [f32; 4],
+    notification_window: [f32; 4],
+    popup_window_background: [f32; 4],
+    logo_window: [f32; 4],
+}
+
+#[derive(Debug, Default)]
+struct PipelineWindowState {
+    autoscroll: bool,
 }
 
 #[derive(Debug, Default)]
@@ -57,13 +101,35 @@ struct ConsoleState {
     message_count: usize,
 }
 
-/// Thin wrapper around imgui and its winit platform. Its main responsibilty
+pub enum OverwriteModalTrigger {
+    NewProject,
+    OpenProject,
+}
+
+pub struct MenuStatus {
+    pub viewport_draw_used_values_changed: bool,
+    pub reset_viewport: bool,
+    pub new_project: bool,
+    pub save_path: Option<String>,
+    pub open_path: Option<String>,
+    pub prevent_overwrite_modal: Option<OverwriteModalTrigger>,
+}
+
+pub enum SaveModalResult {
+    Save,
+    DontSave,
+    Cancel,
+    Nothing,
+}
+
+/// Thin wrapper around imgui and its winit platform. Its main responsibility
 /// is to create UI frames which draw the UI itself.
 pub struct Ui {
     imgui_context: imgui::Context,
     imgui_winit_platform: WinitPlatform,
     font_ids: FontIds,
     colors: Colors,
+    pipeline_window_state: RefCell<PipelineWindowState>,
     notifications_state: RefCell<NotificationsState>,
     console_state: RefCell<Vec<ConsoleState>>,
 
@@ -79,18 +145,22 @@ impl Ui {
         let mut imgui_context = imgui::Context::create();
         let mut style = imgui_context.style_mut();
         let mut colors = Colors {
-            special_button_text: [0.2, 0.7, 0.3, 1.0],
-            special_button: style[imgui::StyleColor::Button],
-            special_button_hovered: style[imgui::StyleColor::ButtonHovered],
-            special_button_active: style[imgui::StyleColor::ButtonActive],
+            special_button_text: style[imgui::StyleColor::Text],
+            special_button: [0.2, 0.7, 0.3, 1.0],
+            special_button_hovered: [0.4, 0.8, 0.5, 1.0],
+            special_button_active: [0.1, 0.5, 0.2, 1.0],
             combo_box_selected_item: style[imgui::StyleColor::Header],
             combo_box_selected_item_hovered: style[imgui::StyleColor::HeaderHovered],
             combo_box_selected_item_active: style[imgui::StyleColor::HeaderActive],
-            log_message_info: [0.70, 0.70, 0.70, 1.0],
+            log_message_info: [0.3, 0.3, 0.3, 1.0],
             log_message_warn: [0.80, 0.80, 0.05, 1.0],
             log_message_error: [1.0, 0.15, 0.05, 1.0],
             header_error: [0.85, 0.15, 0.05, 0.4],
             header_error_hovered: [1.00, 0.15, 0.05, 0.4],
+            tooltip_text: [1.0, 1.0, 1.0, 1.0],
+            notification_window: [0.0, 0.0, 0.0, 0.1],
+            popup_window_background: [0.0, 0.0, 0.0, 0.4],
+            logo_window: [0.0, 0.0, 0.0, 0.0],
         };
 
         style.window_padding = [4.0, 4.0];
@@ -113,24 +183,31 @@ impl Ui {
             style.scrollbar_rounding = 0.0;
             style.grab_rounding = 0.0;
 
+            let black = [0.0, 0.0, 0.0, 1.0];
+            let white = [1.0, 1.0, 1.0, 1.0];
+            let white_80_transparent = [1.0, 1.0, 1.0, 0.8];
             let light = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0xff]);
             let light_transparent = cast_u8_color_to_f32([0xea, 0xe7, 0xe1, 0x40]);
-            let blue = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0xff]);
-            let blue_transparent = cast_u8_color_to_f32([0x52, 0x87, 0x9c, 0x40]);
             let orange = cast_u8_color_to_f32([0xf2, 0x80, 0x37, 0xff]);
             let orange_light = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0xff]);
             let orange_light_transparent = cast_u8_color_to_f32([0xf2, 0xac, 0x79, 0x40]);
             let orange_dark = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0xff]);
             let orange_dark_transparent = cast_u8_color_to_f32([0xd0, 0x5d, 0x20, 0x40]);
+            let green_light = [0.4, 0.8, 0.5, 1.0];
+            let green_dark = [0.1, 0.5, 0.2, 1.0];
+            let green_dark_transparent = [0.1, 0.5, 0.2, 0.4];
+            let red = [1.0, 0.0, 0.0, 1.0];
+            let red_transparent = [1.0, 0.0, 0.0, 0.4];
+            let transparent = [0.0, 0.0, 0.0, 0.0];
 
-            style[imgui::StyleColor::Text] = orange;
+            style[imgui::StyleColor::Text] = orange_dark;
             style[imgui::StyleColor::TextDisabled] = orange_light;
-            style[imgui::StyleColor::WindowBg] = light_transparent;
-            style[imgui::StyleColor::PopupBg] = light;
-            style[imgui::StyleColor::Border] = light_transparent;
+            style[imgui::StyleColor::WindowBg] = white_80_transparent;
+            style[imgui::StyleColor::PopupBg] = orange;
+            style[imgui::StyleColor::Border] = transparent;
             style[imgui::StyleColor::FrameBg] = light_transparent;
-            style[imgui::StyleColor::FrameBgHovered] = light_transparent;
-            style[imgui::StyleColor::FrameBgActive] = light_transparent;
+            style[imgui::StyleColor::FrameBgHovered] = orange_light_transparent;
+            style[imgui::StyleColor::FrameBgActive] = orange_light_transparent;
             style[imgui::StyleColor::TitleBg] = light_transparent;
             style[imgui::StyleColor::TitleBgActive] = light_transparent;
             style[imgui::StyleColor::TitleBgCollapsed] = light_transparent;
@@ -148,14 +225,14 @@ impl Ui {
             style[imgui::StyleColor::Header] = light_transparent;
             style[imgui::StyleColor::HeaderHovered] = light_transparent;
             style[imgui::StyleColor::HeaderActive] = light_transparent;
-            style[imgui::StyleColor::Separator] = orange_light;
-            style[imgui::StyleColor::SeparatorHovered] = orange_light;
-            style[imgui::StyleColor::SeparatorActive] = orange_light;
+            style[imgui::StyleColor::Separator] = orange;
+            style[imgui::StyleColor::SeparatorHovered] = orange;
+            style[imgui::StyleColor::SeparatorActive] = orange;
             style[imgui::StyleColor::ResizeGrip] = orange;
             style[imgui::StyleColor::ResizeGripHovered] = orange_light;
             style[imgui::StyleColor::ResizeGripActive] = orange_light;
             style[imgui::StyleColor::Tab] = light_transparent;
-            style[imgui::StyleColor::TabHovered] = light_transparent;
+            style[imgui::StyleColor::TabHovered] = orange_light_transparent;
             style[imgui::StyleColor::TabActive] = light_transparent;
             style[imgui::StyleColor::TabUnfocused] = light_transparent;
             style[imgui::StyleColor::TabUnfocusedActive] = light_transparent;
@@ -163,19 +240,26 @@ impl Ui {
             style[imgui::StyleColor::TextSelectedBg] = orange_light_transparent;
             style[imgui::StyleColor::NavHighlight] = light_transparent;
 
-            colors.special_button_text = blue;
-            colors.special_button = light_transparent;
-            colors.special_button_hovered = blue_transparent;
-            colors.special_button_active = blue_transparent;
+            colors.special_button_text = white;
+            colors.special_button = green_light;
+            colors.special_button_hovered = green_dark;
+            colors.special_button_active = green_dark_transparent;
 
             colors.combo_box_selected_item = light;
             colors.combo_box_selected_item_hovered = orange_light;
             colors.combo_box_selected_item_active = orange_dark;
 
-            colors.log_message_warn = [0.90, 0.75, 0.05, 1.0];
+            colors.tooltip_text = white;
 
-            colors.header_error = [0.9, 0.0, 0.0, 0.2];
-            colors.header_error_hovered = [1.0, 0.0, 0.0, 0.3];
+            colors.log_message_warn = black;
+            colors.log_message_error = red;
+
+            colors.header_error = red_transparent;
+            colors.header_error_hovered = red;
+
+            colors.notification_window = white_80_transparent;
+
+            colors.popup_window_background = white_80_transparent;
         }
 
         imgui_context.set_ini_filename(None);
@@ -190,15 +274,22 @@ impl Ui {
         let regular_font_id = imgui_context
             .fonts()
             .add_font(&[imgui::FontSource::TtfData {
-                data: OPENSANS_REGULAR_BYTES,
+                data: FONT_OPENSANS_REGULAR_BYTES,
                 size_pixels: font_size,
                 config: None,
             }]);
         let bold_font_id = imgui_context
             .fonts()
             .add_font(&[imgui::FontSource::TtfData {
-                data: OPENSANS_BOLD_BYTES,
+                data: FONT_OPENSANS_BOLD_BYTES,
                 size_pixels: font_size,
+                config: None,
+            }]);
+        let big_bold_font_id = imgui_context
+            .fonts()
+            .add_font(&[imgui::FontSource::TtfData {
+                data: FONT_OPENSANS_BOLD_BYTES,
+                size_pixels: font_size * 1.5,
                 config: None,
             }]);
 
@@ -210,8 +301,10 @@ impl Ui {
             font_ids: FontIds {
                 regular: regular_font_id,
                 bold: bold_font_id,
+                big_bold: big_bold_font_id,
             },
             colors,
+            pipeline_window_state: RefCell::new(PipelineWindowState::default()),
             console_state: RefCell::new(Vec::new()),
             notifications_state: RefCell::new(NotificationsState::default()),
             global_imstring_buffer: RefCell::new(imgui::ImString::with_capacity(1024)),
@@ -242,6 +335,7 @@ impl Ui {
             font_ids: &self.font_ids,
             colors: &self.colors,
             console_state: &self.console_state,
+            pipeline_window_state: &self.pipeline_window_state,
             notifications_state: &self.notifications_state,
             global_imstring_buffer: &self.global_imstring_buffer,
         }
@@ -268,6 +362,7 @@ pub struct UiFrame<'a> {
     font_ids: &'a FontIds,
     colors: &'a Colors,
     console_state: &'a RefCell<Vec<ConsoleState>>,
+    pipeline_window_state: &'a RefCell<PipelineWindowState>,
     notifications_state: &'a RefCell<NotificationsState>,
     global_imstring_buffer: &'a RefCell<imgui::ImString>,
 }
@@ -288,6 +383,11 @@ impl<'a> UiFrame<'a> {
     ) -> bool {
         let ui = &self.imgui_ui;
 
+        let window_color_token = ui.push_style_color(
+            imgui::StyleColor::PopupBg,
+            self.colors.popup_window_background,
+        );
+
         let window_name = imgui::im_str!("Screenshot");
         if *screenshot_modal_open {
             ui.open_popup(window_name);
@@ -305,7 +405,7 @@ impl<'a> UiFrame<'a> {
         let bold_font_token = ui.push_font(self.font_ids.bold);
         ui.popup_modal(window_name)
             .opened(screenshot_modal_open)
-            .movable(false)
+            .movable(true)
             .resizable(false)
             .collapsible(false)
             .always_auto_resize(true)
@@ -318,7 +418,7 @@ impl<'a> UiFrame<'a> {
                 ];
 
                 if ui
-                    .input_int2(imgui::im_str!("Dimensions"), &mut dimensions)
+                    .input_int2(imgui::im_str!("Dimensions (px)"), &mut dimensions)
                     .build()
                 {
                     screenshot_options.width = clamp_cast_i32_to_u32(dimensions[0]);
@@ -338,28 +438,151 @@ impl<'a> UiFrame<'a> {
                 }
 
                 ui.checkbox(
-                    imgui::im_str!("Transparent"),
+                    imgui::im_str!("Transparent Background"),
                     &mut screenshot_options.transparent,
                 );
-
-                ui.text(imgui::im_str!(
-                    "Attempting to take screenshots may crash the program."
-                ));
-                ui.text(imgui::im_str!("Be sure to save your work."));
 
                 if ui.button(imgui::im_str!("Take Screenshot"), [0.0, 0.0]) {
                     take_screenshot_clicked = true;
                 }
 
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(
+                            self.colors.log_message_warn,
+                            "WARNING: Attempting to take screenshots may crash the program.\n\
+                             Be sure to save your work.",
+                        );
+                        wrap_token.pop(ui);
+                    });
+                }
+
                 regular_font_token.pop(ui);
             });
         bold_font_token.pop(ui);
+        window_color_token.pop(ui);
 
         if take_screenshot_clicked {
             *screenshot_modal_open = false;
         }
 
         take_screenshot_clicked
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_about_window(
+        &self,
+        about_modal_open: &mut bool,
+        tex_scheme: imgui::TextureId,
+        width_scheme: u32,
+        height_scheme: u32,
+        tex_logos: imgui::TextureId,
+        width_logos: u32,
+        height_logos: u32,
+    ) {
+        let ui = &self.imgui_ui;
+
+        let window_color_token = ui.push_style_color(
+            imgui::StyleColor::PopupBg,
+            self.colors.popup_window_background,
+        );
+
+        let window_name = imgui::im_str!("About");
+        if *about_modal_open {
+            ui.open_popup(window_name);
+        }
+
+        let bold_font_token = ui.push_font(self.font_ids.bold);
+        ui.popup_modal(window_name)
+            .opened(about_modal_open)
+            .movable(true)
+            .resizable(false)
+            .collapsible(false)
+            .always_auto_resize(false)
+            .build(|| {
+                let window_width = ui.window_size()[0];
+
+                let wrap_token = ui.push_text_wrap_pos(ABOUT_WINDOW_WIDTH);
+
+                let big_bold_font_token = ui.push_font(self.font_ids.big_bold);
+                ui.text(imgui::im_str!("H.U.R.B.A.N. selector 0.1 alpha"));
+                big_bold_font_token.pop(ui);
+                ui.text(imgui::im_str!("by Subdigital s.r.o. (https://sub.digital), 2020"));
+                ui.new_line();
+                ui.text(imgui::im_str!("CREDITS"));
+                let mut regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text("Lead developer: Jan Toth <yanchi.toth@gmail.com>");
+                ui.text("Geometry developer: Jan Pernecky <jan@sub.digital>");
+                ui.text("Developer: Ondrej Slintak <ondrowan@gmail.com>");
+                ui.text("Concept: Maros Schmidt, Slovak Design Center");
+                ui.text("Production: Lucia Dubacova, Slovak Design Center");
+                ui.new_line();
+                regular_font_token.pop(ui);
+
+                imgui::Image::new(
+                    tex_scheme,
+                    [window_width * 0.95, window_width * 0.95 / width_scheme as f32 * height_scheme as f32],
+                ).build(ui);
+                ui.new_line();
+
+                ui.text(imgui::im_str!("ABOUT"));
+                regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text_wrapped(imgui::im_str!(
+                    "The H.U.R.B.A.N. Selector is a part of the SDC's Inolab \
+                    Department's plan to create a research platform for designers to \
+                    test and verify new algorithms and create new forms.\n\
+                    \n\
+                    H.U.R.B.A.N. Selector is an experimental software for \
+                    hybridization of multiple 3D models with an aim to find new \
+                    aesthetic forms. \
+                    It serves as a gateway to full-fledged parametric design software. \
+                    A user builds an operation pipeline where each stacked operation allows \
+                    reconfiguration anytime influencing inputs and outputs of subsequent \
+                    operations. The program extends the creative possibilities of designers and helps \
+                    them create beyond the limits of their imagination given by memory/brain \
+                    capacity as well as the ability to create different variations of form and \
+                    compositions.\n\
+                    \n\
+                    The software is currently in very early development stages. It strives to be \
+                    a tool for simple parametric modeling using various \
+                    hybridization strategies for mesh and voxel models, allowing designers to \
+                    smoothly interpolate between multiple source models."));
+                ui.new_line();
+                regular_font_token.pop(ui);
+
+                ui.text(imgui::im_str!("PARTNERS"));
+                regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text_wrapped(imgui::im_str!(
+                    "The Software is produced within the INTERREG V-A Slovakia - \
+                    Austria 2014 - 2020 'Design & Innovation' project"
+                ));
+                regular_font_token.pop(ui);
+                ui.new_line();
+                imgui::Image::new(
+                    tex_logos,
+                    [window_width * 0.95, window_width * 0.95 / width_logos as f32 * height_logos as f32],
+                ).build(ui);
+                ui.new_line();
+
+                ui.text(imgui::im_str!("LICENSE"));
+                regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text_wrapped(imgui::im_str!(
+                    "The editor source code is provided under the GNU GENERAL PUBLIC \
+                    LICENSE, Version 3. If the research or implementation yields \
+                    interesting results, those will be extracted from the editor and \
+                    published and licensed separately, most likely under a more permissive \
+                    license such as MIT.\n\
+                    \n\
+                    The source code of H.U.R.B.A.N. selector written in Rust can be found on \
+                    GitHub (https://github.com/subdgtl/HURBAN-Selector)."));
+                    ui.new_line();
+                regular_font_token.pop(ui);
+                wrap_token.pop(ui);
+            });
+
+        bold_font_token.pop(ui);
+        window_color_token.pop(ui);
     }
 
     pub fn draw_notifications_window(&self, notifications: &Notifications) {
@@ -371,9 +594,6 @@ impl<'a> UiFrame<'a> {
 
         let ui = &self.imgui_ui;
 
-        const NOTIFICATIONS_WINDOW_WIDTH: f32 = 400.0;
-        const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.12;
-
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -383,10 +603,8 @@ impl<'a> UiFrame<'a> {
         let notifications_window_vertical_position =
             MARGIN * 2.0 + (1.0 - NOTIFICATIONS_WINDOW_HEIGHT_MULT) * window_inner_height;
 
-        let color_token = ui.push_style_colors(&[
-            (imgui::StyleColor::Border, [0.0, 0.0, 0.0, 0.1]),
-            (imgui::StyleColor::WindowBg, [0.0, 0.0, 0.0, 0.1]),
-        ]);
+        let color_token =
+            ui.push_style_color(imgui::StyleColor::WindowBg, self.colors.notification_window);
 
         imgui::Window::new(imgui::im_str!("Notifications"))
             .title_bar(false)
@@ -415,6 +633,10 @@ impl<'a> UiFrame<'a> {
                             imgui::StyleColor::Text,
                             self.colors.log_message_warn,
                         ),
+                        NotificationLevel::Error => ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_error,
+                        ),
                     };
 
                     ui.text_wrapped(&imgui::im_str!("{}", notification.text));
@@ -432,78 +654,525 @@ impl<'a> UiFrame<'a> {
         color_token.pop(ui);
     }
 
-    pub fn draw_viewport_settings_window(
+    pub fn draw_subdigital_logo(
         &self,
-        screenshot_modal_open: &mut bool,
-        draw_mode: &mut DrawMeshMode,
-    ) -> bool {
+        tex_subdigital_logo: imgui::TextureId,
+        width_subdigital_logo: u32,
+        height_subdigital_logo: u32,
+    ) {
         let ui = &self.imgui_ui;
 
-        const VIEWPORT_WINDOW_WIDTH: f32 = 150.0;
-        const VIEWPORT_WINDOW_HEIGHT: f32 = 170.0;
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
+        let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
 
-        let mut reset_viewport_clicked = false;
+        let subdigital_logo_window_height_mult =
+            height_subdigital_logo as f32 / width_subdigital_logo as f32;
 
-        let bold_font_token = ui.push_font(self.font_ids.bold);
-        imgui::Window::new(imgui::im_str!("Viewport"))
+        let subdigital_logo_window_height =
+            SUBDIGITAL_LOGO_WINDOW_WIDTH * subdigital_logo_window_height_mult;
+
+        let subdigital_logo_window_horizontal_position =
+            window_inner_width - SUBDIGITAL_LOGO_WINDOW_WIDTH;
+        let subdigital_logo_window_vertical_position =
+            window_inner_height - subdigital_logo_window_height * 0.8;
+
+        let color_token = ui.push_style_colors(&[
+            (imgui::StyleColor::WindowBg, self.colors.logo_window),
+            (imgui::StyleColor::Border, self.colors.logo_window),
+        ]);
+
+        imgui::Window::new(imgui::im_str!("Logo"))
+            .title_bar(false)
             .movable(false)
             .resizable(false)
             .collapsible(false)
             .size(
-                [VIEWPORT_WINDOW_WIDTH, VIEWPORT_WINDOW_HEIGHT],
+                [
+                    SUBDIGITAL_LOGO_WINDOW_WIDTH + MARGIN,
+                    subdigital_logo_window_height,
+                ],
                 imgui::Condition::Always,
             )
             .position(
-                [window_inner_width + MARGIN - VIEWPORT_WINDOW_WIDTH, MARGIN],
+                [
+                    subdigital_logo_window_horizontal_position,
+                    subdigital_logo_window_vertical_position,
+                ],
                 imgui::Condition::Always,
             )
             .build(ui, || {
+                imgui::Image::new(
+                    tex_subdigital_logo,
+                    [SUBDIGITAL_LOGO_WINDOW_WIDTH, subdigital_logo_window_height],
+                )
+                .build(ui);
+            });
+
+        color_token.pop(ui);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_menu_window(
+        &self,
+        current_time: Instant,
+        screenshot_modal_open: &mut bool,
+        about_modal_open: &mut bool,
+        viewport_draw_mode: &mut ViewportDrawMode,
+        viewport_draw_used_values: &mut bool,
+        project_status: &mut project::ProjectStatus,
+        notifications: &mut Notifications,
+    ) -> MenuStatus {
+        let ui = &self.imgui_ui;
+        let mut status = MenuStatus {
+            viewport_draw_used_values_changed: false,
+            reset_viewport: false,
+            new_project: false,
+            save_path: None,
+            open_path: None,
+            prevent_overwrite_modal: None,
+        };
+
+        let window_logical_size = ui.io().display_size;
+        let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
+
+        let bold_font_token = ui.push_font(self.font_ids.bold);
+        #[allow(clippy::cognitive_complexity)]
+        imgui::Window::new(imgui::im_str!("Menu"))
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .size(
+                [MENU_WINDOW_WIDTH, MENU_WINDOW_HEIGHT],
+                imgui::Condition::Always,
+            )
+            .position(
+                [window_inner_width + MARGIN - MENU_WINDOW_WIDTH, MARGIN],
+                imgui::Condition::Always,
+            )
+            .build(ui, || {
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        let regular_font_token = ui.push_font(self.font_ids.regular);
+                        ui.text_colored(self.colors.tooltip_text, "MAIN MENU\n\
+                        \n\
+                        Viewport information and settings.\n\
+                        Screenshot and file management.");
+                        regular_font_token.pop(ui);
+                        wrap_token.pop(ui);
+                    });
+                }
                 let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text(imgui::im_str!("{:.3} fps", ui.io().framerate));
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "FRAMES PER SECOND\n\
+                        \n\
+                        Shows the rendering performance of the current model on the current computer. \
+                        The desired value for standard computers is 60 FPS \
+                        some monitors may limit this value to 30 FPS \
+                        and some gaming machines may support higher rates.\n\
+                        \n\
+                        If the FPS suddenly drops, it is na indication that the current model \
+                        is already too heavy (contains too many vertices and faces) \
+                        and for sake of performance and safety, it should be reduced.");
+                        wrap_token.pop(ui);
+                    });
+                }
 
-                ui.radio_button(imgui::im_str!("Shaded"), draw_mode, DrawMeshMode::Shaded);
-                ui.radio_button(imgui::im_str!("Edges"), draw_mode, DrawMeshMode::Edges);
-                ui.radio_button(
+                if ui.radio_button(
+                    imgui::im_str!("Shaded"),
+                    viewport_draw_mode,
+                    ViewportDrawMode::Shaded,
+                ) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Shaded.",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "SHADED VIEWPORT MODE\n\
+                        \n\
+                        The geometry will be shaded with solid color and no edges will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                if ui.radio_button(
+                    imgui::im_str!("Wireframes"),
+                    viewport_draw_mode,
+                    ViewportDrawMode::Wireframe,
+                ) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Wireframes.",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "WIREFRAME VIEWPORT MODE\n\
+                        \n\
+                        The geometry will be rendered as a wireframe model, the surface will be \
+                        fully transparent and only edges will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                if ui.radio_button(
                     imgui::im_str!("Shaded with Edges"),
-                    draw_mode,
-                    DrawMeshMode::ShadedEdges,
-                );
-                ui.radio_button(
+                    viewport_draw_mode,
+                    ViewportDrawMode::ShadedWireframe,
+                ) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to Shaded with Edges (Wireframes).",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "SHADED WITH EDGES VIEWPORT MODE\n\
+                        \n\
+                        The geometry will be shaded with solid color and visible edges will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                if ui.radio_button(
                     imgui::im_str!("X-RAY"),
-                    draw_mode,
-                    DrawMeshMode::ShadedEdgesXray,
+                    viewport_draw_mode,
+                    ViewportDrawMode::ShadedWireframeXray,
+                ) {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport mode changed to X-Ray: Shaded with internal Edges (Wireframes).",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "SHADED WITH X-RAY EDGES VIEWPORT MODE\n\
+                        \n\
+                        The geometry will be shaded with solid color and all edges, \
+                        including the ones hidden behind the solid color of the surfaces, \
+                        will be highlighted.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                status.viewport_draw_used_values_changed = ui.checkbox(
+                    imgui::im_str!("Draw used geometry"),
+                    viewport_draw_used_values,
                 );
+                if status.viewport_draw_used_values_changed {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        if *viewport_draw_used_values {
+                            "Viewport now draws used geometry."
+                        } else {
+                            "Viewport now doesn't draw used geometry."
+                        }
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text,"DRAW USED GEOMETRY IN VIEWPORT\n\
+                        \n\
+                        When enabled, used geometry will be drawn with a transparent material.\n\
+                        \n\
+                        Used geometry is geometry that has been already referenced as a parameter \
+                        in an operation.");
+                        wrap_token.pop(ui);
+                    });
+                }
 
-                reset_viewport_clicked =
+                status.reset_viewport =
                     ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
+                if status.reset_viewport {
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Info,
+                        "Viewport camera reset to fit all visible geometry.",
+                    );
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "RESET VIEWPORT CAMERA\n\
+                        \n\
+                        Set the viewport camera to look at all visible geometry in the scene.");
+                        wrap_token.pop(ui);
+                    });
+                }
 
-                if ui.button(imgui::im_str!("Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
+                if ui.button(imgui::im_str!("Save Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
                     *screenshot_modal_open = true;
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "SAVE SCREENSHOT\n\
+                        \n\
+                        Opens the dialog for saving the current viewport into a PNG file.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                ui.separator();
+
+                let ext_description =
+                    &format!("H.U.R.B.A.N. selector project (.{})", project::PROJECT_EXTENSION);
+                let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
+
+                if ui.button(imgui::im_str!("New"), [-f32::MIN_POSITIVE, 0.0])
+                    || project_status.new_requested
+                {
+                    if project_status.changed_since_last_save
+                        && project_status.prevent_overwrite_status.is_none()
+                    {
+                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::NewProject);
+                    } else {
+                        status.new_project = true;
+                    }
+
+                    project_status.prevent_overwrite_status = None;
+                    project_status.new_requested = false;
+                }
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "RESET THE PIPELINE\n\
+                        \n\
+                        Closes the current project and starts a new one. \n\
+                        \n\
+                        The new project is not saved by default and has to be saved manually.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                if ui.button(imgui::im_str!("Save"), [-f32::MIN_POSITIVE, 0.0]) {
+                    match &project_status.path {
+                        Some(project_path_str) => {
+                            status.save_path = Some(project_path_str.to_string())
+                        }
+                        None => {
+                            if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
+                                "Save",
+                                &format!("new_project.{}", project::PROJECT_EXTENSION),
+                                ext_filter,
+                                ext_description,
+                            ) {
+                                status.save_path = Some(path);
+                            }
+                        }
+                    }
+                }
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "SAVE PROJECT INTO THE CURRENT A .hurban FILE\n\
+                        \n\
+                        Saves the current project into a .hurban file. \
+                        When used for the first time, opens a system dialog to specify save file location.\n\
+                        \n\
+                        The .hurban project file contains only the operation pipeline. It does not contain any \
+                        actual geometry, but rather just the sequence of operations that generates the geometry \
+                        and references to the external files to import. \
+                        It is advised to keep the files to import next to the .hurban project file \
+                        and distribute them together.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                if ui.button(imgui::im_str!("Save as..."), [-f32::MIN_POSITIVE, 0.0]) {
+                    if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
+                        "Save",
+                        &format!("new_project.{}", project::PROJECT_EXTENSION),
+                        ext_filter,
+                        ext_description,
+                    ) {
+                        status.save_path = Some(path);
+                    }
+                }
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "SAVE PROJECT INTO A NEW .hurban FILE\n\
+                        \n\
+                        Saves the current project into a .hurban file. \
+                        Opens a system dialog to specify save file location.\n\
+                        \n\
+                        The .hurban project file contains only the operation pipeline. It does not contain any \
+                        actual geometry, but rather just the sequence of operations that generates the geometry \
+                        and references to the external files to import. \
+                        It is advised to keep the files to import next to the .hurban project file \
+                        and distribute them together.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                if ui.button(imgui::im_str!("Open"), [-f32::MIN_POSITIVE, 0.0])
+                    || project_status.open_requested
+                {
+                    if project_status.changed_since_last_save
+                        && project_status.prevent_overwrite_status.is_none()
+                    {
+                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::OpenProject);
+                    } else if let Some(path) = tinyfiledialogs::open_file_dialog(
+                        "Open",
+                        "",
+                        Some((ext_filter, ext_description)),
+                    ) {
+                        status.open_path = Some(path);
+                    }
+
+                    project_status.prevent_overwrite_status = None;
+                    project_status.open_requested = false;
+                }
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "OPEN PROJECT FROM A .hurban FILE\n\
+                        \n\
+                        Opens the sequence of operations saved in a .hurban file.\n\
+                        \n\
+                        The .hurban project file contains only the operation pipeline. It does not contain any \
+                        actual geometry, but rather just the sequence of operations that generates the geometry \
+                        and references to the external files to import. \
+                        It is advised to keep the files to import next to the .hurban project file \
+                        and distribute them together.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                ui.separator();
+
+                if ui.button(imgui::im_str!("About"), [-f32::MIN_POSITIVE, 0.0]) {
+                    *about_modal_open = true;
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "ABOUT H.U.R.B.A.N. selector\n\
+                        \n\
+                        Program description and credits.");
+                        wrap_token.pop(ui);
+                    });
                 }
 
                 regular_font_token.pop(ui);
             });
         bold_font_token.pop(ui);
 
-        reset_viewport_clicked
+        status
+    }
+
+    pub fn draw_error_modal(&self, project_error: &Option<project::ProjectError>) -> bool {
+        let ui = &self.imgui_ui;
+        let mut modal_closed = false;
+
+        ui.open_popup(imgui::im_str!("Error"));
+        ui.popup_modal(imgui::im_str!("Error"))
+            .resizable(false)
+            .build(|| {
+                let error_message = project_error
+                    .clone()
+                    .expect("Failed to read project error.")
+                    .to_string();
+
+                ui.text(error_message);
+
+                if ui.button(imgui::im_str!("OK"), [0.0, 0.0]) {
+                    modal_closed = true;
+
+                    ui.close_current_popup();
+                }
+            });
+
+        modal_closed
+    }
+
+    pub fn draw_prevent_overwrite_modal(&self) -> SaveModalResult {
+        let ui = &self.imgui_ui;
+        let mut save_modal_result = SaveModalResult::Nothing;
+        let window_color_token = ui.push_style_color(
+            imgui::StyleColor::PopupBg,
+            self.colors.popup_window_background,
+        );
+        ui.open_popup(imgui::im_str!("Unsaved changes"));
+        ui.popup_modal(imgui::im_str!("Unsaved changes"))
+            .resizable(false)
+            .build(|| {
+                ui.text("To preserve unsaved changes in the pipeline please save the project.");
+
+                let width_unit = ui.window_size()[0] / 11.0;
+
+                if ui.button(imgui::im_str!("Save"), [width_unit * 3.0, 0.0]) {
+                    save_modal_result = SaveModalResult::Save;
+
+                    ui.close_current_popup();
+                }
+
+                ui.same_line(width_unit * 4.0);
+
+                if ui.button(imgui::im_str!("Discard changes"), [width_unit * 3.0, 0.0]) {
+                    save_modal_result = SaveModalResult::DontSave;
+
+                    ui.close_current_popup();
+                }
+
+                ui.same_line(width_unit * 8.0);
+
+                if ui.button(imgui::im_str!("Cancel"), [width_unit * 3.0, 0.0]) {
+                    save_modal_result = SaveModalResult::Cancel;
+
+                    ui.close_current_popup();
+                }
+            });
+
+        window_color_token.pop(ui);
+
+        save_modal_result
+    }
+
+    pub fn draw_save_dialog(&self) -> Option<String> {
+        let ext_description = &format!("HURBAN selector project (.{})", project::PROJECT_EXTENSION);
+        let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
+
+        tinyfiledialogs::save_file_dialog_with_filter(
+            "Save",
+            &format!("new_project.{}", project::PROJECT_EXTENSION),
+            ext_filter,
+            ext_description,
+        )
     }
 
     // FIXME: @Refactoring Refactor this once we have full-featured
     // functionality. Until then, this is exploratory code and we
     // don't care.
     #[allow(clippy::cognitive_complexity)]
-    pub fn draw_pipeline_window(&self, session: &mut Session) {
+    pub fn draw_pipeline_window(&self, current_time: Instant, session: &mut Session) -> bool {
         let ui = &self.imgui_ui;
         self.console_state
             .borrow_mut()
             .resize_with(session.stmts().len(), Default::default);
 
         let function_table = session.function_table();
-
-        const PIPELINE_WINDOW_WIDTH: f32 = 400.0;
-        const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 0.7;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -514,13 +1183,50 @@ impl<'a> UiFrame<'a> {
         let mut change = None;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
-        imgui::Window::new(imgui::im_str!("Pipeline"))
+        imgui::Window::new(imgui::im_str!("Operation pipeline"))
             .movable(false)
             .resizable(false)
             .collapsible(false)
             .size([PIPELINE_WINDOW_WIDTH, pipeline_window_height], imgui::Condition::Always)
             .position([MARGIN, MARGIN], imgui::Condition::Always)
             .build(ui, || {
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        let regular_font_token = ui.push_font(self.font_ids.regular);
+                        ui.text_colored(self.colors.tooltip_text,
+                            "OPERATION PIPELINE\n\
+                            \n\
+                            An ordered sequence of operations that generate the viewport geometry. \
+                            When the pipeline is run, the operations are being executed one after \
+                            another from top down. Each operation can be customized by setting the \
+                            input parameter values or specifying the input data (mesh geometry, \
+                            mesh group, path to file).\n\
+                            \n\
+                            Each operation in the pipeline generates data: either a mesh geometry or \
+                            a mesh group which can be later used in a subsequent operation. Only unused \
+                            (freshly generated) geometry (mesh or group) is rendered in the viewport, \
+                            however even the geometry, which has been already used, can be reused in \
+                            subsequent operations. Operations can take as an input only that geometry, \
+                            which has been generated in the preceding operations in the pipeline.\n\
+                            \n\
+                            It is possible to change any input parameters of any operation at any time, \
+                            not only after the operation has been added to the pipeline. \
+                            This is useful when some parameters need to be adjusted only after the results \
+                            of subsequent operations can be visually evaluated. This approach is a gateway \
+                            to full-fledged parametric modeling paradigm.\n\
+                            \n\
+                            The .hurban project files can be build as a tool for achieving certain manipulations \
+                            with mesh geometry and because they don't contain the imported mesh models, \
+                            one sequence of operations (one project file) can be reused for various input mesh \
+                            models. Hence, H.U.R.B.A.N. selector is not only a geometry transformation tool, \
+                            but also a tool-building platform and the project files ara not only geometries but \
+                            also tools.",
+                        );
+                        regular_font_token.pop(ui);
+                        wrap_token.pop(ui);
+                    });
+                }
                 let regular_font_token = ui.push_font(self.font_ids.regular);
                 for (stmt_index, stmt) in session.stmts().iter().enumerate() {
                     match stmt {
@@ -535,6 +1241,7 @@ impl<'a> UiFrame<'a> {
                                     (imgui::StyleColor::Header, self.colors.header_error),
                                     (imgui::StyleColor::HeaderHovered, self.colors.header_error_hovered),
                                     (imgui::StyleColor::HeaderActive, self.colors.header_error_hovered),
+                                    (imgui::StyleColor::Text, self.colors.tooltip_text),
                                 ]))
                             } else {
                                 None
@@ -552,7 +1259,11 @@ impl<'a> UiFrame<'a> {
 
                             if ui.is_item_hovered() {
                                 if let Some(error) = error {
+                                    let color_token = ui.push_style_color(imgui::StyleColor::PopupBg, self.colors.header_error_hovered);
                                     ui.tooltip(|| {
+                                        let wrap_token = ui
+                                            .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+
                                         let mut imstring_buffer = self.global_imstring_buffer
                                             .borrow_mut();
 
@@ -563,12 +1274,22 @@ impl<'a> UiFrame<'a> {
                                         imstring_buffer.push_str(&error.to_string());
 
                                         ui.text_colored(
-                                            [1.0, 0.0, 0.0, 1.0],
+                                            self.colors.tooltip_text,
                                             &*imstring_buffer,
                                         );
 
                                         imstring_buffer.clear();
+
+                                        wrap_token.pop(ui);
                                     });
+                                    color_token.pop(ui);
+                                } else if !func.info().description.is_empty() {
+                                    ui.tooltip(|| {
+                                        let wrap_token = ui
+                                            .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                                            ui.text_colored(self.colors.tooltip_text, func.info().description);
+                                        wrap_token.pop(ui);
+                                    })
                                 }
                             }
 
@@ -622,10 +1343,24 @@ impl<'a> UiFrame<'a> {
                                         ParamRefinement::Int(param_refinement_int) => {
                                             let mut int_lit = arg.unwrap_literal().unwrap_int();
 
-                                            if ui.input_int(&input_label, &mut int_lit)
-                                                .read_only(interpreter_busy)
-                                                .build()
-                                            {
+                                            let mut drag_int = ui
+                                                                .drag_int(&input_label, &mut int_lit)
+                                                                .speed(DRAG_SPEED);
+
+                                            // FIXME: Report bug: both, min and max must be set
+                                            if let Some(min_value) = param_refinement_int.min_value {
+                                                drag_int = drag_int.min(min_value);
+                                            } else {
+                                                drag_int = drag_int.min(i32::min_value());
+                                            }
+
+                                            if let Some(max_value) = param_refinement_int.max_value {
+                                                drag_int = drag_int.max(max_value);
+                                            } else {
+                                                drag_int = drag_int.max(i32::max_value());
+                                            }
+
+                                            if drag_int.build() {
                                                 int_lit = param_refinement_int.clamp(int_lit);
                                                 change = Some((
                                                     stmt_index,
@@ -638,10 +1373,23 @@ impl<'a> UiFrame<'a> {
                                             let uint_lit = arg.unwrap_literal().unwrap_uint();
                                             let mut int_value = clamp_cast_u32_to_i32(uint_lit);
 
-                                            if ui.input_int(&input_label, &mut int_value)
-                                                .read_only(interpreter_busy)
-                                                .build()
-                                            {
+                                            let mut drag_int = ui
+                                                                .drag_int(&input_label, &mut int_value)
+                                                                .speed(DRAG_SPEED);
+
+                                            if let Some(min_value) = param_refinement_uint.min_value {
+                                                drag_int = drag_int.min(cast_i32(min_value));
+                                            } else {
+                                                drag_int = drag_int.min(0);
+                                            }
+
+                                            if let Some(max_value) = param_refinement_uint.max_value {
+                                                drag_int = drag_int.max(cast_i32(max_value));
+                                            } else {
+                                                drag_int = drag_int.max(i32::max_value());
+                                            }
+
+                                            if drag_int.build() {
                                                 let uint_value = clamp_cast_i32_to_u32(int_value);
                                                 let uint_value = param_refinement_uint.clamp(uint_value);
                                                 change = Some((
@@ -654,8 +1402,24 @@ impl<'a> UiFrame<'a> {
                                         ParamRefinement::Float(param_refinement_float) => {
                                             let mut float_lit = arg.unwrap_literal().unwrap_float();
 
-                                            if ui.input_float(&input_label, &mut float_lit)
-                                                .read_only(interpreter_busy)
+                                            let mut drag_float = ui
+                                                                .drag_float(&input_label, &mut float_lit)
+                                                                .speed(DRAG_SPEED)
+                                                                .power(2.0);
+
+                                            if let Some(min_value) = param_refinement_float.min_value {
+                                                drag_float = drag_float.min(min_value);
+                                            } else {
+                                                drag_float = drag_float.min(f32::MIN);
+                                            }
+
+                                            if let Some(max_value) = param_refinement_float.max_value {
+                                                drag_float = drag_float.max(max_value);
+                                            } else {
+                                                drag_float = drag_float.max(f32::MAX);
+                                            }
+
+                                            if drag_float
                                                 .build()
                                             {
                                                 float_lit = param_refinement_float.clamp(float_lit);
@@ -670,9 +1434,26 @@ impl<'a> UiFrame<'a> {
                                             let mut float2_lit =
                                                 arg.unwrap_literal().unwrap_float2();
 
-                                            if ui
-                                                .input_float2(&input_label, &mut float2_lit)
-                                                .read_only(interpreter_busy)
+                                            let mut drag_float2 = ui
+                                                                .drag_float2(&input_label, &mut float2_lit)
+                                                                .speed(DRAG_SPEED)
+                                                                .power(2.0);
+
+                                            if let Some(min_value) =
+                                                param_refinement_float2.min_value {
+                                                drag_float2 = drag_float2.min(min_value);
+                                            } else {
+                                                drag_float2 = drag_float2.min(f32::MIN);
+                                            }
+
+                                            if let Some(max_value) =
+                                                param_refinement_float2.max_value {
+                                                drag_float2 = drag_float2.max(max_value);
+                                            } else {
+                                                drag_float2 = drag_float2.max(f32::MAX);
+                                            }
+
+                                            if drag_float2
                                                 .build()
                                             {
                                                 float2_lit = param_refinement_float2.clamp(float2_lit);
@@ -689,9 +1470,26 @@ impl<'a> UiFrame<'a> {
                                             let mut float3_lit =
                                                 arg.unwrap_literal().unwrap_float3();
 
-                                            if ui
-                                                .input_float3(&input_label, &mut float3_lit)
-                                                .read_only(interpreter_busy)
+                                            let mut drag_float3 = ui
+                                                .drag_float3(&input_label, &mut float3_lit)
+                                                .speed(DRAG_SPEED)
+                                                .power(2.0);
+
+                                            if let Some(min_value)=
+                                                param_refinement_float3.min_value {
+                                                drag_float3 = drag_float3.min(min_value);
+                                            } else {
+                                                drag_float3 = drag_float3.min(f32::MIN);
+                                            }
+
+                                            if let Some(max_value) =
+                                                param_refinement_float3.max_value{
+                                                drag_float3 = drag_float3.max(max_value);
+                                            } else {
+                                                drag_float3 = drag_float3.max(f32::MAX);
+                                            }
+
+                                            if drag_float3
                                                 .build()
                                             {
                                                 float3_lit = param_refinement_float3.clamp(float3_lit);
@@ -719,7 +1517,6 @@ impl<'a> UiFrame<'a> {
                                                     &mut imstring_buffer,
                                                 ) {
                                                     let string_value = format!("{}", imstring_buffer);
-                                                    let string_value = Arc::new(string_value);
                                                     change = Some((
                                                         stmt_index,
                                                         arg_index,
@@ -731,7 +1528,6 @@ impl<'a> UiFrame<'a> {
                                                 .read_only(interpreter_busy)
                                                 .build() {
                                                     let string_value = format!("{}", imstring_buffer);
-                                                    let string_value = Arc::new(string_value);
                                                     change = Some((
                                                         stmt_index,
                                                         arg_index,
@@ -776,16 +1572,28 @@ impl<'a> UiFrame<'a> {
                                             }
                                         }
                                     }
+
+                                    if ui.is_item_hovered() && !param_info.description.is_empty() {
+                                        ui.tooltip(|| {
+                                            let wrap_token = ui
+                                                .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                                                ui.text_colored(self.colors.tooltip_text, param_info.description);
+                                            wrap_token.pop(ui);
+                                        });
+                                    }
                                 }
 
                                 let console_id = imgui::im_str!("##console{}", stmt_index);
                                 if let Some(window_token) = imgui::ChildWindow::new(&console_id)
-                                    .size([0.0, 80.0])
+                                    .size([0.0, PIPELINE_OPERATION_CONSOLE_HEIGHT])
                                     .scrollable(true)
                                     .scroll_bar(true)
                                     .always_vertical_scrollbar(true)
                                     .begin(ui)
                                 {
+                                    let wrap_token = ui
+                                        .push_text_wrap_pos(WRAP_POS_CONSOLE_TEXT_PIXELS);
+
                                     let log_messages = session.log_messages_at_stmt(stmt_index);
                                     for log_message in log_messages {
                                         ui.text_colored(match log_message.level {
@@ -802,6 +1610,7 @@ impl<'a> UiFrame<'a> {
                                         console_state[stmt_index].message_count = message_count;
                                     }
 
+                                    wrap_token.pop(ui);
                                     window_token.end(ui);
                                 }
 
@@ -816,8 +1625,16 @@ impl<'a> UiFrame<'a> {
                     }
                 }
                 regular_font_token.pop(ui);
+
+                let mut pipeline_window_state = self.pipeline_window_state.borrow_mut();
+                if pipeline_window_state.autoscroll {
+                    ui.set_scroll_here_y();
+                    pipeline_window_state.autoscroll = false;
+                }
             });
         bold_font_token.pop(ui);
+
+        let changed = change.is_some();
 
         // FIXME: Debounce changes to parameters
 
@@ -833,19 +1650,28 @@ impl<'a> UiFrame<'a> {
                         let new_var_decl = var_decl
                             .clone_with_init_expr(init_expr.clone_with_arg_at(arg_index, expr));
 
-                        session.set_prog_stmt_at(stmt_index, ast::Stmt::VarDecl(new_var_decl));
+                        session.set_prog_stmt_at(
+                            current_time,
+                            stmt_index,
+                            ast::Stmt::VarDecl(new_var_decl),
+                        );
                     }
                 }
             }
         }
+
+        changed
     }
 
-    pub fn draw_operations_window(&self, session: &mut Session) {
+    pub fn draw_operations_window(
+        &self,
+        current_time: Instant,
+        session: &mut Session,
+        notifications: &mut Notifications,
+        duration_autorun_delay: Duration,
+    ) -> bool {
         let ui = &self.imgui_ui;
         let function_table = session.function_table();
-
-        const OPERATIONS_WINDOW_WIDTH: f32 = 400.0;
-        const OPERATIONS_WINDOW_HEIGHT_MULT: f32 = 0.3;
 
         let window_logical_size = ui.io().display_size;
         let window_inner_height = window_logical_size[1] - 2.0 * MARGIN;
@@ -854,13 +1680,16 @@ impl<'a> UiFrame<'a> {
         let operations_window_vertical_position =
             MARGIN * 2.0 + (1.0 - OPERATIONS_WINDOW_HEIGHT_MULT) * window_inner_height;
 
-        let running_enabled = !session.interpreter_busy();
+        let running_enabled = !session.interpreter_busy() && session.autorun_delay().is_none();
         let popping_enabled = !session.interpreter_busy() && !session.stmts().is_empty();
         let pushing_enabled = !session.interpreter_busy();
 
         let mut function_clicked = None;
         let mut interpret_clicked = false;
         let mut pop_stmt_clicked = false;
+
+        let mut autorun_enabled = session.autorun_delay().is_some();
+        let mut autorun_clicked = false;
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
         imgui::Window::new(imgui::im_str!("Operations"))
@@ -876,11 +1705,23 @@ impl<'a> UiFrame<'a> {
                 imgui::Condition::Always,
             )
             .build(ui, || {
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        let regular_font_token = ui.push_font(self.font_ids.regular);
+                        ui.text_colored(self.colors.tooltip_text, "AVAILABLE OPERATIONS\n\
+                        \n\
+                        A list of available operations to be stacked into the sequence of operations \
+                        in the Operation pipeline.");
+                        regular_font_token.pop(ui);
+                        wrap_token.pop(ui);
+                    });
+                }
+
                 let regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.columns(2, imgui::im_str!("Controls columns"), false);
 
                 let pipeline_button_color_token = ui.push_style_colors(&[
-                    (imgui::StyleColor::Text, self.colors.special_button_text),
                     (imgui::StyleColor::Button, self.colors.special_button),
                     (
                         imgui::StyleColor::ButtonHovered,
@@ -890,22 +1731,42 @@ impl<'a> UiFrame<'a> {
                         imgui::StyleColor::ButtonActive,
                         self.colors.special_button_active,
                     ),
+                    (imgui::StyleColor::Text, self.colors.special_button_text),
+                    (imgui::StyleColor::TextDisabled, self.colors.special_button_text),
                 ]);
                 let running_tokens = if running_enabled {
                     None
                 } else {
                     Some(push_disabled_style(ui))
                 };
-                if ui.button(imgui::im_str!("Run pipeline"), [-f32::MIN_POSITIVE, 25.0])
-                    && running_enabled
-                {
+
+                let bold_font_token = ui.push_font(self.font_ids.bold);
+                if ui.button(imgui::im_str!("Run"), [-f32::MIN_POSITIVE, 25.0]) && running_enabled {
                     interpret_clicked = true;
                 }
+                bold_font_token.pop(ui);
                 if let Some((color_token, style_token)) = running_tokens {
                     color_token.pop(ui);
                     style_token.pop(ui);
                 }
                 pipeline_button_color_token.pop(ui);
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "RUN RECOMPUTATION OF THE OPERATION PIPELINE\n\
+                        \n\
+                        Executes the list of operations stacked in the Operation pipeline one \
+                        after another from top down. The Operation pipeline editing is disabled \
+                        during the computation. If any operation fails due to invalid input parameters, \
+                        the computation stops and the error will be reported in the console log of the \
+                        respective operation.");
+                        ui.text_colored(self.colors.log_message_warn,"\n\
+                        WARNING: The execution cannot be stopped. If it takes long time or crashes, \
+                        the unsaved progress of the .hurban project file will be lost!");
+                        wrap_token.pop(ui);
+                    });
+                }
 
                 ui.next_column();
 
@@ -920,11 +1781,55 @@ impl<'a> UiFrame<'a> {
                 ) && popping_enabled
                 {
                     pop_stmt_clicked = true;
+                    notifications.push(
+                        current_time,
+                        NotificationLevel::Warn,
+                        "Removed last operation from the Operation pipeline.",
+                    );
                 }
                 if let Some((color_token, style_token)) = popping_tokens {
                     color_token.pop(ui);
                     style_token.pop(ui);
                 }
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "REMOVE LAST OPERATION FROM THE OPERATION PIPELINE\n\
+                        \n\
+                        Only the last operation in the sequence of operations stacked into \
+                        the Operation pipeline can be removed.");
+                        let text_color_token = ui.push_style_color(
+                            imgui::StyleColor::Text,
+                            self.colors.log_message_warn,
+                        );
+                        ui.text("\n\
+                        The removal cannot be undone!");
+                        text_color_token.pop(ui);
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                ui.columns(1, imgui::im_str!("Autorun columns"), false);
+                autorun_clicked =
+                    ui.checkbox(imgui::im_str!("Run automatically"), &mut autorun_enabled);
+
+                    if ui.is_item_hovered() {
+                        ui.tooltip(|| {
+                            let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                            ui.text_colored(self.colors.tooltip_text, "RUN RECOMPUTATION OF THE OPERATION PIPELINE AUTOMATICALLY\n\
+                            \n\
+                            Executes the list of operations stacked in the Sequence of \
+                            operations one after another from top down automatically whenever a \
+                            parameter or an operation changes in the Sequence of operations.");
+                            ui.text_colored(self.colors.log_message_warn, "\n\
+                            WARNING: The execution may take long or even hang the computer! If \
+                            not sure how heavy is the geometry, turn the automatic recomputation off. \
+                            The execution cannot be stopped. If it takes long time or crashes, \
+                            the unsaved progress of the .hurban project file will be lost!");
+                            wrap_token.pop(ui);
+                        });
+                    }
 
                 ui.separator();
 
@@ -934,16 +1839,45 @@ impl<'a> UiFrame<'a> {
                     Some(push_disabled_style(ui))
                 };
                 ui.columns(3, imgui::im_str!("Add operations columns"), false);
+
+                let mut previous_group_number = 0;
+                let mut column_counter = 0;
                 for (func_ident, func) in function_table {
+                    let current_group_number = func_ident.0 / 1000_u64;
+                    if current_group_number != previous_group_number {
+                        while column_counter % 3 != 0 {
+                            ui.next_column();
+                            column_counter += 1;
+                        }
+                        ui.separator();
+                    }
                     if ui.button(
                         &imgui::im_str!("{}", func.info().name),
                         [-f32::MIN_POSITIVE, 20.0],
                     ) && pushing_enabled
                     {
                         function_clicked = Some(func_ident);
+                        notifications.push(
+                            current_time,
+                            NotificationLevel::Info,
+                            format!("Added new operation to the Operation pipeline: {}.", func.info().name),
+                        );
                     }
+
+                    if ui.is_item_hovered() && !func.info().description.is_empty() {
+                        ui.tooltip(|| {
+                            let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                            ui.text_colored(self.colors.tooltip_text, func.info().description);
+                            wrap_token.pop(ui);
+                        });
+                    }
+
                     ui.next_column();
+                    column_counter += 1;
+
+                    previous_group_number = current_group_number;
                 }
+
                 if let Some((color_token, style_token)) = pushing_tokens {
                     color_token.pop(ui);
                     style_token.pop(ui);
@@ -951,6 +1885,8 @@ impl<'a> UiFrame<'a> {
                 regular_font_token.pop(ui);
             });
         bold_font_token.pop(ui);
+
+        let function_added = function_clicked.is_some();
 
         if let Some(func_ident) = function_clicked {
             let func = &function_table[&func_ident];
@@ -987,7 +1923,7 @@ impl<'a> UiFrame<'a> {
                     }
                     ParamRefinement::String(string_param_refinement) => {
                         let initial_value = String::from(string_param_refinement.default_value);
-                        ast::Expr::Lit(ast::LitExpr::String(Arc::new(initial_value)))
+                        ast::Expr::Lit(ast::LitExpr::String(initial_value))
                     }
                     ParamRefinement::Mesh => {
                         let one_past_last_stmt = session.stmts().len();
@@ -1030,16 +1966,32 @@ impl<'a> UiFrame<'a> {
                 init_expr,
             ));
 
-            session.push_prog_stmt(stmt);
+            session.push_prog_stmt(current_time, stmt);
+            self.pipeline_window_state.borrow_mut().autoscroll = true;
         }
 
         if interpret_clicked {
+            notifications.push(
+                current_time,
+                NotificationLevel::Info,
+                "Execution of the Operation pipeline has started...",
+            );
             session.interpret();
         }
 
         if pop_stmt_clicked {
-            session.pop_prog_stmt();
+            session.pop_prog_stmt(current_time);
         }
+
+        if autorun_clicked {
+            if autorun_enabled {
+                session.set_autorun_delay(Some(duration_autorun_delay));
+            } else {
+                session.set_autorun_delay(None);
+            }
+        }
+
+        function_added || pop_stmt_clicked
     }
 
     fn draw_var_combo_box(
@@ -1087,7 +2039,7 @@ impl<'a> UiFrame<'a> {
                     ty == Ty::MeshArray,
                 )
             })
-            .unwrap_or_else(|| imgui::ImString::new("<Nil>"));
+            .unwrap_or_else(|| imgui::ImString::new("<Select one option>"));
 
         combo = combo.preview_value(&preview_value);
 
@@ -1103,6 +2055,10 @@ impl<'a> UiFrame<'a> {
             (
                 imgui::StyleColor::HeaderActive,
                 self.colors.combo_box_selected_item_active,
+            ),
+            (
+                imgui::StyleColor::PopupBg,
+                self.colors.popup_window_background,
             ),
         ]);
         if let Some(combo_token) = combo.begin(ui) {
@@ -1126,7 +2082,7 @@ impl<'a> UiFrame<'a> {
                 }
             }
 
-            if imgui::Selectable::new(imgui::im_str!("<Nil>"))
+            if imgui::Selectable::new(imgui::im_str!(""))
                 .selected(selected_var_index.is_none())
                 .build(ui)
             {

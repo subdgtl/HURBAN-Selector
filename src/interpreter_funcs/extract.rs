@@ -34,6 +34,18 @@ impl Func for FuncExtract {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Extract from Group",
+            description: "EXTRACT MESH GEOMETRY FROM MESH GROUP\n\
+                          \n\
+                          Each mesh geometry in mesh group is given an index. \
+                          This operation extracts mesh geometry with a specified \
+                          index from a mesh group.\n\
+                          \n\
+                          Mesh group is displayed in the viewport as geometry but is \
+                          a distinct data type. Only some operations, such as this one, \
+                          can use mesh groups and most of them are intended to generate \
+                          a proper mesh from the mesh group.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Extracted Mesh'.",
             return_value_name: "Extracted Mesh",
         }
     }
@@ -46,11 +58,13 @@ impl Func for FuncExtract {
         &[
             ParamInfo {
                 name: "Group",
+                description: "Input mesh group.",
                 refinement: ParamRefinement::MeshArray,
                 optional: false,
             },
             ParamInfo {
                 name: "Index",
+                description: "Index of mesh to be extracted from the mesh group.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(0),
                     min_value: Some(0),
@@ -59,7 +73,17 @@ impl Func for FuncExtract {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -79,24 +103,29 @@ impl Func for FuncExtract {
     ) -> Result<Value, FuncError> {
         let mesh_array = args[0].unwrap_mesh_array();
         let index = args[1].unwrap_uint();
-        let analyze = args[2].unwrap_boolean();
+        let analyze_bbox = args[2].unwrap_boolean();
+        let analyze_mesh = args[3].unwrap_boolean();
 
         if mesh_array.is_empty() {
-            return Err(FuncError::new(FuncExtractError::Empty));
+            let error = FuncError::new(FuncExtractError::Empty);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         let group_length = mesh_array.len();
         if index >= group_length {
-            Err(FuncError::new(FuncExtractError::IndexOutOfBounds(
-                index,
-                group_length,
-            )))
+            let error = FuncError::new(FuncExtractError::IndexOutOfBounds(index, group_length));
+            log(LogMessage::error(format!("Error: {}", error)));
+            Err(error)
         } else {
             let value = mesh_array
                 .get_refcounted(index)
                 .expect("Array must not be empty");
 
-            if analyze {
+            if analyze_bbox {
+                analytics::report_bounding_box_analysis(&value, log);
+            }
+            if analyze_mesh {
                 analytics::report_mesh_analysis(&value, log);
             }
 

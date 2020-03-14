@@ -15,6 +15,13 @@ impl Func for FuncCreateBox {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create Box",
+            description: "CREATE MESH BOX\n\
+                          \n\
+                          Creates a new mesh box made of 12 welded triangles \
+                          and 8 vertices. \
+                          The default size of the box is 1x1x1 model units.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Box'.",
             return_value_name: "Box",
         }
     }
@@ -27,51 +34,53 @@ impl Func for FuncCreateBox {
         &[
             ParamInfo {
                 name: "Center",
+                description: "Center of the box in absolute model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "Rotation of the box in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
             ParamInfo {
                 name: "Scale",
+                description: "Scale of the box as a relative factor.\n\
+                              The original size of the box is 1x1x1 model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(1.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(1.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -92,7 +101,8 @@ impl Func for FuncCreateBox {
         let center = args[0].unwrap_float3();
         let rotate = args[1].unwrap_float3();
         let scale = args[2].unwrap_float3();
-        let analyze = args[3].unwrap_boolean();
+        let analyze_bbox = args[3].unwrap_boolean();
+        let analyze_mesh = args[4].unwrap_boolean();
 
         let value = primitive::create_box(
             Point3::from(center),
@@ -104,7 +114,10 @@ impl Func for FuncCreateBox {
             Vector3::from(scale),
         );
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
 

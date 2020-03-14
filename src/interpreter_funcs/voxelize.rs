@@ -1,6 +1,7 @@
 use std::error;
 use std::f32;
 use std::fmt;
+use std::ops::Bound;
 use std::sync::Arc;
 
 use nalgebra::Vector3;
@@ -10,12 +11,16 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::voxel_cloud::VoxelCloud;
+use crate::mesh::voxel_cloud::{self, ScalarField};
+
+const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncVoxelizeError {
     WeldFailed,
-    EmptyVoxelCloud,
+    EmptyScalarField,
+    VoxelDimensionsZero,
+    TooManyVoxels(u32, f32, f32, f32),
 }
 
 impl fmt::Display for FuncVoxelizeError {
@@ -25,7 +30,13 @@ impl fmt::Display for FuncVoxelizeError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncVoxelizeError::EmptyVoxelCloud => write!(f, "The resulting voxel cloud is empty"),
+            FuncVoxelizeError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
+            FuncVoxelizeError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
+            FuncVoxelizeError::TooManyVoxels(max_count, x, y, z) => write!(
+                f,
+                "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
+                max_count, x, y, z
+            ),
         }
     }
 }
@@ -38,7 +49,22 @@ impl Func for FuncVoxelize {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Voxelize Mesh",
-            return_value_name: "Voxelized mesh",
+            description: "VOXELIZE MESH\n\
+            \n\
+            Converts the input mesh geometry into voxel cloud and \
+            materializes the resulting voxel cloud into a welded mesh.\n\
+            \n\
+            Voxels are three-dimensional pixels. They exist in a regular three-dimensional \
+            grid of arbitrary dimensions (voxel size). The voxel can be turned on \
+            (be a volume) or off (be a void). The voxels can be materialized as \
+            rectangular blocks. Voxelized meshes can be effectively smoothened by \
+            Laplacian relaxation.
+            \n\
+            The input mesh will be marked used and thus invisible in the viewport. \
+            It can still be used in subsequent operations.\n\
+            \n\
+            The resulting mesh geometry will be named 'Voxelized Mesh'.",
+            return_value_name: "Voxelized Mesh",
         }
     }
 
@@ -50,28 +76,37 @@ impl Func for FuncVoxelize {
         &[
             ParamInfo {
                 name: "Mesh",
+                description: "Input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Voxel Size",
+                description: "Size of a single cell in the regular three-dimensional voxel grid.\n\
+                \n\
+                High values produce coarser results, low values may increase precision but produce \
+                heavier geometry that significantly affect performance. Too high values produce \
+                single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: Some(0.005),
+                    max_value: None,
                     default_value_x: Some(1.0),
-                    min_value_x: Some(f32::MIN_POSITIVE),
-                    max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: Some(f32::MIN_POSITIVE),
-                    max_value_y: None,
                     default_value_z: Some(1.0),
-                    min_value_z: Some(f32::MIN_POSITIVE),
-                    max_value_z: None,
                 }),
                 optional: false,
             },
             ParamInfo {
                 name: "Grow",
+                description: "The voxelization algorithm puts voxels on the surface of \
+                the input mesh geometries.\n\
+                \n\
+                The grow option adds several extra layers of voxels on both sides of such \
+                voxel volumes. This option generates thicker voxelized meshes. \
+                In some cases not growing the volume at all may result in \
+                a non manifold voxelized mesh.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
-                    default_value: Some(2),
+                    default_value: Some(0),
                     min_value: None,
                     max_value: None,
                 }),
@@ -79,13 +114,36 @@ impl Func for FuncVoxelize {
             },
             ParamInfo {
                 name: "Fill Closed Volumes",
+                description: "Treats the insides of watertight mesh geometries as volumes.\n\
+                \n\
+                If this option is off, the resulting voxelized mesh geometries will have two \
+                separate mesh shells: one for outer surface, the other for inner surface of \
+                hollow watertight mesh.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: true,
                 }),
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Prevent Unsafe Settings",
+                description: "Stop computation and throw error if the calculation may be too slow.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -104,32 +162,77 @@ impl Func for FuncVoxelize {
         log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
-        let voxel_dimensions = args[1].unwrap_float3();
-        let growth_iterations = args[2].unwrap_uint();
+        let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
+        let growth_u32 = args[2].unwrap_uint();
+        let growth_f32 = growth_u32 as f32;
         let fill = args[3].unwrap_boolean();
-        let analyze = args[4].unwrap_boolean();
+        let error_if_large = args[4].unwrap_boolean();
+        let analyze_bbox = args[5].unwrap_boolean();
+        let analyze_mesh = args[6].unwrap_boolean();
 
-        let mut voxel_cloud = VoxelCloud::from_mesh(mesh, &Vector3::from(voxel_dimensions));
-        for _ in 0..growth_iterations {
-            voxel_cloud.grow_volume();
+        if voxel_dimensions
+            .iter()
+            .any(|dimension| approx::relative_eq!(*dimension, 0.0))
+        {
+            let error = FuncError::new(FuncVoxelizeError::VoxelDimensionsZero);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
-        if fill {
-            voxel_cloud.fill_volumes();
+        let bbox = mesh.bounding_box();
+        let voxel_count = voxel_cloud::evaluate_voxel_count(&bbox, &voxel_dimensions);
+
+        log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
+
+        if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
+            let suggested_voxel_size =
+                voxel_cloud::suggest_voxel_size_to_fit_bbox_within_voxel_count(
+                    voxel_count,
+                    &voxel_dimensions,
+                    VOXEL_COUNT_THRESHOLD,
+                );
+
+            let error = FuncError::new(FuncVoxelizeError::TooManyVoxels(
+                VOXEL_COUNT_THRESHOLD,
+                suggested_voxel_size.x,
+                suggested_voxel_size.y,
+                suggested_voxel_size.z,
+            ));
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
-        if !voxel_cloud.contains_voxels() {
-            return Err(FuncError::new(FuncVoxelizeError::EmptyVoxelCloud));
+        let mut scalar_field = ScalarField::from_mesh(mesh, &voxel_dimensions, 0.0, growth_u32);
+
+        scalar_field.compute_distance_field(&(0.0..=0.0));
+
+        let meshing_range = if fill {
+            (Bound::Unbounded, Bound::Included(growth_f32))
+        } else {
+            (Bound::Included(-growth_f32), Bound::Included(growth_f32))
+        };
+
+        if !scalar_field.contains_voxels_within_range(&meshing_range) {
+            let error = FuncError::new(FuncVoxelizeError::EmptyScalarField);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
-        match voxel_cloud.to_mesh() {
+        match scalar_field.to_mesh(&meshing_range) {
             Some(value) => {
-                if analyze {
+                if analyze_bbox {
+                    analytics::report_bounding_box_analysis(&value, log);
+                }
+                if analyze_mesh {
                     analytics::report_mesh_analysis(&value, log);
                 }
                 Ok(Value::Mesh(Arc::new(value)))
             }
-            None => Err(FuncError::new(FuncVoxelizeError::WeldFailed)),
+            None => {
+                let error = FuncError::new(FuncVoxelizeError::WeldFailed);
+                log(LogMessage::error(format!("Error: {}", error)));
+                Err(error)
+            }
         }
     }
 }

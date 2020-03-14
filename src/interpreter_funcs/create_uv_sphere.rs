@@ -47,6 +47,15 @@ impl Func for FuncCreateUvSphere {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Create UV Sphere",
+            description: "CREATE UV MESH SPHERE\n\
+                          \n\
+                          Creates a new mesh sphere made of segments ordered into \
+                          parallels and meridians, which intersect on poles. \
+                          The default size of the sphere is 1x1x1 model units. \
+                          A high number of parallels and meridians will produce \
+                          smoother sphere but heavier geometry.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Sphere'.",
             return_value_name: "Sphere",
         }
     }
@@ -59,51 +68,45 @@ impl Func for FuncCreateUvSphere {
         &[
             ParamInfo {
                 name: "Center",
+                description: "Center of the sphere in absolute model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
             ParamInfo {
                 name: "Rotate (deg)",
+                description: "Rotation of the sphere in degrees.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(0.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(0.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(0.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
             ParamInfo {
                 name: "Scale",
+                description: "Scale of the sphere as a relative factor.\n\
+                The original size of the sphere is 1x1x1 model units.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
+                    min_value: None,
+                    max_value: None,
                     default_value_x: Some(1.0),
-                    min_value_x: None,
-                    max_value_x: None,
                     default_value_y: Some(1.0),
-                    min_value_y: None,
-                    max_value_y: None,
                     default_value_z: Some(1.0),
-                    min_value_z: None,
-                    max_value_z: None,
                 }),
                 optional: false,
             },
             ParamInfo {
                 name: "Parallels",
+                description: "The number of parallels must be greater than 2.\n\
+                A high number of parallels and meridians will produce smoother but heavier geometry.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(8),
                     min_value: Some(Self::MIN_PARALLELS),
@@ -113,6 +116,8 @@ impl Func for FuncCreateUvSphere {
             },
             ParamInfo {
                 name: "Meridians",
+                description: "The number of meridians must be greater than 3.\n\
+                A high number of parallels and meridians will produce smoother but heavier geometry.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
                     default_value: Some(8),
                     min_value: Some(Self::MIN_MERIDIANS),
@@ -121,7 +126,32 @@ impl Func for FuncCreateUvSphere {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Smooth normals",
+                description: "Sets the per-vertex mesh normals to be interpolated from \
+                connected face normals. As a result, the rendered geometry will have \
+                a smooth surface material even though the mesh itself may be coarse.\n\
+                \n\
+                When disabled, the geometry will be rendered as angular: each face will \
+                appear flat, exposing edges as sharp creases.\n\
+                \n\
+                The normal smoothing strategy does not affect the geometry itself.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -144,19 +174,31 @@ impl Func for FuncCreateUvSphere {
         let scale = args[2].unwrap_float3();
         let n_parallels = args[3].unwrap_uint();
         let n_meridians = args[4].unwrap_uint();
-        let analyze = args[5].unwrap_boolean();
+        let smooth = args[5].unwrap_boolean();
+        let analyze_bbox = args[6].unwrap_boolean();
+        let analyze_mesh = args[7].unwrap_boolean();
 
         if n_parallels < Self::MIN_PARALLELS {
-            return Err(FuncError::new(FuncCreateUvSphereError::TooFewParallels {
+            let error = FuncError::new(FuncCreateUvSphereError::TooFewParallels {
                 parallels_provided: n_parallels,
-            }));
+            });
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         if n_meridians < Self::MIN_MERIDIANS {
-            return Err(FuncError::new(FuncCreateUvSphereError::TooFewMeridians {
+            let error = FuncError::new(FuncCreateUvSphereError::TooFewMeridians {
                 meridians_provided: n_meridians,
-            }));
+            });
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
+
+        let normal_strategy = if smooth {
+            NormalStrategy::Smooth
+        } else {
+            NormalStrategy::Sharp
+        };
 
         let value = primitive::create_uv_sphere(
             Point3::from(center),
@@ -168,10 +210,13 @@ impl Func for FuncCreateUvSphere {
             Vector3::from(scale),
             n_parallels,
             n_meridians,
-            NormalStrategy::Smooth,
+            normal_strategy,
         );
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
 

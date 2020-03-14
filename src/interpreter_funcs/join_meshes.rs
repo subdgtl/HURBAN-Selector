@@ -13,6 +13,17 @@ impl Func for FuncJoinMeshes {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Join Meshes",
+            description: "JOIN TWO MESH GEOMETRIES INTO ONE\n\
+                          \n\
+                          Creates a new mesh containing vertices and triangles \
+                          from both input meshes. \
+                          The two meshes will not be welded.\n\
+                          \n\
+                          The input meshes will be marked used \
+                          and thus invisible in the viewport. \
+                          They can still be used in subsequent operations.\n\
+                          \n\
+                          The resulting mesh geometry will be named 'Joined Mesh'.",
             return_value_name: "Joined Mesh",
         }
     }
@@ -25,16 +36,28 @@ impl Func for FuncJoinMeshes {
         &[
             ParamInfo {
                 name: "Mesh 1",
+                description: "First input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
                 name: "Mesh 2",
+                description: "Second input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting mesh",
+                name: "Bounding Box Analysis",
+                description: "Reports basic and quick analytic information on the created mesh.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Detailed Mesh Analysis",
+                description: "Reports detailed analytic information on the created mesh.\n\
+                              The analysis may be slow, therefore it is by default off.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -53,11 +76,15 @@ impl Func for FuncJoinMeshes {
         log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let meshes = [args[0].unwrap_mesh(), args[1].unwrap_mesh()];
-        let analyze = args[2].unwrap_boolean();
+        let analyze_bbox = args[2].unwrap_boolean();
+        let analyze_mesh = args[3].unwrap_boolean();
 
         let value = tools::join_multiple_meshes(meshes.iter().copied());
 
-        if analyze {
+        if analyze_bbox {
+            analytics::report_bounding_box_analysis(&value, log);
+        }
+        if analyze_mesh {
             analytics::report_mesh_analysis(&value, log);
         }
 

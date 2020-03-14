@@ -782,7 +782,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
         ast::LitExpr::Float(float) => Value::Float(*float),
         ast::LitExpr::Float2(float2) => Value::Float2(*float2),
         ast::LitExpr::Float3(float3) => Value::Float3(*float3),
-        ast::LitExpr::String(string) => Value::String(Arc::clone(&string)),
+        ast::LitExpr::String(string) => Value::String(Arc::new(string.clone())),
         ast::LitExpr::Nil => Value::Nil,
     };
 
@@ -881,6 +881,7 @@ mod tests {
     fn param_info(ty: Ty, optional: bool) -> ParamInfo {
         ParamInfo {
             name: "<anonymous>",
+            description: "<anonymous>",
             refinement: match ty {
                 Ty::Nil => panic!("Yeah, sure I can do that!"),
                 Ty::Boolean => ParamRefinement::Boolean(BooleanParamRefinement::default()),

@@ -6,6 +6,8 @@ use super::{FuncError, LogMessage, Ty, Value};
 pub struct FuncInfo {
     /// The function's name.
     pub name: &'static str,
+    /// The function's description.
+    pub description: &'static str,
     /// The name of the function's return value.
     pub return_value_name: &'static str,
 }
@@ -32,14 +34,14 @@ bitflags! {
 /// Information about a function parameter.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParamInfo {
-    /// The parameter's name
+    /// The parameter's name.
     pub name: &'static str,
-
+    /// The parameter's description.
+    pub description: &'static str,
     /// Refinement of the parameter type. Can set additional
     /// constraints on the parameter's value, such as a default value
     /// or the value range.
     pub refinement: ParamRefinement,
-
     /// Whether the parameter is optional. The parameter value is
     /// allowed to have the type [`Nil`] in addition to its own type,
     /// if set to `true`.
@@ -158,17 +160,15 @@ impl FloatParamRefinement {
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Float2ParamRefinement {
+    pub min_value: Option<f32>,
+    pub max_value: Option<f32>,
     pub default_value_x: Option<f32>,
-    pub min_value_x: Option<f32>,
-    pub max_value_x: Option<f32>,
     pub default_value_y: Option<f32>,
-    pub min_value_y: Option<f32>,
-    pub max_value_y: Option<f32>,
 }
 
 impl Float2ParamRefinement {
     pub fn clamp(&self, value: [f32; 2]) -> [f32; 2] {
-        let x = if let Some(min_x) = self.min_value_x {
+        let x = if let Some(min_x) = self.min_value {
             if value[0] < min_x {
                 min_x
             } else {
@@ -178,7 +178,7 @@ impl Float2ParamRefinement {
             value[0]
         };
 
-        let y = if let Some(min_y) = self.min_value_y {
+        let y = if let Some(min_y) = self.min_value {
             if value[1] < min_y {
                 min_y
             } else {
@@ -194,20 +194,16 @@ impl Float2ParamRefinement {
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Float3ParamRefinement {
+    pub min_value: Option<f32>,
+    pub max_value: Option<f32>,
     pub default_value_x: Option<f32>,
-    pub min_value_x: Option<f32>,
-    pub max_value_x: Option<f32>,
     pub default_value_y: Option<f32>,
-    pub min_value_y: Option<f32>,
-    pub max_value_y: Option<f32>,
     pub default_value_z: Option<f32>,
-    pub min_value_z: Option<f32>,
-    pub max_value_z: Option<f32>,
 }
 
 impl Float3ParamRefinement {
     pub fn clamp(&self, value: [f32; 3]) -> [f32; 3] {
-        let x = if let Some(min_x) = self.min_value_x {
+        let x = if let Some(min_x) = self.min_value {
             if value[0] < min_x {
                 min_x
             } else {
@@ -217,7 +213,7 @@ impl Float3ParamRefinement {
             value[0]
         };
 
-        let y = if let Some(min_y) = self.min_value_y {
+        let y = if let Some(min_y) = self.min_value {
             if value[1] < min_y {
                 min_y
             } else {
@@ -227,7 +223,7 @@ impl Float3ParamRefinement {
             value[1]
         };
 
-        let z = if let Some(min_z) = self.min_value_z {
+        let z = if let Some(min_z) = self.min_value {
             if value[2] < min_z {
                 min_z
             } else {
@@ -260,6 +256,7 @@ pub trait Func {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "<Unnamed operation>",
+            description: "<No description>",
             return_value_name: "<Unnamed value>",
         }
     }

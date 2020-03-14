@@ -1,6 +1,4 @@
-pub use self::scene_renderer::{
-    AddMeshError, DirectionalLight, DrawMeshMode, GpuMesh, GpuMeshHandle,
-};
+pub use self::scene_renderer::{AddMeshError, DirectionalLight, GpuMesh, GpuMeshHandle, Material};
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -47,8 +45,10 @@ pub struct Options {
     /// Whether to select an explicit power preference profile for the renderer
     /// to use when choosing a GPU.
     pub power_preference: Option<GpuPowerPreference>,
-    /// The color with which to render surfaces in `DrawMeshMode::FlatWithShadows`.
-    pub flat_shading_color: [f64; 4],
+    /// The color with which to render surfaces in `Material::FlatWithShadows`.
+    pub flat_material_color: [f64; 4],
+    /// The transparency value of transparent matcap materials.
+    pub transparent_matcap_shaded_material_alpha: f64,
 }
 
 /// Multi-sampling setting. Can be either disabled (1 sample per
@@ -243,7 +243,9 @@ impl Renderer {
                 sample_count: options.msaa.sample_count(),
                 output_color_attachment_format: TEXTURE_FORMAT_COLOR,
                 output_depth_attachment_format: TEXTURE_FORMAT_DEPTH,
-                flat_shading_color: options.flat_shading_color,
+                flat_material_color: options.flat_material_color,
+                transparent_matcap_shaded_material_alpha: options
+                    .transparent_matcap_shaded_material_alpha,
             },
         );
 
@@ -526,13 +528,8 @@ impl Renderer {
     ///
     /// The mesh will be available for drawing in subsequent render
     /// passes.
-    pub fn add_scene_mesh(
-        &mut self,
-        mesh: &GpuMesh,
-        transparent: bool,
-    ) -> Result<GpuMeshHandle, AddMeshError> {
-        self.scene_renderer
-            .add_mesh(&self.device, mesh, transparent)
+    pub fn add_scene_mesh(&mut self, mesh: &GpuMesh) -> Result<GpuMeshHandle, AddMeshError> {
+        self.scene_renderer.add_mesh(&self.device, mesh)
     }
 
     /// Removes mesh from the GPU.
@@ -545,7 +542,6 @@ impl Renderer {
     ///
     /// It will be available for drawing in the subsequent render
     /// passes.
-    #[allow(dead_code)]
     pub fn add_ui_texture_rgba8_unorm(
         &mut self,
         width: u32,
@@ -670,17 +666,11 @@ impl CommandBuffer<'_> {
     /// objects rendered in subsequent calls (in addition to casting shadows on
     /// objects rendered within the same call), but the shadows won't be present
     /// on objects rendered in prior calls.
-    pub fn draw_meshes_to_primary_render_target<'a, H>(
-        &mut self,
-        mesh_handles: H,
-        mode: DrawMeshMode,
-        cast_shadows: bool,
-    ) where
-        H: Iterator<Item = &'a GpuMeshHandle> + Clone,
+    pub fn draw_meshes_to_primary_render_target<'a, P>(&mut self, mesh_props: P)
+    where
+        P: Iterator<Item = (&'a GpuMeshHandle, Material, bool)> + Clone,
     {
         self.scene_renderer.draw_meshes(
-            mode,
-            cast_shadows,
             self.primary_render_target_needs_clearing,
             self.clear_color,
             self.encoder
@@ -689,7 +679,7 @@ impl CommandBuffer<'_> {
             self.msaa_texture_view.as_ref(),
             &self.color_texture_view,
             &self.depth_texture_view,
-            mesh_handles,
+            mesh_props,
         );
 
         self.primary_render_target_needs_clearing = false;
@@ -710,14 +700,12 @@ impl CommandBuffer<'_> {
     /// objects rendered in subsequent calls (in addition to casting shadows on
     /// objects rendered within the same call), but the shadows won't be present
     /// on objects rendered in prior calls.
-    pub fn draw_meshes_to_offscreen_render_target<'a, H>(
+    pub fn draw_meshes_to_offscreen_render_target<'a, P>(
         &mut self,
         render_target_handle: &OffscreenRenderTargetHandle,
-        mesh_handles: H,
-        mode: DrawMeshMode,
-        cast_shadows: bool,
+        mesh_props: P,
     ) where
-        H: Iterator<Item = &'a GpuMeshHandle> + Clone,
+        P: Iterator<Item = (&'a GpuMeshHandle, Material, bool)> + Clone,
     {
         let offscreen_render_target = &self.offscreen_render_targets[&render_target_handle.0];
         let offscreen_render_target_needs_clearing = self
@@ -730,15 +718,13 @@ impl CommandBuffer<'_> {
             .expect("Need encoder to record drawing");
 
         self.scene_renderer.draw_meshes(
-            mode,
-            cast_shadows,
             offscreen_render_target_needs_clearing,
             self.clear_color,
             encoder,
             offscreen_render_target.msaa_texture_view.as_ref(),
             &offscreen_render_target.color_texture_view,
             &offscreen_render_target.depth_texture_view,
-            mesh_handles,
+            mesh_props,
         );
 
         encoder.copy_texture_to_buffer(
@@ -877,6 +863,7 @@ struct BlitPassUniforms {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BlitSampler {
     Color = 0,
+    #[cfg(not(feature = "dist"))]
     Depth = 1,
 }
 
