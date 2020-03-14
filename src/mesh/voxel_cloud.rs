@@ -481,7 +481,7 @@ impl ScalarField {
     /// treat (perform boolean operations or materialize into mesh) on various
     /// numerical ranges. Such range is specified ad-hoc by parameter
     /// `volume_value_range`.
-    pub fn compute_distance_fieled<U>(&mut self, volume_value_range: &U)
+    pub fn compute_distance_field<U>(&mut self, volume_value_range: &U)
     where
         U: RangeBounds<f32>,
     {
@@ -730,10 +730,8 @@ fn relative_voxel_to_cartesian_coordinate(
     voxel_dimensions: &Vector3<f32>,
 ) -> Point3<f32> {
     assert!(
-        !approx::relative_eq!(voxel_dimensions.x, 0.0)
-            && !approx::relative_eq!(voxel_dimensions.y, 0.0)
-            && !approx::relative_eq!(voxel_dimensions.z, 0.0),
-        "Voxel dimensions can't be 0.0"
+        voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
+        "Voxel dimensions can't be below or equal to zero"
     );
     Point3::new(
         (relative_coordinate.x + block_start.x) as f32 * voxel_dimensions.x,

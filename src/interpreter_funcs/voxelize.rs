@@ -204,7 +204,7 @@ impl Func for FuncVoxelize {
 
         let mut scalar_field = ScalarField::from_mesh(mesh, &voxel_dimensions, 0.0, growth_u32);
 
-        scalar_field.compute_distance_fieled(&(0.0..=0.0));
+        scalar_field.compute_distance_field(&(0.0..=0.0));
 
         let meshing_range = if fill {
             (Bound::Unbounded, Bound::Included(growth_f32))
