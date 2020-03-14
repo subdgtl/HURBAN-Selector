@@ -610,7 +610,7 @@ impl ScalarField {
             for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
                 // If the current scalar field doesn't contain a volume voxel at
                 // the current position
-                if !is_voxel_within_range(voxel, volume_value_range_self) {
+                if !is_voxel_within_range(*voxel, volume_value_range_self) {
                     let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                         one_dimensional,
                         &self.block_start,
@@ -680,7 +680,7 @@ impl ScalarField {
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
             // If the current scalar field contains a volume voxel at the
             // current position
-            if is_voxel_within_range(voxel, volume_value_range_self) {
+            if is_voxel_within_range(*voxel, volume_value_range_self) {
                 let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                     one_dimensional,
                     &self.block_start,
@@ -1441,7 +1441,7 @@ impl ScalarField {
         let mut absolute_max: Point3<i32> =
             Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
-            if is_voxel_within_range(voxel, volume_value_range) {
+            if is_voxel_within_range(*voxel, volume_value_range) {
                 let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                     one_dimensional,
                     &self.block_start,
