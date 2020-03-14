@@ -306,6 +306,7 @@ pub fn init_and_run(options: Options) -> ! {
     let mut ui_want_capture_mouse = false;
     let mut ui_want_capture_keyboard = false;
 
+    #[allow(clippy::cognitive_complexity)]
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
 
