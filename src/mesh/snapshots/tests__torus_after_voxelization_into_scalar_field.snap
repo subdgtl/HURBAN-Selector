@@ -1,0 +1,83 @@
+---
+source: src/mesh/voxel_cloud.rs
+expression: "&scalar_field"
+---
+{
+  "block_start": [
+    -1,
+    -2,
+    -1
+  ],
+  "block_dimensions": [
+    4,
+    5,
+    3
+  ],
+  "voxel_dimensions": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "voxels": [
+    null,
+    null,
+    null,
+    null,
+    0.0,
+    null,
+    null,
+    null,
+    0.0,
+    0.0,
+    0.0,
+    null,
+    0.0,
+    0.0,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    0.0,
+    0.0,
+    null,
+    null,
+    0.0,
+    0.0,
+    0.0,
+    null,
+    0.0,
+    0.0,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ]
+}

@@ -131,7 +131,7 @@ impl Mesh {
                             normals_collection_sharp.push(face_normal);
                         }
                         // FIXME: once we add other kinds of faces, they must
-                        // panic here 
+                        // panic here
                         //
                         // _ => panic!("Face must be a triangle, we just created
                         // it"),

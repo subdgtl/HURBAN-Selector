@@ -1,6 +1,7 @@
 use std::error;
 use std::f32;
 use std::fmt;
+use std::ops::Bound;
 use std::sync::Arc;
 
 use nalgebra::Vector3;
@@ -10,14 +11,14 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::voxel_cloud::VoxelCloud;
+use crate::mesh::voxel_cloud::{self, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncVoxelizeError {
     WeldFailed,
-    EmptyVoxelCloud,
+    EmptyScalarField,
     VoxelDimensionsZero,
     TooManyVoxels(u32, f32, f32, f32),
 }
@@ -29,7 +30,7 @@ impl fmt::Display for FuncVoxelizeError {
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncVoxelizeError::EmptyVoxelCloud => write!(f, "The resulting voxel cloud is empty"),
+            FuncVoxelizeError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
             FuncVoxelizeError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
             FuncVoxelizeError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
@@ -82,6 +83,7 @@ impl Func for FuncVoxelize {
             ParamInfo {
                 name: "Voxel Size",
                 description: "Size of a single cell in the regular three-dimensional voxel grid.\n\
+                \n\
                 High values produce coarser results, low values may increase precision but produce \
                 heavier geometry that significantly affect performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
@@ -104,7 +106,7 @@ impl Func for FuncVoxelize {
                 In some cases not growing the volume at all may result in \
                 a non manifold voxelized mesh.",
                 refinement: ParamRefinement::Uint(UintParamRefinement {
-                    default_value: Some(2),
+                    default_value: Some(0),
                     min_value: None,
                     max_value: None,
                 }),
@@ -161,7 +163,8 @@ impl Func for FuncVoxelize {
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
         let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
-        let growth_iterations = args[2].unwrap_uint();
+        let growth_u32 = args[2].unwrap_uint();
+        let growth_f32 = growth_u32 as f32;
         let fill = args[3].unwrap_boolean();
         let error_if_large = args[4].unwrap_boolean();
         let analyze_bbox = args[5].unwrap_boolean();
@@ -176,50 +179,46 @@ impl Func for FuncVoxelize {
             return Err(error);
         }
 
-        let bbox_diagonal = mesh.bounding_box().diagonal();
-        let voxel_count = (bbox_diagonal.x / voxel_dimensions[0]).ceil() as u32
-            * (bbox_diagonal.y / voxel_dimensions[1]).ceil() as u32
-            * (bbox_diagonal.z / voxel_dimensions[2]).ceil() as u32;
+        let bbox = mesh.bounding_box();
+        let voxel_count = voxel_cloud::evaluate_voxel_count(&bbox, &voxel_dimensions);
 
         log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
 
         if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
-            let vy_over_vx = voxel_dimensions.y / voxel_dimensions.x;
-            let vz_over_vx = voxel_dimensions.z / voxel_dimensions.x;
-            let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
-                / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
-                .cbrt();
-            let vy = vx * vy_over_vx;
-            let vz = vx * vz_over_vx;
+            let suggested_voxel_size =
+                voxel_cloud::suggest_voxel_size_to_fit_bbox_within_voxel_count(
+                    voxel_count,
+                    &voxel_dimensions,
+                    VOXEL_COUNT_THRESHOLD,
+                );
 
-            // The equation doesn't take rounding into consideration, hence the
-            // arbitrary multiplication by 1.1.
             let error = FuncError::new(FuncVoxelizeError::TooManyVoxels(
                 VOXEL_COUNT_THRESHOLD,
-                vx * 1.1,
-                vy * 1.1,
-                vz * 1.1,
+                suggested_voxel_size.x,
+                suggested_voxel_size.y,
+                suggested_voxel_size.z,
             ));
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
-        let mut voxel_cloud = VoxelCloud::from_mesh(mesh, &voxel_dimensions);
-        for _ in 0..growth_iterations {
-            voxel_cloud.grow_volume();
-        }
+        let mut scalar_field = ScalarField::from_mesh(mesh, &voxel_dimensions, 0.0, growth_u32);
 
-        if fill {
-            voxel_cloud.fill_volumes();
-        }
+        scalar_field.compute_distance_field(&(0.0..=0.0));
 
-        if !voxel_cloud.contains_voxels() {
-            let error = FuncError::new(FuncVoxelizeError::EmptyVoxelCloud);
+        let meshing_range = if fill {
+            (Bound::Unbounded, Bound::Included(growth_f32))
+        } else {
+            (Bound::Included(-growth_f32), Bound::Included(growth_f32))
+        };
+
+        if !scalar_field.contains_voxels_within_range(&meshing_range) {
+            let error = FuncError::new(FuncVoxelizeError::EmptyScalarField);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
-        match voxel_cloud.to_mesh() {
+        match scalar_field.to_mesh(&meshing_range) {
             Some(value) => {
                 if analyze_bbox {
                     analytics::report_bounding_box_analysis(&value, log);
