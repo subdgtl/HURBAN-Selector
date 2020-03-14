@@ -220,7 +220,7 @@ impl ScalarField {
     {
         self.voxels
             .iter()
-            .any(|voxel| is_voxel_within_range(voxel, volume_value_range))
+            .any(|voxel| is_voxel_within_range(*voxel, volume_value_range))
     }
 
     /// Gets the value of a voxel on absolute voxel coordinates (relative to the
@@ -264,7 +264,7 @@ impl ScalarField {
         U: RangeBounds<f32>,
     {
         is_voxel_within_range(
-            &self.value_at_absolute_voxel_coordinate(absolute_coordinate),
+            self.value_at_absolute_voxel_coordinate(absolute_coordinate),
             volume_value_range,
         )
     }
@@ -411,7 +411,7 @@ impl ScalarField {
         // Iterate through the scalar field
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
             // If the current voxel is a volume voxel
-            if is_voxel_within_range(voxel, volume_value_range) {
+            if is_voxel_within_range(*voxel, volume_value_range) {
                 let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                     one_dimensional,
                     &self.block_start,
@@ -434,7 +434,7 @@ impl ScalarField {
                     // If the neighbor voxel is not within the volume range,
                     // the boundary side of the voxel box should be
                     // materialized.
-                    if !is_voxel_within_range(&neighbor_voxel, volume_value_range) {
+                    if !is_voxel_within_range(neighbor_voxel, volume_value_range) {
                         // Add a rectangle
                         plane_meshes.push(primitive::create_mesh_plane(
                             Plane::from_origin_and_plane(
@@ -512,7 +512,7 @@ impl ScalarField {
             );
 
             // If the voxel is void
-            if !is_voxel_within_range(voxel, volume_value_range) {
+            if !is_voxel_within_range(*voxel, volume_value_range) {
                 // If any of these is true, the coordinate is at the boundary of the
                 // scalar field block
                 if relative_coordinate.x == 0
@@ -659,12 +659,12 @@ pub fn suggest_voxel_size_to_fit_bbox_within_voxel_count(
 /// Returns `true` if the value of a voxel is within given value range. Returns
 /// `false` if the voxel value is not within the `value_range` or if the voxel
 /// does not exist or is out of scalar field's bounds.
-fn is_voxel_within_range<U>(voxel: &Option<f32>, value_range: &U) -> bool
+fn is_voxel_within_range<U>(voxel: Option<f32>, value_range: &U) -> bool
 where
     U: RangeBounds<f32>,
 {
     match voxel {
-        Some(value) => value_range.contains(value),
+        Some(value) => value_range.contains(&value),
         None => false,
     }
 }
