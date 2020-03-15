@@ -16,18 +16,6 @@ fn main() {
         })
         .unwrap_or(hs::Theme::Dark);
 
-    let fullscreen = env::var("HS_FULLSCREEN")
-        .ok()
-        .map(|fullscreen| match fullscreen.as_str() {
-            "0" => false,
-            "1" => true,
-            unsupported_fullscreen => panic!(
-                "Unsupported fullscreen value requested: {}",
-                unsupported_fullscreen,
-            ),
-        })
-        .unwrap_or(false);
-
     let msaa = env::var("HS_MSAA")
         .ok()
         .map(|msaa| match msaa.as_str() {
@@ -91,7 +79,6 @@ fn main() {
 
     hs::init_and_run(hs::Options {
         theme,
-        fullscreen,
         msaa,
         vsync,
         gpu_backend,

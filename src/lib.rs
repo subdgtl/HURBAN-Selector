@@ -66,8 +66,6 @@ const BASE_WINDOW_TITLE: &str = "H.U.R.B.A.N. selector";
 pub struct Options {
     /// What theme to use.
     pub theme: Theme,
-    /// Whether to open a fullscreen window.
-    pub fullscreen: bool,
     /// Which multi-sampling setting to use.
     pub msaa: Msaa,
     /// Whether to run with VSync or not.
@@ -133,61 +131,12 @@ pub fn init_and_run(options: Options) -> ! {
     let icon = winit::window::Icon::from_rgba(img_icon, width_icon, height_icon)
         .expect("Failed to create icon.");
 
-    let window = if options.fullscreen {
-        let monitor = event_loop.primary_monitor();
-
-        // Exclusive fullscreen on macOS has 2 problems:
-        // - winit does not report correct DPI once the window
-        //   switches to fullscreen,
-        // - wgpu on vulkan on metal can not allocate a large enough
-        //   backbuffer.
-        //
-        // Neither of these happen on borderless fullscreen on macOS.
-        // FIXME: Fix these issues in winit and wgpu.
-        #[cfg(target_os = "macos")]
-        {
-            log::info!("Running in fullscreen mode on macOS, opening borderless fullscreen");
-            winit::window::WindowBuilder::new()
-                .with_title(BASE_WINDOW_TITLE)
-                .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
-                .build(&event_loop)
-                .expect("Failed to create window")
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            log::info!("Running in fullscreen mode, looking for exclusive fullscreen video modes");
-            if let Some(video_mode) = monitor.video_modes().next() {
-                log::info!(
-                    "Found video mode: {}, opening exclusive fullscreen",
-                    video_mode,
-                );
-                winit::window::WindowBuilder::new()
-                    .with_title(BASE_WINDOW_TITLE)
-                    .with_fullscreen(Some(winit::window::Fullscreen::Exclusive(video_mode)))
-                    .with_window_icon(Some(icon))
-                    .build(&event_loop)
-                    .expect("Failed to create window")
-            } else {
-                log::info!("Didn't find compatible video mode, opening borderless fullscreen");
-                winit::window::WindowBuilder::new()
-                    .with_title(BASE_WINDOW_TITLE)
-                    .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
-                    .with_window_icon(Some(icon))
-                    .build(&event_loop)
-                    .expect("Failed to create window")
-            }
-        }
-    } else {
-        log::info!("Running in windowed mode");
-
-        winit::window::WindowBuilder::new()
-            .with_title(BASE_WINDOW_TITLE)
-            .with_maximized(true)
-            .with_window_icon(Some(icon))
-            .build(&event_loop)
-            .expect("Failed to create window")
-    };
+    let window = winit::window::WindowBuilder::new()
+        .with_title(BASE_WINDOW_TITLE)
+        .with_maximized(true)
+        .with_window_icon(Some(icon))
+        .build(&event_loop)
+        .expect("Failed to create window");
 
     let initial_window_size = window.inner_size();
     let initial_window_width = initial_window_size.width;
