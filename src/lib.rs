@@ -138,6 +138,13 @@ pub fn init_and_run(options: Options) -> ! {
         .build(&event_loop)
         .expect("Failed to create window");
 
+    // FIXME: Remove this workaround for `WindowBuilder::with_maximized` bug:
+    // https://github.com/rust-windowing/winit/issues/1510
+    #[cfg(target_os = "windows")]
+    {
+        window.set_maximized(true);
+    }
+
     let initial_window_size = window.inner_size();
     let initial_window_width = initial_window_size.width;
     let initial_window_height = initial_window_size.height;
