@@ -1,4 +1,3 @@
-use std::ops::Bound::*;
 use std::ops::RangeBounds;
 
 use num_traits::{FromPrimitive, Num, ToPrimitive};
@@ -34,32 +33,43 @@ pub fn lerp(source: f32, target: f32, weight: f32) -> f32 {
     source + weight * (target - source)
 }
 
-/// Remaps the value from one range to another. Return None if one of the
-/// ranges is infinite.
+/// Remaps the value from one range to another. Return None if conversion of the
+/// value type to f64 fails.
 pub fn remap<T, U>(value: T, source_range: &U, target_range: &U) -> Option<T>
 where
     T: Num + ToPrimitive + FromPrimitive,
     U: RangeBounds<T>,
 {
+    use std::ops::Bound::*;
     if let Included(source_start) | Excluded(source_start) = source_range.start_bound() {
         if let Included(source_end) | Excluded(source_end) = source_range.end_bound() {
             if let Included(target_start) | Excluded(target_start) = target_range.start_bound() {
                 if let Included(target_end) | Excluded(target_end) = target_range.end_bound() {
-                    let source_start_f64 = source_start.to_f64().expect("Can't convert to f64");
-                    let source_end_f64 = source_end.to_f64().expect("Can't convert to f64");
-                    let target_start_f64 = target_start.to_f64().expect("Can't convert to f64");
-                    let target_end_f64 = target_end.to_f64().expect("Can't convert to f64");
-                    let length_source_f64 = source_end_f64 - source_start_f64;
-                    if approx::relative_eq!(length_source_f64, 0.0) {
-                        return T::from_f64((target_start_f64 + target_end_f64) / 2_f64);
+                    if let (
+                        Some(source_start_f64),
+                        Some(source_end_f64),
+                        Some(target_start_f64),
+                        Some(target_end_f64),
+                    ) = (
+                        source_start.to_f64(),
+                        source_end.to_f64(),
+                        target_start.to_f64(),
+                        target_end.to_f64(),
+                    ) {
+                        let length_source_f64 = source_end_f64 - source_start_f64;
+                        if approx::relative_eq!(length_source_f64, 0.0) {
+                            return T::from_f64((target_start_f64 + target_end_f64) / 2_f64);
+                        }
+                        let length_target_f64 = target_end_f64 - target_start_f64;
+
+                        if let Some(value_f64) = value.to_f64() {
+                            let remapped = target_start_f64
+                                + ((value_f64 - source_start_f64) / length_source_f64)
+                                    * length_target_f64;
+
+                            return T::from_f64(remapped);
+                        }
                     }
-                    let length_target_f64 = target_end_f64 - target_start_f64;
-
-                    let value_f64 = value.to_f64().expect("Can't convert to f64");
-                    let remapped = target_start_f64
-                        + ((value_f64 - source_start_f64) / length_source_f64) * length_target_f64;
-
-                    return Some(T::from_f64(remapped).expect("Can't convert from f64"));
                 }
             }
         }

@@ -19,7 +19,7 @@ const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 pub enum FuncBooleanIntersectionError {
     WeldFailed,
     EmptyScalarField,
-    VoxelDimensionsZero,
+    VoxelDimensionsZeroOrLess,
     TooManyVoxels(u32, f32, f32, f32),
 }
 
@@ -31,7 +31,7 @@ impl fmt::Display for FuncBooleanIntersectionError {
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
             FuncBooleanIntersectionError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
-            FuncBooleanIntersectionError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
+            FuncBooleanIntersectionError::VoxelDimensionsZeroOrLess => write!(f, "One or more voxel dimensions are zero or less"),
             FuncBooleanIntersectionError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
@@ -52,7 +52,7 @@ impl Func for FuncBooleanIntersection {
             description: "BOOLEAN INTERSECTION OF VOXEL CLOUDS FROM TWO MESH GEOMETRIES\n\
             \n\
             Converts the input mesh geometries into voxel clouds, then performs \
-            boolean intersection of the first to second voxel clouds and eventually \
+            boolean intersection of the first and second voxel clouds and eventually \
             materializes the resulting voxel cloud into a welded mesh. \
             Boolean intersection keeps only those parts of the volume, which are common \
             to both input geometries. It is equivalent to logical AND operation.\n\
@@ -172,7 +172,7 @@ impl Func for FuncBooleanIntersection {
     ) -> Result<Value, FuncError> {
         let mesh1 = args[0].unwrap_mesh();
         let mesh2 = args[1].unwrap_mesh();
-        let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
+        let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
         let growth_u32 = args[3].unwrap_uint();
         let growth_f32 = growth_u32 as f32;
         let fill = args[4].unwrap_boolean();
@@ -180,11 +180,8 @@ impl Func for FuncBooleanIntersection {
         let analyze_bbox = args[6].unwrap_boolean();
         let analyze_mesh = args[7].unwrap_boolean();
 
-        if voxel_dimensions
-            .iter()
-            .any(|dimension| approx::relative_eq!(*dimension, 0.0))
-        {
-            let error = FuncError::new(FuncBooleanIntersectionError::VoxelDimensionsZero);
+        if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
+            let error = FuncError::new(FuncBooleanIntersectionError::VoxelDimensionsZeroOrLess);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
@@ -195,11 +192,7 @@ impl Func for FuncBooleanIntersection {
         let bbox2 = mesh2.bounding_box();
         let voxel_count2 = voxel_cloud::evaluate_voxel_count(&bbox2, &voxel_dimensions);
 
-        let voxel_count = if voxel_count1 > voxel_count2 {
-            voxel_count1
-        } else {
-            voxel_count2
-        };
+        let voxel_count = voxel_count1.max(voxel_count2);
 
         log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
 

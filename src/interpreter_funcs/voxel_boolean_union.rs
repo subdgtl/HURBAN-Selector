@@ -20,7 +20,7 @@ const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 pub enum FuncBooleanUnionError {
     WeldFailed,
     EmptyScalarField,
-    VoxelDimensionsZero,
+    VoxelDimensionsZeroOrLess,
     TooManyVoxels(u32, f32, f32, f32),
 }
 
@@ -35,7 +35,7 @@ impl fmt::Display for FuncBooleanUnionError {
                 f,
                 "Scalar field from input meshes or the resulting mesh is empty"
             ),
-            FuncBooleanUnionError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
+            FuncBooleanUnionError::VoxelDimensionsZeroOrLess => write!(f, "One or more voxel dimensions are zero or less"),
             FuncBooleanUnionError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
@@ -56,7 +56,7 @@ impl Func for FuncBooleanUnion {
             description: "BOOLEAN UNION OF VOXEL CLOUDS FROM TWO MESH GEOMETRIES\n\
             \n\
             Converts the input mesh geometries into voxel clouds, then performs \
-            boolean union of the first to second voxel clouds and eventually \
+            boolean union of the first and second voxel clouds and eventually \
             materializes the resulting voxel cloud into a welded mesh. \
             Boolean union joins the volumes of the input mesh geometries \
             (does not remove any volume). It is equivalent to logical OR operation.\n\
@@ -176,7 +176,7 @@ impl Func for FuncBooleanUnion {
     ) -> Result<Value, FuncError> {
         let mesh1 = args[0].unwrap_mesh();
         let mesh2 = args[1].unwrap_mesh();
-        let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
+        let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
         let growth_u32 = args[3].unwrap_uint();
         let growth_f32 = growth_u32 as f32;
         let fill = args[4].unwrap_boolean();
@@ -184,11 +184,8 @@ impl Func for FuncBooleanUnion {
         let analyze_bbox = args[6].unwrap_boolean();
         let analyze_mesh = args[7].unwrap_boolean();
 
-        if voxel_dimensions
-            .iter()
-            .any(|dimension| approx::relative_eq!(*dimension, 0.0))
-        {
-            let error = FuncError::new(FuncBooleanUnionError::VoxelDimensionsZero);
+        if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
+            let error = FuncError::new(FuncBooleanUnionError::VoxelDimensionsZeroOrLess);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
@@ -225,15 +222,13 @@ impl Func for FuncBooleanUnion {
         voxel_cloud1.compute_distance_field(&(0.0..=0.0));
         voxel_cloud2.compute_distance_field(&(0.0..=0.0));
 
-        let boolean_union_range = &(-growth_f32..=growth_f32);
-
-        voxel_cloud1.boolean_union(boolean_union_range, &voxel_cloud2, boolean_union_range);
-
         let meshing_range = if fill {
             (Bound::Unbounded, Bound::Included(growth_f32))
         } else {
             (Bound::Included(-growth_f32), Bound::Included(growth_f32))
         };
+
+        voxel_cloud1.boolean_union(&meshing_range, &voxel_cloud2, &meshing_range);
 
         if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {
             let error = FuncError::new(FuncBooleanUnionError::EmptyScalarField);
