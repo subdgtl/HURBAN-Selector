@@ -401,11 +401,14 @@ pub fn init_and_run(options: Options) -> ! {
                     let project = project::Project { version: 1, stmts };
 
                     match project::save(&save_path, project) {
-                        Ok(_) => {
+                        Ok(save_path) => {
+                            let save_path = save_path
+                                .as_os_str()
+                                .to_str()
+                                .expect("Failed to convert save path to str.");
+
                             project_status.save(&save_path);
-
                             change_window_title(&window, &project_status);
-
                             notifications.borrow_mut().push(
                                 time,
                                 NotificationLevel::Info,
@@ -548,15 +551,25 @@ pub fn init_and_run(options: Options) -> ! {
                                 let project = project::Project { version: 1, stmts };
 
                                 match project::save(&save_path, project) {
-                                    Ok(_) => match prevent_overwrite_status {
+                                    Ok(save_path) => match prevent_overwrite_status {
                                         project::NextAction::Exit => {
                                             *control_flow = winit::event_loop::ControlFlow::Exit
                                         }
                                         project::NextAction::NewProject => {
+                                            let save_path = save_path
+                                                .as_os_str()
+                                                .to_str()
+                                                .expect("Failed to convert save path to str.");
+
                                             project_status.save(&save_path);
                                             project_status.new_requested = true;
                                         }
                                         project::NextAction::OpenProject => {
+                                            let save_path = save_path
+                                                .as_os_str()
+                                                .to_str()
+                                                .expect("Failed to convert save path to str.");
+
                                             project_status.save(&save_path);
                                             project_status.open_requested = true
                                         }
