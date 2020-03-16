@@ -36,6 +36,7 @@ mod analytics;
 mod bounding_box;
 mod camera;
 mod convert;
+mod imgui_winit_support;
 mod input;
 mod interpreter;
 mod interpreter_funcs;
@@ -65,8 +66,6 @@ const BASE_WINDOW_TITLE: &str = "H.U.R.B.A.N. selector";
 pub struct Options {
     /// What theme to use.
     pub theme: Theme,
-    /// Whether to open a fullscreen window.
-    pub fullscreen: bool,
     /// Which multi-sampling setting to use.
     pub msaa: Msaa,
     /// Whether to run with VSync or not.
@@ -132,61 +131,24 @@ pub fn init_and_run(options: Options) -> ! {
     let icon = winit::window::Icon::from_rgba(img_icon, width_icon, height_icon)
         .expect("Failed to create icon.");
 
-    let window = if options.fullscreen {
-        let monitor = event_loop.primary_monitor();
+    let window = winit::window::WindowBuilder::new()
+        .with_title(BASE_WINDOW_TITLE)
+        .with_maximized(true)
+        .with_window_icon(Some(icon))
+        .build(&event_loop)
+        .expect("Failed to create window");
 
-        // Exclusive fullscreen on macOS has 2 problems:
-        // - winit does not report correct DPI once the window
-        //   switches to fullscreen,
-        // - wgpu on vulkan on metal can not allocate a large enough
-        //   backbuffer.
-        //
-        // Neither of these happen on borderless fullscreen on macOS.
-        // FIXME: Fix these issues in winit and wgpu.
-        #[cfg(target_os = "macos")]
-        {
-            log::info!("Running in fullscreen mode on macOS, opening borderless fullscreen");
-            winit::window::WindowBuilder::new()
-                .with_title(BASE_WINDOW_TITLE)
-                .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
-                .build(&event_loop)
-                .expect("Failed to create window")
-        }
+    // FIXME: Remove this workaround for `WindowBuilder::with_maximized` bug:
+    // https://github.com/rust-windowing/winit/issues/1510
+    #[cfg(target_os = "windows")]
+    {
+        window.set_maximized(true);
+    }
 
-        #[cfg(not(target_os = "macos"))]
-        {
-            log::info!("Running in fullscreen mode, looking for exclusive fullscreen video modes");
-            if let Some(video_mode) = monitor.video_modes().next() {
-                log::info!(
-                    "Found video mode: {}, opening exclusive fullscreen",
-                    video_mode,
-                );
-                winit::window::WindowBuilder::new()
-                    .with_title(BASE_WINDOW_TITLE)
-                    .with_fullscreen(Some(winit::window::Fullscreen::Exclusive(video_mode)))
-                    .with_window_icon(Some(icon))
-                    .build(&event_loop)
-                    .expect("Failed to create window")
-            } else {
-                log::info!("Didn't find compatible video mode, opening borderless fullscreen");
-                winit::window::WindowBuilder::new()
-                    .with_title(BASE_WINDOW_TITLE)
-                    .with_fullscreen(Some(winit::window::Fullscreen::Borderless(monitor)))
-                    .with_window_icon(Some(icon))
-                    .build(&event_loop)
-                    .expect("Failed to create window")
-            }
-        }
-    } else {
-        log::info!("Running in windowed mode");
-
-        winit::window::WindowBuilder::new()
-            .with_title(BASE_WINDOW_TITLE)
-            .with_maximized(true)
-            .with_window_icon(Some(icon))
-            .build(&event_loop)
-            .expect("Failed to create window")
-    };
+    let initial_window_size = window.inner_size();
+    let initial_window_width = initial_window_size.width;
+    let initial_window_height = initial_window_size.height;
+    let initial_window_aspect_ratio = initial_window_width as f32 / initial_window_height as f32;
 
     let mut session = Session::new();
     session.set_autorun_delay(Some(DURATION_AUTORUN_DELAY));
@@ -199,12 +161,6 @@ pub fn init_and_run(options: Options) -> ! {
     let mut project_status = project::ProjectStatus::default();
 
     change_window_title(&window, &project_status);
-
-    let initial_window_size = window.inner_size().to_physical(window.hidpi_factor());
-    let initial_window_width = initial_window_size.width.round() as u32;
-    let initial_window_height = initial_window_size.height.round() as u32;
-    let initial_window_aspect_ratio =
-        initial_window_size.width as f32 / initial_window_size.height as f32;
 
     let mut camera = Camera::new(
         initial_window_aspect_ratio,
@@ -299,42 +255,30 @@ pub fn init_and_run(options: Options) -> ! {
 
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
     let mut camera_interpolation: Option<CameraInterpolation> = None;
-    // Since input manager needs to process events separately after imgui
-    // handles them, this buffer with copies of events is needed.
-    let mut input_events: Vec<winit::event::Event<_>> = Vec::with_capacity(16);
 
     let time_start = Instant::now();
     let mut time = time_start;
+
+    let mut ui_want_capture_mouse = false;
+    let mut ui_want_capture_keyboard = false;
 
     #[allow(clippy::cognitive_complexity)]
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
 
         match event {
-            winit::event::Event::EventsCleared => {
-                let (duration_last_frame, _duration_running) = {
-                    let now = Instant::now();
-                    let duration_last_frame = now.duration_since(time);
-                    let duration_running = now.duration_since(time_start);
-                    time = now;
-
-                    (duration_last_frame, duration_running)
-                };
+            winit::event::Event::NewEvents(_) => {
+                let now = Instant::now();
+                let duration_last_frame = now.duration_since(time);
+                time = now;
 
                 ui.set_delta_time(duration_last_frame.as_secs_f32());
 
-                let ui_frame = ui.prepare_frame(&window);
                 input_manager.start_frame();
-
-                for event in input_events.drain(..) {
-                    input_manager.process_event(
-                        &event,
-                        ui_frame.want_capture_keyboard(),
-                        ui_frame.want_capture_mouse(),
-                    );
-                }
-
+            }
+            winit::event::Event::MainEventsCleared => {
                 let input_state = input_manager.input_state();
+                let ui_frame = ui.prepare_frame(&window);
 
                 #[cfg(not(feature = "dist"))]
                 {
@@ -536,12 +480,12 @@ pub fn init_and_run(options: Options) -> ! {
                     project_status.error = None;
                 }
 
-                let window_size = window.inner_size().to_physical(window.hidpi_factor());
+                let window_size = window.inner_size();
                 let take_screenshot = ui_frame.draw_screenshot_window(
                     &mut screenshot_modal_open,
                     &mut screenshot_options,
-                    window_size.width.round() as u32,
-                    window_size.height.round() as u32,
+                    window_size.width,
+                    window_size.height,
                 );
 
                 let (tex_logos, width_logos, height_logos) = match options.theme {
@@ -653,17 +597,10 @@ pub fn init_and_run(options: Options) -> ! {
                     }
                 }
 
-                if let Some(logical_size) = input_state.window_resized {
-                    let physical_size = logical_size.to_physical(window.hidpi_factor());
-                    log::debug!(
-                        "Window resized to new physical size {}x{}",
-                        physical_size.width,
-                        physical_size.height,
-                    );
-
-                    let aspect_ratio = physical_size.width as f32 / physical_size.height as f32;
-                    let width = physical_size.width.round() as u32;
-                    let height = physical_size.height.round() as u32;
+                if let Some(physical_size) = input_state.window_resized {
+                    let width = physical_size.width;
+                    let height = physical_size.height;
+                    log::debug!("Window resized to new physical size {}x{}", width, height);
 
                     // While it can't be queried, 16 is usually the minimal
                     // dimension of certain types of textures. Creating anything
@@ -672,7 +609,7 @@ pub fn init_and_run(options: Options) -> ! {
                     if width >= 16 && height >= 16 {
                         screenshot_options.width = width;
                         screenshot_options.height = height;
-                        camera.set_viewport_aspect_ratio(aspect_ratio);
+                        camera.set_viewport_aspect_ratio(width as f32 / height as f32);
                         renderer.set_window_size(width, height);
                     } else {
                         log::warn!("Ignoring new window physical size {}x{}", width, height);
@@ -1108,39 +1045,40 @@ pub fn init_and_run(options: Options) -> ! {
                 }
             }
 
-            winit::event::Event::WindowEvent {
-                event: winit::event::WindowEvent::RedrawRequested,
-                ..
-            } => {
+            winit::event::Event::RedrawRequested(_) => {
                 // We don't answer redraw requests and instead draw in
                 // the "events cleared" for 2 reasons:
                 //
-                // 1) Doing it with VSync is challenging - redrawing
-                //    at the OS's whim while knowing that each redraw
-                //    will block until the monitor flips sounds
-                //    dangerous. We could still redraw here only when
-                //    we were running without VSync, but...
+                // 1) Doing it with VSync is challenging - redrawing at the OS's
+                //    whim is incompatible with blocking until the monitor flips
+                //    each time. We could still redraw here only when we were
+                //    running without VSync or just use this to set a dirty
+                //    flag, but there is also...
                 //
-                // 2) ImGui produces a draw list with `render()`. The
-                //    drawlist shares the lifetime of the `Ui` frame
-                //    context, which is dropped at the end of "events
-                //    cleared". We could copy the draw list and stash
-                //    it for our subsequent handling of redraw
-                //    requests, but it contains raw pointers to the
-                //    `Ui` frame context which I am not sure are alive
-                //    (or even contain correct data) by the time we
-                //    get here. We could also try to prolong the
-                //    lifetime of the `Ui` by not dropping it, but
-                //    this is Rust...
-            }
-
-            winit::event::Event::WindowEvent { .. } => {
-                ui.handle_event(&window, &event);
-                input_events.push(event.clone());
+                // 2) ImGui produces a draw list with `render()`. The drawlist
+                //    shares the lifetime of the `Ui` frame context, which is
+                //    dropped at the end of "events cleared". We could copy the
+                //    draw list and stash it for our subsequent handling of
+                //    redraw requests, but it contains raw pointers to the `Ui`
+                //    frame context which I am not sure are alive (or even
+                //    contain correct data) by the time we get here. We could
+                //    also try to prolong the lifetime of the `Ui` by not
+                //    dropping it, but this is Rust.
             }
 
             _ => (),
         }
+
+        // Note: this is just best effort basis. If imgui is only one event
+        // ahead, it still might not report `want_capture_mouse` and
+        // `want_capture_keyboard` correctly. New winit does not implement
+        // `Clone` for events though, so buffering would be more complicated. In
+        // practice, latent ui capture state shouldn't be an issue.
+        ui.process_event(&event, &window);
+        ui_want_capture_keyboard = ui.want_capture_keyboard();
+        ui_want_capture_mouse = ui.want_capture_mouse();
+
+        input_manager.process_event(&event, ui_want_capture_keyboard, ui_want_capture_mouse);
     });
 }
 
