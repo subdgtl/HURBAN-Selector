@@ -564,7 +564,7 @@ impl<'a> UiFrame<'a> {
                     [window_width * 0.95, window_width * 0.95 / width_logos as f32 * height_logos as f32],
                 ).build(ui);
                 ui.new_line();
-                
+
                 ui.text(imgui::im_str!("SOURCE CODE LICENSE"));
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(imgui::im_str!(
@@ -576,8 +576,8 @@ impl<'a> UiFrame<'a> {
                     \n\
                     The source code of H.U.R.B.A.N. selector written in Rust can be found on \
                     GitHub (https://github.com/subdgtl/HURBAN-Selector)."));
-                    ui.new_line();
-                    regular_font_token.pop(ui);
+                ui.new_line();
+                regular_font_token.pop(ui);
                 ui.new_line();
                 ui.separator();
                 ui.new_line();
@@ -674,8 +674,6 @@ impl<'a> UiFrame<'a> {
                     agreement, shall be governed by and construed in accordance with the laws of \
                     Slovak republic."));
                 regular_font_token.pop(ui);
-
-
                 wrap_token.pop(ui);
             });
 
