@@ -647,7 +647,8 @@ impl ScalarField {
                                     volume_value_range_other,
                                     volume_value_range_self,
                                 )
-                                .expect("One of the ranges is infinite."),
+                                .expect("One of the ranges is infinite.")
+                                    as f32,
                             );
                         }
                     }
