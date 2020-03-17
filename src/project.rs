@@ -109,8 +109,17 @@ pub fn save<P: AsRef<Path>>(path: P, project: Project) -> Result<PathBuf, Projec
 
     let mut path_buf = path.as_ref().to_path_buf();
 
-    if path_buf.extension().is_none() {
-        path_buf.set_extension(PROJECT_EXTENSION);
+    match path_buf.extension() {
+        Some(extension) => {
+            let extension = extension.to_string_lossy().into_owned();
+
+            if extension != PROJECT_EXTENSION {
+                path_buf.set_extension(format!("{}.{}", extension, PROJECT_EXTENSION));
+            }
+        }
+        None => {
+            path_buf.set_extension(PROJECT_EXTENSION);
+        }
     }
 
     let contents = serializer.into_output_string();
