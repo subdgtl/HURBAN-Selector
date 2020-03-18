@@ -5,7 +5,7 @@ use std::ops::RangeBounds;
 use nalgebra::{Point3, Vector2, Vector3};
 
 use crate::bounding_box::BoundingBox;
-use crate::convert::{cast_i32, cast_u32, cast_usize, clamp_cast_i32_to_u32};
+use crate::convert::{cast_i32, cast_u32, cast_usize};
 use crate::geometry;
 use crate::math;
 use crate::plane::Plane;
@@ -34,6 +34,18 @@ use super::{primitive, tools, Face, Mesh};
 /// value outside of the block will cause the program to panic. Reading a value
 /// from beyond the bounds returns None, which is also a valid value even inside
 /// the block.
+///
+/// `volume_value_range` is an interval defining which values of the scalar
+/// field should be considered to be a volume. The `ScalarField::from_mesh`
+/// generates a scalar field, which marks volume voxels with value `0`.
+/// `compute_distance_field` marks each voxel with a value representing the
+/// v
+/// oxel's distance from the original volume, therefore the voxels right at the
+/// shell of the volume are marked 0, the layer around them is marked 1 or -1
+/// (inside closed volumes) etc. Once the scalar field is populated with
+/// meaningful values, it is possible to treat (perform boolean operations or
+/// materialize into mesh) on various numerical ranges. Such range is specified
+/// ad-hoc by parameter `volume_value_range`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ScalarField {
     block_start: Point3<i32>,
@@ -220,18 +232,6 @@ impl ScalarField {
 
     /// Checks if the scalar field contains any voxel with a value from the
     /// given range.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn contains_voxels_within_range<U>(&self, volume_value_range: &U) -> bool
     where
         U: RangeBounds<f32>,
@@ -261,18 +261,6 @@ impl ScalarField {
 
     /// Returns true if the value of a voxel on absolute voxel coordinates
     /// (relative to the voxel space origin) is within given range.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn is_value_at_absolute_voxel_coordinate_within_range<U>(
         &self,
         absolute_coordinate: &Point3<i32>,
@@ -322,18 +310,6 @@ impl ScalarField {
     /// this creates both, outer and inner boundary mesh. There is also a high
     /// risk of generating a non-manifold mesh if some voxels touch only
     /// diagonally.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn to_mesh<U>(&self, volume_value_range: &U) -> Option<Mesh>
     where
         U: RangeBounds<f32>,
@@ -486,18 +462,6 @@ impl ScalarField {
     /// resized to the size and position of an intersection of the two scalar
     /// fields' volumes. The two scalar fields do not have to contain voxels of
     /// the same size.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn boolean_intersection<U>(
         &mut self,
         volume_value_range_self: &U,
@@ -508,8 +472,8 @@ impl ScalarField {
     {
         // Find volume common to both scalar fields.
         if let (Some(self_volume_bounding_box), Some(other_volume_bounding_box)) = (
-            self.volume_bounding_box(volume_value_range_self),
-            other.volume_bounding_box(volume_value_range_other),
+            self.volume_voxel_space_bounding_box(volume_value_range_self),
+            other.volume_voxel_space_bounding_box(volume_value_range_other),
         ) {
             if let Some(bounding_box) = BoundingBox::intersection(
                 [self_volume_bounding_box, other_volume_bounding_box]
@@ -548,7 +512,6 @@ impl ScalarField {
                         *voxel = None;
                     }
                 }
-                self.shrink_to_fit(volume_value_range_self);
                 // Return here because any other option needs to wipe the
                 // current scalar field.
                 return;
@@ -566,22 +529,12 @@ impl ScalarField {
     /// source scalar field. The two scalar fields do not have to contain voxels
     /// of the same size.
     ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
-    ///
     /// # Panics
+    ///
     /// Panics if one of the volume value ranges is infinite.
     ///
     /// # Warning
+    ///
     /// If the input scalar fields are far apart, the resulting scalar field may
     /// be huge.
     pub fn boolean_union<U>(
@@ -592,8 +545,8 @@ impl ScalarField {
     ) where
         U: RangeBounds<f32>,
     {
-        let bounding_box_self = self.volume_bounding_box(volume_value_range_self);
-        let bounding_box_other = other.volume_bounding_box(volume_value_range_other);
+        let bounding_box_self = self.volume_voxel_space_bounding_box(volume_value_range_self);
+        let bounding_box_other = other.volume_voxel_space_bounding_box(volume_value_range_other);
 
         // Early return if the other scalar field doesn't contain any voxels
         // (there are no voxels to be added to self).
@@ -654,7 +607,6 @@ impl ScalarField {
                     }
                 }
             }
-            self.shrink_to_fit(volume_value_range_self);
         } else {
             // Wipe the current scalar field if none of the scalar fields
             // contained any volume voxels.
@@ -667,18 +619,6 @@ impl ScalarField {
     /// that are within volume value range in both scalar fields will be set to
     /// None in the current scalar field, while the rest remains intact. The two
     /// scalar fields do not have to contain voxels of the same size.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn boolean_difference<U>(
         &mut self,
         volume_value_range_self: &U,
@@ -739,51 +679,36 @@ impl ScalarField {
             return;
         }
 
-        let original_values = self.voxels.clone();
-        let original_block_start = self.block_start;
-        let original_block_dimensions = self.block_dimensions;
-
-        self.block_start = *resized_block_start;
-        self.block_dimensions = *resized_block_dimensions;
-
         let resized_values_len = cast_usize(
             resized_block_dimensions.x * resized_block_dimensions.y * resized_block_dimensions.z,
         );
 
-        self.voxels.resize(resized_values_len, None);
+        let mut new_voxels: Vec<Option<f32>> = Vec::with_capacity(resized_values_len);
 
-        for (resized_one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+        for resized_one_dimensional in 0..resized_values_len {
             let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                 resized_one_dimensional,
                 resized_block_start,
                 resized_block_dimensions,
             );
 
-            *voxel = match absolute_voxel_to_one_dimensional_coordinate(
+            let new_voxel = match absolute_voxel_to_one_dimensional_coordinate(
                 &absolute_coordinate,
-                &original_block_start,
-                &original_block_dimensions,
+                &self.block_start,
+                &self.block_dimensions,
             ) {
-                Some(original_one_dimensional) => original_values[original_one_dimensional],
+                Some(original_one_dimensional) => self.voxels[original_one_dimensional],
                 None => None,
             };
+            new_voxels.push(new_voxel);
         }
+
+        self.voxels = new_voxels;
+        self.block_start = *resized_block_start;
+        self.block_dimensions = *resized_block_dimensions;
     }
 
     /// Resize the scalar field block to exactly fit the volumetric geometry.
-    /// Returns None for empty the scalar field.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn shrink_to_fit<U>(&mut self, volume_value_range: &U)
     where
         U: RangeBounds<f32>,
@@ -803,18 +728,6 @@ impl ScalarField {
     /// volume. The voxels that were originally volume voxels, will be set to
     /// value 0. Voxels inside the closed volumes will have the distance value
     /// with a negative sign.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn compute_distance_field<U>(&mut self, volume_value_range: &U)
     where
         U: RangeBounds<f32>,
@@ -969,19 +882,10 @@ impl ScalarField {
 
     /// Returns the bounding box in voxel units of the current scalar field
     /// after shrinking to fit just the nonempty voxels.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
-    pub fn volume_bounding_box<U>(&self, volume_value_range: &U) -> Option<BoundingBox<i32>>
+    pub fn volume_voxel_space_bounding_box<U>(
+        &self,
+        volume_value_range: &U,
+    ) -> Option<BoundingBox<i32>>
     where
         U: RangeBounds<f32>,
     {
@@ -989,11 +893,9 @@ impl ScalarField {
             |(volume_start, volume_dimensions)| {
                 let volume_end = volume_start
                     + Vector3::new(
-                        // Voxels occupy also the end voxel position in the
-                        // grid, hence +1.
-                        cast_i32(volume_dimensions.x) + 1,
-                        cast_i32(volume_dimensions.y) + 1,
-                        cast_i32(volume_dimensions.z) + 1,
+                        cast_i32(volume_dimensions.x),
+                        cast_i32(volume_dimensions.y),
+                        cast_i32(volume_dimensions.z),
                     );
                 BoundingBox::new(&volume_start, &volume_end)
             },
@@ -1003,18 +905,6 @@ impl ScalarField {
     /// Computes boundaries of volumes contained in scalar field. Returns tuple
     /// `(block_start, block_dimensions)`. For empty scalar fields returns the
     /// original block start and zero block dimensions.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     fn compute_volume_boundaries<U>(
         &self,
         volume_value_range: &U,
@@ -1086,9 +976,9 @@ impl ScalarField {
             None
         } else {
             let block_dimensions = Vector3::new(
-                clamp_cast_i32_to_u32(absolute_max.x - absolute_min.x + 1),
-                clamp_cast_i32_to_u32(absolute_max.y - absolute_min.y + 1),
-                clamp_cast_i32_to_u32(absolute_max.z - absolute_min.z + 1),
+                cast_u32(absolute_max.x - absolute_min.x + 1),
+                cast_u32(absolute_max.y - absolute_min.y + 1),
+                cast_u32(absolute_max.z - absolute_min.z + 1),
             );
             Some((absolute_min, block_dimensions))
         }
