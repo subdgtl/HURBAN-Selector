@@ -53,6 +53,8 @@ pub struct Session {
     interpreter_edit_prog_requests_in_flight: HashSet<RequestId>,
 
     prog: Prog,
+    next_var_ident: u64,
+
     log_messages: Vec<Vec<LogMessage>>,
     error: Option<InterpretError>,
 
@@ -89,6 +91,8 @@ impl Session {
             diff_processed_idents: HashSet::with_capacity(64),
 
             prog: Prog::new(Vec::new()),
+            next_var_ident: 0,
+
             log_messages: Vec::new(),
             error: None,
 
@@ -243,8 +247,21 @@ impl Session {
 
     /// Returns the next free variable identifier for the current
     /// program definition.
-    pub fn next_free_var_ident(&self) -> VarIdent {
-        VarIdent(self.prog.stmts().len() as u64)
+    ///
+    /// Does *NOT* reuse variable identifiers to prevent accidental "use after
+    /// free" on variables that have been removed from the program.
+    pub fn next_free_var_ident(&mut self) -> Option<VarIdent> {
+        // Currently, this can generate up to 2^64 - 1 var idents. The last
+        // value is the stopping condition.
+
+        if self.next_var_ident == u64::max_value() {
+            None
+        } else {
+            let ident = VarIdent(self.next_var_ident);
+            self.next_var_ident += 1;
+
+            Some(ident)
+        }
     }
 
     /// Returns human readable variable name for a variable identifier

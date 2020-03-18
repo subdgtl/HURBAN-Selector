@@ -10,7 +10,10 @@ use serde::Serialize;
 
 use crate::interpreter::ast;
 
-pub const PROJECT_EXTENSION: &str = "hurban";
+pub const DEFAULT_NEW_FILENAME: &str = "new_project.hurban";
+
+pub const EXTENSION_DESCRIPTION: &str = "HURBAN selector project (.hurban)";
+pub const EXTENSION_FILTER: &[&str] = &["*.hurban"];
 
 #[derive(Debug, Clone, Copy)]
 pub enum NextAction {

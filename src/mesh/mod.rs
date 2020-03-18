@@ -352,10 +352,6 @@ impl Mesh {
         &self.vertices
     }
 
-    pub fn vertices_mut(&mut self) -> &mut [Point3<f32>] {
-        &mut self.vertices
-    }
-
     pub fn normals(&self) -> &[Vector3<f32>] {
         &self.normals
     }

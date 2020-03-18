@@ -106,9 +106,11 @@ pub enum OverwriteModalTrigger {
     OpenProject,
 }
 
+#[derive(Default)]
 pub struct MenuStatus {
     pub viewport_draw_used_values_changed: bool,
     pub reset_viewport: bool,
+    pub export_obj: bool,
     pub new_project: bool,
     pub save_path: Option<String>,
     pub open_path: Option<String>,
@@ -724,14 +726,7 @@ impl<'a> UiFrame<'a> {
         notifications: &mut Notifications,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
-        let mut status = MenuStatus {
-            viewport_draw_used_values_changed: false,
-            reset_viewport: false,
-            new_project: false,
-            save_path: None,
-            open_path: None,
-            prevent_overwrite_modal: None,
-        };
+        let mut status = MenuStatus::default();
 
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
@@ -924,16 +919,26 @@ impl<'a> UiFrame<'a> {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
                         ui.text_colored(self.colors.tooltip_text, "SAVE SCREENSHOT\n\
                         \n\
-                        Opens the dialog for saving the current viewport into a PNG file.");
+                        Opens a system dialog for saving the current viewport into a PNG file.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                status.export_obj = ui.button(
+                    imgui::im_str!("Export OBJ"),
+                    [-f32::MIN_POSITIVE, 0.0],
+                );
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "EXPORT OBJ\n\
+                        \n\
+                        Opens a system dialog for exporting all unused geometry into an OBJ file.");
                         wrap_token.pop(ui);
                     });
                 }
 
                 ui.separator();
-
-                let ext_description =
-                    &format!("H.U.R.B.A.N. selector project (.{})", project::PROJECT_EXTENSION);
-                let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
                 if ui.button(imgui::im_str!("New"), [-f32::MIN_POSITIVE, 0.0])
                     || project_status.new_requested
@@ -968,11 +973,13 @@ impl<'a> UiFrame<'a> {
                             status.save_path = Some(project_path_str.to_string())
                         }
                         None => {
+                            // FIXME: @Refactoring Factor out this use of
+                            // tinyfiledialogs from this module
                             if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
                                 "Save",
-                                &format!("new_project.{}", project::PROJECT_EXTENSION),
-                                ext_filter,
-                                ext_description,
+                                project::DEFAULT_NEW_FILENAME,
+                                project::EXTENSION_FILTER,
+                                project::EXTENSION_DESCRIPTION,
                             ) {
                                 status.save_path = Some(path);
                             }
@@ -998,11 +1005,13 @@ impl<'a> UiFrame<'a> {
                 }
 
                 if ui.button(imgui::im_str!("Save as..."), [-f32::MIN_POSITIVE, 0.0]) {
+                    // FIXME: @Refactoring Factor out this use of
+                    // tinyfiledialogs from this module
                     if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
                         "Save",
-                        &format!("new_project.{}", project::PROJECT_EXTENSION),
-                        ext_filter,
-                        ext_description,
+                        project::DEFAULT_NEW_FILENAME,
+                        project::EXTENSION_FILTER,
+                        project::EXTENSION_DESCRIPTION,
                     ) {
                         status.save_path = Some(path);
                     }
@@ -1028,6 +1037,8 @@ impl<'a> UiFrame<'a> {
                 if ui.button(imgui::im_str!("Open"), [-f32::MIN_POSITIVE, 0.0])
                     || project_status.open_requested
                 {
+                    // FIXME: @Refactoring Factor out this use of
+                    // tinyfiledialogs from this module
                     if project_status.changed_since_last_save
                         && project_status.prevent_overwrite_status.is_none()
                     {
@@ -1035,7 +1046,7 @@ impl<'a> UiFrame<'a> {
                     } else if let Some(path) = tinyfiledialogs::open_file_dialog(
                         "Open",
                         "",
-                        Some((ext_filter, ext_description)),
+                        Some((project::EXTENSION_FILTER, project::EXTENSION_DESCRIPTION)),
                     ) {
                         status.open_path = Some(path);
                     }
@@ -1150,18 +1161,6 @@ impl<'a> UiFrame<'a> {
         save_modal_result
     }
 
-    pub fn draw_save_dialog(&self) -> Option<String> {
-        let ext_description = &format!("HURBAN selector project (.{})", project::PROJECT_EXTENSION);
-        let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
-
-        tinyfiledialogs::save_file_dialog_with_filter(
-            "Save",
-            &format!("new_project.{}", project::PROJECT_EXTENSION),
-            ext_filter,
-            ext_description,
-        )
-    }
-
     // FIXME: @Refactoring Refactor this once we have full-featured
     // functionality. Until then, this is exploratory code and we
     // don't care.
@@ -1205,7 +1204,8 @@ impl<'a> UiFrame<'a> {
                             \n\
                             Each operation in the pipeline generates data: either a mesh geometry or \
                             a mesh group which can be later used in a subsequent operation. Only unused \
-                            (freshly generated) geometry (mesh or group) is rendered in the viewport, \
+                            (freshly generated) geometry (mesh or group) is rendered in the viewport \
+                            by default, \
                             however even the geometry, which has been already used, can be reused in \
                             subsequent operations. Operations can take as an input only that geometry, \
                             which has been generated in the preceding operations in the pipeline.\n\
@@ -1962,7 +1962,9 @@ impl<'a> UiFrame<'a> {
 
             let init_expr = ast::CallExpr::new(*func_ident, args);
             let stmt = ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                session.next_free_var_ident(),
+                session
+                    .next_free_var_ident()
+                    .expect("Failed to find free variable identifier"),
                 init_expr,
             ));
 
