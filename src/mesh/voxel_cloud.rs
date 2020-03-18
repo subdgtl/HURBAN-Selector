@@ -498,8 +498,8 @@ impl ScalarField {
                     );
 
                     if other
-                        .value_at_absolute_voxel_coordinate(absolute_coordinate_other)
-                        .map(|value| !volume_value_range.contains(&value))
+                        .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
+                        .map(|value| !volume_value_range_other.contains(&value))
                         .unwrap_or(true)
                     {
                         *voxel = None;
@@ -644,8 +644,8 @@ impl ScalarField {
                 );
                 // and so does the other scalar field
                 if other
-                    .value_at_absolute_voxel_coordinate(absolute_coordinate_other)
-                    .map(|value| volume_value_range.contains(&value))
+                    .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
+                    .map(|value| volume_value_range_other.contains(&value))
                     .unwrap_or(false)
                 {
                     // then remove the voxel from the current scalar field
@@ -801,7 +801,7 @@ impl ScalarField {
                 let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
                 // If the neighbor doesn't contain any volume
                 if self
-                    .value_at_absolute_voxel_coordinate(neighbor_absolute_coordinate)
+                    .value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
                     .map(|value| !volume_value_range.contains(&value))
                     .unwrap_or(true)
                 {
@@ -848,7 +848,7 @@ impl ScalarField {
                     // and hasn't been discovered yet and is void,
                     if !discovered_for_distance_field[one_dimensional_neighbor]
                         && self
-                            .value_at_absolute_voxel_coordinate(neighbor_absolute_coordinate)
+                            .value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
                             .map(|value| !volume_value_range.contains(&value))
                             .unwrap_or(true)
                     {
