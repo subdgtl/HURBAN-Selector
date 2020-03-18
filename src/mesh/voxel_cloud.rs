@@ -236,9 +236,11 @@ impl ScalarField {
     where
         U: RangeBounds<f32>,
     {
-        self.voxels
-            .iter()
-            .any(|voxel| is_voxel_within_range(*voxel, volume_value_range))
+        self.voxels.iter().any(|voxel| {
+            voxel
+                .map(|value| volume_value_range.contains(&value))
+                .unwrap_or(false)
+        })
     }
 
     /// Gets the value of a voxel on absolute voxel coordinates (relative to the
@@ -257,22 +259,6 @@ impl ScalarField {
             Some(index) => self.voxels[index],
             _ => None,
         }
-    }
-
-    /// Returns true if the value of a voxel on absolute voxel coordinates
-    /// (relative to the voxel space origin) is within given range.
-    pub fn is_value_at_absolute_voxel_coordinate_within_range<U>(
-        &self,
-        absolute_coordinate: &Point3<i32>,
-        volume_value_range: &U,
-    ) -> bool
-    where
-        U: RangeBounds<f32>,
-    {
-        is_voxel_within_range(
-            self.value_at_absolute_voxel_coordinate(absolute_coordinate),
-            volume_value_range,
-        )
     }
 
     /// Sets the value of a voxel defined in absolute voxel coordinates
@@ -405,7 +391,10 @@ impl ScalarField {
         // Iterate through the scalar field
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
             // If the current voxel is a volume voxel
-            if is_voxel_within_range(*voxel, volume_value_range) {
+            if voxel
+                .map(|value| volume_value_range.contains(&value))
+                .unwrap_or(false)
+            {
                 let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                     one_dimensional,
                     &self.block_start,
@@ -428,7 +417,10 @@ impl ScalarField {
                     // If the neighbor voxel is not within the volume range,
                     // the boundary side of the voxel box should be
                     // materialized.
-                    if !is_voxel_within_range(neighbor_voxel, volume_value_range) {
+                    if neighbor_voxel
+                        .map(|value| !volume_value_range.contains(&value))
+                        .unwrap_or(true)
+                    {
                         // Add a rectangle
                         plane_meshes.push(primitive::create_mesh_plane(
                             Plane::from_origin_and_plane(
@@ -505,10 +497,11 @@ impl ScalarField {
                         &other.voxel_dimensions,
                     );
 
-                    if !other.is_value_at_absolute_voxel_coordinate_within_range(
-                        &absolute_coordinate_other,
-                        volume_value_range_other,
-                    ) {
+                    if other
+                        .value_at_absolute_voxel_coordinate(absolute_coordinate_other)
+                        .map(|value| !volume_value_range.contains(&value))
+                        .unwrap_or(true)
+                    {
                         *voxel = None;
                     }
                 }
@@ -573,7 +566,10 @@ impl ScalarField {
             for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
                 // If the current scalar field doesn't contain a volume voxel at
                 // the current position
-                if !is_voxel_within_range(*voxel, volume_value_range_self) {
+                if voxel
+                    .map(|value| !volume_value_range_self.contains(&value))
+                    .unwrap_or(true)
+                {
                     let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                         one_dimensional,
                         &self.block_start,
@@ -631,7 +627,10 @@ impl ScalarField {
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
             // If the current scalar field contains a volume voxel at the
             // current position
-            if is_voxel_within_range(*voxel, volume_value_range_self) {
+            if voxel
+                .map(|value| volume_value_range_self.contains(&value))
+                .unwrap_or(false)
+            {
                 let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                     one_dimensional,
                     &self.block_start,
@@ -644,10 +643,11 @@ impl ScalarField {
                     &other.voxel_dimensions,
                 );
                 // and so does the other scalar field
-                if other.is_value_at_absolute_voxel_coordinate_within_range(
-                    &absolute_coordinate_other,
-                    volume_value_range_other,
-                ) {
+                if other
+                    .value_at_absolute_voxel_coordinate(absolute_coordinate_other)
+                    .map(|value| volume_value_range.contains(&value))
+                    .unwrap_or(false)
+                {
                     // then remove the voxel from the current scalar field
                     *voxel = None;
                 }
@@ -759,7 +759,10 @@ impl ScalarField {
             );
 
             // If the voxel is void
-            if !is_voxel_within_range(*voxel, volume_value_range) {
+            if voxel
+                .map(|value| !volume_value_range.contains(&value))
+                .unwrap_or(true)
+            {
                 // If any of these is true, the coordinate is at the boundary of the
                 // scalar field block
                 if relative_coordinate.x == 0
@@ -797,10 +800,11 @@ impl ScalarField {
             for neighbor_offset in &neighbor_offsets {
                 let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
                 // If the neighbor doesn't contain any volume
-                if !self.is_value_at_absolute_voxel_coordinate_within_range(
-                    &neighbor_absolute_coordinate,
-                    volume_value_range,
-                ) {
+                if self
+                    .value_at_absolute_voxel_coordinate(neighbor_absolute_coordinate)
+                    .map(|value| !volume_value_range.contains(&value))
+                    .unwrap_or(true)
+                {
                     // and is not out of bounds
                     if let Some(neighbor_one_dimensional) =
                         absolute_voxel_to_one_dimensional_coordinate(
@@ -843,10 +847,10 @@ impl ScalarField {
                 ) {
                     // and hasn't been discovered yet and is void,
                     if !discovered_for_distance_field[one_dimensional_neighbor]
-                        && !self.is_value_at_absolute_voxel_coordinate_within_range(
-                            &neighbor_absolute_coordinate,
-                            volume_value_range,
-                        )
+                        && self
+                            .value_at_absolute_voxel_coordinate(neighbor_absolute_coordinate)
+                            .map(|value| !volume_value_range.contains(&value))
+                            .unwrap_or(true)
                     {
                         // put it into the processing queue with the distance
                         // one higher than the current
@@ -917,7 +921,10 @@ impl ScalarField {
         let mut absolute_max: Point3<i32> =
             Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
-            if is_voxel_within_range(*voxel, volume_value_range) {
+            if voxel
+                .map(|value| volume_value_range.contains(&value))
+                .unwrap_or(false)
+            {
                 let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                     one_dimensional,
                     &self.block_start,
@@ -1017,19 +1024,6 @@ pub fn suggest_voxel_size_to_fit_bbox_within_voxel_count(
     // 1.1 is a quick fix.
     // FIXME: Come up with a precise equation
     current_voxel_dimensions * voxel_scaling_ratio_1d * 1.1
-}
-
-/// Returns `true` if the value of a voxel is within given value range. Returns
-/// `false` if the voxel value is not within the `value_range` or if the voxel
-/// does not exist or is out of scalar field's bounds.
-fn is_voxel_within_range<U>(voxel: Option<f32>, value_range: &U) -> bool
-where
-    U: RangeBounds<f32>,
-{
-    match voxel {
-        Some(value) => value_range.contains(&value),
-        None => false,
-    }
 }
 
 /// Computes a voxel position relative to the block start (relative coordinate)
