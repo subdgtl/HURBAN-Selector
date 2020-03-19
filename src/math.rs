@@ -36,10 +36,19 @@ pub fn lerp(source: f32, target: f32, weight: f32) -> f32 {
 pub fn remap<T, U>(value: T, source_range: &U, target_range: &U) -> Option<f64>
 where
     f64: std::convert::From<T>,
-    T: Copy,
+    T: Copy + PartialEq,
     U: RangeBounds<T>,
 {
     use std::ops::Bound::*;
+
+    // If the source and target ranges are identical (even if they are
+    // infinite), return unchanged value.
+    if source_range.start_bound() == target_range.start_bound()
+        && source_range.end_bound() == target_range.end_bound()
+    {
+        return Some(f64::from(value));
+    }
+
     if let Included(source_start) | Excluded(source_start) = source_range.start_bound() {
         if let Included(source_end) | Excluded(source_end) = source_range.end_bound() {
             if let Included(target_start) | Excluded(target_start) = target_range.start_bound() {

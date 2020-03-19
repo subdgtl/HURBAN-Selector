@@ -538,6 +538,37 @@ impl ScalarField {
     ) where
         U: RangeBounds<f32>,
     {
+        use std::ops::Bound::*;
+
+        // FIXME: This discards the `other` scalar field's fine-grain value
+        // information, such as distance field. This is not a rare situation,
+        // because the ranges are infinite when the volumes should be considered
+        // filled. On the other hand, if the distance field values only make
+        // sense if the volume value ranges are the same for both scalar fields,
+        // which is na edge case now resolved in the remap function - it returns
+        // the unchanged value even if the ranges are identical, even if they
+        // are unbounded.
+        //
+        // Define a value that will be used for a volume voxel coming from the
+        // `other` scalar field in case the `volume_value_range_other` is
+        // unbounded (infinite) and therefore its values can't be remapped.
+        let self_certain_volume_value = if let Included(self_start) | Excluded(self_start) =
+            volume_value_range_self.start_bound()
+        {
+            // Prefer the start value of `volume_value_range_self`.
+            *self_start as f64
+        } else {
+            if let Included(self_end) | Excluded(self_end) = volume_value_range_self.end_bound() {
+                // If the start of the `volume_value_range_self` is unbounded, then use its end.
+                *self_end as f64
+            } else {
+                // If the `volume_value_range_self` is unbounded on both ends,
+                // use zero because it certainly is in the range and is in its
+                // middle.
+                0_f64
+            }
+        };
+
         let bounding_box_self = self.volume_voxel_space_bounding_box(volume_value_range_self);
         let bounding_box_other = other.volume_voxel_space_bounding_box(volume_value_range_other);
 
@@ -596,7 +627,7 @@ impl ScalarField {
                                     volume_value_range_other,
                                     volume_value_range_self,
                                 )
-                                .expect("One of the ranges is infinite.")
+                                .unwrap_or(self_certain_volume_value)
                                     as f32,
                             );
                         }
