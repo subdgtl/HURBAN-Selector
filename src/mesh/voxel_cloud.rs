@@ -557,16 +557,15 @@ impl ScalarField {
         {
             // Prefer the start value of `volume_value_range_self`.
             *self_start as f64
+        } else if let Included(self_end) | Excluded(self_end) = volume_value_range_self.end_bound()
+        {
+            // If the start of the `volume_value_range_self` is unbounded, then use its end.
+            *self_end as f64
         } else {
-            if let Included(self_end) | Excluded(self_end) = volume_value_range_self.end_bound() {
-                // If the start of the `volume_value_range_self` is unbounded, then use its end.
-                *self_end as f64
-            } else {
-                // If the `volume_value_range_self` is unbounded on both ends,
-                // use zero because it certainly is in the range and is in its
-                // middle.
-                0_f64
-            }
+            // If the `volume_value_range_self` is unbounded on both ends,
+            // use zero because it certainly is in the range and is in its
+            // middle.
+            0_f64
         };
 
         let bounding_box_self = self.volume_voxel_space_bounding_box(volume_value_range_self);
