@@ -35,17 +35,16 @@ use super::{primitive, tools, Face, Mesh};
 /// from beyond the bounds returns None, which is also a valid value even inside
 /// the block.
 ///
-/// `volume_value_range` is an interval defining which values of the scalar
-/// field should be considered to be a volume. The `ScalarField::from_mesh`
-/// generates a scalar field, which marks volume voxels with value `0`.
-/// `compute_distance_field` marks each voxel with a value representing the
-/// v
-/// oxel's distance from the original volume, therefore the voxels right at the
-/// shell of the volume are marked 0, the layer around them is marked 1 or -1
-/// (inside closed volumes) etc. Once the scalar field is populated with
-/// meaningful values, it is possible to treat (perform boolean operations or
-/// materialize into mesh) on various numerical ranges. Such range is specified
-/// ad-hoc by parameter `volume_value_range`.
+/// In this struct's method parameters, `volume_value_range` is an interval
+/// defining which values of the scalar field should be considered to be a
+/// volume. The `ScalarField::from_mesh` generates a scalar field, which marks
+/// volume voxels with value `0`. `compute_distance_field` marks each voxel with
+/// a value representing the voxel's distance from the original volume,
+/// therefore the voxels right at the shell of the volume are marked 0, the
+/// layer around them is marked 1 or -1 (inside closed volumes) etc. Once the
+/// scalar field is populated with meaningful values, it is possible to treat
+/// (perform boolean operations or materialize into mesh) on various numerical
+/// ranges. Such range is specified ad-hoc by parameter `volume_value_range`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ScalarField {
     block_start: Point3<i32>,
@@ -505,6 +504,7 @@ impl ScalarField {
                         *voxel = None;
                     }
                 }
+                self.shrink_to_fit(volume_value_range_self);
                 // Return here because any other option needs to wipe the
                 // current scalar field.
                 return;
@@ -1539,5 +1539,86 @@ mod tests {
         assert_eq!(scalar_field.block_start, Point3::origin());
         assert_eq!(scalar_field.block_dimensions, Vector3::new(0, 0, 0));
         assert_eq!(scalar_field.voxels.len(), 0);
+    }
+
+    #[test]
+    fn test_scalar_field_boolean_difference_no_change() {
+        let mut sf_a = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_b = ScalarField::new(
+            &Point3::new(4, 4, 4),
+            &Vector3::new(1, 1, 1),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_correct = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        sf_a.fill_with(Some(0.0));
+        sf_b.fill_with(Some(0.0));
+        sf_correct.fill_with(Some(0.0));
+
+        sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
+
+        assert_eq!(sf_a, sf_correct);
+    }
+
+    #[test]
+    fn test_scalar_field_boolean_difference_empty() {
+        let mut sf_a = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_b = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let sf_correct = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(0, 0, 0),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        sf_a.fill_with(Some(0.0));
+        sf_b.fill_with(Some(0.0));
+
+        sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
+
+        assert_eq!(sf_a, sf_correct);
+    }
+
+    #[test]
+    fn test_scalar_field_boolean_difference_chop_off_corner() {
+        let mut sf_a = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_b = ScalarField::new(
+            &Point3::new(2, 2, 2),
+            &Vector3::new(2, 3, 4),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_correct = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        sf_a.fill_with(Some(0.0));
+        sf_b.fill_with(Some(0.0));
+        sf_correct.fill_with(Some(0.0));
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
+
+        sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
+
+        assert_eq!(sf_a, sf_correct);
     }
 }
