@@ -53,6 +53,15 @@ pub struct Session {
     interpreter_edit_prog_requests_in_flight: HashSet<RequestId>,
 
     prog: Prog,
+    // FIXME: Add variable identifier compaction or other ability to reclaim
+    // unused idents when safe to do so. Currently we never reset the counter
+    // even if we load programs from disk, meaning the numbers accumulate
+    // forever. The software will crash eventually, after all values of u64 are
+    // exhausted. While we can not perform compaction while the program is being
+    // worked on (a `Session` instance already exists), we could provide a
+    // constructor, e.g. `Session::with_program`, that automatically compacts
+    // variable identifiers, preserving references between variable declarations
+    // and variable expressions that use them.
     next_var_ident: u64,
 
     log_messages: Vec<Vec<LogMessage>>,
@@ -132,7 +141,12 @@ impl Session {
 
     /// Pushes a new statement onto the program.
     ///
+    /// If the `Stmt` is `Stmt::VarDecl`, this function ensures that the next
+    /// variable identifier returned by `Session::next_free_var_ident` will not
+    /// conflict with the variable identifier contained in this statement.
+    ///
     /// # Panics
+    ///
     /// Panics if the interpreter is busy.
     pub fn push_prog_stmt(&mut self, current_time: Instant, stmt: Stmt) {
         // This is because the current session could want to report
@@ -146,6 +160,9 @@ impl Session {
         self.prog.push_stmt(stmt.clone());
         self.log_messages.push(Vec::new());
         self.error = None;
+
+        let Stmt::VarDecl(ref var_decl) = stmt;
+        self.next_var_ident = var_decl.ident().0 + 1;
 
         let request_id = self
             .interpreter_server
@@ -164,6 +181,7 @@ impl Session {
     /// Pops a statement from the program.
     ///
     /// # Panics
+    ///
     /// Panics if the interpreter is busy.
     pub fn pop_prog_stmt(&mut self, current_time: Instant) {
         // This is because the current session could want to report
@@ -194,7 +212,12 @@ impl Session {
 
     /// Edits a program statement at the index.
     ///
+    /// If the `Stmt` is `Stmt::VarDecl`, this function ensures that the next
+    /// variable identifier returned by `Session::next_free_var_ident` will not
+    /// conflict with the variable identifier contained in this statement.
+    ///
     /// # Panics
+    ///
     /// Panics if the interpreter is busy.
     pub fn set_prog_stmt_at(&mut self, current_time: Instant, stmt_index: usize, stmt: Stmt) {
         // This is because the current session could want to report
@@ -219,6 +242,9 @@ impl Session {
         self.last_uninterpreted_edit = Some(current_time);
         self.prog.set_stmt_at(stmt_index, stmt.clone());
         self.error = None;
+
+        let Stmt::VarDecl(ref var_decl) = stmt;
+        self.next_var_ident = var_decl.ident().0 + 1;
 
         let request_id = self
             .interpreter_server
@@ -245,15 +271,23 @@ impl Session {
         &self.function_table
     }
 
-    /// Returns the next free variable identifier for the current
-    /// program definition.
+    /// Returns the next free variable identifier for the current program
+    /// definition.
+    ///
+    /// This currently generates idents by incrementing a single integer, but
+    /// this representation is not stable. Currently, this can generate up to
+    /// 2^64 - 1 var idents. The last value is the stopping condition.
     ///
     /// Does *NOT* reuse variable identifiers to prevent accidental "use after
-    /// free" on variables that have been removed from the program.
+    /// free" on variables that have been removed from the program. Each
+    /// instance of `Session` starts counting from 0, but program modifying
+    /// functions, such as `Session::push_prog_stmt` check, whether the pushed
+    /// statment contains an identifier with a higher value and increments the
+    /// counter accordingly, if it does. This ensures that programs not
+    /// generated with help of `Session::next_free_var_ident` (such as programs
+    /// loaded into the software) can be further modified in this session
+    /// without re-declaring variable identifiers.
     pub fn next_free_var_ident(&mut self) -> Option<VarIdent> {
-        // Currently, this can generate up to 2^64 - 1 var idents. The last
-        // value is the stopping condition.
-
         if self.next_var_ident == u64::max_value() {
             None
         } else {
