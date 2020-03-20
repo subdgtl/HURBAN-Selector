@@ -448,6 +448,26 @@ impl ScalarField {
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
+    /// Compute bounding box from scalar field. The bounding box will contain
+    /// the entire block of the voxel space described by the current scalar
+    /// field, regardless if it contains any voxels.
+    ///
+    /// The Bounding box will be defined in cartesian units.
+    pub fn bounding_box_cartesian(&self) -> BoundingBox<f32> {
+        let block_start_cartesian = Point3::new(
+            self.block_start.x as f32 * self.voxel_dimensions.x,
+            self.block_start.y as f32 * self.voxel_dimensions.y,
+            self.block_start.z as f32 * self.voxel_dimensions.z,
+        );
+        let block_end = self.block_end();
+        let block_end_cartesian = Point3::new(
+            block_end.x as f32 * self.voxel_dimensions.x,
+            block_end.y as f32 * self.voxel_dimensions.y,
+            block_end.z as f32 * self.voxel_dimensions.z,
+        );
+        BoundingBox::new(&block_start_cartesian, &block_end_cartesian)
+    }
+
     /// Computes boolean intersection (logical AND operation) of the current and
     /// another scalar field. The current scalar field will be mutated and
     /// resized to the size and position of an intersection of the two scalar
@@ -685,6 +705,100 @@ impl ScalarField {
         }
         self.shrink_to_fit(volume_value_range_self)
     }
+    /// Computes interpolated values of two scalar fields. Prior to
+    /// interpolation, the scalar fields will be recomputed to distance fields.
+    /// The current scalar field will be mutated and resized to encompass values
+    /// from both scalar fields. The two scalar fields do not have to contain
+    /// voxels of the same size.  The interpolation is linear.
+    ///
+    /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
+    /// between the current value to the other value.
+    ///
+    /// The `volume_value_range` is an interval defining which values of the
+    /// scalar field should be considered to be a volume. The
+    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
+    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
+    /// value representing the voxel's distance from the original volume,
+    /// therefore the voxels right at the shell of the volume are marked 0, the
+    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
+    /// the scalar field is populated with meaningful values, it is possible to
+    /// treat (perform boolean operations or materialize into mesh) on various
+    /// numerical ranges. Such range is specified ad-hoc by parameter
+    /// `volume_value_range`.
+    ///
+    /// # Panics
+    /// Panics if one of the volume value ranges is infinite.
+    ///
+    /// # Warning
+    /// If the input scalar fields are far apart, the resulting scalar field may
+    /// be huge.
+    pub fn interpolated_union_of_distance_fields<U>(
+        &mut self,
+        volume_value_range_self: &U,
+        other: &ScalarField,
+        volume_value_range_other: &U,
+        interpolation_factor: f32,
+    ) where
+        U: RangeBounds<f32>,
+    {
+        let mut other_clone = other.clone();
+        let bounding_box_self = self.bounding_box_cartesian();
+        let bounding_box_other = other_clone.bounding_box_cartesian();
+
+        if let Some(bounding_box) = BoundingBox::union(vec![bounding_box_self, bounding_box_other])
+        {
+            self.resize_to_cartesian_bounding_box(&bounding_box);
+            other_clone.resize_to_cartesian_bounding_box(&bounding_box);
+            self.compute_distance_field(volume_value_range_self);
+            other_clone.compute_distance_field(volume_value_range_other);
+
+            self.interpolate_to(&other_clone, interpolation_factor);
+        } else {
+            // Wipe the current scalar field if none of the scalar fields
+            // contained any volume voxels.
+            self.wipe();
+        }
+    }
+
+    /// Interpolate values of the current scalar field to the values of the
+    /// other scalar field. The current scalar field will not be resized, so
+    /// only the overlapping areas will be will be interpolated. If the voxel in
+    /// the current or the other scalar field is Non (does not contain any voxel
+    /// or does not exist), the output value will be also None. The two scalar
+    /// fields do not have to contain voxels of the same size. The interpolation
+    /// is linear.
+    ///
+    /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
+    /// between the current value to the other value.
+    pub fn interpolate_to(&mut self, other: &ScalarField, interpolation_factor: f32) {
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+                &self.voxel_dimensions,
+            );
+            let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                &cartesian_coordinate,
+                &other.voxel_dimensions,
+            );
+
+            *voxel = if let (Some(value_self), Some(value_other)) = (
+                &voxel,
+                other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other),
+            ) {
+                let self_to_other_range = *value_self..value_other;
+
+                let value_interpolated_from_self_to_other =
+                    math::remap(interpolation_factor, &(0.0..1.0), &self_to_other_range)
+                        .expect("The target interval is infinite");
+
+                Some(value_interpolated_from_self_to_other as f32)
+            } else {
+                None
+            };
+        }
+    }
 
     /// Resize the scalar field block to match new block start and block
     /// dimensions.
@@ -912,6 +1026,24 @@ impl ScalarField {
             cast_u32(diagonal.z),
         );
         self.resize(&bounding_box.minimum_point(), &block_dimensions);
+    }
+
+    /// Resize the current scalar field to match the input bounding box in
+    /// cartesian units
+    pub fn resize_to_cartesian_bounding_box(&mut self, bounding_box: &BoundingBox<f32>) {
+        let minimum_point = cartesian_to_absolute_voxel_coordinate(
+            &bounding_box.minimum_point(),
+            &self.voxel_dimensions,
+        );
+        let diagonal = bounding_box.diagonal();
+        let block_dimensions_i32 =
+            cartesian_to_absolute_voxel_coordinate(&Point3::from(diagonal), &self.voxel_dimensions);
+        let block_dimensions_u32 = Vector3::new(
+            cast_u32(block_dimensions_i32.x),
+            cast_u32(block_dimensions_i32.y),
+            cast_u32(block_dimensions_i32.z),
+        );
+        self.resize(&minimum_point, &block_dimensions_u32);
     }
 
     /// Returns the bounding box in voxel units of the current scalar field
