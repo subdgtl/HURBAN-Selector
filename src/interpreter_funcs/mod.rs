@@ -20,6 +20,9 @@ use self::revert_mesh_faces::FuncRevertMeshFaces;
 use self::snap_to_ground::FuncSnapToGround;
 use self::synchronize_mesh_faces::FuncSynchronizeMeshFaces;
 use self::transform::FuncTransform;
+use self::voxel_boolean_difference::FuncBooleanDifference;
+use self::voxel_boolean_intersection::FuncBooleanIntersection;
+use self::voxel_boolean_union::FuncBooleanUnion;
 use self::voxelize::FuncVoxelize;
 use self::weld::FuncWeld;
 
@@ -40,6 +43,9 @@ mod revert_mesh_faces;
 mod snap_to_ground;
 mod synchronize_mesh_faces;
 mod transform;
+mod voxel_boolean_difference;
+mod voxel_boolean_intersection;
+mod voxel_boolean_union;
 mod voxelize;
 mod weld;
 
@@ -70,6 +76,9 @@ pub const FUNC_ID_LOOP_SUBDIVISION: FuncIdent = FuncIdent(6001);
 
 // Voxel-based funcs: 8xxx
 pub const FUNC_ID_VOXELIZE: FuncIdent = FuncIdent(8000);
+pub const FUNC_ID_BOOLEAN_INTERSECTION: FuncIdent = FuncIdent(8001);
+pub const FUNC_ID_BOOLEAN_UNION: FuncIdent = FuncIdent(8002);
+pub const FUNC_ID_BOOLEAN_DIFFERENCE: FuncIdent = FuncIdent(8003);
 
 // Hybridization funcs: 10xxx
 
@@ -125,6 +134,12 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
 
     // Voxel-based funcs: 8xxx
     funcs.insert(FUNC_ID_VOXELIZE, Box::new(FuncVoxelize));
+    funcs.insert(
+        FUNC_ID_BOOLEAN_INTERSECTION,
+        Box::new(FuncBooleanIntersection),
+    );
+    funcs.insert(FUNC_ID_BOOLEAN_UNION, Box::new(FuncBooleanUnion));
+    funcs.insert(FUNC_ID_BOOLEAN_DIFFERENCE, Box::new(FuncBooleanDifference));
 
     // Hybridization funcs
 
