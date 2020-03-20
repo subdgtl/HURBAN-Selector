@@ -1182,15 +1182,16 @@ impl ScalarField {
 }
 
 /// Lookup table of triangle faces suitable to the sample situation. Each vector
-/// item contains a vector of vertex indices. The vector indices correcpond wit
+/// item contains a vector of vertex indices. The vector indices correspond with
 /// the edge index.
 ///
-///  ## Corner and edge indicex scheme
-///
+///  ## Corner and edge indices scheme
+/// 
+/// ```text
 ///                 v4_______e4_____________v5
 ///                  /|                    /|
-///                 / |                   / |
-///              e7/  |                e5/  |
+///                e7 |                  e5 |
+///                /  |                  /  |
 ///               /___|______e6_________/   |
 ///            v7|    |                 |v6 |e9
 ///              |    |                 |   |
@@ -1202,7 +1203,8 @@ impl ScalarField {
 ///              | /e3                  | /e1
 ///              |/_____________________|/
 ///              v3         e2          v2
-///
+/// ```
+/// 
 /// # Source
 ///
 /// http://paulbourke.net/geometry/polygonise/
