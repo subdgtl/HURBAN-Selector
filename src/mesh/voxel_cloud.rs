@@ -478,9 +478,9 @@ impl ScalarField {
         // corners of the test cube. Start iterating at position [-1, -1, -1]
         // relative to the `block_start` and finish at [1, 1, 1] relative to the
         // `block_end` to catch the block boundaries.
-        for z in (self.block_start.z - 1)..(block_end.z + 1) {
-            for y in (self.block_start.y - 1)..(block_end.y + 1) {
-                for x in (self.block_start.x - 1)..(block_end.x + 1) {
+        for z in (self.block_start.z - 1)..=block_end.z {
+            for y in (self.block_start.y - 1)..=block_end.y {
+                for x in (self.block_start.x - 1)..=block_end.x {
                     //                 v4_______e4_____________v5
                     //                  /|                    /|
                     //                 / |                   / |
