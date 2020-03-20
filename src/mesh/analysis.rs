@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use nalgebra as na;
-use nalgebra::{Point3, Vector3};
+use nalgebra::Point3;
 
-use crate::convert::{cast_i32, cast_usize};
+use crate::convert::cast_i32;
 
-use super::{Face, Mesh, OrientedEdge, UnorientedEdge};
+use super::{Mesh, OrientedEdge, UnorientedEdge};
 
 // FIXME: Make more generic: take &[Point] or Iterator<Item=&Point>
 #[allow(dead_code)]
@@ -29,18 +29,59 @@ pub fn find_closest_point(position: &Point3<f32>, mesh: &Mesh) -> Option<Point3<
 }
 
 /// The edges sharing the same vertex indices.
-/// ascending_edges contains edges oriented from lower index to higher
-/// descending_edges contains edges oriented from higher index to lower
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SharedEdges {
-    // FIXME: @Optimization this might be a good case for smallvec,
-    // but also: all the edges here share the same two vertex indices,
-    // so do we *really* need to remember them all in vectors?
-    // Wouldn't just remembering: `index_low`, `index_high`,
-    // `edge_count_ascending`, `edge_count_descending` give us the
-    // same information, but with much less overhead?
-    pub ascending_edges: Vec<OrientedEdge>,
-    pub descending_edges: Vec<OrientedEdge>,
+    /// The lower vertex index shared by the edges.
+    pub index_low: u32,
+    /// The higher vertex index shared by the edges.
+    pub index_high: u32,
+    /// Number of oriented edges from `index_low` to `index_high`.
+    pub edge_count_ascending: usize,
+    /// Number of oriented edges from `index_high` to `index_low`.
+    pub edge_count_descending: usize,
+}
+
+impl SharedEdges {
+    pub fn oriented_edge_iter(&self) -> SharedEdgesOrientedEdgeIter {
+        SharedEdgesOrientedEdgeIter {
+            shared_edges: *self,
+            next_ascending: 0,
+            next_descending: 0,
+        }
+    }
+}
+
+/// Iterator that generates all oriented edges from `SharedEdges`.
+pub struct SharedEdgesOrientedEdgeIter {
+    shared_edges: SharedEdges,
+    next_ascending: usize,
+    next_descending: usize,
+}
+
+impl Iterator for SharedEdgesOrientedEdgeIter {
+    type Item = OrientedEdge;
+
+    fn next(&mut self) -> Option<OrientedEdge> {
+        if self.next_ascending < self.shared_edges.edge_count_ascending {
+            let edge = OrientedEdge {
+                vertices: (self.shared_edges.index_low, self.shared_edges.index_high),
+            };
+            self.next_ascending += 1;
+
+            return Some(edge);
+        }
+
+        if self.next_descending < self.shared_edges.edge_count_descending {
+            let edge = OrientedEdge {
+                vertices: (self.shared_edges.index_high, self.shared_edges.index_low),
+            };
+            self.next_descending += 1;
+
+            return Some(edge);
+        }
+
+        None
+    }
 }
 
 pub type EdgeSharingMap = HashMap<UnorientedEdge, SharedEdges>;
@@ -57,27 +98,29 @@ pub type EdgeSharingMap = HashMap<UnorientedEdge, SharedEdges>;
 /// with not watertight meshes (those that contain border edges).
 /// Meshes containing non-manifold edges are usually corrupted and
 /// little useful work can be done on them.
-#[allow(dead_code)]
 pub fn edge_sharing<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
     oriented_edges: I,
 ) -> EdgeSharingMap {
     let mut edge_sharing_map: EdgeSharingMap = HashMap::new();
     for edge in oriented_edges {
         let unoriented_edge = UnorientedEdge(*edge);
-        let ascending_edges: Vec<OrientedEdge> = Vec::new();
-        let descending_edges: Vec<OrientedEdge> = Vec::new();
+
+        let index_low = edge.vertices.0.min(edge.vertices.1);
+        let index_high = edge.vertices.0.max(edge.vertices.1);
 
         let shared_edges = edge_sharing_map
             .entry(unoriented_edge)
             .or_insert(SharedEdges {
-                ascending_edges,
-                descending_edges,
+                index_low,
+                index_high,
+                edge_count_ascending: 0,
+                edge_count_descending: 0,
             });
 
         if edge.vertices.0 < edge.vertices.1 {
-            shared_edges.ascending_edges.push(*edge);
+            shared_edges.edge_count_ascending += 1;
         } else {
-            shared_edges.descending_edges.push(*edge);
+            shared_edges.edge_count_descending += 1;
         }
     }
 
@@ -91,18 +134,13 @@ fn find_edges_with_valency<'a>(
     edge_sharing: &'a EdgeSharingMap,
     valency: usize,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
+    // TODO(yanchith): Look at whether this really needs to return the iterator.
     edge_sharing
-        .iter()
-        .filter(move |(_, similar_edges)| {
-            similar_edges.ascending_edges.len() + similar_edges.descending_edges.len() == valency
+        .values()
+        .filter(move |shared_edges| {
+            shared_edges.edge_count_ascending + shared_edges.edge_count_descending == valency
         })
-        .flat_map(|(_, similar_edges)| {
-            similar_edges
-                .ascending_edges
-                .iter()
-                .copied()
-                .chain(similar_edges.descending_edges.iter().copied())
-        })
+        .flat_map(|shared_edges| shared_edges.oriented_edge_iter())
 }
 
 /// Finds border edges in a mesh edge collection.
@@ -129,17 +167,11 @@ pub fn non_manifold_edges<'a>(
     edge_sharing: &'a EdgeSharingMap,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
     edge_sharing
-        .iter()
-        .filter(|(_, edge_count)| {
-            edge_count.ascending_edges.len() + edge_count.descending_edges.len() > 2
+        .values()
+        .filter(|shared_edges| {
+            shared_edges.edge_count_ascending + shared_edges.edge_count_descending > 2
         })
-        .flat_map(|(_, similar_edges)| {
-            similar_edges
-                .ascending_edges
-                .iter()
-                .copied()
-                .chain(similar_edges.descending_edges.iter().copied())
-        })
+        .flat_map(|shared_edges| shared_edges.oriented_edge_iter())
 }
 
 /// Checks if mesh contains only manifold or border edges.
@@ -166,7 +198,6 @@ pub fn border_vertex_indices(edge_sharing: &EdgeSharingMap) -> HashSet<u32> {
 /// The mesh may contain holes or islands, therefore it may have an unknown
 /// number of edge loops. If two edge loops meet at a single vertex, the result
 /// may be unpredictable and erratic.
-#[allow(dead_code)]
 pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<UnorientedEdge>> {
     let mut border_edges: Vec<_> = border_edges(edge_sharing).map(UnorientedEdge).collect();
 
@@ -199,14 +230,13 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<UnorientedEdg
 /// orientable mesh each internal edge has its counterpart in a single
 /// reverted oriented edge and the border edges don't have any
 /// counterpart.
-#[allow(dead_code)]
 pub fn is_mesh_orientable(edge_sharing: &EdgeSharingMap) -> bool {
-    edge_sharing.iter().all(|(_, edge_count)| {
+    edge_sharing.values().all(|shared_edges| {
         // Ascending_count and descending_count can never be both 0 at the same
         // time because there is never a case that the edge doesn't exist in any
         // direction. Even if this happens, it means that the tested edge is
         // non-existing and therefore doesn't affect edge winding.
-        edge_count.ascending_edges.len() <= 1 && edge_count.descending_edges.len() <= 1
+        shared_edges.edge_count_ascending <= 1 && shared_edges.edge_count_descending <= 1
     })
 }
 
@@ -214,10 +244,9 @@ pub fn is_mesh_orientable(edge_sharing: &EdgeSharingMap) -> bool {
 ///
 /// The mesh is watertight if there is no border or non-manifold edge,
 /// which means all the edge valencies are 2.
-#[allow(dead_code)]
 pub fn is_mesh_watertight(edge_sharing: &EdgeSharingMap) -> bool {
-    edge_sharing.iter().all(|(_, edge_count)| {
-        edge_count.ascending_edges.len() == 1 && edge_count.descending_edges.len() == 1
+    edge_sharing.values().all(|shared_edges| {
+        shared_edges.edge_count_ascending == 1 && shared_edges.edge_count_descending == 1
     })
 }
 
@@ -227,19 +256,20 @@ pub fn is_mesh_watertight(edge_sharing: &EdgeSharingMap) -> bool {
 /// **must** be triangulated and watertight for this to produce usable results.
 ///
 /// The genus (G) is computed as: `V - E + F = 2*(1 - G)`.
-#[allow(dead_code)]
 pub fn triangulated_mesh_genus(vertex_count: usize, edge_count: usize, face_count: usize) -> i32 {
     1 - (cast_i32(vertex_count) - cast_i32(edge_count) + cast_i32(face_count)) / 2
 }
 
 /// Checks if two meshes are similar.
 ///
+/// This function is slow and is therefore enabled only for tests.
+///
 /// Two mesh geometries are similar when they are visually similar (see the
 /// definition of `are_visually_similar`), and they have the same number of
 /// vertices and normals. Therefore they are going to be treated the same by all
 /// functions of this software and all their transformations result in similar
 /// mesh geometries.
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn are_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
     mesh1.vertices().len() == mesh2.vertices().len()
         && mesh1.normals().len() == mesh2.normals().len()
@@ -247,6 +277,8 @@ pub fn are_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
 }
 
 /// Checks if two meshes are visually similar.
+///
+/// This function is slow and is therefore enabled only for tests.
 ///
 /// Two mesh geometries are visually similar when the position of each vertex in
 /// one mesh geometry matches a position of some vertex in the other mesh
@@ -268,8 +300,13 @@ pub fn are_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
 /// of them is not watertight). Despite that they are considered visually
 /// similar, they are not going to be treated the same by some functions of this
 /// software and all their transformations result in different mesh geometries.
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
+    use nalgebra::Vector3;
+
+    use crate::convert::cast_usize;
+    use crate::mesh::Face;
+
     struct UnpackedFace {
         vertices: (Point3<f32>, Point3<f32>, Point3<f32>),
         normals: (Vector3<f32>, Vector3<f32>, Vector3<f32>),
@@ -339,7 +376,7 @@ pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::Rotation3;
+    use nalgebra::{Rotation3, Vector3};
 
     use crate::mesh::{primitive, NormalStrategy, TriangleFace};
 
@@ -767,18 +804,18 @@ mod tests {
         for ue in unoriented_edges_one_way_correct {
             assert!(edge_sharing_map.contains_key(&ue));
             if ue.0.vertices.0 < ue.0.vertices.1 {
-                assert_eq!(edge_sharing_map.get(&ue).unwrap().ascending_edges.len(), 1);
-                assert_eq!(edge_sharing_map.get(&ue).unwrap().descending_edges.len(), 0);
+                assert_eq!(edge_sharing_map.get(&ue).unwrap().edge_count_ascending, 1);
+                assert_eq!(edge_sharing_map.get(&ue).unwrap().edge_count_descending, 0);
             } else {
-                assert_eq!(edge_sharing_map.get(&ue).unwrap().ascending_edges.len(), 0);
-                assert_eq!(edge_sharing_map.get(&ue).unwrap().descending_edges.len(), 1);
+                assert_eq!(edge_sharing_map.get(&ue).unwrap().edge_count_ascending, 0);
+                assert_eq!(edge_sharing_map.get(&ue).unwrap().edge_count_descending, 1);
             }
         }
 
         for ue in unoriented_edges_two_ways_correct {
             assert!(edge_sharing_map.contains_key(&ue));
-            assert_eq!(edge_sharing_map.get(&ue).unwrap().ascending_edges.len(), 1);
-            assert_eq!(edge_sharing_map.get(&ue).unwrap().descending_edges.len(), 1);
+            assert_eq!(edge_sharing_map.get(&ue).unwrap().edge_count_ascending, 1);
+            assert_eq!(edge_sharing_map.get(&ue).unwrap().edge_count_descending, 1);
         }
     }
 
