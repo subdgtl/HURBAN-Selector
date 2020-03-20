@@ -1020,6 +1020,33 @@ impl ScalarField {
             Some((absolute_min, block_dimensions))
         }
     }
+
+    /// Fills existing scalar field with simplex noise.
+    ///
+    /// The voxel values will be between -1.0 and 1.0.
+    pub fn fill_with_noise(&mut self, noise_scale: f32, time_offset: f32) {
+        use noise::{NoiseFn, OpenSimplex};
+
+        let simplex = OpenSimplex::new();
+
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+            );
+            let noise_scale_f64 = noise_scale as f64;
+
+            let noise_value = simplex.get([
+                absolute_coordinate.x as f64 * noise_scale_f64,
+                absolute_coordinate.y as f64 * noise_scale_f64,
+                absolute_coordinate.z as f64 * noise_scale_f64,
+                time_offset as f64,
+            ]);
+
+            *voxel = Some(noise_value as f32);
+        }
+    }
 }
 
 /// Returns number of voxels created when `ScalarField::from_mesh()` called.

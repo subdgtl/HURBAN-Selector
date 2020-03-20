@@ -23,6 +23,7 @@ use self::transform::FuncTransform;
 use self::voxel_boolean_difference::FuncBooleanDifference;
 use self::voxel_boolean_intersection::FuncBooleanIntersection;
 use self::voxel_boolean_union::FuncBooleanUnion;
+use self::voxel_noise::FuncVoxelNoise;
 use self::voxelize::FuncVoxelize;
 use self::weld::FuncWeld;
 
@@ -46,6 +47,7 @@ mod transform;
 mod voxel_boolean_difference;
 mod voxel_boolean_intersection;
 mod voxel_boolean_union;
+mod voxel_noise;
 mod voxelize;
 mod weld;
 
@@ -79,6 +81,7 @@ pub const FUNC_ID_VOXELIZE: FuncIdent = FuncIdent(8000);
 pub const FUNC_ID_BOOLEAN_INTERSECTION: FuncIdent = FuncIdent(8001);
 pub const FUNC_ID_BOOLEAN_UNION: FuncIdent = FuncIdent(8002);
 pub const FUNC_ID_BOOLEAN_DIFFERENCE: FuncIdent = FuncIdent(8003);
+pub const FUNC_ID_VOXEL_NOISE: FuncIdent = FuncIdent(8004);
 
 // Hybridization funcs: 10xxx
 
@@ -140,6 +143,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     );
     funcs.insert(FUNC_ID_BOOLEAN_UNION, Box::new(FuncBooleanUnion));
     funcs.insert(FUNC_ID_BOOLEAN_DIFFERENCE, Box::new(FuncBooleanDifference));
+    funcs.insert(FUNC_ID_VOXEL_NOISE, Box::new(FuncVoxelNoise));
 
     // Hybridization funcs
 
