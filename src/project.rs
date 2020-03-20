@@ -12,6 +12,7 @@ use crate::interpreter::ast;
 
 pub const DEFAULT_NEW_FILENAME: &str = "new_project.hurban";
 
+pub const EXTENSION: &str = "hurban";
 pub const EXTENSION_DESCRIPTION: &str = "HURBAN selector project (.hurban)";
 pub const EXTENSION_FILTER: &[&str] = &["*.hurban"];
 
@@ -116,12 +117,12 @@ pub fn save<P: AsRef<Path>>(path: P, project: Project) -> Result<PathBuf, Projec
         Some(extension) => {
             let extension = extension.to_string_lossy().into_owned();
 
-            if extension != PROJECT_EXTENSION {
-                path_buf.set_extension(format!("{}.{}", extension, PROJECT_EXTENSION));
+            if extension != EXTENSION {
+                path_buf.set_extension(format!("{}.{}", extension, EXTENSION));
             }
         }
         None => {
-            path_buf.set_extension(PROJECT_EXTENSION);
+            path_buf.set_extension(EXTENSION);
         }
     }
 
