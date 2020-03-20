@@ -1186,7 +1186,7 @@ impl ScalarField {
 /// the edge index.
 ///
 ///  ## Corner and edge indices scheme
-/// 
+///
 /// ```text
 ///                 v4_______e4_____________v5
 ///                  /|                    /|
@@ -1204,7 +1204,7 @@ impl ScalarField {
 ///              |/_____________________|/
 ///              v3         e2          v2
 /// ```
-/// 
+///
 /// # Source
 ///
 /// http://paulbourke.net/geometry/polygonise/
