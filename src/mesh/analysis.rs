@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use nalgebra as na;
 use nalgebra::Point3;
@@ -84,7 +84,7 @@ impl Iterator for SharedEdgesOrientedEdgeIter {
     }
 }
 
-pub type EdgeSharingMap = HashMap<UnorientedEdge, SharedEdges>;
+pub type EdgeSharingMap = fxhash::FxHashMap<UnorientedEdge, SharedEdges>;
 
 // FIXME: Implement edge_sharing also for UnorientedEdges?
 
@@ -101,7 +101,7 @@ pub type EdgeSharingMap = HashMap<UnorientedEdge, SharedEdges>;
 pub fn edge_sharing<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
     oriented_edges: I,
 ) -> EdgeSharingMap {
-    let mut edge_sharing_map: EdgeSharingMap = HashMap::new();
+    let mut edge_sharing_map = fxhash::FxHashMap::default();
     for edge in oriented_edges {
         let unoriented_edge = UnorientedEdge(*edge);
 
