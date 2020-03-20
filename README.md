@@ -66,9 +66,6 @@ Optionally configure one of the following:
 
 **HS_THEME**: Either `dark` or `funky`. Default is `dark`.
 
-**HS_FULLSCREEN**: Run (1) or don't run (0) in fullscreen. Default is
-  no fullscreen.
-
 **HS_MSAA**: Choose the number of multisampling samples. Either 1, 2,
   4, 8, or 16. Default is 1.
 
