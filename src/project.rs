@@ -3,7 +3,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ron;
 use serde::Serialize;
@@ -100,17 +100,37 @@ pub struct Project {
     pub stmts: Vec<ast::Stmt>,
 }
 
-pub fn save<P: AsRef<Path>>(path: P, project: Project) -> Result<(), ProjectError> {
+/// Saves project to given path. If this path does not contain valid project
+/// extension, it is automatically added.
+///
+/// Returns `PathBuf` which can be different than original path if the project
+/// extension was added.
+pub fn save<P: AsRef<Path>>(path: P, project: Project) -> Result<PathBuf, ProjectError> {
     let pretty_config = ron::ser::PrettyConfig::default();
     let mut serializer = ron::ser::Serializer::new(Some(pretty_config), true);
     project.serialize(&mut serializer)?;
 
+    let mut path_buf = path.as_ref().to_path_buf();
+
+    match path_buf.extension() {
+        Some(extension) => {
+            let extension = extension.to_string_lossy().into_owned();
+
+            if extension != PROJECT_EXTENSION {
+                path_buf.set_extension(format!("{}.{}", extension, PROJECT_EXTENSION));
+            }
+        }
+        None => {
+            path_buf.set_extension(PROJECT_EXTENSION);
+        }
+    }
+
     let contents = serializer.into_output_string();
-    let mut file = File::create(path)?;
+    let mut file = File::create(path_buf.as_path())?;
 
     file.write_all(contents.as_bytes())?;
 
-    Ok(())
+    Ok(path_buf)
 }
 
 pub fn open<P: AsRef<Path>>(path: P) -> Result<Project, ProjectError> {
