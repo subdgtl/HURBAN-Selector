@@ -10,6 +10,8 @@ pub struct InputState {
     pub camera_reset_viewport: bool,
     #[cfg(not(feature = "dist"))]
     pub debug_view_cycle: bool,
+    pub prog_run_requested: bool,
+    pub prog_pop_requested: bool,
     pub close_requested: bool,
     pub open_screenshot_options: bool,
     pub window_resized: Option<winit::dpi::PhysicalSize<u32>>,
@@ -68,10 +70,11 @@ impl InputManager {
                         ..
                     } = input;
 
-                    // Respond to Cmd+Q unconditionally, even if GUI has focus
+                    // #justmacosthings
                     #[cfg(target_os = "macos")]
                     {
                         if self.modifiers == winit::event::ModifiersState::LOGO {
+                            // Respond to Cmd+Q unconditionally, even if GUI has focus
                             if let (
                                 Some(winit::event::VirtualKeyCode::Q),
                                 winit::event::ElementState::Pressed,
@@ -79,6 +82,20 @@ impl InputManager {
                             {
                                 self.input_state.close_requested = true;
                             };
+
+                            if !ui_captured_keyboard {
+                                match (virtual_keycode, state) {
+                                    // Cmd+Back is the same as Delete on some
+                                    // macOS keyboards (at least the laptop
+                                    // ones)
+                                    (
+                                        Some(winit::event::VirtualKeyCode::Back),
+                                        winit::event::ElementState::Pressed,
+                                    ) => {
+                                        self.input_state.prog_pop_requested = true;
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -107,6 +124,24 @@ impl InputManager {
                                 winit::event::ElementState::Pressed,
                             ) => {
                                 self.input_state.open_screenshot_options = true;
+                            }
+                            (
+                                Some(winit::event::VirtualKeyCode::Return),
+                                winit::event::ElementState::Pressed,
+                            ) => {
+                                self.input_state.prog_run_requested = true;
+                            }
+                            (
+                                Some(winit::event::VirtualKeyCode::NumpadEnter),
+                                winit::event::ElementState::Pressed,
+                            ) => {
+                                self.input_state.prog_run_requested = true;
+                            }
+                            (
+                                Some(winit::event::VirtualKeyCode::Delete),
+                                winit::event::ElementState::Pressed,
+                            ) => {
+                                self.input_state.prog_pop_requested = true;
                             }
                             _ => (),
                         }
