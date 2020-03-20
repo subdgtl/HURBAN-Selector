@@ -94,7 +94,7 @@ impl InputManager {
                                     ) => {
                                         self.input_state.prog_pop_requested = true;
                                     }
-                                    _ => (),
+                                    (_, _) => (),
                                 }
                             }
                         }
