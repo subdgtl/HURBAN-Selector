@@ -25,7 +25,7 @@ pub enum NextAction {
 
 #[derive(Debug, Default)]
 pub struct ProjectStatus {
-    pub path: Option<String>,
+    pub path: Option<PathBuf>,
     pub error: Option<ProjectError>,
     pub new_requested: bool,
     pub open_requested: bool,
@@ -34,8 +34,8 @@ pub struct ProjectStatus {
 }
 
 impl ProjectStatus {
-    pub fn save(&mut self, path: &str) {
-        self.path = Some(path.to_string());
+    pub fn save<P: AsRef<Path>>(&mut self, path: P) {
+        self.path = Some(path.as_ref().to_path_buf());
         self.changed_since_last_save = false;
     }
 }

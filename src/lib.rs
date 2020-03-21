@@ -9,6 +9,7 @@ use std::f32;
 use std::fs::File;
 use std::io::BufWriter;
 use std::mem;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -396,7 +397,7 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 if let Some(save_path) = menu_status.save_path {
-                    log::info!("Saving project at {}", save_path);
+                    log::info!("Saving project at {}", save_path.to_string_lossy());
 
                     let stmts = session.stmts().to_vec();
                     let project = project::Project { version: 1, stmts };
@@ -424,7 +425,7 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 if let Some(open_path) = menu_status.open_path {
-                    log::info!("Opening new project at {}", open_path);
+                    log::info!("Opening new project at {}", open_path.to_string_lossy());
 
                     match project::open(&open_path) {
                         Ok(project) => {
@@ -460,7 +461,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 session.push_prog_stmt(time, stmt);
                             }
 
-                            project_status.path = Some(open_path.clone());
+                            project_status.path = Some(PathBuf::from(&open_path));
                             project_status.changed_since_last_save = false;
 
                             change_window_title(&window, &project_status);
@@ -468,7 +469,7 @@ pub fn init_and_run(options: Options) -> ! {
                             notifications.borrow_mut().push(
                                 time,
                                 NotificationLevel::Info,
-                                format!("Opened project {}", &open_path),
+                                format!("Opened project {}", &open_path.to_string_lossy()),
                             );
                         }
                         Err(err) => {
@@ -544,12 +545,16 @@ pub fn init_and_run(options: Options) -> ! {
                         SaveModalResult::Save => {
                             let save_path = match project_status.path.clone() {
                                 Some(project_path) => Some(project_path),
-                                None => tinyfiledialogs::save_file_dialog_with_filter(
-                                    "Save",
-                                    project::DEFAULT_NEW_FILENAME,
-                                    project::EXTENSION_FILTER,
-                                    project::EXTENSION_DESCRIPTION,
-                                ),
+                                None => {
+                                    let path_string = tinyfiledialogs::save_file_dialog_with_filter(
+                                        "Save",
+                                        project::DEFAULT_NEW_FILENAME,
+                                        project::EXTENSION_FILTER,
+                                        project::EXTENSION_DESCRIPTION,
+                                    );
+
+                                    path_string.map(PathBuf::from)
+                                }
                             };
 
                             if let Some(save_path) = save_path {
@@ -600,9 +605,18 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 if menu_status.export_obj {
+                    let suggested_filename = match &project_status.path {
+                        Some(path) => match path.file_stem() {
+                            Some(file_stem) => {
+                                Cow::Owned(format!("{}.obj", file_stem.to_string_lossy()))
+                            }
+                            None => Cow::Borrowed("export.obj"),
+                        },
+                        None => Cow::Borrowed("export.obj"),
+                    };
                     if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
                         "Export OBJ",
-                        "export.obj",
+                        &suggested_filename,
                         &["*.obj"],
                         "Wavefront (.obj)",
                     ) {

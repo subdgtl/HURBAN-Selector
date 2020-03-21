@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::f32;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::convert::{
@@ -112,8 +113,8 @@ pub struct MenuStatus {
     pub reset_viewport: bool,
     pub export_obj: bool,
     pub new_project: bool,
-    pub save_path: Option<String>,
-    pub open_path: Option<String>,
+    pub save_path: Option<PathBuf>,
+    pub open_path: Option<PathBuf>,
     pub prevent_overwrite_modal: Option<OverwriteModalTrigger>,
 }
 
@@ -954,7 +955,7 @@ impl<'a> UiFrame<'a> {
                         "",
                         Some((project::EXTENSION_FILTER, project::EXTENSION_DESCRIPTION)),
                     ) {
-                        status.open_path = Some(path);
+                        status.open_path = Some(PathBuf::from(path));
                     }
 
                     project_status.prevent_overwrite_status = None;
@@ -981,8 +982,8 @@ impl<'a> UiFrame<'a> {
 
                 if ui.button(imgui::im_str!("Save"), [-f32::MIN_POSITIVE, 0.0]) {
                     match &project_status.path {
-                        Some(project_path_str) => {
-                            status.save_path = Some(project_path_str.to_string())
+                        Some(project_path) => {
+                            status.save_path = Some(project_path.clone())
                         }
                         None => {
                             // FIXME: @Refactoring Factor out this use of
@@ -993,7 +994,7 @@ impl<'a> UiFrame<'a> {
                                 project::EXTENSION_FILTER,
                                 project::EXTENSION_DESCRIPTION,
                             ) {
-                                status.save_path = Some(path);
+                                status.save_path = Some(PathBuf::from(path));
                             }
                         }
                     }
@@ -1025,7 +1026,7 @@ impl<'a> UiFrame<'a> {
                         project::EXTENSION_FILTER,
                         project::EXTENSION_DESCRIPTION,
                     ) {
-                        status.save_path = Some(path);
+                        status.save_path = Some(PathBuf::from(path));
                     }
                 }
 
