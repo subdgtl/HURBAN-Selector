@@ -1061,8 +1061,10 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                let export_obj_disabled = !session.synced();
-                let export_obj_button_tokens = if export_obj_disabled {
+                let export_obj_disabled_unsynced = !session.synced();
+                let export_obj_disabled_empty = session.stmts().is_empty();
+                let export_obj_disabled = export_obj_disabled_unsynced || export_obj_disabled_empty;
+                let export_obj_button_tokens = if export_obj_disabled  {
                     Some(push_disabled_style(ui))
                 } else {
                     None
@@ -1081,10 +1083,17 @@ impl<'a> UiFrame<'a> {
                         ui.text_colored(self.colors.tooltip_text, "EXPORT OBJ\n\
                         \n\
                         Opens a system dialog for exporting all unused geometry into an OBJ file.");
-                        if export_obj_disabled {
+                        if export_obj_disabled_unsynced {
                             ui.text_colored(
                                 self.colors.log_message_warn,
                                 "WARNING: All operations must be executed before exporting.",
+                            );
+                        }
+                        if export_obj_disabled_empty {
+                            ui.text_colored(
+                                self.colors.log_message_warn,
+                                "WARNING: Can not export empty scene.\n\
+                                 Try adding operations to the pipeline and executing first.",
                             );
                         }
                         wrap_token.pop(ui);
