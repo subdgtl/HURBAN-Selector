@@ -355,6 +355,19 @@ impl Session {
         })
     }
 
+    /// Returns whether the session and underlying interpreter has any work that
+    /// has not yet been published to the callback provided to `Session::poll`.
+    ///
+    /// The session is considered *NOT* synced when either:
+    ///
+    /// - The interpreter is running (same as `Session::interpreter_busy()`)
+    /// - There have been edits to the program, but the interpreter hasn't been
+    ///   run yet.
+    pub fn synced(&self) -> bool {
+        self.interpreter_interpret_request_in_flight.is_none()
+            && self.last_uninterpreted_edit.is_none()
+    }
+
     /// Returns whether the interpreter is currently running. Program
     /// modifications and running the interpreter (again) are
     /// disallowed in this state.
@@ -370,6 +383,8 @@ impl Session {
             !self.interpreter_busy(),
             "Can't submit a request while the interpreter is already interpreting",
         );
+
+        self.last_uninterpreted_edit = None;
 
         let request_id = self
             .interpreter_server
@@ -400,7 +415,6 @@ impl Session {
                 if current_time.saturating_duration_since(last_uninterpreted_edit) > delay
                     && !self.interpreter_busy()
                 {
-                    self.last_uninterpreted_edit = None;
                     self.interpret();
                 }
             }

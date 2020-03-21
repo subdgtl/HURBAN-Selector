@@ -314,6 +314,7 @@ pub fn init_and_run(options: Options) -> ! {
                     &mut viewport_draw_mode,
                     &mut viewport_draw_used_values,
                     &mut project_status,
+                    &mut session,
                     &mut notifications.borrow_mut(),
                 );
 

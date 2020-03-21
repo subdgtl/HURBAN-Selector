@@ -724,6 +724,7 @@ impl<'a> UiFrame<'a> {
         viewport_draw_mode: &mut ViewportDrawMode,
         viewport_draw_used_values: &mut bool,
         project_status: &mut project::ProjectStatus,
+        session: &mut Session,
         notifications: &mut Notifications,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
@@ -1060,16 +1061,32 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
+                let export_obj_disabled = !session.synced();
+                let export_obj_button_tokens = if export_obj_disabled {
+                    Some(push_disabled_style(ui))
+                } else {
+                    None
+                };
                 status.export_obj = ui.button(
                     imgui::im_str!("Export OBJ..."),
                     [-f32::MIN_POSITIVE, 0.0],
                 );
+                if let Some((color_token, style_token)) = export_obj_button_tokens {
+                    color_token.pop(ui);
+                    style_token.pop(ui);
+                }
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
                         ui.text_colored(self.colors.tooltip_text, "EXPORT OBJ\n\
                         \n\
                         Opens a system dialog for exporting all unused geometry into an OBJ file.");
+                        if export_obj_disabled {
+                            ui.text_colored(
+                                self.colors.log_message_warn,
+                                "WARNING: All operations must be executed before exporting.",
+                            );
+                        }
                         wrap_token.pop(ui);
                     });
                 }
