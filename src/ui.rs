@@ -1770,7 +1770,11 @@ impl<'a> UiFrame<'a> {
                 };
 
                 let bold_font_token = ui.push_font(self.font_ids.bold);
-                if ui.button(imgui::im_str!("Run"), [-f32::MIN_POSITIVE, 25.0]) && running_enabled {
+                if ui.button(
+                    imgui::im_str!("Run (Enter)"),
+                    [-f32::MIN_POSITIVE, 25.0],
+                ) && running_enabled
+                {
                     interpret_clicked = true;
                 }
                 bold_font_token.pop(ui);
@@ -1805,7 +1809,7 @@ impl<'a> UiFrame<'a> {
                     Some(push_disabled_style(ui))
                 };
                 if ui.button(
-                    imgui::im_str!("Remove last operation"),
+                    imgui::im_str!("Remove last operation (Del)"),
                     [-f32::MIN_POSITIVE, 25.0],
                 ) && popping_enabled
                 {
