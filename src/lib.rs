@@ -2,10 +2,14 @@ pub use crate::logger::LogLevel;
 pub use crate::renderer::{GpuBackend, GpuPowerPreference, Msaa};
 pub use crate::ui::Theme;
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::f32;
 use std::fs::File;
+use std::io::BufWriter;
 use std::mem;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -36,6 +40,7 @@ mod analytics;
 mod bounding_box;
 mod camera;
 mod convert;
+mod exporter;
 mod imgui_winit_support;
 mod input;
 mod interpreter;
@@ -475,6 +480,7 @@ pub fn init_and_run(options: Options) -> ! {
                     &mut viewport_draw_mode,
                     &mut viewport_draw_used_values,
                     &mut project_status,
+                    &mut session,
                     &mut notifications.borrow_mut(),
                 );
 
@@ -506,9 +512,6 @@ pub fn init_and_run(options: Options) -> ! {
                             .expect("Failed to add ground plane mesh"),
                     );
                 }
-
-                let reset_viewport =
-                    input_state.camera_reset_viewport || menu_status.reset_viewport;
 
                 if let Some(prevent_overwrite_modal_trigger) = menu_status.prevent_overwrite_modal {
                     project_status.prevent_overwrite_status = match prevent_overwrite_modal_trigger
@@ -561,7 +564,7 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 if let Some(save_path) = menu_status.save_path {
-                    log::info!("Saving project at {}", save_path);
+                    log::info!("Saving project at {}", save_path.to_string_lossy());
 
                     let stmts = session.stmts().to_vec();
                     let project = project::Project { version: 1, stmts };
@@ -589,7 +592,7 @@ pub fn init_and_run(options: Options) -> ! {
                 }
 
                 if let Some(open_path) = menu_status.open_path {
-                    log::info!("Opening new project at {}", open_path);
+                    log::info!("Opening new project at {}", open_path.to_string_lossy());
 
                     match project::open(&open_path) {
                         Ok(project) => {
@@ -625,7 +628,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 session.push_prog_stmt(time, stmt);
                             }
 
-                            project_status.path = Some(open_path.clone());
+                            project_status.path = Some(PathBuf::from(&open_path));
                             project_status.changed_since_last_save = false;
 
                             change_window_title(&window, &project_status);
@@ -633,7 +636,7 @@ pub fn init_and_run(options: Options) -> ! {
                             notifications.borrow_mut().push(
                                 time,
                                 NotificationLevel::Info,
-                                format!("Opened project {}", &open_path),
+                                format!("Opened project {}", &open_path.to_string_lossy()),
                             );
                         }
                         Err(err) => {
@@ -709,7 +712,16 @@ pub fn init_and_run(options: Options) -> ! {
                         SaveModalResult::Save => {
                             let save_path = match project_status.path.clone() {
                                 Some(project_path) => Some(project_path),
-                                None => ui_frame.draw_save_dialog(),
+                                None => {
+                                    let path_string = tinyfiledialogs::save_file_dialog_with_filter(
+                                        "Save",
+                                        project::DEFAULT_NEW_FILENAME,
+                                        project::EXTENSION_FILTER,
+                                        project::EXTENSION_DESCRIPTION,
+                                    );
+
+                                    path_string.map(PathBuf::from)
+                                }
                             };
 
                             if let Some(save_path) = save_path {
@@ -741,7 +753,7 @@ pub fn init_and_run(options: Options) -> ! {
                                         }
                                     },
                                     Err(err) => {
-                                        log::error!("{}", err);
+                                        log::error!("Project save failed: {}", err);
 
                                         project_status.error = Some(err);
                                     }
@@ -750,13 +762,93 @@ pub fn init_and_run(options: Options) -> ! {
 
                             project_status.prevent_overwrite_status = None;
                         }
-                        SaveModalResult::Nothing => {}
+                        SaveModalResult::Nothing => (),
                     }
                 }
 
-                if reset_viewport {
+                if input_state.camera_reset_viewport || menu_status.reset_viewport {
                     camera_interpolation =
                         Some(CameraInterpolation::new(&camera, &scene_bounding_box, time));
+                }
+
+                if menu_status.export_obj {
+                    let suggested_filename = match &project_status.path {
+                        Some(path) => match path.file_stem() {
+                            Some(file_stem) => {
+                                Cow::Owned(format!("{}.obj", file_stem.to_string_lossy()))
+                            }
+                            None => Cow::Borrowed("export.obj"),
+                        },
+                        None => Cow::Borrowed("export.obj"),
+                    };
+                    if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
+                        "Export OBJ",
+                        &suggested_filename,
+                        &["*.obj"],
+                        "Wavefront (.obj)",
+                    ) {
+                        // FIXME: The session can not provide a name, if the
+                        // viewport contains an object constructed by a func
+                        // that was already removed from the program. For this
+                        // reason we are exporting just the stringified var
+                        // ident, if the name is not present.
+                        //
+                        // Note that this viewport vs session desync will also
+                        // affect features like viewport picking. We have to
+                        // assume all values in the viewport can potentially be
+                        // stale.
+                        //
+                        // What do we do?
+                        let unused_values_iter = scene_meshes
+                            .iter()
+                            .filter(|(_, (used, _))| !used)
+                            .map(|(value_path, (_, mesh))| {
+                                if value_path.1 == 0 {
+                                    // Do not suffix zero mesh-array index
+                                    let name = match session.var_name_for_ident(value_path.0) {
+                                        Some(name) => Cow::Borrowed(name),
+                                        None => Cow::Owned(value_path.0.to_string()),
+                                    };
+
+                                    (name, mesh.as_ref())
+                                } else {
+                                    // Suffix mesh-array index if nonzero
+                                    let name = match session.var_name_for_ident(value_path.0) {
+                                        Some(name) => {
+                                            Cow::Owned(format!("{} [{}]", name, value_path.1))
+                                        }
+                                        None => Cow::Owned(format!(
+                                            "{} [{}]",
+                                            value_path.0, value_path.1,
+                                        )),
+                                    };
+
+                                    (name, mesh.as_ref())
+                                }
+                            });
+
+                        let file = File::create(&path).expect("Failed to create OBJ file");
+                        let mut writer = BufWriter::new(file);
+
+                        match exporter::export_obj(&mut writer, unused_values_iter, f32::DIGITS) {
+                            Ok(()) => {
+                                log::info!("OBJ exported to: {}", path);
+                                notifications.borrow_mut().push(
+                                    time,
+                                    NotificationLevel::Info,
+                                    format!("OBJ exported to: {}", path),
+                                );
+                            }
+                            Err(err) => {
+                                log::error!("OBJ export failed: {}", err);
+                                notifications.borrow_mut().push(
+                                    time,
+                                    NotificationLevel::Error,
+                                    "OBJ export failed",
+                                );
+                            }
+                        }
+                    }
                 }
 
                 let screenshot_render_target = if take_screenshot {
@@ -1037,7 +1129,7 @@ pub fn init_and_run(options: Options) -> ! {
                                     chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
                                 ));
 
-                                let file = File::create(&path).unwrap();
+                                let file = File::create(&path).expect("Failed to create PNG file");
                                 let mut png_encoder = png::Encoder::new(file, width, height);
                                 png_encoder.set_color(png::ColorType::RGBA);
                                 png_encoder.set_depth(png::BitDepth::Eight);
