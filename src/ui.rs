@@ -27,7 +27,7 @@ const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 1.0 - OPERATIONS_WINDOW_HEIGHT_MULT;
 const PIPELINE_OPERATION_CONSOLE_HEIGHT: f32 = 40.0;
 
 const MENU_WINDOW_WIDTH: f32 = 160.0;
-const MENU_WINDOW_HEIGHT: f32 = 298.0;
+const MENU_WINDOW_HEIGHT: f32 = 321.0;
 
 const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
 const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
@@ -893,7 +893,7 @@ impl<'a> UiFrame<'a> {
                 }
 
                 status.reset_viewport =
-                    ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
+                    ui.button(imgui::im_str!("Reset viewport"), [-f32::MIN_POSITIVE, 0.0]);
                 if status.reset_viewport {
                     notifications.push(
                         current_time,
@@ -907,33 +907,6 @@ impl<'a> UiFrame<'a> {
                         ui.text_colored(self.colors.tooltip_text, "RESET VIEWPORT CAMERA\n\
                         \n\
                         Set the viewport camera to look at all visible geometry in the scene.");
-                        wrap_token.pop(ui);
-                    });
-                }
-
-                if ui.button(imgui::im_str!("Save Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
-                    *screenshot_modal_open = true;
-                }
-                if ui.is_item_hovered() {
-                    ui.tooltip(|| {
-                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "SAVE SCREENSHOT\n\
-                        \n\
-                        Opens a system dialog for saving the current viewport into a PNG file.");
-                        wrap_token.pop(ui);
-                    });
-                }
-
-                status.export_obj = ui.button(
-                    imgui::im_str!("Export OBJ"),
-                    [-f32::MIN_POSITIVE, 0.0],
-                );
-                if ui.is_item_hovered() {
-                    ui.tooltip(|| {
-                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "EXPORT OBJ\n\
-                        \n\
-                        Opens a system dialog for exporting all unused geometry into an OBJ file.");
                         wrap_token.pop(ui);
                     });
                 }
@@ -966,6 +939,45 @@ impl<'a> UiFrame<'a> {
                         wrap_token.pop(ui);
                     });
                 }
+
+                                if ui.button(imgui::im_str!("Open"), [-f32::MIN_POSITIVE, 0.0])
+                    || project_status.open_requested
+                {
+                    // FIXME: @Refactoring Factor out this use of
+                    // tinyfiledialogs from this module
+                    if project_status.changed_since_last_save
+                        && project_status.prevent_overwrite_status.is_none()
+                    {
+                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::OpenProject);
+                    } else if let Some(path) = tinyfiledialogs::open_file_dialog(
+                        "Open",
+                        "",
+                        Some((project::EXTENSION_FILTER, project::EXTENSION_DESCRIPTION)),
+                    ) {
+                        status.open_path = Some(path);
+                    }
+
+                    project_status.prevent_overwrite_status = None;
+                    project_status.open_requested = false;
+                }
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "OPEN PROJECT FROM A .hurban FILE\n\
+                        \n\
+                        Opens the sequence of operations saved in a .hurban file.\n\
+                        \n\
+                        The .hurban project file contains only the operation pipeline. It does not contain any \
+                        actual geometry, but rather just the sequence of operations that generates the geometry \
+                        and references to the external files to import. \
+                        It is advised to keep the files to import next to the .hurban project file \
+                        and distribute them together.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                ui.separator();
 
                 if ui.button(imgui::im_str!("Save"), [-f32::MIN_POSITIVE, 0.0]) {
                     match &project_status.path {
@@ -1034,39 +1046,29 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                if ui.button(imgui::im_str!("Open"), [-f32::MIN_POSITIVE, 0.0])
-                    || project_status.open_requested
-                {
-                    // FIXME: @Refactoring Factor out this use of
-                    // tinyfiledialogs from this module
-                    if project_status.changed_since_last_save
-                        && project_status.prevent_overwrite_status.is_none()
-                    {
-                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::OpenProject);
-                    } else if let Some(path) = tinyfiledialogs::open_file_dialog(
-                        "Open",
-                        "",
-                        Some((project::EXTENSION_FILTER, project::EXTENSION_DESCRIPTION)),
-                    ) {
-                        status.open_path = Some(path);
-                    }
-
-                    project_status.prevent_overwrite_status = None;
-                    project_status.open_requested = false;
+                if ui.button(imgui::im_str!("Save screenshot..."), [-f32::MIN_POSITIVE, 0.0]) {
+                    *screenshot_modal_open = true;
                 }
-
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "OPEN PROJECT FROM A .hurban FILE\n\
+                        ui.text_colored(self.colors.tooltip_text, "SAVE SCREENSHOT\n\
                         \n\
-                        Opens the sequence of operations saved in a .hurban file.\n\
+                        Opens a system dialog for saving the current viewport into a PNG file.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                status.export_obj = ui.button(
+                    imgui::im_str!("Export OBJ..."),
+                    [-f32::MIN_POSITIVE, 0.0],
+                );
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "EXPORT OBJ\n\
                         \n\
-                        The .hurban project file contains only the operation pipeline. It does not contain any \
-                        actual geometry, but rather just the sequence of operations that generates the geometry \
-                        and references to the external files to import. \
-                        It is advised to keep the files to import next to the .hurban project file \
-                        and distribute them together.");
+                        Opens a system dialog for exporting all unused geometry into an OBJ file.");
                         wrap_token.pop(ui);
                     });
                 }
