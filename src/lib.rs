@@ -277,6 +277,162 @@ pub fn init_and_run(options: Options) -> ! {
                 input_manager.start_frame();
             }
             winit::event::Event::MainEventsCleared => {
+                // Poll at the beginning of event processing, so that the
+                // pipeline UI is not lagging one frame behind.
+                session.poll(time, |callback_value| match callback_value {
+                    PollNotification::UsedValueAdded(var_ident, value) => match value {
+                        Value::Mesh(mesh) => {
+                            let gpu_mesh = GpuMesh::from_mesh(&mesh);
+                            let gpu_mesh_id = renderer
+                                .add_scene_mesh(&gpu_mesh)
+                                .expect("Failed to upload scene mesh");
+
+                            let path = ValuePath(var_ident, 0);
+
+                            scene_meshes.insert(path, (true, mesh));
+                            scene_gpu_mesh_handles.insert(path, (true, gpu_mesh_id));
+                        }
+                        Value::MeshArray(mesh_array) => {
+                            for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
+                                let gpu_mesh = GpuMesh::from_mesh(&mesh);
+                                let gpu_mesh_id = renderer
+                                    .add_scene_mesh(&gpu_mesh)
+                                    .expect("Failed to upload scene mesh");
+
+                                let path = ValuePath(var_ident, index);
+
+                                scene_meshes.insert(path, (true, mesh));
+                                scene_gpu_mesh_handles.insert(path, (true, gpu_mesh_id));
+                            }
+                        }
+                        _ => (/* Ignore other values, we don't display them in the viewport */),
+                    },
+
+                    PollNotification::UsedValueRemoved(var_ident, value) => match value {
+                        Value::Mesh(_) => {
+                            let path = ValuePath(var_ident, 0);
+
+                            scene_meshes.remove(&path);
+                            let gpu_mesh_id = scene_gpu_mesh_handles
+                                .remove(&path)
+                                .expect("Gpu mesh ID was not tracked")
+                                .1;
+
+                            renderer.remove_scene_mesh(gpu_mesh_id);
+                        }
+                        Value::MeshArray(mesh_array) => {
+                            for index in 0..mesh_array.len() {
+                                let path = ValuePath(var_ident, cast_usize(index));
+
+                                scene_meshes.remove(&path);
+                                let gpu_mesh_id = scene_gpu_mesh_handles
+                                    .remove(&path)
+                                    .expect("Gpu mesh ID was not tracked")
+                                    .1;
+
+                                renderer.remove_scene_mesh(gpu_mesh_id);
+                            }
+                        }
+                        _ => (/* Ignore other values, we don't display them in the viewport */),
+                    },
+
+                    PollNotification::UnusedValueAdded(var_ident, value) => match value {
+                        Value::Mesh(mesh) => {
+                            let gpu_mesh = GpuMesh::from_mesh(&mesh);
+                            let gpu_mesh_id = renderer
+                                .add_scene_mesh(&gpu_mesh)
+                                .expect("Failed to upload scene mesh");
+
+                            let path = ValuePath(var_ident, 0);
+
+                            scene_meshes.insert(path, (false, mesh));
+                            scene_gpu_mesh_handles.insert(path, (false, gpu_mesh_id));
+                        }
+                        Value::MeshArray(mesh_array) => {
+                            for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
+                                let gpu_mesh = GpuMesh::from_mesh(&mesh);
+                                let gpu_mesh_id = renderer
+                                    .add_scene_mesh(&gpu_mesh)
+                                    .expect("Failed to upload scene mesh");
+
+                                let path = ValuePath(var_ident, index);
+
+                                scene_meshes.insert(path, (false, mesh));
+                                scene_gpu_mesh_handles.insert(path, (false, gpu_mesh_id));
+                            }
+                        }
+                        _ => (/* Ignore other values, we don't display them in the viewport */),
+                    },
+
+                    PollNotification::UnusedValueRemoved(var_ident, value) => match value {
+                        Value::Mesh(_) => {
+                            let path = ValuePath(var_ident, 0);
+
+                            scene_meshes.remove(&path);
+                            let gpu_mesh_id = scene_gpu_mesh_handles
+                                .remove(&path)
+                                .expect("Gpu mesh ID was not tracked")
+                                .1;
+
+                            renderer.remove_scene_mesh(gpu_mesh_id);
+                        }
+                        Value::MeshArray(mesh_array) => {
+                            for index in 0..mesh_array.len() {
+                                let path = ValuePath(var_ident, cast_usize(index));
+
+                                scene_meshes.remove(&path);
+                                let gpu_mesh_id = scene_gpu_mesh_handles
+                                    .remove(&path)
+                                    .expect("Gpu mesh ID was not tracked")
+                                    .1;
+
+                                renderer.remove_scene_mesh(gpu_mesh_id);
+                            }
+                        }
+                        _ => (/* Ignore other values, we don't display them in the viewport */),
+                    },
+
+                    PollNotification::FinishedSuccessfully => {
+                        scene_bounding_box = BoundingBox::union(
+                            scene_meshes
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(_, mesh)| mesh.bounding_box()),
+                        )
+                        .unwrap_or_else(BoundingBox::unit);
+
+                        ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                        ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                        renderer.remove_scene_mesh(
+                            ground_plane_gpu_mesh_handle
+                                .take()
+                                .expect("Ground plane must always be present"),
+                        );
+                        ground_plane_gpu_mesh_handle = Some(
+                            renderer
+                                .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
+                                .expect("Failed to add ground plane mesh"),
+                        );
+
+                        notifications.borrow_mut().push(
+                            time,
+                            NotificationLevel::Info,
+                            "Execution of the Operation pipeline finished successfully.",
+                        );
+                    }
+
+                    PollNotification::FinishedWithError(error_message) => {
+                        notifications.borrow_mut().push(
+                            time,
+                            NotificationLevel::Error,
+                            format!(
+                                "Execution of the Operation pipeline finished with error: {}",
+                                error_message
+                            ),
+                        );
+                    }
+                });
+
                 let input_state = input_manager.input_state();
                 let ui_frame = ui.prepare_frame(&window);
 
@@ -285,6 +441,16 @@ pub fn init_and_run(options: Options) -> ! {
                     if input_state.debug_view_cycle {
                         renderer_debug_view = renderer_debug_view.cycle();
                         log::debug!("Cycled debug view to {:?}", renderer_debug_view);
+                    }
+                }
+
+                if !session.interpreter_busy() {
+                    if input_state.prog_run_requested && session.autorun_delay().is_none() {
+                        session.interpret();
+                    }
+
+                    if input_state.prog_pop_requested {
+                        session.pop_prog_stmt(time);
                     }
                 }
 
@@ -628,160 +794,6 @@ pub fn init_and_run(options: Options) -> ! {
                         log::warn!("Ignoring new window physical size {}x{}", width, height);
                     }
                 }
-
-                session.poll(time, |callback_value| match callback_value {
-                    PollNotification::UsedValueAdded(var_ident, value) => match value {
-                        Value::Mesh(mesh) => {
-                            let gpu_mesh = GpuMesh::from_mesh(&mesh);
-                            let gpu_mesh_id = renderer
-                                .add_scene_mesh(&gpu_mesh)
-                                .expect("Failed to upload scene mesh");
-
-                            let path = ValuePath(var_ident, 0);
-
-                            scene_meshes.insert(path, (true, mesh));
-                            scene_gpu_mesh_handles.insert(path, (true, gpu_mesh_id));
-                        }
-                        Value::MeshArray(mesh_array) => {
-                            for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
-                                let gpu_mesh = GpuMesh::from_mesh(&mesh);
-                                let gpu_mesh_id = renderer
-                                    .add_scene_mesh(&gpu_mesh)
-                                    .expect("Failed to upload scene mesh");
-
-                                let path = ValuePath(var_ident, index);
-
-                                scene_meshes.insert(path, (true, mesh));
-                                scene_gpu_mesh_handles.insert(path, (true, gpu_mesh_id));
-                            }
-                        }
-                        _ => (/* Ignore other values, we don't display them in the viewport */),
-                    },
-
-                    PollNotification::UsedValueRemoved(var_ident, value) => match value {
-                        Value::Mesh(_) => {
-                            let path = ValuePath(var_ident, 0);
-
-                            scene_meshes.remove(&path);
-                            let gpu_mesh_id = scene_gpu_mesh_handles
-                                .remove(&path)
-                                .expect("Gpu mesh ID was not tracked")
-                                .1;
-
-                            renderer.remove_scene_mesh(gpu_mesh_id);
-                        }
-                        Value::MeshArray(mesh_array) => {
-                            for index in 0..mesh_array.len() {
-                                let path = ValuePath(var_ident, cast_usize(index));
-
-                                scene_meshes.remove(&path);
-                                let gpu_mesh_id = scene_gpu_mesh_handles
-                                    .remove(&path)
-                                    .expect("Gpu mesh ID was not tracked")
-                                    .1;
-
-                                renderer.remove_scene_mesh(gpu_mesh_id);
-                            }
-                        }
-                        _ => (/* Ignore other values, we don't display them in the viewport */),
-                    },
-
-                    PollNotification::UnusedValueAdded(var_ident, value) => match value {
-                        Value::Mesh(mesh) => {
-                            let gpu_mesh = GpuMesh::from_mesh(&mesh);
-                            let gpu_mesh_id = renderer
-                                .add_scene_mesh(&gpu_mesh)
-                                .expect("Failed to upload scene mesh");
-
-                            let path = ValuePath(var_ident, 0);
-
-                            scene_meshes.insert(path, (false, mesh));
-                            scene_gpu_mesh_handles.insert(path, (false, gpu_mesh_id));
-                        }
-                        Value::MeshArray(mesh_array) => {
-                            for (index, mesh) in mesh_array.iter_refcounted().enumerate() {
-                                let gpu_mesh = GpuMesh::from_mesh(&mesh);
-                                let gpu_mesh_id = renderer
-                                    .add_scene_mesh(&gpu_mesh)
-                                    .expect("Failed to upload scene mesh");
-
-                                let path = ValuePath(var_ident, index);
-
-                                scene_meshes.insert(path, (false, mesh));
-                                scene_gpu_mesh_handles.insert(path, (false, gpu_mesh_id));
-                            }
-                        }
-                        _ => (/* Ignore other values, we don't display them in the viewport */),
-                    },
-
-                    PollNotification::UnusedValueRemoved(var_ident, value) => match value {
-                        Value::Mesh(_) => {
-                            let path = ValuePath(var_ident, 0);
-
-                            scene_meshes.remove(&path);
-                            let gpu_mesh_id = scene_gpu_mesh_handles
-                                .remove(&path)
-                                .expect("Gpu mesh ID was not tracked")
-                                .1;
-
-                            renderer.remove_scene_mesh(gpu_mesh_id);
-                        }
-                        Value::MeshArray(mesh_array) => {
-                            for index in 0..mesh_array.len() {
-                                let path = ValuePath(var_ident, cast_usize(index));
-
-                                scene_meshes.remove(&path);
-                                let gpu_mesh_id = scene_gpu_mesh_handles
-                                    .remove(&path)
-                                    .expect("Gpu mesh ID was not tracked")
-                                    .1;
-
-                                renderer.remove_scene_mesh(gpu_mesh_id);
-                            }
-                        }
-                        _ => (/* Ignore other values, we don't display them in the viewport */),
-                    },
-
-                    PollNotification::FinishedSuccessfully => {
-                        scene_bounding_box = BoundingBox::union(
-                            scene_meshes
-                                .values()
-                                .filter(|(used, _)| viewport_draw_used_values || !used)
-                                .map(|(_, mesh)| mesh.bounding_box()),
-                        )
-                        .unwrap_or_else(BoundingBox::unit);
-
-                        ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
-                        ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-                        renderer.remove_scene_mesh(
-                            ground_plane_gpu_mesh_handle
-                                .take()
-                                .expect("Ground plane must always be present"),
-                        );
-                        ground_plane_gpu_mesh_handle = Some(
-                            renderer
-                                .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
-                                .expect("Failed to add ground plane mesh"),
-                        );
-
-                        notifications.borrow_mut().push(
-                            time,
-                            NotificationLevel::Info,
-                            "Execution of the Operation pipeline finished successfully.",
-                        );
-                    }
-
-                    PollNotification::FinishedWithError(error_message) => {
-                        notifications.borrow_mut().push(
-                            time,
-                            NotificationLevel::Error,
-                            format!(
-                                "Execution of the Operation pipeline finished with error: {}",
-                                error_message
-                            ),
-                        );
-                    }
-                });
 
                 if let Some(interp) = camera_interpolation {
                     if interp.target_time > time {
