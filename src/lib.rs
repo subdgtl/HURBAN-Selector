@@ -601,7 +601,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                 if menu_status.export_obj {
                     if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
-                        "Save",
+                        "Export OBJ",
                         "export.obj",
                         &["*.obj"],
                         "Wavefront (.obj)",
