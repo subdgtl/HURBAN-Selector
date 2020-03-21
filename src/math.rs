@@ -1,3 +1,5 @@
+use std::ops::RangeBounds;
+
 pub fn clamp(x: f32, min: f32, max: f32) -> f32 {
     // FIXME: clamp may eventually be stabilized in std
     // https://github.com/rust-lang/rust/issues/44095
@@ -27,6 +29,50 @@ pub fn decay(source: f32, target: f32, smoothness: f32, delta: f32) -> f32 {
 /// normalized `weight`.
 pub fn lerp(source: f32, target: f32, weight: f32) -> f32 {
     source + weight * (target - source)
+}
+
+/// Remaps the value from one range to another. Returns None if one of the
+/// ranges is infinite or if conversion to f64 fails.
+pub fn remap<T, U>(value: T, source_range: &U, target_range: &U) -> Option<f64>
+where
+    f64: std::convert::From<T>,
+    T: Copy + PartialEq,
+    U: RangeBounds<T>,
+{
+    use std::ops::Bound::*;
+
+    // If the source and target ranges are identical (even if they are
+    // infinite), return unchanged value.
+    if source_range.start_bound() == target_range.start_bound()
+        && source_range.end_bound() == target_range.end_bound()
+    {
+        return Some(f64::from(value));
+    }
+
+    if let Included(source_start) | Excluded(source_start) = source_range.start_bound() {
+        if let Included(source_end) | Excluded(source_end) = source_range.end_bound() {
+            if let Included(target_start) | Excluded(target_start) = target_range.start_bound() {
+                if let Included(target_end) | Excluded(target_end) = target_range.end_bound() {
+                    let source_start_f64 = f64::from(*source_start);
+                    let source_end_f64 = f64::from(*source_end);
+                    let target_start_f64 = f64::from(*target_start);
+                    let target_end_f64 = f64::from(*target_end);
+                    let length_source_f64 = source_end_f64 - source_start_f64;
+                    if approx::relative_eq!(length_source_f64, 0.0) {
+                        return Some((target_start_f64 + target_end_f64) / 2_f64);
+                    }
+                    let length_target_f64 = target_end_f64 - target_start_f64;
+
+                    let value_f64 = f64::from(value);
+                    let remapped = target_start_f64
+                        + ((value_f64 - source_start_f64) / length_source_f64) * length_target_f64;
+
+                    return Some(remapped);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Smooth interpolation based on cubic bezier curve with adjustable
