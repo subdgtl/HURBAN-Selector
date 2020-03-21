@@ -1069,7 +1069,7 @@ impl<'a> UiFrame<'a> {
                 } else {
                     None
                 };
-                status.export_obj = ui.button(
+                let export_obj = ui.button(
                     imgui::im_str!("Export OBJ..."),
                     [-f32::MIN_POSITIVE, 0.0],
                 );
@@ -1099,6 +1099,8 @@ impl<'a> UiFrame<'a> {
                         wrap_token.pop(ui);
                     });
                 }
+
+                status.export_obj = !export_obj_disabled && export_obj;
 
                 ui.separator();
 
