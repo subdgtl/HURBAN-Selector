@@ -151,8 +151,10 @@ impl ScalarField {
             bounding_box_tight.offset(growth_offset_vector_in_cartesian_units);
 
         // Target scalar field to be filled with points on the mesh surface.
-        let mut scalar_field =
-            ScalarField::from_bounding_box_cartesian_space_space(&bounding_box_offset, voxel_dimensions);
+        let mut scalar_field = ScalarField::from_bounding_box_cartesian_space_space(
+            &bounding_box_offset,
+            voxel_dimensions,
+        );
 
         // Going to populate the mesh with points as dense as the smallest voxel
         // dimension.
