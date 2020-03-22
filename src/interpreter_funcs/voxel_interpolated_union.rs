@@ -228,7 +228,7 @@ impl Func for FuncInterpolatedUnion {
         if let Some(bounding_box) = BoundingBox::union(
             [bounding_box_voxel_cloud1, bounding_box_voxel_cloud2]
                 .iter()
-                .map(|bbox| *bbox),
+                .copied(),
         ) {
             voxel_cloud1.resize_to_bounding_box_cartesian_space(&bounding_box);
             voxel_cloud1.compute_distance_field(&volume_value_range);
