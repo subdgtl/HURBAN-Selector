@@ -20,7 +20,7 @@ const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 pub enum FuncInterpolatedUnionError {
     WeldFailed,
     EmptyScalarField,
-    VoxelDimensionsZero,
+    VoxelDimensionsZeroOrLess,
     TooManyVoxels(u32, f32, f32, f32),
 }
 
@@ -35,7 +35,7 @@ impl fmt::Display for FuncInterpolatedUnionError {
                 f,
                 "Scalar field from input meshes or the resulting mesh is empty"
             ),
-            FuncInterpolatedUnionError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
+            FuncInterpolatedUnionError::VoxelDimensionsZeroOrLess => write!(f, "One or more voxel dimensions are zero or less"),
             FuncInterpolatedUnionError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
@@ -56,7 +56,7 @@ impl Func for FuncInterpolatedUnion {
             description: "VOXEL INTERPOLATION MORPH FROM TWO MESH GEOMETRIES\n\
             \n\
             Converts the input mesh geometries into voxel clouds, resizes both voxel \
-            clouds to bel large enough to contain volumes from both of them \
+            clouds to be large enough to contain volumes from both of them \
             then computes distance fields for both voxel clouds, interpolates values \
             of the two distance fields by the given factor and eventually \
             materializes the resulting voxel cloud into a welded mesh.\n\
@@ -103,9 +103,9 @@ impl Func for FuncInterpolatedUnion {
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     min_value: Some(0.005),
                     max_value: None,
-                    default_value_x: Some(0.25),
-                    default_value_y: Some(0.25),
-                    default_value_z: Some(0.25),
+                    default_value_x: Some(0.1),
+                    default_value_y: Some(0.1),
+                    default_value_z: Some(0.1),
                 }),
                 optional: false,
             },
@@ -129,7 +129,7 @@ impl Func for FuncInterpolatedUnion {
                 Factor = 0.5: the result is half way between the first and the second mesh.\n\
                 Factor = 1.0: the result is equal to the second mesh.",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
-                    default_value: Some(0.0),
+                    default_value: Some(0.5),
                     min_value: Some(0.0),
                     max_value: Some(1.0),
                 }),
@@ -181,11 +181,8 @@ impl Func for FuncInterpolatedUnion {
         let analyze_bbox = args[6].unwrap_boolean();
         let analyze_mesh = args[7].unwrap_boolean();
 
-        if voxel_dimensions
-            .iter()
-            .any(|dimension| approx::relative_eq!(*dimension, 0.0))
-        {
-            let error = FuncError::new(FuncInterpolatedUnionError::VoxelDimensionsZero);
+        if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
+            let error = FuncError::new(FuncInterpolatedUnionError::VoxelDimensionsZeroOrLess);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
