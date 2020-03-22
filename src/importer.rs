@@ -139,6 +139,8 @@ impl<C: ObjCache> Importer<C> {
     /// Otherwise, file is read, checksum calculated and cache is checked whether
     /// given file contents were already saved. If not, obj file is parsed and
     /// cached.
+    ///
+    /// Empty models are filtered out of the result.
     pub fn import_obj(&mut self, path: &str) -> ImporterResult {
         let mut file = fs::File::open(path)?;
         let file_metadata = file.metadata().expect("Failed to load obj file metadata");
@@ -159,7 +161,18 @@ impl<C: ObjCache> Importer<C> {
                 let models = match self.cache.get_by_checksum(checksum) {
                     Some(models) => models.clone(),
                     None => {
-                        let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
+                        let (mut tobj_models, _) =
+                            obj_buf_into_tobj(&mut file_contents.as_slice())?;
+                        let mut index = 0;
+
+                        while index != tobj_models.len() {
+                            if tobj_models[index].mesh.positions.is_empty() {
+                                tobj_models.remove(index);
+                            } else {
+                                index += 1;
+                            }
+                        }
+
                         tobj_to_internal(tobj_models)
                     }
                 };

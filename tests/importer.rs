@@ -116,3 +116,15 @@ fn test_importer_import_obj_returns_error_when_invalid_unicode_character_is_enco
 
     assert_eq!(error, ImporterError::InvalidStructure);
 }
+
+#[test]
+fn test_importer_import_obj_filters_empty_models() {
+    let cache = EndlessCache::default();
+    let mut importer = Importer::new(cache);
+
+    let models = importer
+        .import_obj(&"tests/fixtures/empty_model.obj")
+        .expect("Valid obj should be loaded");
+
+    assert_eq!(models.len(), 1);
+}
