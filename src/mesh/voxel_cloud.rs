@@ -1711,7 +1711,7 @@ impl ScalarField {
                         marching_cubes.push(
                         // Generate new mesh path from all edge midpoint
                         // vertices and only those faces that should be created
-                        // according th the marching cubes lookup table.
+                        // according to the marching cubes lookup table.
                         //
                         // FIXME: @Optimization remove unused vertices already
                         // here and generate the mesh without the need of
