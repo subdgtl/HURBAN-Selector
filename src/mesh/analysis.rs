@@ -135,7 +135,6 @@ fn find_edges_with_valency<'a>(
     edge_sharing: &'a EdgeSharingMap,
     valency: usize,
 ) -> impl Iterator<Item = OrientedEdge> + 'a {
-    // TODO(yanchith): Look at whether this really needs to return the iterator.
     edge_sharing
         .values()
         .filter(move |shared_edges| {
