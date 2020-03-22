@@ -2,6 +2,8 @@ use std::collections::VecDeque;
 use std::f32;
 use std::ops::RangeBounds;
 
+use arrayvec::ArrayVec;
+
 use nalgebra::{Point3, Vector2, Vector3};
 
 use crate::bounding_box::BoundingBox;
@@ -11,6 +13,1082 @@ use crate::math;
 use crate::plane::Plane;
 
 use super::{primitive, tools, Face, Mesh, NormalStrategy};
+
+/// Row in the marching cubes lookup table.
+///
+/// Fields are u8 so that more rows fit in an x86 cache line (64 bytes).
+/// With the current layout optimization, a row is 16 bytes, meaning 4 of them fit.
+struct Row {
+    /// Length of a valid data slice.
+    len: u8,
+    /// Row data.
+    data: [(u32, u32, u32); 5],
+}
+
+// FIXME: explain why this is 512 bits rather than expected 488 bits
+static_assertions::assert_eq_size!(Row, [u8; 64]);
+
+impl Row {
+    fn as_slice(&self) -> &[(u32, u32, u32)] {
+        &self.data[0..usize::from(self.len)]
+    }
+}
+
+const EMPTY: (u32, u32, u32) = (0, 0, 0);
+
+/// Lookup table of triangle faces suitable to the sample situation. Each vector
+/// item contains a vector of vertex indices. The vector indices correspond with
+/// the edge index.
+///
+///  # Corner and edge indices scheme
+///
+/// ```text
+///                 v4_______e4_____________v5
+///                  /|                    /|
+///                e7 |                  e5 |
+///                /  |                  /  |
+///               /___|______e6_________/   |
+///            v7|    |                 |v6 |e9
+///              |    |                 |   |
+///              |    |e8               |e10|
+///           e11|    |                 |   |
+///              |    |_________________|___|
+///              |   / v0    e0         |   /v1
+///              |  /                   |  /
+///              | /e3                  | /e1
+///              |/_____________________|/
+///              v3         e2          v2
+/// ```
+///
+/// # Source
+///
+/// http://paulbourke.net/geometry/polygonise/
+static MARCHING_CUBES_LOOKUP_TABLE: [Row; 256] = [
+    Row {
+        len: 0,
+        data: [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(0, 8, 3), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(0, 1, 9), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 8, 3), (9, 8, 1), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(1, 2, 10), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 8, 3), (1, 2, 10), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 2, 10), (0, 2, 9), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 8, 3), (2, 10, 8), (10, 9, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(3, 11, 2), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 11, 2), (8, 11, 0), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 9, 0), (2, 3, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 11, 2), (1, 9, 11), (9, 8, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(3, 10, 1), (11, 10, 3), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 10, 1), (0, 8, 10), (8, 11, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 9, 0), (3, 11, 9), (11, 10, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 8, 10), (10, 8, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(4, 7, 8), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(4, 3, 0), (7, 3, 4), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 1, 9), (8, 4, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 1, 9), (4, 7, 1), (7, 3, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 2, 10), (8, 4, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 4, 7), (3, 0, 4), (1, 2, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 2, 10), (9, 0, 2), (8, 4, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 10, 9), (2, 9, 7), (2, 7, 3), (7, 9, 4), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(8, 4, 7), (3, 11, 2), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 4, 7), (11, 2, 4), (2, 0, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 0, 1), (8, 4, 7), (2, 3, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 7, 11), (9, 4, 11), (9, 11, 2), (9, 2, 1), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 10, 1), (3, 11, 10), (7, 8, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 11, 10), (1, 4, 11), (1, 0, 4), (7, 11, 4), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 7, 8), (9, 0, 11), (9, 11, 10), (11, 0, 3), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 7, 11), (4, 11, 9), (9, 11, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(9, 5, 4), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 5, 4), (0, 8, 3), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 5, 4), (1, 5, 0), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 5, 4), (8, 3, 5), (3, 1, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 2, 10), (9, 5, 4), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 0, 8), (1, 2, 10), (4, 9, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 2, 10), (5, 4, 2), (4, 0, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 10, 5), (3, 2, 5), (3, 5, 4), (3, 4, 8), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 5, 4), (2, 3, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 11, 2), (0, 8, 11), (4, 9, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 5, 4), (0, 1, 5), (2, 3, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 1, 5), (2, 5, 8), (2, 8, 11), (4, 8, 5), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 3, 11), (10, 1, 3), (9, 5, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 9, 5), (0, 8, 1), (8, 10, 1), (8, 11, 10), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 4, 0), (5, 0, 11), (5, 11, 10), (11, 0, 3), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 4, 8), (5, 8, 10), (10, 8, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 7, 8), (5, 7, 9), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 3, 0), (9, 5, 3), (5, 7, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 7, 8), (0, 1, 7), (1, 5, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 5, 3), (3, 5, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 7, 8), (9, 5, 7), (10, 1, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 1, 2), (9, 5, 0), (5, 3, 0), (5, 7, 3), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 0, 2), (8, 2, 5), (8, 5, 7), (10, 5, 2), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 10, 5), (2, 5, 3), (3, 5, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(7, 9, 5), (7, 8, 9), (3, 11, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 5, 7), (9, 7, 2), (9, 2, 0), (2, 7, 11), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 3, 11), (0, 1, 8), (1, 7, 8), (1, 5, 7), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 2, 1), (11, 1, 7), (7, 1, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 5, 8), (8, 5, 7), (10, 1, 3), (10, 3, 11), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(5, 7, 0), (5, 0, 9), (7, 11, 0), (1, 0, 10), (11, 10, 0)],
+    },
+    Row {
+        len: 5,
+        data: [(11, 10, 0), (11, 0, 3), (10, 5, 0), (8, 0, 7), (5, 7, 0)],
+    },
+    Row {
+        len: 2,
+        data: [(11, 10, 5), (7, 11, 5), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(10, 6, 5), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 8, 3), (5, 10, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 0, 1), (5, 10, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 8, 3), (1, 9, 8), (5, 10, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 6, 5), (2, 6, 1), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 6, 5), (1, 2, 6), (3, 0, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 6, 5), (9, 0, 6), (0, 2, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 9, 8), (5, 8, 2), (5, 2, 6), (3, 2, 8), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(2, 3, 11), (10, 6, 5), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 0, 8), (11, 2, 0), (10, 6, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 1, 9), (2, 3, 11), (5, 10, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 10, 6), (1, 9, 2), (9, 11, 2), (9, 8, 11), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 3, 11), (6, 5, 3), (5, 1, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 8, 11), (0, 11, 5), (0, 5, 1), (5, 11, 6), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 11, 6), (0, 3, 6), (0, 6, 5), (0, 5, 9), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 5, 9), (6, 9, 11), (11, 9, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(5, 10, 6), (4, 7, 8), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 3, 0), (4, 7, 3), (6, 5, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 9, 0), (5, 10, 6), (8, 4, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 6, 5), (1, 9, 7), (1, 7, 3), (7, 9, 4), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 1, 2), (6, 5, 1), (4, 7, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 2, 5), (5, 2, 6), (3, 0, 4), (3, 4, 7), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 4, 7), (9, 0, 5), (0, 6, 5), (0, 2, 6), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(7, 3, 9), (7, 9, 4), (3, 2, 9), (5, 9, 6), (2, 6, 9)],
+    },
+    Row {
+        len: 3,
+        data: [(3, 11, 2), (7, 8, 4), (10, 6, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 10, 6), (4, 7, 2), (4, 2, 0), (2, 7, 11), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 1, 9), (4, 7, 8), (2, 3, 11), (5, 10, 6), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(9, 2, 1), (9, 11, 2), (9, 4, 11), (7, 11, 4), (5, 10, 6)],
+    },
+    Row {
+        len: 4,
+        data: [(8, 4, 7), (3, 11, 5), (3, 5, 1), (5, 11, 6), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(5, 1, 11), (5, 11, 6), (1, 0, 11), (7, 11, 4), (0, 4, 11)],
+    },
+    Row {
+        len: 5,
+        data: [(0, 5, 9), (0, 6, 5), (0, 3, 6), (11, 6, 3), (8, 4, 7)],
+    },
+    Row {
+        len: 4,
+        data: [(6, 5, 9), (6, 9, 11), (4, 7, 9), (7, 11, 9), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(10, 4, 9), (6, 4, 10), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 10, 6), (4, 9, 10), (0, 8, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 0, 1), (10, 6, 0), (6, 4, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 3, 1), (8, 1, 6), (8, 6, 4), (6, 1, 10), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 4, 9), (1, 2, 4), (2, 6, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 0, 8), (1, 2, 9), (2, 4, 9), (2, 6, 4), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 2, 4), (4, 2, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 3, 2), (8, 2, 4), (4, 2, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 4, 9), (10, 6, 4), (11, 2, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 8, 2), (2, 8, 11), (4, 9, 10), (4, 10, 6), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 11, 2), (0, 1, 6), (0, 6, 4), (6, 1, 10), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(6, 4, 1), (6, 1, 10), (4, 8, 1), (2, 1, 11), (8, 11, 1)],
+    },
+    Row {
+        len: 4,
+        data: [(9, 6, 4), (9, 3, 6), (9, 1, 3), (11, 6, 3), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(8, 11, 1), (8, 1, 0), (11, 6, 1), (9, 1, 4), (6, 4, 1)],
+    },
+    Row {
+        len: 3,
+        data: [(3, 11, 6), (3, 6, 0), (0, 6, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(6, 4, 8), (11, 6, 8), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(7, 10, 6), (7, 8, 10), (8, 9, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 7, 3), (0, 10, 7), (0, 9, 10), (6, 7, 10), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 6, 7), (1, 10, 7), (1, 7, 8), (1, 8, 0), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 6, 7), (10, 7, 1), (1, 7, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 2, 6), (1, 6, 8), (1, 8, 9), (8, 6, 7), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(2, 6, 9), (2, 9, 1), (6, 7, 9), (0, 9, 3), (7, 3, 9)],
+    },
+    Row {
+        len: 3,
+        data: [(7, 8, 0), (7, 0, 6), (6, 0, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(7, 3, 2), (6, 7, 2), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 3, 11), (10, 6, 8), (10, 8, 9), (8, 6, 7), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(2, 0, 7), (2, 7, 11), (0, 9, 7), (6, 7, 10), (9, 10, 7)],
+    },
+    Row {
+        len: 5,
+        data: [(1, 8, 0), (1, 7, 8), (1, 10, 7), (6, 7, 10), (2, 3, 11)],
+    },
+    Row {
+        len: 4,
+        data: [(11, 2, 1), (11, 1, 7), (10, 6, 1), (6, 7, 1), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(8, 9, 6), (8, 6, 7), (9, 1, 6), (11, 6, 3), (1, 3, 6)],
+    },
+    Row {
+        len: 2,
+        data: [(0, 9, 1), (11, 6, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(7, 8, 0), (7, 0, 6), (3, 11, 0), (11, 6, 0), EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(7, 11, 6), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(7, 6, 11), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(3, 0, 8), (11, 7, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 1, 9), (11, 7, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 1, 9), (8, 3, 1), (11, 7, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(10, 1, 2), (6, 11, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 2, 10), (3, 0, 8), (6, 11, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 9, 0), (2, 10, 9), (6, 11, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(6, 11, 7), (2, 10, 3), (10, 8, 3), (10, 9, 8), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(7, 2, 3), (6, 2, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(7, 0, 8), (7, 6, 0), (6, 2, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 7, 6), (2, 3, 7), (0, 1, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 6, 2), (1, 8, 6), (1, 9, 8), (8, 7, 6), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 7, 6), (10, 1, 7), (1, 3, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 7, 6), (1, 7, 10), (1, 8, 7), (1, 0, 8), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 3, 7), (0, 7, 10), (0, 10, 9), (6, 10, 7), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(7, 6, 10), (7, 10, 8), (8, 10, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(6, 8, 4), (11, 8, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 6, 11), (3, 0, 6), (0, 4, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 6, 11), (8, 4, 6), (9, 0, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 4, 6), (9, 6, 3), (9, 3, 1), (11, 3, 6), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 8, 4), (6, 11, 8), (2, 10, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 2, 10), (3, 0, 11), (0, 6, 11), (0, 4, 6), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 11, 8), (4, 6, 11), (0, 2, 9), (2, 10, 9), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(10, 9, 3), (10, 3, 2), (9, 4, 3), (11, 3, 6), (4, 6, 3)],
+    },
+    Row {
+        len: 3,
+        data: [(8, 2, 3), (8, 4, 2), (4, 6, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 4, 2), (4, 6, 2), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 9, 0), (2, 3, 4), (2, 4, 6), (4, 3, 8), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 9, 4), (1, 4, 2), (2, 4, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 1, 3), (8, 6, 1), (8, 4, 6), (6, 10, 1), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 1, 0), (10, 0, 6), (6, 0, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(4, 6, 3), (4, 3, 8), (6, 10, 3), (0, 3, 9), (10, 9, 3)],
+    },
+    Row {
+        len: 2,
+        data: [(10, 9, 4), (6, 10, 4), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(4, 9, 5), (7, 6, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 8, 3), (4, 9, 5), (11, 7, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 0, 1), (5, 4, 0), (7, 6, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(11, 7, 6), (8, 3, 4), (3, 5, 4), (3, 1, 5), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 5, 4), (10, 1, 2), (7, 6, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(6, 11, 7), (1, 2, 10), (0, 8, 3), (4, 9, 5), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(7, 6, 11), (5, 4, 10), (4, 2, 10), (4, 0, 2), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(3, 4, 8), (3, 5, 4), (3, 2, 5), (10, 5, 2), (11, 7, 6)],
+    },
+    Row {
+        len: 3,
+        data: [(7, 2, 3), (7, 6, 2), (5, 4, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 5, 4), (0, 8, 6), (0, 6, 2), (6, 8, 7), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 6, 2), (3, 7, 6), (1, 5, 0), (5, 4, 0), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(6, 2, 8), (6, 8, 7), (2, 1, 8), (4, 8, 5), (1, 5, 8)],
+    },
+    Row {
+        len: 4,
+        data: [(9, 5, 4), (10, 1, 6), (1, 7, 6), (1, 3, 7), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(1, 6, 10), (1, 7, 6), (1, 0, 7), (8, 7, 0), (9, 5, 4)],
+    },
+    Row {
+        len: 5,
+        data: [(4, 0, 10), (4, 10, 5), (0, 3, 10), (6, 10, 7), (3, 7, 10)],
+    },
+    Row {
+        len: 4,
+        data: [(7, 6, 10), (7, 10, 8), (5, 4, 10), (4, 8, 10), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 9, 5), (6, 11, 9), (11, 8, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 6, 11), (0, 6, 3), (0, 5, 6), (0, 9, 5), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 11, 8), (0, 5, 11), (0, 1, 5), (5, 6, 11), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 11, 3), (6, 3, 5), (5, 3, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 2, 10), (9, 5, 11), (9, 11, 8), (11, 5, 6), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(0, 11, 3), (0, 6, 11), (0, 9, 6), (5, 6, 9), (1, 2, 10)],
+    },
+    Row {
+        len: 5,
+        data: [(11, 8, 5), (11, 5, 6), (8, 0, 5), (10, 5, 2), (0, 2, 5)],
+    },
+    Row {
+        len: 4,
+        data: [(6, 11, 3), (6, 3, 5), (2, 10, 3), (10, 5, 3), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 8, 9), (5, 2, 8), (5, 6, 2), (3, 8, 2), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 5, 6), (9, 6, 0), (0, 6, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(1, 5, 8), (1, 8, 0), (5, 6, 8), (3, 8, 2), (6, 2, 8)],
+    },
+    Row {
+        len: 2,
+        data: [(1, 5, 6), (2, 1, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(1, 3, 6), (1, 6, 10), (3, 8, 6), (5, 6, 9), (8, 9, 6)],
+    },
+    Row {
+        len: 4,
+        data: [(10, 1, 0), (10, 0, 6), (9, 5, 0), (5, 6, 0), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 3, 8), (5, 6, 10), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(10, 5, 6), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(11, 5, 10), (7, 5, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 5, 10), (11, 7, 5), (8, 3, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 11, 7), (5, 10, 11), (1, 9, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 7, 5), (10, 11, 7), (9, 8, 1), (8, 3, 1), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 1, 2), (11, 7, 1), (7, 5, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 8, 3), (1, 2, 7), (1, 7, 5), (7, 2, 11), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 7, 5), (9, 2, 7), (9, 0, 2), (2, 11, 7), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(7, 5, 2), (7, 2, 11), (5, 9, 2), (3, 2, 8), (9, 8, 2)],
+    },
+    Row {
+        len: 3,
+        data: [(2, 5, 10), (2, 3, 5), (3, 7, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 2, 0), (8, 5, 2), (8, 7, 5), (10, 2, 5), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 0, 1), (5, 10, 3), (5, 3, 7), (3, 10, 2), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(9, 8, 2), (9, 2, 1), (8, 7, 2), (10, 2, 5), (7, 5, 2)],
+    },
+    Row {
+        len: 2,
+        data: [(1, 3, 5), (3, 7, 5), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 8, 7), (0, 7, 1), (1, 7, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 0, 3), (9, 3, 5), (5, 3, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 8, 7), (5, 9, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 8, 4), (5, 10, 8), (10, 11, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 0, 4), (5, 11, 0), (5, 10, 11), (11, 3, 0), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 1, 9), (8, 4, 10), (8, 10, 11), (10, 4, 5), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(10, 11, 4), (10, 4, 5), (11, 3, 4), (9, 4, 1), (3, 1, 4)],
+    },
+    Row {
+        len: 4,
+        data: [(2, 5, 1), (2, 8, 5), (2, 11, 8), (4, 5, 8), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(0, 4, 11), (0, 11, 3), (4, 5, 11), (2, 11, 1), (5, 1, 11)],
+    },
+    Row {
+        len: 5,
+        data: [(0, 2, 5), (0, 5, 9), (2, 11, 5), (4, 5, 8), (11, 8, 5)],
+    },
+    Row {
+        len: 2,
+        data: [(9, 4, 5), (2, 11, 3), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 5, 10), (3, 5, 2), (3, 4, 5), (3, 8, 4), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 10, 2), (5, 2, 4), (4, 2, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(3, 10, 2), (3, 5, 10), (3, 8, 5), (4, 5, 8), (0, 1, 9)],
+    },
+    Row {
+        len: 4,
+        data: [(5, 10, 2), (5, 2, 4), (1, 9, 2), (9, 4, 2), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 4, 5), (8, 5, 3), (3, 5, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 4, 5), (1, 0, 5), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 4, 5), (8, 5, 3), (9, 0, 5), (0, 3, 5), EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(9, 4, 5), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 11, 7), (4, 9, 11), (9, 10, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 8, 3), (4, 9, 7), (9, 11, 7), (9, 10, 11), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 10, 11), (1, 11, 4), (1, 4, 0), (7, 4, 11), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(3, 1, 4), (3, 4, 8), (1, 10, 4), (7, 4, 11), (10, 11, 4)],
+    },
+    Row {
+        len: 4,
+        data: [(4, 11, 7), (9, 11, 4), (9, 2, 11), (9, 1, 2), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(9, 7, 4), (9, 11, 7), (9, 1, 11), (2, 11, 1), (0, 8, 3)],
+    },
+    Row {
+        len: 3,
+        data: [(11, 7, 4), (11, 4, 2), (2, 4, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(11, 7, 4), (11, 4, 2), (8, 3, 4), (3, 2, 4), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 9, 10), (2, 7, 9), (2, 3, 7), (7, 4, 9), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(9, 10, 7), (9, 7, 4), (10, 2, 7), (8, 7, 0), (2, 0, 7)],
+    },
+    Row {
+        len: 5,
+        data: [(3, 7, 10), (3, 10, 2), (7, 4, 10), (1, 10, 0), (4, 0, 10)],
+    },
+    Row {
+        len: 2,
+        data: [(1, 10, 2), (8, 7, 4), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 9, 1), (4, 1, 7), (7, 1, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 9, 1), (4, 1, 7), (0, 8, 1), (8, 7, 1), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(4, 0, 3), (7, 4, 3), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(4, 8, 7), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 10, 8), (10, 11, 8), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 0, 9), (3, 9, 11), (11, 9, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 1, 10), (0, 10, 8), (8, 10, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(3, 1, 10), (11, 3, 10), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 2, 11), (1, 11, 9), (9, 11, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 0, 9), (3, 9, 11), (1, 2, 9), (2, 11, 9), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 2, 11), (8, 0, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(3, 2, 11), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 3, 8), (2, 8, 10), (10, 8, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 10, 2), (0, 9, 2), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 3, 8), (2, 8, 10), (0, 1, 8), (1, 10, 8), EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(1, 10, 2), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 3, 8), (9, 1, 8), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(0, 9, 1), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(0, 3, 8), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 0,
+        data: [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+];
 
 /// Discrete Scalar field is an abstract representation of points in a block of
 /// space. Each point is a center of a voxel - an abstract box of given
@@ -41,7 +1119,7 @@ use super::{primitive, tools, Face, Mesh, NormalStrategy};
 /// volume voxels with value `0`. `compute_distance_field` marks each voxel with
 /// a value representing the voxel's distance from the original volume,
 /// therefore the voxels right at the shell of the volume are marked 0, the
-/// layer around them is marked 1 or -1 (inside closed volumes) etc. Once the
+/// layer around them is marked 1 or x (inside closed volumes) etc. Once the
 /// scalar field is populated with meaningful values, it is possible to treat
 /// (perform boolean operations or materialize into mesh) on various numerical
 /// ranges. Such range is specified ad-hoc by parameter `volume_value_range`.
@@ -466,8 +1544,6 @@ impl ScalarField {
             return None;
         }
 
-        let marching_cubes_lookup_table = marching_cubes_lookup_table();
-
         // A collection of mesh patches defining an outer envelope of volumes
         // stored in the scalar field
         let mut marching_cubes: Vec<Mesh> = Vec::new();
@@ -509,39 +1585,90 @@ impl ScalarField {
                         Point3::new(x + 1, y, z + 1),
                         Point3::new(x, y, z + 1),
                     ];
-                    let corners_cartesian_coordinates: Vec<_> = corners_absolute_coordinates
-                        .iter()
-                        .map(|a| absolute_voxel_to_cartesian_coordinate(a, &self.voxel_dimensions))
-                        .collect();
+                    let corners_cartesian_coordinates: ArrayVec<[Point3<f32>; 8]> =
+                        corners_absolute_coordinates
+                            .iter()
+                            .map(|a| {
+                                absolute_voxel_to_cartesian_coordinate(a, &self.voxel_dimensions)
+                            })
+                            .collect();
 
                     // These points will become vertices of mesh patches forming
                     // the outer envelope of the scalar field.
-                    #[rustfmt::skip]
-                    let edge_midpoints = vec![
-                        Point3::from(corners_cartesian_coordinates[0].coords.lerp(&corners_cartesian_coordinates[1].coords, 0.5)), //e0
-                        Point3::from(corners_cartesian_coordinates[1].coords.lerp(&corners_cartesian_coordinates[2].coords, 0.5)), //e1
-                        Point3::from(corners_cartesian_coordinates[2].coords.lerp(&corners_cartesian_coordinates[3].coords, 0.5)), //e2
-                        Point3::from(corners_cartesian_coordinates[3].coords.lerp(&corners_cartesian_coordinates[0].coords, 0.5)), //e3
-                        Point3::from(corners_cartesian_coordinates[4].coords.lerp(&corners_cartesian_coordinates[5].coords, 0.5)), //e4
-                        Point3::from(corners_cartesian_coordinates[5].coords.lerp(&corners_cartesian_coordinates[6].coords, 0.5)), //e5
-                        Point3::from(corners_cartesian_coordinates[6].coords.lerp(&corners_cartesian_coordinates[7].coords, 0.5)), //e6
-                        Point3::from(corners_cartesian_coordinates[7].coords.lerp(&corners_cartesian_coordinates[4].coords, 0.5)), //e7
-                        Point3::from(corners_cartesian_coordinates[0].coords.lerp(&corners_cartesian_coordinates[4].coords, 0.5)), //e8
-                        Point3::from(corners_cartesian_coordinates[1].coords.lerp(&corners_cartesian_coordinates[5].coords, 0.5)), //e9
-                        Point3::from(corners_cartesian_coordinates[2].coords.lerp(&corners_cartesian_coordinates[6].coords, 0.5)), //e10
-                        Point3::from(corners_cartesian_coordinates[3].coords.lerp(&corners_cartesian_coordinates[7].coords, 0.5)), //e11
+                    let edge_midpoints: [Point3<f32>; 12] = [
+                        Point3::from(
+                            corners_cartesian_coordinates[0]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[1].coords, 0.5),
+                        ), //e0
+                        Point3::from(
+                            corners_cartesian_coordinates[1]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[2].coords, 0.5),
+                        ), //e1
+                        Point3::from(
+                            corners_cartesian_coordinates[2]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[3].coords, 0.5),
+                        ), //e2
+                        Point3::from(
+                            corners_cartesian_coordinates[3]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[0].coords, 0.5),
+                        ), //e3
+                        Point3::from(
+                            corners_cartesian_coordinates[4]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[5].coords, 0.5),
+                        ), //e4
+                        Point3::from(
+                            corners_cartesian_coordinates[5]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[6].coords, 0.5),
+                        ), //e5
+                        Point3::from(
+                            corners_cartesian_coordinates[6]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[7].coords, 0.5),
+                        ), //e6
+                        Point3::from(
+                            corners_cartesian_coordinates[7]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[4].coords, 0.5),
+                        ), //e7
+                        Point3::from(
+                            corners_cartesian_coordinates[0]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[4].coords, 0.5),
+                        ), //e8
+                        Point3::from(
+                            corners_cartesian_coordinates[1]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[5].coords, 0.5),
+                        ), //e9
+                        Point3::from(
+                            corners_cartesian_coordinates[2]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[6].coords, 0.5),
+                        ), //e10
+                        Point3::from(
+                            corners_cartesian_coordinates[3]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[7].coords, 0.5),
+                        ), //e11
                     ];
 
                     // Boolean vector marking each of the voxels either volume
                     // (`true`) or void(`false`)
-                    let corners_inside_volume_pattern: Vec<_> = corners_absolute_coordinates
-                        .iter()
-                        .map(|a| {
-                            self.value_at_absolute_voxel_coordinate(&a)
-                                .map(|value| volume_value_range.contains(&value))
-                                .unwrap_or(false)
-                        })
-                        .collect();
+                    let corners_inside_volume_pattern: ArrayVec<[_; 8]> =
+                        corners_absolute_coordinates
+                            .iter()
+                            .map(|a| {
+                                self.value_at_absolute_voxel_coordinate(&a)
+                                    .map(|value| volume_value_range.contains(&value))
+                                    .unwrap_or(false)
+                            })
+                            .collect();
 
                     // The marching cubes lookup table contains 256 possible
                     // samples of mesh patches. The sample index specifies the
@@ -576,7 +1703,7 @@ impl ScalarField {
                     // triplets of indices to the edge midpoints (currently
                     // already vertices) that will become mesh patch faces.
                     let marching_cubes_faces =
-                        marching_cubes_lookup_table[cast_usize(sample_index)].clone();
+                        MARCHING_CUBES_LOOKUP_TABLE[usize::from(sample_index)].as_slice();
 
                     // In some cases (when all the voxels are inside or outside
                     // a volume), there is no mesh patch to be created.
@@ -586,8 +1713,8 @@ impl ScalarField {
                         // vertices and only those faces that should be created
                         // according th the marching cubes lookup table.
                         Mesh::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
-                            marching_cubes_faces,
-                            edge_midpoints,
+                            marching_cubes_faces.iter().map(|data| *data),
+                            edge_midpoints.iter().map(|v| *v),
                             // Sharp is more efficient and gets lost by welding anyway
                             NormalStrategy::Sharp,
                         ),
@@ -1179,294 +2306,6 @@ impl ScalarField {
             Some((absolute_min, block_dimensions))
         }
     }
-}
-
-/// Lookup table of triangle faces suitable to the sample situation. Each vector
-/// item contains a vector of vertex indices. The vector indices correspond with
-/// the edge index.
-///
-///  ## Corner and edge indices scheme
-///
-/// ```text
-///                 v4_______e4_____________v5
-///                  /|                    /|
-///                e7 |                  e5 |
-///                /  |                  /  |
-///               /___|______e6_________/   |
-///            v7|    |                 |v6 |e9
-///              |    |                 |   |
-///              |    |e8               |e10|
-///           e11|    |                 |   |
-///              |    |_________________|___|
-///              |   / v0    e0         |   /v1
-///              |  /                   |  /
-///              | /e3                  | /e1
-///              |/_____________________|/
-///              v3         e2          v2
-/// ```
-///
-/// # Source
-///
-/// http://paulbourke.net/geometry/polygonise/
-fn marching_cubes_lookup_table() -> Vec<Vec<(u32, u32, u32)>> {
-    vec![
-        vec![],
-        vec![(0, 8, 3)],
-        vec![(0, 1, 9)],
-        vec![(1, 8, 3), (9, 8, 1)],
-        vec![(1, 2, 10)],
-        vec![(0, 8, 3), (1, 2, 10)],
-        vec![(9, 2, 10), (0, 2, 9)],
-        vec![(2, 8, 3), (2, 10, 8), (10, 9, 8)],
-        vec![(3, 11, 2)],
-        vec![(0, 11, 2), (8, 11, 0)],
-        vec![(1, 9, 0), (2, 3, 11)],
-        vec![(1, 11, 2), (1, 9, 11), (9, 8, 11)],
-        vec![(3, 10, 1), (11, 10, 3)],
-        vec![(0, 10, 1), (0, 8, 10), (8, 11, 10)],
-        vec![(3, 9, 0), (3, 11, 9), (11, 10, 9)],
-        vec![(9, 8, 10), (10, 8, 11)],
-        vec![(4, 7, 8)],
-        vec![(4, 3, 0), (7, 3, 4)],
-        vec![(0, 1, 9), (8, 4, 7)],
-        vec![(4, 1, 9), (4, 7, 1), (7, 3, 1)],
-        vec![(1, 2, 10), (8, 4, 7)],
-        vec![(3, 4, 7), (3, 0, 4), (1, 2, 10)],
-        vec![(9, 2, 10), (9, 0, 2), (8, 4, 7)],
-        vec![(2, 10, 9), (2, 9, 7), (2, 7, 3), (7, 9, 4)],
-        vec![(8, 4, 7), (3, 11, 2)],
-        vec![(11, 4, 7), (11, 2, 4), (2, 0, 4)],
-        vec![(9, 0, 1), (8, 4, 7), (2, 3, 11)],
-        vec![(4, 7, 11), (9, 4, 11), (9, 11, 2), (9, 2, 1)],
-        vec![(3, 10, 1), (3, 11, 10), (7, 8, 4)],
-        vec![(1, 11, 10), (1, 4, 11), (1, 0, 4), (7, 11, 4)],
-        vec![(4, 7, 8), (9, 0, 11), (9, 11, 10), (11, 0, 3)],
-        vec![(4, 7, 11), (4, 11, 9), (9, 11, 10)],
-        vec![(9, 5, 4)],
-        vec![(9, 5, 4), (0, 8, 3)],
-        vec![(0, 5, 4), (1, 5, 0)],
-        vec![(8, 5, 4), (8, 3, 5), (3, 1, 5)],
-        vec![(1, 2, 10), (9, 5, 4)],
-        vec![(3, 0, 8), (1, 2, 10), (4, 9, 5)],
-        vec![(5, 2, 10), (5, 4, 2), (4, 0, 2)],
-        vec![(2, 10, 5), (3, 2, 5), (3, 5, 4), (3, 4, 8)],
-        vec![(9, 5, 4), (2, 3, 11)],
-        vec![(0, 11, 2), (0, 8, 11), (4, 9, 5)],
-        vec![(0, 5, 4), (0, 1, 5), (2, 3, 11)],
-        vec![(2, 1, 5), (2, 5, 8), (2, 8, 11), (4, 8, 5)],
-        vec![(10, 3, 11), (10, 1, 3), (9, 5, 4)],
-        vec![(4, 9, 5), (0, 8, 1), (8, 10, 1), (8, 11, 10)],
-        vec![(5, 4, 0), (5, 0, 11), (5, 11, 10), (11, 0, 3)],
-        vec![(5, 4, 8), (5, 8, 10), (10, 8, 11)],
-        vec![(9, 7, 8), (5, 7, 9)],
-        vec![(9, 3, 0), (9, 5, 3), (5, 7, 3)],
-        vec![(0, 7, 8), (0, 1, 7), (1, 5, 7)],
-        vec![(1, 5, 3), (3, 5, 7)],
-        vec![(9, 7, 8), (9, 5, 7), (10, 1, 2)],
-        vec![(10, 1, 2), (9, 5, 0), (5, 3, 0), (5, 7, 3)],
-        vec![(8, 0, 2), (8, 2, 5), (8, 5, 7), (10, 5, 2)],
-        vec![(2, 10, 5), (2, 5, 3), (3, 5, 7)],
-        vec![(7, 9, 5), (7, 8, 9), (3, 11, 2)],
-        vec![(9, 5, 7), (9, 7, 2), (9, 2, 0), (2, 7, 11)],
-        vec![(2, 3, 11), (0, 1, 8), (1, 7, 8), (1, 5, 7)],
-        vec![(11, 2, 1), (11, 1, 7), (7, 1, 5)],
-        vec![(9, 5, 8), (8, 5, 7), (10, 1, 3), (10, 3, 11)],
-        vec![(5, 7, 0), (5, 0, 9), (7, 11, 0), (1, 0, 10), (11, 10, 0)],
-        vec![(11, 10, 0), (11, 0, 3), (10, 5, 0), (8, 0, 7), (5, 7, 0)],
-        vec![(11, 10, 5), (7, 11, 5)],
-        vec![(10, 6, 5)],
-        vec![(0, 8, 3), (5, 10, 6)],
-        vec![(9, 0, 1), (5, 10, 6)],
-        vec![(1, 8, 3), (1, 9, 8), (5, 10, 6)],
-        vec![(1, 6, 5), (2, 6, 1)],
-        vec![(1, 6, 5), (1, 2, 6), (3, 0, 8)],
-        vec![(9, 6, 5), (9, 0, 6), (0, 2, 6)],
-        vec![(5, 9, 8), (5, 8, 2), (5, 2, 6), (3, 2, 8)],
-        vec![(2, 3, 11), (10, 6, 5)],
-        vec![(11, 0, 8), (11, 2, 0), (10, 6, 5)],
-        vec![(0, 1, 9), (2, 3, 11), (5, 10, 6)],
-        vec![(5, 10, 6), (1, 9, 2), (9, 11, 2), (9, 8, 11)],
-        vec![(6, 3, 11), (6, 5, 3), (5, 1, 3)],
-        vec![(0, 8, 11), (0, 11, 5), (0, 5, 1), (5, 11, 6)],
-        vec![(3, 11, 6), (0, 3, 6), (0, 6, 5), (0, 5, 9)],
-        vec![(6, 5, 9), (6, 9, 11), (11, 9, 8)],
-        vec![(5, 10, 6), (4, 7, 8)],
-        vec![(4, 3, 0), (4, 7, 3), (6, 5, 10)],
-        vec![(1, 9, 0), (5, 10, 6), (8, 4, 7)],
-        vec![(10, 6, 5), (1, 9, 7), (1, 7, 3), (7, 9, 4)],
-        vec![(6, 1, 2), (6, 5, 1), (4, 7, 8)],
-        vec![(1, 2, 5), (5, 2, 6), (3, 0, 4), (3, 4, 7)],
-        vec![(8, 4, 7), (9, 0, 5), (0, 6, 5), (0, 2, 6)],
-        vec![(7, 3, 9), (7, 9, 4), (3, 2, 9), (5, 9, 6), (2, 6, 9)],
-        vec![(3, 11, 2), (7, 8, 4), (10, 6, 5)],
-        vec![(5, 10, 6), (4, 7, 2), (4, 2, 0), (2, 7, 11)],
-        vec![(0, 1, 9), (4, 7, 8), (2, 3, 11), (5, 10, 6)],
-        vec![(9, 2, 1), (9, 11, 2), (9, 4, 11), (7, 11, 4), (5, 10, 6)],
-        vec![(8, 4, 7), (3, 11, 5), (3, 5, 1), (5, 11, 6)],
-        vec![(5, 1, 11), (5, 11, 6), (1, 0, 11), (7, 11, 4), (0, 4, 11)],
-        vec![(0, 5, 9), (0, 6, 5), (0, 3, 6), (11, 6, 3), (8, 4, 7)],
-        vec![(6, 5, 9), (6, 9, 11), (4, 7, 9), (7, 11, 9)],
-        vec![(10, 4, 9), (6, 4, 10)],
-        vec![(4, 10, 6), (4, 9, 10), (0, 8, 3)],
-        vec![(10, 0, 1), (10, 6, 0), (6, 4, 0)],
-        vec![(8, 3, 1), (8, 1, 6), (8, 6, 4), (6, 1, 10)],
-        vec![(1, 4, 9), (1, 2, 4), (2, 6, 4)],
-        vec![(3, 0, 8), (1, 2, 9), (2, 4, 9), (2, 6, 4)],
-        vec![(0, 2, 4), (4, 2, 6)],
-        vec![(8, 3, 2), (8, 2, 4), (4, 2, 6)],
-        vec![(10, 4, 9), (10, 6, 4), (11, 2, 3)],
-        vec![(0, 8, 2), (2, 8, 11), (4, 9, 10), (4, 10, 6)],
-        vec![(3, 11, 2), (0, 1, 6), (0, 6, 4), (6, 1, 10)],
-        vec![(6, 4, 1), (6, 1, 10), (4, 8, 1), (2, 1, 11), (8, 11, 1)],
-        vec![(9, 6, 4), (9, 3, 6), (9, 1, 3), (11, 6, 3)],
-        vec![(8, 11, 1), (8, 1, 0), (11, 6, 1), (9, 1, 4), (6, 4, 1)],
-        vec![(3, 11, 6), (3, 6, 0), (0, 6, 4)],
-        vec![(6, 4, 8), (11, 6, 8)],
-        vec![(7, 10, 6), (7, 8, 10), (8, 9, 10)],
-        vec![(0, 7, 3), (0, 10, 7), (0, 9, 10), (6, 7, 10)],
-        vec![(10, 6, 7), (1, 10, 7), (1, 7, 8), (1, 8, 0)],
-        vec![(10, 6, 7), (10, 7, 1), (1, 7, 3)],
-        vec![(1, 2, 6), (1, 6, 8), (1, 8, 9), (8, 6, 7)],
-        vec![(2, 6, 9), (2, 9, 1), (6, 7, 9), (0, 9, 3), (7, 3, 9)],
-        vec![(7, 8, 0), (7, 0, 6), (6, 0, 2)],
-        vec![(7, 3, 2), (6, 7, 2)],
-        vec![(2, 3, 11), (10, 6, 8), (10, 8, 9), (8, 6, 7)],
-        vec![(2, 0, 7), (2, 7, 11), (0, 9, 7), (6, 7, 10), (9, 10, 7)],
-        vec![(1, 8, 0), (1, 7, 8), (1, 10, 7), (6, 7, 10), (2, 3, 11)],
-        vec![(11, 2, 1), (11, 1, 7), (10, 6, 1), (6, 7, 1)],
-        vec![(8, 9, 6), (8, 6, 7), (9, 1, 6), (11, 6, 3), (1, 3, 6)],
-        vec![(0, 9, 1), (11, 6, 7)],
-        vec![(7, 8, 0), (7, 0, 6), (3, 11, 0), (11, 6, 0)],
-        vec![(7, 11, 6)],
-        vec![(7, 6, 11)],
-        vec![(3, 0, 8), (11, 7, 6)],
-        vec![(0, 1, 9), (11, 7, 6)],
-        vec![(8, 1, 9), (8, 3, 1), (11, 7, 6)],
-        vec![(10, 1, 2), (6, 11, 7)],
-        vec![(1, 2, 10), (3, 0, 8), (6, 11, 7)],
-        vec![(2, 9, 0), (2, 10, 9), (6, 11, 7)],
-        vec![(6, 11, 7), (2, 10, 3), (10, 8, 3), (10, 9, 8)],
-        vec![(7, 2, 3), (6, 2, 7)],
-        vec![(7, 0, 8), (7, 6, 0), (6, 2, 0)],
-        vec![(2, 7, 6), (2, 3, 7), (0, 1, 9)],
-        vec![(1, 6, 2), (1, 8, 6), (1, 9, 8), (8, 7, 6)],
-        vec![(10, 7, 6), (10, 1, 7), (1, 3, 7)],
-        vec![(10, 7, 6), (1, 7, 10), (1, 8, 7), (1, 0, 8)],
-        vec![(0, 3, 7), (0, 7, 10), (0, 10, 9), (6, 10, 7)],
-        vec![(7, 6, 10), (7, 10, 8), (8, 10, 9)],
-        vec![(6, 8, 4), (11, 8, 6)],
-        vec![(3, 6, 11), (3, 0, 6), (0, 4, 6)],
-        vec![(8, 6, 11), (8, 4, 6), (9, 0, 1)],
-        vec![(9, 4, 6), (9, 6, 3), (9, 3, 1), (11, 3, 6)],
-        vec![(6, 8, 4), (6, 11, 8), (2, 10, 1)],
-        vec![(1, 2, 10), (3, 0, 11), (0, 6, 11), (0, 4, 6)],
-        vec![(4, 11, 8), (4, 6, 11), (0, 2, 9), (2, 10, 9)],
-        vec![(10, 9, 3), (10, 3, 2), (9, 4, 3), (11, 3, 6), (4, 6, 3)],
-        vec![(8, 2, 3), (8, 4, 2), (4, 6, 2)],
-        vec![(0, 4, 2), (4, 6, 2)],
-        vec![(1, 9, 0), (2, 3, 4), (2, 4, 6), (4, 3, 8)],
-        vec![(1, 9, 4), (1, 4, 2), (2, 4, 6)],
-        vec![(8, 1, 3), (8, 6, 1), (8, 4, 6), (6, 10, 1)],
-        vec![(10, 1, 0), (10, 0, 6), (6, 0, 4)],
-        vec![(4, 6, 3), (4, 3, 8), (6, 10, 3), (0, 3, 9), (10, 9, 3)],
-        vec![(10, 9, 4), (6, 10, 4)],
-        vec![(4, 9, 5), (7, 6, 11)],
-        vec![(0, 8, 3), (4, 9, 5), (11, 7, 6)],
-        vec![(5, 0, 1), (5, 4, 0), (7, 6, 11)],
-        vec![(11, 7, 6), (8, 3, 4), (3, 5, 4), (3, 1, 5)],
-        vec![(9, 5, 4), (10, 1, 2), (7, 6, 11)],
-        vec![(6, 11, 7), (1, 2, 10), (0, 8, 3), (4, 9, 5)],
-        vec![(7, 6, 11), (5, 4, 10), (4, 2, 10), (4, 0, 2)],
-        vec![(3, 4, 8), (3, 5, 4), (3, 2, 5), (10, 5, 2), (11, 7, 6)],
-        vec![(7, 2, 3), (7, 6, 2), (5, 4, 9)],
-        vec![(9, 5, 4), (0, 8, 6), (0, 6, 2), (6, 8, 7)],
-        vec![(3, 6, 2), (3, 7, 6), (1, 5, 0), (5, 4, 0)],
-        vec![(6, 2, 8), (6, 8, 7), (2, 1, 8), (4, 8, 5), (1, 5, 8)],
-        vec![(9, 5, 4), (10, 1, 6), (1, 7, 6), (1, 3, 7)],
-        vec![(1, 6, 10), (1, 7, 6), (1, 0, 7), (8, 7, 0), (9, 5, 4)],
-        vec![(4, 0, 10), (4, 10, 5), (0, 3, 10), (6, 10, 7), (3, 7, 10)],
-        vec![(7, 6, 10), (7, 10, 8), (5, 4, 10), (4, 8, 10)],
-        vec![(6, 9, 5), (6, 11, 9), (11, 8, 9)],
-        vec![(3, 6, 11), (0, 6, 3), (0, 5, 6), (0, 9, 5)],
-        vec![(0, 11, 8), (0, 5, 11), (0, 1, 5), (5, 6, 11)],
-        vec![(6, 11, 3), (6, 3, 5), (5, 3, 1)],
-        vec![(1, 2, 10), (9, 5, 11), (9, 11, 8), (11, 5, 6)],
-        vec![(0, 11, 3), (0, 6, 11), (0, 9, 6), (5, 6, 9), (1, 2, 10)],
-        vec![(11, 8, 5), (11, 5, 6), (8, 0, 5), (10, 5, 2), (0, 2, 5)],
-        vec![(6, 11, 3), (6, 3, 5), (2, 10, 3), (10, 5, 3)],
-        vec![(5, 8, 9), (5, 2, 8), (5, 6, 2), (3, 8, 2)],
-        vec![(9, 5, 6), (9, 6, 0), (0, 6, 2)],
-        vec![(1, 5, 8), (1, 8, 0), (5, 6, 8), (3, 8, 2), (6, 2, 8)],
-        vec![(1, 5, 6), (2, 1, 6)],
-        vec![(1, 3, 6), (1, 6, 10), (3, 8, 6), (5, 6, 9), (8, 9, 6)],
-        vec![(10, 1, 0), (10, 0, 6), (9, 5, 0), (5, 6, 0)],
-        vec![(0, 3, 8), (5, 6, 10)],
-        vec![(10, 5, 6)],
-        vec![(11, 5, 10), (7, 5, 11)],
-        vec![(11, 5, 10), (11, 7, 5), (8, 3, 0)],
-        vec![(5, 11, 7), (5, 10, 11), (1, 9, 0)],
-        vec![(10, 7, 5), (10, 11, 7), (9, 8, 1), (8, 3, 1)],
-        vec![(11, 1, 2), (11, 7, 1), (7, 5, 1)],
-        vec![(0, 8, 3), (1, 2, 7), (1, 7, 5), (7, 2, 11)],
-        vec![(9, 7, 5), (9, 2, 7), (9, 0, 2), (2, 11, 7)],
-        vec![(7, 5, 2), (7, 2, 11), (5, 9, 2), (3, 2, 8), (9, 8, 2)],
-        vec![(2, 5, 10), (2, 3, 5), (3, 7, 5)],
-        vec![(8, 2, 0), (8, 5, 2), (8, 7, 5), (10, 2, 5)],
-        vec![(9, 0, 1), (5, 10, 3), (5, 3, 7), (3, 10, 2)],
-        vec![(9, 8, 2), (9, 2, 1), (8, 7, 2), (10, 2, 5), (7, 5, 2)],
-        vec![(1, 3, 5), (3, 7, 5)],
-        vec![(0, 8, 7), (0, 7, 1), (1, 7, 5)],
-        vec![(9, 0, 3), (9, 3, 5), (5, 3, 7)],
-        vec![(9, 8, 7), (5, 9, 7)],
-        vec![(5, 8, 4), (5, 10, 8), (10, 11, 8)],
-        vec![(5, 0, 4), (5, 11, 0), (5, 10, 11), (11, 3, 0)],
-        vec![(0, 1, 9), (8, 4, 10), (8, 10, 11), (10, 4, 5)],
-        vec![(10, 11, 4), (10, 4, 5), (11, 3, 4), (9, 4, 1), (3, 1, 4)],
-        vec![(2, 5, 1), (2, 8, 5), (2, 11, 8), (4, 5, 8)],
-        vec![(0, 4, 11), (0, 11, 3), (4, 5, 11), (2, 11, 1), (5, 1, 11)],
-        vec![(0, 2, 5), (0, 5, 9), (2, 11, 5), (4, 5, 8), (11, 8, 5)],
-        vec![(9, 4, 5), (2, 11, 3)],
-        vec![(2, 5, 10), (3, 5, 2), (3, 4, 5), (3, 8, 4)],
-        vec![(5, 10, 2), (5, 2, 4), (4, 2, 0)],
-        vec![(3, 10, 2), (3, 5, 10), (3, 8, 5), (4, 5, 8), (0, 1, 9)],
-        vec![(5, 10, 2), (5, 2, 4), (1, 9, 2), (9, 4, 2)],
-        vec![(8, 4, 5), (8, 5, 3), (3, 5, 1)],
-        vec![(0, 4, 5), (1, 0, 5)],
-        vec![(8, 4, 5), (8, 5, 3), (9, 0, 5), (0, 3, 5)],
-        vec![(9, 4, 5)],
-        vec![(4, 11, 7), (4, 9, 11), (9, 10, 11)],
-        vec![(0, 8, 3), (4, 9, 7), (9, 11, 7), (9, 10, 11)],
-        vec![(1, 10, 11), (1, 11, 4), (1, 4, 0), (7, 4, 11)],
-        vec![(3, 1, 4), (3, 4, 8), (1, 10, 4), (7, 4, 11), (10, 11, 4)],
-        vec![(4, 11, 7), (9, 11, 4), (9, 2, 11), (9, 1, 2)],
-        vec![(9, 7, 4), (9, 11, 7), (9, 1, 11), (2, 11, 1), (0, 8, 3)],
-        vec![(11, 7, 4), (11, 4, 2), (2, 4, 0)],
-        vec![(11, 7, 4), (11, 4, 2), (8, 3, 4), (3, 2, 4)],
-        vec![(2, 9, 10), (2, 7, 9), (2, 3, 7), (7, 4, 9)],
-        vec![(9, 10, 7), (9, 7, 4), (10, 2, 7), (8, 7, 0), (2, 0, 7)],
-        vec![(3, 7, 10), (3, 10, 2), (7, 4, 10), (1, 10, 0), (4, 0, 10)],
-        vec![(1, 10, 2), (8, 7, 4)],
-        vec![(4, 9, 1), (4, 1, 7), (7, 1, 3)],
-        vec![(4, 9, 1), (4, 1, 7), (0, 8, 1), (8, 7, 1)],
-        vec![(4, 0, 3), (7, 4, 3)],
-        vec![(4, 8, 7)],
-        vec![(9, 10, 8), (10, 11, 8)],
-        vec![(3, 0, 9), (3, 9, 11), (11, 9, 10)],
-        vec![(0, 1, 10), (0, 10, 8), (8, 10, 11)],
-        vec![(3, 1, 10), (11, 3, 10)],
-        vec![(1, 2, 11), (1, 11, 9), (9, 11, 8)],
-        vec![(3, 0, 9), (3, 9, 11), (1, 2, 9), (2, 11, 9)],
-        vec![(0, 2, 11), (8, 0, 11)],
-        vec![(3, 2, 11)],
-        vec![(2, 3, 8), (2, 8, 10), (10, 8, 9)],
-        vec![(9, 10, 2), (0, 9, 2)],
-        vec![(2, 3, 8), (2, 8, 10), (0, 1, 8), (1, 10, 8)],
-        vec![(1, 10, 2)],
-        vec![(1, 3, 8), (9, 1, 8)],
-        vec![(0, 9, 1)],
-        vec![(0, 3, 8)],
-        vec![],
-    ]
 }
 
 /// Returns number of voxels created when `ScalarField::from_mesh()` called.
@@ -2118,5 +2957,18 @@ mod tests {
         sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
 
         assert_eq!(sf_a, sf_correct);
+    }
+
+    #[test]
+    fn test_marching_cubes_lookup_table_len_check() {
+        for (r, row) in MARCHING_CUBES_LOOKUP_TABLE.iter().enumerate() {
+            for (i, face) in row.data.iter().enumerate() {
+                if i < usize::from(row.len) {
+                    assert_ne!(face, &EMPTY, "Row {} length isn't set correctly", r);
+                } else {
+                    assert_eq!(face, &EMPTY, "Row {} length isn't set correctly", r);
+                }
+            }
+        }
     }
 }
