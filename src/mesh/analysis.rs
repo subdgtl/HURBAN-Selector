@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use nalgebra as na;
 use nalgebra::Point3;
@@ -102,6 +102,7 @@ pub fn edge_sharing<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
     oriented_edges: I,
 ) -> EdgeSharingMap {
     let mut edge_sharing_map = fxhash::FxHashMap::default();
+
     for edge in oriented_edges {
         let unoriented_edge = UnorientedEdge(*edge);
 
@@ -196,28 +197,57 @@ pub fn border_vertex_indices(edge_sharing: &EdgeSharingMap) -> HashSet<u32> {
 /// Finds continuous loops of border edges, starting from a random edge.
 ///
 /// The mesh may contain holes or islands, therefore it may have an unknown
-/// number of edge loops. If two edge loops meet at a single vertex, the result
-/// may be unpredictable and erratic.
-pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<UnorientedEdge>> {
-    let mut border_edges: Vec<_> = border_edges(edge_sharing).map(UnorientedEdge).collect();
-
-    let mut edge_loops: Vec<Vec<UnorientedEdge>> = Vec::new();
+/// number of edge loops. If only two edge loops meet at a single vertex
+/// (e.g. if the mesh is non-manifold), this border edge chain is not included
+/// in the result.
+pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<OrientedEdge>> {
+    let mut border_edges: Vec<_> = border_edges(edge_sharing).collect();
+    let mut edge_loops: Vec<Vec<OrientedEdge>> = Vec::new();
 
     while let Some(edge) = border_edges.pop() {
-        let mut current_loop: Vec<UnorientedEdge> = vec![edge];
+        let mut current_chain: VecDeque<OrientedEdge> = VecDeque::with_capacity(1);
+        current_chain.push_back(edge);
 
-        while current_loop.len() < 3
-            || !current_loop[current_loop.len() - 1].shares_vertex(current_loop[0])
-        {
+        // Try constructing a loop by matching edges with either front or back
+        // of the deque:
+
+        let loop_closed = loop {
+            let mut found = false;
+
             for (i, other_edge) in border_edges.iter().enumerate() {
-                if current_loop[current_loop.len() - 1].shares_vertex(*other_edge) {
-                    current_loop.push(border_edges.remove(i));
+                let front = current_chain[0];
+                if other_edge.chains_to(front) {
+                    current_chain.push_front(border_edges.remove(i));
+                    found = true;
+
+                    break;
+                }
+
+                let back = current_chain[current_chain.len() - 1];
+                if back.chains_to(*other_edge) {
+                    current_chain.push_back(border_edges.remove(i));
+                    found = true;
+
                     break;
                 }
             }
-        }
 
-        edge_loops.push(current_loop);
+            // Continue until the loop is closed or until we cannot find a
+            // matching puzzle piece
+            let front = current_chain[0];
+            let back = current_chain[current_chain.len() - 1];
+            let loop_closed = back.chains_to(front);
+
+            if loop_closed || !found {
+                break loop_closed;
+            }
+        };
+
+        // There can theoretically exist chains of edges that do not form border
+        // edge loops, e.g. if the mesh is non-manifold. We do not output those.
+        if loop_closed {
+            edge_loops.push(Vec::from(current_chain));
+        }
     }
 
     edge_loops
@@ -782,8 +812,8 @@ mod tests {
     fn test_edge_sharing() {
         let (faces, vertices) = quad();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
 
@@ -823,8 +853,8 @@ mod tests {
     fn test_find_edge_with_valency() {
         let (faces, vertices) = quad();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
@@ -860,8 +890,8 @@ mod tests {
     fn test_border_edges() {
         let (faces, vertices) = quad();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
@@ -885,8 +915,8 @@ mod tests {
     fn test_manifold_edges() {
         let (faces, vertices) = quad();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
@@ -906,8 +936,8 @@ mod tests {
     fn test_non_manifold_edges() {
         let (faces, vertices) = non_manifold_shape();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
@@ -930,8 +960,8 @@ mod tests {
     fn test_is_mesh_manifold_returns_false_because_non_manifold() {
         let (faces, vertices) = non_manifold_shape();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
 
@@ -945,8 +975,8 @@ mod tests {
     fn test_is_mesh_manifold_returns_true_because_manifold() {
         let (faces, vertices) = torus();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
 
@@ -960,8 +990,8 @@ mod tests {
     fn test_border_vertex_indices() {
         let (faces, vertices) = quad();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
@@ -993,8 +1023,8 @@ mod tests {
     fn test_is_mesh_orientable_returns_true_open_mesh() {
         let (faces, vertices) = quad();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
@@ -1030,8 +1060,8 @@ mod tests {
     fn test_is_mesh_watertight_returns_false_for_open_mesh() {
         let (faces, vertices) = quad();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
 
@@ -1060,8 +1090,8 @@ mod tests {
     fn test_triangulated_mesh_genus_torus_should_be_1() {
         let (faces, vertices) = torus();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
         assert!(mesh.is_triangulated());
@@ -1076,8 +1106,8 @@ mod tests {
     fn test_triangulated_mesh_genus_double_torus_should_be_2() {
         let (faces, vertices) = double_torus();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
         assert!(mesh.is_triangulated());
@@ -1092,8 +1122,8 @@ mod tests {
     fn test_triangulated_mesh_genus_triple_torus_should_be_3() {
         let (faces, vertices) = triple_torus();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
         assert!(mesh.is_triangulated());
@@ -1108,21 +1138,24 @@ mod tests {
     fn test_border_edge_loops_returns_one_for_tessellated_triangle() {
         let (faces, vertices) = tessellated_triangle();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_sharing(&oriented_edges);
 
-        let correct_loop: Vec<UnorientedEdge> = vec![
-            UnorientedEdge(OrientedEdge::new(0, 1)),
-            UnorientedEdge(OrientedEdge::new(1, 2)),
-            UnorientedEdge(OrientedEdge::new(2, 4)),
-            UnorientedEdge(OrientedEdge::new(4, 5)),
-            UnorientedEdge(OrientedEdge::new(5, 3)),
-            UnorientedEdge(OrientedEdge::new(3, 0)),
+        // Since these edges are oriented, we need to account that the triangle
+        // face starts the winding with the smallest index and therefore rotates
+        // the faces created in `tessellated_triangle`
+        let correct_loop = vec![
+            OrientedEdge::new(1, 0),
+            OrientedEdge::new(2, 1),
+            OrientedEdge::new(4, 2),
+            OrientedEdge::new(5, 4),
+            OrientedEdge::new(3, 5),
+            OrientedEdge::new(0, 3),
         ];
 
         let computed_loops = border_edge_loops(&edge_sharing_map);
@@ -1135,7 +1168,7 @@ mod tests {
     }
 
     #[test]
-    fn test_border_edge_loops_returns_one_for_box() {
+    fn test_border_edge_loops_returns_zero_for_box() {
         let mesh = primitive::create_box(
             Point3::origin(),
             Rotation3::identity(),
@@ -1154,27 +1187,30 @@ mod tests {
     fn test_border_edge_loops_returns_two_for_tessellated_triangle_with_island() {
         let (faces, vertices) = tessellated_triangle_with_island();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
 
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = edge_sharing(&oriented_edges);
 
-        let correct_loops: Vec<Vec<UnorientedEdge>> = vec![
+        // Since these edges are oriented, we need to account that the triangle
+        // face starts the winding with the smallest index and therefore rotates
+        // the faces created in `tessellated_triangle_with_island`
+        let correct_loops: Vec<Vec<OrientedEdge>> = vec![
             vec![
-                UnorientedEdge(OrientedEdge::new(0, 1)),
-                UnorientedEdge(OrientedEdge::new(1, 2)),
-                UnorientedEdge(OrientedEdge::new(2, 4)),
-                UnorientedEdge(OrientedEdge::new(4, 5)),
-                UnorientedEdge(OrientedEdge::new(5, 3)),
-                UnorientedEdge(OrientedEdge::new(3, 0)),
+                OrientedEdge::new(1, 0),
+                OrientedEdge::new(2, 1),
+                OrientedEdge::new(4, 2),
+                OrientedEdge::new(5, 4),
+                OrientedEdge::new(3, 5),
+                OrientedEdge::new(0, 3),
             ],
             vec![
-                UnorientedEdge(OrientedEdge::new(6, 7)),
-                UnorientedEdge(OrientedEdge::new(7, 8)),
-                UnorientedEdge(OrientedEdge::new(8, 6)),
+                OrientedEdge::new(6, 7),
+                OrientedEdge::new(7, 8),
+                OrientedEdge::new(8, 6),
             ],
         ];
 
@@ -1207,8 +1243,8 @@ mod tests {
     fn test_are_similar_returns_true_for_same() {
         let (faces, vertices) = quad();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces.clone(),
-            vertices.clone(),
+            faces,
+            vertices,
             NormalStrategy::Sharp,
         );
 
@@ -1252,8 +1288,8 @@ mod tests {
         let mesh = quad_with_normals();
         let (faces_d, vertices_d) = tessellated_triangle();
         let mesh_d = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces_d.clone(),
-            vertices_d.clone(),
+            faces_d,
+            vertices_d,
             NormalStrategy::Sharp,
         );
 
