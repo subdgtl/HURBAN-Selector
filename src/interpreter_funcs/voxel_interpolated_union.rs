@@ -103,9 +103,9 @@ impl Func for FuncInterpolatedUnion {
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     min_value: Some(0.005),
                     max_value: None,
-                    default_value_x: Some(0.1),
-                    default_value_y: Some(0.1),
-                    default_value_z: Some(0.1),
+                    default_value_x: Some(1.0),
+                    default_value_y: Some(1.0),
+                    default_value_z: Some(1.0),
                 }),
                 optional: false,
             },
@@ -176,7 +176,7 @@ impl Func for FuncInterpolatedUnion {
         let mesh2 = args[1].unwrap_mesh();
         let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
         let fill = args[3].unwrap_boolean();
-        let factor = args[4].unwrap_float();
+        let interpolation_factor = args[4].unwrap_float();
         let error_if_large = args[5].unwrap_boolean();
         let analyze_bbox = args[6].unwrap_boolean();
         let analyze_mesh = args[7].unwrap_boolean();
@@ -214,30 +214,40 @@ impl Func for FuncInterpolatedUnion {
         }
 
         let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, 1);
-        let voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, 1);
+        let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, 1);
 
-        let boolean_union_range = 0.0..=0.0;
-
-        let meshing_range = if fill {
+        let volume_value_range = if fill {
             (Bound::Unbounded, Bound::Included(0.0))
         } else {
             (Bound::Included(0.0), Bound::Included(0.0))
         };
 
-        voxel_cloud1.interpolated_union_of_distance_fields(
-            &boolean_union_range,
-            &voxel_cloud2,
-            &boolean_union_range,
-            factor,
-        );
+        let bounding_box_voxel_cloud1 = voxel_cloud1.bounding_box_cartesian_space();
+        let bounding_box_voxel_cloud2 = voxel_cloud2.bounding_box_cartesian_space();
 
-        if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {
+        if let Some(bounding_box) = BoundingBox::union(
+            [bounding_box_voxel_cloud1, bounding_box_voxel_cloud2]
+                .iter()
+                .map(|bbox| *bbox),
+        ) {
+            voxel_cloud1.resize_to_bounding_box_cartesian_space(&bounding_box);
+            voxel_cloud1.compute_distance_field(&volume_value_range);
+            voxel_cloud2.compute_distance_field(&volume_value_range);
+
+            voxel_cloud1.interpolate_to(&voxel_cloud2, interpolation_factor);
+        } else {
             let error = FuncError::new(FuncInterpolatedUnionError::EmptyScalarField);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
-        match voxel_cloud1.to_mesh(&meshing_range) {
+        if !voxel_cloud1.contains_voxels_within_range(&volume_value_range) {
+            let error = FuncError::new(FuncInterpolatedUnionError::EmptyScalarField);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
+
+        match voxel_cloud1.to_mesh(&volume_value_range) {
             Some(value) => {
                 if analyze_bbox {
                     analytics::report_bounding_box_analysis(&value, log);

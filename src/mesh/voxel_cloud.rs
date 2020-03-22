@@ -707,49 +707,6 @@ impl ScalarField {
         }
         self.shrink_to_fit(volume_value_range_self)
     }
-    /// Computes interpolated values of two scalar fields. Prior to
-    /// interpolation, the scalar fields will be recomputed to distance fields.
-    /// The current scalar field will be mutated and resized to encompass values
-    /// from both scalar fields. The two scalar fields do not have to contain
-    /// voxels of the same size.  The interpolation is linear.
-    ///
-    /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
-    /// between the current value to the other value. For factor outside this
-    /// range, the values will be extrapolated.
-    ///
-    /// # Panics
-    ///
-    /// Panics if one of the volume value ranges is infinite.
-    ///
-    /// # Warning
-    ///
-    /// If the input scalar fields are far apart, the resulting scalar field may
-    /// be huge.
-    pub fn interpolated_union_of_distance_fields<U>(
-        &mut self,
-        volume_value_range_self: &U,
-        other: &mut ScalarField,
-        volume_value_range_other: &U,
-        interpolation_factor: f32,
-    ) where
-        U: RangeBounds<f32>,
-    {
-        let bounding_box_self = self.bounding_box_cartesian_space();
-        let bounding_box_other = other.bounding_box_cartesian_space();
-
-        if let Some(bounding_box) = BoundingBox::union(vec![bounding_box_self, bounding_box_other])
-        {
-            self.resize_to_bounding_box_cartesian_space(&bounding_box);
-            self.compute_distance_field(volume_value_range_self);
-            other.compute_distance_field(volume_value_range_other);
-
-            self.interpolate_to(&other, interpolation_factor);
-        } else {
-            // Wipe the current scalar field if none of the scalar fields
-            // contained any volume voxels.
-            self.wipe();
-        }
-    }
 
     /// Interpolate values of the current scalar field to the values of the
     /// other scalar field. The current scalar field will not be resized, so
