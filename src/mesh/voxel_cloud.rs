@@ -1712,9 +1712,13 @@ impl ScalarField {
                         // Generate new mesh path from all edge midpoint
                         // vertices and only those faces that should be created
                         // according th the marching cubes lookup table.
+                        //
+                        // FIXME: @Optimization remove unused vertices already
+                        // here and generate the mesh without the need of
+                        // removing orphans.
                         Mesh::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
-                            marching_cubes_faces.iter().map(|data| *data),
-                            edge_midpoints.iter().map(|v| *v),
+                            marching_cubes_faces.iter().copied(),
+                            edge_midpoints.iter().copied(),
                             // Sharp is more efficient and gets lost by welding anyway
                             NormalStrategy::Sharp,
                         ),
@@ -1731,6 +1735,10 @@ impl ScalarField {
             .x
             .min(self.voxel_dimensions.y.min(self.voxel_dimensions.z));
         // and weld naked edges.
+        //
+        // FIXME: @Optimization Collect all the vertices already here, make sure
+        // they are deduplicated, reindex the faces for each marching cube and
+        // generate a valid watertight mesh without the need to weld it.
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
