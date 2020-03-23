@@ -88,7 +88,7 @@ impl ScalarField {
     /// # Panics
     ///
     /// Panics if any of the voxel dimensions is below or equal to zero.
-    pub fn from_bounding_box_cartesian_space_space(
+    pub fn from_bounding_box_cartesian_space(
         bounding_box: &BoundingBox<f32>,
         voxel_dimensions: &Vector3<f32>,
     ) -> Self {
@@ -151,7 +151,7 @@ impl ScalarField {
             bounding_box_tight.offset(growth_offset_vector_in_cartesian_units);
 
         // Target scalar field to be filled with points on the mesh surface.
-        let mut scalar_field = ScalarField::from_bounding_box_cartesian_space_space(
+        let mut scalar_field = ScalarField::from_bounding_box_cartesian_space(
             &bounding_box_offset,
             voxel_dimensions,
         );
