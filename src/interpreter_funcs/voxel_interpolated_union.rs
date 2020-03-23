@@ -235,10 +235,6 @@ impl Func for FuncInterpolatedUnion {
             voxel_cloud2.compute_distance_field(&volume_value_range);
 
             voxel_cloud1.interpolate_to(&voxel_cloud2, interpolation_factor);
-        } else {
-            let error = FuncError::new(FuncInterpolatedUnionError::EmptyScalarField);
-            log(LogMessage::error(format!("Error: {}", error)));
-            return Err(error);
         }
 
         if !voxel_cloud1.contains_voxels_within_range(&volume_value_range) {
