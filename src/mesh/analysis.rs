@@ -196,9 +196,9 @@ pub fn border_vertex_indices(edge_sharing: &EdgeSharingMap) -> HashSet<u32> {
 /// Finds continuous loops of border edges, starting from a random edge.
 ///
 /// The mesh may contain holes or islands, therefore it may have an unknown
-/// number of edge loops. If only two edge loops meet at a single vertex
-/// (e.g. if the mesh is non-manifold), this border edge chain is not included
-/// in the result.
+/// number of edge loops. If two or more edge loops meet at a single vertex, it
+/// is undefined whether they end up in the result as separate border edge
+/// loops, or are joined into a single border edge loop.
 pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<OrientedEdge>> {
     let mut border_edges: Vec<_> = border_edges(edge_sharing).collect();
     let mut edge_loops: Vec<Vec<OrientedEdge>> = Vec::new();
