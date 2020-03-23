@@ -161,18 +161,7 @@ impl<C: ObjCache> Importer<C> {
                 let models = match self.cache.get_by_checksum(checksum) {
                     Some(models) => models.clone(),
                     None => {
-                        let (mut tobj_models, _) =
-                            obj_buf_into_tobj(&mut file_contents.as_slice())?;
-                        let mut index = 0;
-
-                        while index != tobj_models.len() {
-                            if tobj_models[index].mesh.positions.is_empty() {
-                                tobj_models.remove(index);
-                            } else {
-                                index += 1;
-                            }
-                        }
-
+                        let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
                         tobj_to_internal(tobj_models)
                     }
                 };
@@ -207,6 +196,10 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
     let mut models = Vec::with_capacity(tobj_models.len());
 
     for model in tobj_models {
+        if model.mesh.indices.is_empty() {
+            continue;
+        }
+
         let vertex_positions: Vec<_> = model
             .mesh
             .positions
@@ -253,6 +246,8 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
             mesh,
         });
     }
+
+    models.shrink_to_fit();
 
     models
 }
