@@ -352,10 +352,6 @@ impl Mesh {
         &self.vertices
     }
 
-    pub fn vertices_mut(&mut self) -> &mut [Point3<f32>] {
-        &mut self.vertices
-    }
-
     pub fn normals(&self) -> &[Vector3<f32>] {
         &self.normals
     }
@@ -630,6 +626,14 @@ impl OrientedEdge {
 
     pub fn contains_vertex(self, vertex_index: u32) -> bool {
         self.vertices.0 == vertex_index || self.vertices.1 == vertex_index
+    }
+
+    pub fn shares_vertex(self, other: OrientedEdge) -> bool {
+        other.contains_vertex(self.vertices.0) || other.contains_vertex(self.vertices.1)
+    }
+
+    pub fn chains_to(self, other: OrientedEdge) -> bool {
+        self.vertices.1 == other.vertices.0
     }
 
     pub fn to_reverted(self) -> Self {
