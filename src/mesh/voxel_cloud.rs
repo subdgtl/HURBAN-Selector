@@ -669,7 +669,9 @@ impl ScalarField {
                         // here and generate the mesh without the need of
                         // removing orphans.
                         Mesh::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
-                            marching_cubes_faces.iter().map(|(a, b, c)| (u32::from(*a), u32::from(*b), u32::from(*c))),
+                            marching_cubes_faces
+                                .iter()
+                                .map(|(a, b, c)| (u32::from(*a), u32::from(*b), u32::from(*c))),
                             edge_midpoints.iter().copied(),
                             // Sharp is more efficient and gets lost by welding anyway
                             NormalStrategy::Sharp,
@@ -1462,7 +1464,6 @@ struct Row {
     data: [(u8, u8, u8); 5],
 }
 
-// FIXME: explain why this is 512 bits rather than expected 488 bits
 static_assertions::assert_eq_size!(Row, [u8; 16]);
 
 impl Row {
