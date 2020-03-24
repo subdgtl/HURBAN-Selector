@@ -1,6 +1,6 @@
 use std::fs;
 
-use hurban_selector::importer::{self, EndlessCache, Importer, ImporterError};
+use hurban_selector::importer::{self, EndlessCache, Importer, ImporterError, InvalidStructure};
 
 fn import_obj(path: &str) -> Vec<importer::Model> {
     let file_contents = fs::read(&path).expect("File should be read to bytes");
@@ -8,6 +8,7 @@ fn import_obj(path: &str) -> Vec<importer::Model> {
         importer::obj_buf_into_tobj(&mut file_contents.as_slice()).expect("Obj should be parsed");
 
     importer::tobj_to_internal(tobj_models)
+        .expect("Failed to convert tobj representation to internal one.")
 }
 
 #[test]
@@ -54,7 +55,10 @@ fn test_importer_import_obj_returns_error_when_importing_invalid_obj_file() {
         .import_obj(&path)
         .expect_err("Error should be thrown");
 
-    assert_eq!(error, ImporterError::InvalidStructure);
+    assert_eq!(
+        error,
+        ImporterError::InvalidStructure(InvalidStructure::ParsingError)
+    );
 }
 
 #[test]
@@ -114,17 +118,38 @@ fn test_importer_import_obj_returns_error_when_invalid_unicode_character_is_enco
         .import_obj(&"tests/fixtures/invalid_unicode.obj")
         .expect_err("Error should be thrown");
 
-    assert_eq!(error, ImporterError::InvalidStructure);
+    assert_eq!(
+        error,
+        ImporterError::InvalidStructure(InvalidStructure::ParsingError)
+    );
 }
 
 #[test]
-fn test_importer_import_obj_filters_empty_models() {
+fn test_importer_import_obj_returns_error_when_empty_model_is_encountered() {
     let cache = EndlessCache::default();
     let mut importer = Importer::new(cache);
 
-    let models = importer
+    let error = importer
         .import_obj(&"tests/fixtures/empty_model.obj")
-        .expect("Valid obj should be loaded");
+        .expect_err("Error should be thrown");
 
-    assert_eq!(models.len(), 1);
+    assert_eq!(
+        error,
+        ImporterError::InvalidStructure(InvalidStructure::BlankModel)
+    );
+}
+
+#[test]
+fn test_importer_import_obj_returns_error_when_duplicate_indices_are_encountered() {
+    let cache = EndlessCache::default();
+    let mut importer = Importer::new(cache);
+
+    let error = importer
+        .import_obj(&"tests/fixtures/invalid_geometry_duplicate_indices.obj")
+        .expect_err("Error should be thrown");
+
+    assert_eq!(
+        error,
+        ImporterError::InvalidStructure(InvalidStructure::DuplicateIndices)
+    );
 }
