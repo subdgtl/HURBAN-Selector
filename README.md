@@ -93,18 +93,15 @@ Default is primary GPU backend for the current OS.
 
 ### Renderer development
 
-If working on the renderer, enabling Vulkan validation layers is
-useful for additional validation:
+If working on the renderer, Vulkan validation layers can provide additional
+validation. When running on the Vulkan backend and with `debug_assertions`
+enabled, `gfx-hal` automatically enables Vulkan validation layers.
 
-``` shell
-VK_LAYER_PATH=$VULKAN_SDK/bin \
-VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_VALIDATION \
-cargo run
-```
-
-To run with Vulkan backend on macOS, you need to setup the VulkanSDK
-(see macOS guide in [ash](https://crates.io/crates/ash)), and possibly
-[disable
+For the implementation to be able to load the validation layers, the [LunarG
+Vulkan SDK](https://vulkan.lunarg.com/) must be installed. Note that the Vulkan
+SDK can even be installed on macOS, and enables running on the Vulkan backend
+there, but the setup is a bit more involved - see macOS guide in
+[ash](https://crates.io/crates/ash)), and possibly [disable
 SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection-mac-os-x/)
 
 ### Creating a windows distribution for workshops

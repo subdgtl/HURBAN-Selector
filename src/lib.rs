@@ -2,10 +2,14 @@ pub use crate::logger::LogLevel;
 pub use crate::renderer::{GpuBackend, GpuPowerPreference, Msaa};
 pub use crate::ui::Theme;
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::f32;
 use std::fs::File;
+use std::io::BufWriter;
 use std::mem;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -36,6 +40,7 @@ mod analytics;
 mod bounding_box;
 mod camera;
 mod convert;
+mod exporter;
 mod imgui_winit_support;
 mod input;
 mod interpreter;
@@ -277,358 +282,8 @@ pub fn init_and_run(options: Options) -> ! {
                 input_manager.start_frame();
             }
             winit::event::Event::MainEventsCleared => {
-                let input_state = input_manager.input_state();
-                let ui_frame = ui.prepare_frame(&window);
-
-                #[cfg(not(feature = "dist"))]
-                {
-                    if input_state.debug_view_cycle {
-                        renderer_debug_view = renderer_debug_view.cycle();
-                        log::debug!("Cycled debug view to {:?}", renderer_debug_view);
-                    }
-                }
-
-                if input_state.open_screenshot_options {
-                    screenshot_modal_open = true;
-                }
-
-                let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
-                let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
-                let [rotate_x, rotate_y] = input_state.camera_rotate;
-
-                camera.pan_ground(pan_ground_x, pan_ground_y);
-                camera.pan_screen(pan_screen_x, pan_screen_y);
-                camera.rotate(rotate_x, rotate_y);
-                camera.zoom(input_state.camera_zoom);
-                camera.zoom_step(input_state.camera_zoom_steps);
-
-                let menu_status = ui_frame.draw_menu_window(
-                    time,
-                    &mut screenshot_modal_open,
-                    &mut about_modal_open,
-                    &mut viewport_draw_mode,
-                    &mut viewport_draw_used_values,
-                    &mut project_status,
-                    &mut notifications.borrow_mut(),
-                );
-
-                ui_frame.draw_subdigital_logo(
-                    tex_subdigital_logo,
-                    width_subdigital_logo,
-                    height_subdigital_logo,
-                );
-
-                if menu_status.viewport_draw_used_values_changed {
-                    scene_bounding_box = BoundingBox::union(
-                        scene_meshes
-                            .values()
-                            .filter(|(used, _)| viewport_draw_used_values || !used)
-                            .map(|(_, mesh)| mesh.bounding_box()),
-                    )
-                    .unwrap_or_else(BoundingBox::unit);
-
-                    ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
-                    ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-                    renderer.remove_scene_mesh(
-                        ground_plane_gpu_mesh_handle
-                            .take()
-                            .expect("Ground plane must always be present"),
-                    );
-                    ground_plane_gpu_mesh_handle = Some(
-                        renderer
-                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
-                            .expect("Failed to add ground plane mesh"),
-                    );
-                }
-
-                let reset_viewport =
-                    input_state.camera_reset_viewport || menu_status.reset_viewport;
-
-                if let Some(prevent_overwrite_modal_trigger) = menu_status.prevent_overwrite_modal {
-                    project_status.prevent_overwrite_status = match prevent_overwrite_modal_trigger
-                    {
-                        OverwriteModalTrigger::NewProject => {
-                            Some(crate::project::NextAction::NewProject)
-                        }
-                        OverwriteModalTrigger::OpenProject => {
-                            Some(crate::project::NextAction::OpenProject)
-                        }
-                    }
-                }
-
-                if menu_status.new_project {
-                    scene_meshes.clear();
-
-                    for (_, (_, gpu_mesh_handle)) in scene_gpu_mesh_handles.drain() {
-                        renderer.remove_scene_mesh(gpu_mesh_handle);
-                    }
-
-                    scene_bounding_box = BoundingBox::union(
-                        scene_meshes
-                            .values()
-                            .filter(|(used, _)| viewport_draw_used_values || !used)
-                            .map(|(_, mesh)| mesh.bounding_box()),
-                    )
-                    .unwrap_or_else(BoundingBox::unit);
-
-                    ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
-                    ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-                    renderer.remove_scene_mesh(
-                        ground_plane_gpu_mesh_handle
-                            .take()
-                            .expect("Ground plane must always be present"),
-                    );
-                    ground_plane_gpu_mesh_handle = Some(
-                        renderer
-                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
-                            .expect("Failed to add ground plane mesh"),
-                    );
-
-                    let current_autorun_delay = session.autorun_delay();
-                    session = Session::new();
-                    session.set_autorun_delay(current_autorun_delay);
-
-                    project_status.path = None;
-                    project_status.changed_since_last_save = false;
-
-                    change_window_title(&window, &project_status);
-                }
-
-                if let Some(save_path) = menu_status.save_path {
-                    log::info!("Saving project at {}", save_path);
-
-                    let stmts = session.stmts().to_vec();
-                    let project = project::Project { version: 1, stmts };
-
-                    match project::save(&save_path, project) {
-                        Ok(save_path) => {
-                            let save_path = save_path
-                                .as_os_str()
-                                .to_str()
-                                .expect("Failed to convert save path to str.");
-
-                            project_status.save(&save_path);
-                            change_window_title(&window, &project_status);
-                            notifications.borrow_mut().push(
-                                time,
-                                NotificationLevel::Info,
-                                format!("Project saved as {}", &save_path),
-                            );
-                        }
-                        Err(err) => {
-                            log::error!("{}", err);
-                            project_status.error = Some(err);
-                        }
-                    }
-                }
-
-                if let Some(open_path) = menu_status.open_path {
-                    log::info!("Opening new project at {}", open_path);
-
-                    match project::open(&open_path) {
-                        Ok(project) => {
-                            scene_meshes.clear();
-
-                            for (_, gpu_mesh_handle) in scene_gpu_mesh_handles.drain() {
-                                renderer.remove_scene_mesh(gpu_mesh_handle.1);
-                            }
-
-                            scene_bounding_box = BoundingBox::union(
-                                scene_meshes.values().map(|(_, mesh)| mesh.bounding_box()),
-                            )
-                            .unwrap_or_else(BoundingBox::unit);
-
-                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
-                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
-                            renderer.remove_scene_mesh(
-                                ground_plane_gpu_mesh_handle
-                                    .take()
-                                    .expect("Ground plane must always be present"),
-                            );
-                            ground_plane_gpu_mesh_handle = Some(
-                                renderer
-                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
-                                    .expect("Failed to add ground plane mesh"),
-                            );
-
-                            let current_autorun_delay = session.autorun_delay();
-                            session = Session::new();
-                            session.set_autorun_delay(current_autorun_delay);
-
-                            for stmt in project.stmts {
-                                session.push_prog_stmt(time, stmt);
-                            }
-
-                            project_status.path = Some(open_path.clone());
-                            project_status.changed_since_last_save = false;
-
-                            change_window_title(&window, &project_status);
-
-                            notifications.borrow_mut().push(
-                                time,
-                                NotificationLevel::Info,
-                                format!("Opened project {}", &open_path),
-                            );
-                        }
-                        Err(err) => {
-                            log::error!("{}", err);
-                            project_status.error = Some(err);
-                        }
-                    };
-                }
-
-                if project_status.error.is_some()
-                    && ui_frame.draw_error_modal(&project_status.error)
-                {
-                    project_status.error = None;
-                }
-
-                let window_size = window.inner_size();
-                let take_screenshot = ui_frame.draw_screenshot_window(
-                    &mut screenshot_modal_open,
-                    &mut screenshot_options,
-                    window_size.width,
-                    window_size.height,
-                );
-
-                let (tex_logos, width_logos, height_logos) = match options.theme {
-                    Theme::Funky => (tex_logos_black, width_logos_black, height_logos_black),
-                    Theme::Dark => (tex_logos_white, width_logos_white, height_logos_white),
-                };
-                ui_frame.draw_about_window(
-                    &mut about_modal_open,
-                    tex_scheme,
-                    width_scheme,
-                    height_scheme,
-                    tex_logos,
-                    width_logos,
-                    height_logos,
-                );
-
-                ui_frame.draw_notifications_window(&notifications.borrow());
-
-                if ui_frame.draw_pipeline_window(time, &mut session) {
-                    project_status.changed_since_last_save = true;
-
-                    change_window_title(&window, &project_status);
-                }
-
-                if ui_frame.draw_operations_window(
-                    time,
-                    &mut session,
-                    &mut notifications.borrow_mut(),
-                    DURATION_AUTORUN_DELAY,
-                ) {
-                    project_status.changed_since_last_save = true;
-
-                    change_window_title(&window, &project_status);
-                }
-
-                if let Some(prevent_overwrite_status) = project_status.prevent_overwrite_status {
-                    match ui_frame.draw_prevent_overwrite_modal() {
-                        SaveModalResult::Cancel => {
-                            project_status.prevent_overwrite_status = None;
-                        }
-                        SaveModalResult::DontSave => match prevent_overwrite_status {
-                            project::NextAction::Exit => {
-                                *control_flow = winit::event_loop::ControlFlow::Exit
-                            }
-                            project::NextAction::NewProject => {
-                                project_status.new_requested = true;
-                            }
-                            project::NextAction::OpenProject => {
-                                project_status.open_requested = true
-                            }
-                        },
-                        SaveModalResult::Save => {
-                            let save_path = match project_status.path.clone() {
-                                Some(project_path) => Some(project_path),
-                                None => ui_frame.draw_save_dialog(),
-                            };
-
-                            if let Some(save_path) = save_path {
-                                let stmts = session.stmts().to_vec();
-                                let project = project::Project { version: 1, stmts };
-
-                                match project::save(&save_path, project) {
-                                    Ok(save_path) => match prevent_overwrite_status {
-                                        project::NextAction::Exit => {
-                                            *control_flow = winit::event_loop::ControlFlow::Exit
-                                        }
-                                        project::NextAction::NewProject => {
-                                            let save_path = save_path
-                                                .as_os_str()
-                                                .to_str()
-                                                .expect("Failed to convert save path to str.");
-
-                                            project_status.save(&save_path);
-                                            project_status.new_requested = true;
-                                        }
-                                        project::NextAction::OpenProject => {
-                                            let save_path = save_path
-                                                .as_os_str()
-                                                .to_str()
-                                                .expect("Failed to convert save path to str.");
-
-                                            project_status.save(&save_path);
-                                            project_status.open_requested = true
-                                        }
-                                    },
-                                    Err(err) => {
-                                        log::error!("{}", err);
-
-                                        project_status.error = Some(err);
-                                    }
-                                }
-                            }
-
-                            project_status.prevent_overwrite_status = None;
-                        }
-                        SaveModalResult::Nothing => {}
-                    }
-                }
-
-                if reset_viewport {
-                    camera_interpolation =
-                        Some(CameraInterpolation::new(&camera, &scene_bounding_box, time));
-                }
-
-                let screenshot_render_target = if take_screenshot {
-                    Some(renderer.add_offscreen_render_target(
-                        screenshot_options.width,
-                        screenshot_options.height,
-                    ))
-                } else {
-                    None
-                };
-
-                if input_state.close_requested {
-                    if project_status.changed_since_last_save {
-                        project_status.prevent_overwrite_status = Some(project::NextAction::Exit);
-                    } else {
-                        *control_flow = winit::event_loop::ControlFlow::Exit;
-                    }
-                }
-
-                if let Some(physical_size) = input_state.window_resized {
-                    let width = physical_size.width;
-                    let height = physical_size.height;
-                    log::debug!("Window resized to new physical size {}x{}", width, height);
-
-                    // While it can't be queried, 16 is usually the minimal
-                    // dimension of certain types of textures. Creating anything
-                    // smaller currently crashes most of our GPU backend/driver
-                    // combinations.
-                    if width >= 16 && height >= 16 {
-                        screenshot_options.width = width;
-                        screenshot_options.height = height;
-                        camera.set_viewport_aspect_ratio(width as f32 / height as f32);
-                        renderer.set_window_size(width, height);
-                    } else {
-                        log::warn!("Ignoring new window physical size {}x{}", width, height);
-                    }
-                }
-
+                // Poll at the beginning of event processing, so that the
+                // pipeline UI is not lagging one frame behind.
                 session.poll(time, |callback_value| match callback_value {
                     PollNotification::UsedValueAdded(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
@@ -782,6 +437,455 @@ pub fn init_and_run(options: Options) -> ! {
                         );
                     }
                 });
+
+                let input_state = input_manager.input_state();
+                let ui_frame = ui.prepare_frame(&window);
+
+                #[cfg(not(feature = "dist"))]
+                {
+                    if input_state.debug_view_cycle {
+                        renderer_debug_view = renderer_debug_view.cycle();
+                        log::debug!("Cycled debug view to {:?}", renderer_debug_view);
+                    }
+                }
+
+                if !session.interpreter_busy() {
+                    if input_state.prog_run_requested && session.autorun_delay().is_none() {
+                        session.interpret();
+                    }
+
+                    if input_state.prog_pop_requested {
+                        session.pop_prog_stmt(time);
+                    }
+                }
+
+                if input_state.open_screenshot_options {
+                    screenshot_modal_open = true;
+                }
+
+                let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
+                let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
+                let [rotate_x, rotate_y] = input_state.camera_rotate;
+
+                camera.pan_ground(pan_ground_x, pan_ground_y);
+                camera.pan_screen(pan_screen_x, pan_screen_y);
+                camera.rotate(rotate_x, rotate_y);
+                camera.zoom(input_state.camera_zoom);
+                camera.zoom_step(input_state.camera_zoom_steps);
+
+                let menu_status = ui_frame.draw_menu_window(
+                    time,
+                    &mut screenshot_modal_open,
+                    &mut about_modal_open,
+                    &mut viewport_draw_mode,
+                    &mut viewport_draw_used_values,
+                    &mut project_status,
+                    &mut session,
+                    &mut notifications.borrow_mut(),
+                );
+
+                ui_frame.draw_subdigital_logo(
+                    tex_subdigital_logo,
+                    width_subdigital_logo,
+                    height_subdigital_logo,
+                );
+
+                if menu_status.viewport_draw_used_values_changed {
+                    scene_bounding_box = BoundingBox::union(
+                        scene_meshes
+                            .values()
+                            .filter(|(used, _)| viewport_draw_used_values || !used)
+                            .map(|(_, mesh)| mesh.bounding_box()),
+                    )
+                    .unwrap_or_else(BoundingBox::unit);
+
+                    ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                    ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                    renderer.remove_scene_mesh(
+                        ground_plane_gpu_mesh_handle
+                            .take()
+                            .expect("Ground plane must always be present"),
+                    );
+                    ground_plane_gpu_mesh_handle = Some(
+                        renderer
+                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
+                            .expect("Failed to add ground plane mesh"),
+                    );
+                }
+
+                if let Some(prevent_overwrite_modal_trigger) = menu_status.prevent_overwrite_modal {
+                    project_status.prevent_overwrite_status = match prevent_overwrite_modal_trigger
+                    {
+                        OverwriteModalTrigger::NewProject => {
+                            Some(crate::project::NextAction::NewProject)
+                        }
+                        OverwriteModalTrigger::OpenProject => {
+                            Some(crate::project::NextAction::OpenProject)
+                        }
+                    }
+                }
+
+                if menu_status.new_project {
+                    scene_meshes.clear();
+
+                    for (_, (_, gpu_mesh_handle)) in scene_gpu_mesh_handles.drain() {
+                        renderer.remove_scene_mesh(gpu_mesh_handle);
+                    }
+
+                    scene_bounding_box = BoundingBox::union(
+                        scene_meshes
+                            .values()
+                            .filter(|(used, _)| viewport_draw_used_values || !used)
+                            .map(|(_, mesh)| mesh.bounding_box()),
+                    )
+                    .unwrap_or_else(BoundingBox::unit);
+
+                    ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                    ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                    renderer.remove_scene_mesh(
+                        ground_plane_gpu_mesh_handle
+                            .take()
+                            .expect("Ground plane must always be present"),
+                    );
+                    ground_plane_gpu_mesh_handle = Some(
+                        renderer
+                            .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
+                            .expect("Failed to add ground plane mesh"),
+                    );
+
+                    let current_autorun_delay = session.autorun_delay();
+                    session = Session::new();
+                    session.set_autorun_delay(current_autorun_delay);
+
+                    project_status.path = None;
+                    project_status.changed_since_last_save = false;
+
+                    change_window_title(&window, &project_status);
+                }
+
+                if let Some(save_path) = menu_status.save_path {
+                    log::info!("Saving project at {}", save_path.to_string_lossy());
+
+                    let stmts = session.stmts().to_vec();
+                    let project = project::Project { version: 1, stmts };
+
+                    match project::save(&save_path, project) {
+                        Ok(save_path) => {
+                            let save_path = save_path
+                                .as_os_str()
+                                .to_str()
+                                .expect("Failed to convert save path to str.");
+
+                            project_status.save(&save_path);
+                            change_window_title(&window, &project_status);
+                            notifications.borrow_mut().push(
+                                time,
+                                NotificationLevel::Info,
+                                format!("Project saved as {}", &save_path),
+                            );
+                        }
+                        Err(err) => {
+                            log::error!("{}", err);
+                            project_status.error = Some(err);
+                        }
+                    }
+                }
+
+                if let Some(open_path) = menu_status.open_path {
+                    log::info!("Opening new project at {}", open_path.to_string_lossy());
+
+                    match project::open(&open_path) {
+                        Ok(project) => {
+                            scene_meshes.clear();
+
+                            for (_, gpu_mesh_handle) in scene_gpu_mesh_handles.drain() {
+                                renderer.remove_scene_mesh(gpu_mesh_handle.1);
+                            }
+
+                            scene_bounding_box = BoundingBox::union(
+                                scene_meshes.values().map(|(_, mesh)| mesh.bounding_box()),
+                            )
+                            .unwrap_or_else(BoundingBox::unit);
+
+                            ground_plane_mesh = compute_ground_plane_mesh(&scene_bounding_box);
+                            ground_plane_mesh_bounding_box = ground_plane_mesh.bounding_box();
+                            renderer.remove_scene_mesh(
+                                ground_plane_gpu_mesh_handle
+                                    .take()
+                                    .expect("Ground plane must always be present"),
+                            );
+                            ground_plane_gpu_mesh_handle = Some(
+                                renderer
+                                    .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
+                                    .expect("Failed to add ground plane mesh"),
+                            );
+
+                            let current_autorun_delay = session.autorun_delay();
+                            session = Session::new();
+                            session.set_autorun_delay(current_autorun_delay);
+
+                            for stmt in project.stmts {
+                                session.push_prog_stmt(time, stmt);
+                            }
+
+                            project_status.path = Some(PathBuf::from(&open_path));
+                            project_status.changed_since_last_save = false;
+
+                            change_window_title(&window, &project_status);
+
+                            notifications.borrow_mut().push(
+                                time,
+                                NotificationLevel::Info,
+                                format!("Opened project {}", &open_path.to_string_lossy()),
+                            );
+                        }
+                        Err(err) => {
+                            log::error!("{}", err);
+                            project_status.error = Some(err);
+                        }
+                    };
+                }
+
+                if project_status.error.is_some()
+                    && ui_frame.draw_error_modal(&project_status.error)
+                {
+                    project_status.error = None;
+                }
+
+                let window_size = window.inner_size();
+                let take_screenshot = ui_frame.draw_screenshot_window(
+                    &mut screenshot_modal_open,
+                    &mut screenshot_options,
+                    window_size.width,
+                    window_size.height,
+                );
+
+                let (tex_logos, width_logos, height_logos) = match options.theme {
+                    Theme::Funky => (tex_logos_black, width_logos_black, height_logos_black),
+                    Theme::Dark => (tex_logos_white, width_logos_white, height_logos_white),
+                };
+                ui_frame.draw_about_window(
+                    &mut about_modal_open,
+                    tex_scheme,
+                    width_scheme,
+                    height_scheme,
+                    tex_logos,
+                    width_logos,
+                    height_logos,
+                );
+
+                ui_frame.draw_notifications_window(&notifications.borrow());
+
+                if ui_frame.draw_pipeline_window(time, &mut session) {
+                    project_status.changed_since_last_save = true;
+
+                    change_window_title(&window, &project_status);
+                }
+
+                if ui_frame.draw_operations_window(
+                    time,
+                    &mut session,
+                    &mut notifications.borrow_mut(),
+                    DURATION_AUTORUN_DELAY,
+                ) {
+                    project_status.changed_since_last_save = true;
+
+                    change_window_title(&window, &project_status);
+                }
+
+                if let Some(prevent_overwrite_status) = project_status.prevent_overwrite_status {
+                    match ui_frame.draw_prevent_overwrite_modal() {
+                        SaveModalResult::Cancel => {
+                            project_status.prevent_overwrite_status = None;
+                        }
+                        SaveModalResult::DontSave => match prevent_overwrite_status {
+                            project::NextAction::Exit => {
+                                *control_flow = winit::event_loop::ControlFlow::Exit
+                            }
+                            project::NextAction::NewProject => {
+                                project_status.new_requested = true;
+                            }
+                            project::NextAction::OpenProject => {
+                                project_status.open_requested = true
+                            }
+                        },
+                        SaveModalResult::Save => {
+                            let save_path = match project_status.path.clone() {
+                                Some(project_path) => Some(project_path),
+                                None => {
+                                    let path_string = tinyfiledialogs::save_file_dialog_with_filter(
+                                        "Save",
+                                        project::DEFAULT_NEW_FILENAME,
+                                        project::EXTENSION_FILTER,
+                                        project::EXTENSION_DESCRIPTION,
+                                    );
+
+                                    path_string.map(PathBuf::from)
+                                }
+                            };
+
+                            if let Some(save_path) = save_path {
+                                let stmts = session.stmts().to_vec();
+                                let project = project::Project { version: 1, stmts };
+
+                                match project::save(&save_path, project) {
+                                    Ok(save_path) => match prevent_overwrite_status {
+                                        project::NextAction::Exit => {
+                                            *control_flow = winit::event_loop::ControlFlow::Exit
+                                        }
+                                        project::NextAction::NewProject => {
+                                            let save_path = save_path
+                                                .as_os_str()
+                                                .to_str()
+                                                .expect("Failed to convert save path to str.");
+
+                                            project_status.save(&save_path);
+                                            project_status.new_requested = true;
+                                        }
+                                        project::NextAction::OpenProject => {
+                                            let save_path = save_path
+                                                .as_os_str()
+                                                .to_str()
+                                                .expect("Failed to convert save path to str.");
+
+                                            project_status.save(&save_path);
+                                            project_status.open_requested = true
+                                        }
+                                    },
+                                    Err(err) => {
+                                        log::error!("Project save failed: {}", err);
+
+                                        project_status.error = Some(err);
+                                    }
+                                }
+                            }
+
+                            project_status.prevent_overwrite_status = None;
+                        }
+                        SaveModalResult::Nothing => (),
+                    }
+                }
+
+                if input_state.camera_reset_viewport || menu_status.reset_viewport {
+                    camera_interpolation =
+                        Some(CameraInterpolation::new(&camera, &scene_bounding_box, time));
+                }
+
+                if menu_status.export_obj {
+                    let suggested_filename = match &project_status.path {
+                        Some(path) => match path.file_stem() {
+                            Some(file_stem) => {
+                                Cow::Owned(format!("{}.obj", file_stem.to_string_lossy()))
+                            }
+                            None => Cow::Borrowed("export.obj"),
+                        },
+                        None => Cow::Borrowed("export.obj"),
+                    };
+                    if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
+                        "Export OBJ",
+                        &suggested_filename,
+                        &["*.obj"],
+                        "Wavefront (.obj)",
+                    ) {
+                        // FIXME: The session can not provide a name, if the
+                        // viewport contains an object constructed by a func
+                        // that was already removed from the program. For this
+                        // reason we are exporting just the stringified var
+                        // ident, if the name is not present.
+                        //
+                        // Note that this viewport vs session desync will also
+                        // affect features like viewport picking. We have to
+                        // assume all values in the viewport can potentially be
+                        // stale.
+                        //
+                        // What do we do?
+                        let unused_values_iter = scene_meshes
+                            .iter()
+                            .filter(|(_, (used, _))| !used)
+                            .map(|(value_path, (_, mesh))| {
+                                if value_path.1 == 0 {
+                                    // Do not suffix zero mesh-array index
+                                    let name = match session.var_name_for_ident(value_path.0) {
+                                        Some(name) => Cow::Borrowed(name),
+                                        None => Cow::Owned(value_path.0.to_string()),
+                                    };
+
+                                    (name, mesh.as_ref())
+                                } else {
+                                    // Suffix mesh-array index if nonzero
+                                    let name = match session.var_name_for_ident(value_path.0) {
+                                        Some(name) => {
+                                            Cow::Owned(format!("{} [{}]", name, value_path.1))
+                                        }
+                                        None => Cow::Owned(format!(
+                                            "{} [{}]",
+                                            value_path.0, value_path.1,
+                                        )),
+                                    };
+
+                                    (name, mesh.as_ref())
+                                }
+                            });
+
+                        let file = File::create(&path).expect("Failed to create OBJ file");
+                        let mut writer = BufWriter::new(file);
+
+                        match exporter::export_obj(&mut writer, unused_values_iter, f32::DIGITS) {
+                            Ok(()) => {
+                                log::info!("OBJ exported to: {}", path);
+                                notifications.borrow_mut().push(
+                                    time,
+                                    NotificationLevel::Info,
+                                    format!("OBJ exported to: {}", path),
+                                );
+                            }
+                            Err(err) => {
+                                log::error!("OBJ export failed: {}", err);
+                                notifications.borrow_mut().push(
+                                    time,
+                                    NotificationLevel::Error,
+                                    "OBJ export failed",
+                                );
+                            }
+                        }
+                    }
+                }
+
+                let screenshot_render_target = if take_screenshot {
+                    Some(renderer.add_offscreen_render_target(
+                        screenshot_options.width,
+                        screenshot_options.height,
+                    ))
+                } else {
+                    None
+                };
+
+                if input_state.close_requested {
+                    if project_status.changed_since_last_save {
+                        project_status.prevent_overwrite_status = Some(project::NextAction::Exit);
+                    } else {
+                        *control_flow = winit::event_loop::ControlFlow::Exit;
+                    }
+                }
+
+                if let Some(physical_size) = input_state.window_resized {
+                    let width = physical_size.width;
+                    let height = physical_size.height;
+                    log::debug!("Window resized to new physical size {}x{}", width, height);
+
+                    // While it can't be queried, 16 is usually the minimal
+                    // dimension of certain types of textures. Creating anything
+                    // smaller currently crashes most of our GPU backend/driver
+                    // combinations.
+                    if width >= 16 && height >= 16 {
+                        screenshot_options.width = width;
+                        screenshot_options.height = height;
+                        camera.set_viewport_aspect_ratio(width as f32 / height as f32);
+                        renderer.set_window_size(width, height);
+                    } else {
+                        log::warn!("Ignoring new window physical size {}x{}", width, height);
+                    }
+                }
 
                 if let Some(interp) = camera_interpolation {
                     if interp.target_time > time {
@@ -1025,7 +1129,7 @@ pub fn init_and_run(options: Options) -> ! {
                                     chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
                                 ));
 
-                                let file = File::create(&path).unwrap();
+                                let file = File::create(&path).expect("Failed to create PNG file");
                                 let mut png_encoder = png::Encoder::new(file, width, height);
                                 png_encoder.set_color(png::ColorType::RGBA);
                                 png_encoder.set_depth(png::BitDepth::Eight);
