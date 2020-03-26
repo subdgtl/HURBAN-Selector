@@ -17,29 +17,31 @@ use crate::mesh::{Mesh, NormalStrategy, TriangleFace};
 // for more granular error messages, but since it doesn't implement PartialEq,
 // we cannot use it for now.
 #[derive(Debug, PartialEq)]
-pub enum InvalidStructure {
+pub enum InvalidStructureError {
     ParsingError,
     DuplicateIndices,
     BlankModel,
 }
 
-impl fmt::Display for InvalidStructure {
+impl fmt::Display for InvalidStructureError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            InvalidStructure::ParsingError => write!(f, "Parsing error."),
-            InvalidStructure::DuplicateIndices => {
+            InvalidStructureError::ParsingError => write!(f, "Parsing error."),
+            InvalidStructureError::DuplicateIndices => {
                 write!(f, "Duplicate indices were found in one of the models.")
             }
-            InvalidStructure::BlankModel => write!(f, "One of the models is blank."),
+            InvalidStructureError::BlankModel => write!(f, "One of the models is blank."),
         }
     }
 }
+
+impl error::Error for InvalidStructureError {}
 
 #[derive(Debug, PartialEq)]
 pub enum ImporterError {
     FileNotFound,
     PermissionDenied,
-    InvalidStructure(InvalidStructure),
+    InvalidStructureError(InvalidStructureError),
     Other,
 }
 
@@ -47,7 +49,9 @@ impl fmt::Display for ImporterError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ImporterError::FileNotFound => write!(f, "File was not found."),
-            ImporterError::InvalidStructure(e) => write!(f, "The obj file is not valid: {}", e),
+            ImporterError::InvalidStructureError(e) => {
+                write!(f, "The obj file is not valid: {}", e)
+            }
             ImporterError::PermissionDenied => write!(f, "Permission denied."),
             ImporterError::Other => write!(f, "Unexpected error happened."),
         }
@@ -68,7 +72,13 @@ impl From<io::Error> for ImporterError {
 
 impl From<tobj::LoadError> for ImporterError {
     fn from(_err: tobj::LoadError) -> Self {
-        ImporterError::InvalidStructure(InvalidStructure::ParsingError)
+        ImporterError::InvalidStructureError(InvalidStructureError::ParsingError)
+    }
+}
+
+impl From<InvalidStructureError> for ImporterError {
+    fn from(err: InvalidStructureError) -> Self {
+        ImporterError::InvalidStructureError(err)
     }
 }
 
@@ -215,14 +225,14 @@ pub fn obj_buf_into_tobj(file_contents: &mut &[u8]) -> tobj::LoadResult {
 /// Converts `tobj::Model` vector into vector of internal `Model` representations.
 /// It expects valid `tobj::Model` representation, eg. number of positions
 /// divisible by 3.
-pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Result<Vec<Model>, ImporterError> {
+pub fn tobj_to_internal(
+    tobj_models: Vec<tobj::Model>,
+) -> Result<Vec<Model>, InvalidStructureError> {
     let mut models = Vec::with_capacity(tobj_models.len());
 
     for model in tobj_models {
         if model.mesh.indices.is_empty() {
-            return Err(ImporterError::InvalidStructure(
-                InvalidStructure::BlankModel,
-            ));
+            return Err(InvalidStructureError::BlankModel);
         }
 
         let vertex_positions: Vec<_> = model
@@ -254,9 +264,7 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Result<Vec<Model>, Imp
 
         for face in &faces_raw {
             if face.0 == face.1 || face.0 == face.2 || face.1 == face.2 {
-                return Err(ImporterError::InvalidStructure(
-                    InvalidStructure::DuplicateIndices,
-                ));
+                return Err(InvalidStructureError::DuplicateIndices);
             }
         }
 

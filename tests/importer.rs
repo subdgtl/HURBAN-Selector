@@ -1,6 +1,8 @@
 use std::fs;
 
-use hurban_selector::importer::{self, EndlessCache, Importer, ImporterError, InvalidStructure};
+use hurban_selector::importer::{
+    self, EndlessCache, Importer, ImporterError, InvalidStructureError,
+};
 
 fn import_obj(path: &str) -> Vec<importer::Model> {
     let file_contents = fs::read(&path).expect("File should be read to bytes");
@@ -57,7 +59,7 @@ fn test_importer_import_obj_returns_error_when_importing_invalid_obj_file() {
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructure(InvalidStructure::ParsingError)
+        ImporterError::InvalidStructureError(InvalidStructureError::ParsingError)
     );
 }
 
@@ -120,7 +122,7 @@ fn test_importer_import_obj_returns_error_when_invalid_unicode_character_is_enco
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructure(InvalidStructure::ParsingError)
+        ImporterError::InvalidStructureError(InvalidStructureError::ParsingError)
     );
 }
 
@@ -135,7 +137,7 @@ fn test_importer_import_obj_returns_error_when_empty_model_is_encountered() {
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructure(InvalidStructure::BlankModel)
+        ImporterError::InvalidStructureError(InvalidStructureError::BlankModel)
     );
 }
 
@@ -150,6 +152,6 @@ fn test_importer_import_obj_returns_error_when_duplicate_indices_are_encountered
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructure(InvalidStructure::DuplicateIndices)
+        ImporterError::InvalidStructureError(InvalidStructureError::DuplicateIndices)
     );
 }
