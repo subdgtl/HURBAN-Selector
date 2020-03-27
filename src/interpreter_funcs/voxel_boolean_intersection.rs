@@ -134,6 +134,16 @@ impl Func for FuncBooleanIntersection {
                 optional: false,
             },
             ParamInfo {
+                name: "Marching Cubes",
+                description: "Smoother result.\n\
+                \n\
+                If checked, the result will be smoother, otherwise it will be blocky.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
                 name: "Prevent Unsafe Settings",
                 description: "Stop computation and throw error if the calculation may be too slow.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
@@ -176,9 +186,10 @@ impl Func for FuncBooleanIntersection {
         let growth_u32 = args[3].unwrap_uint();
         let growth_f32 = growth_u32 as f32;
         let fill = args[4].unwrap_boolean();
-        let error_if_large = args[5].unwrap_boolean();
-        let analyze_bbox = args[6].unwrap_boolean();
-        let analyze_mesh = args[7].unwrap_boolean();
+        let marching_cubes = args[5].unwrap_boolean();
+        let error_if_large = args[6].unwrap_boolean();
+        let analyze_bbox = args[7].unwrap_boolean();
+        let analyze_mesh = args[8].unwrap_boolean();
 
         if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
             let error = FuncError::new(FuncBooleanIntersectionError::VoxelDimensionsZeroOrLess);
@@ -234,7 +245,13 @@ impl Func for FuncBooleanIntersection {
             return Err(error);
         }
 
-        match voxel_cloud1.to_mesh(&meshing_range) {
+        let meshing_output = if marching_cubes {
+            voxel_cloud1.to_marching_cubes(&meshing_range)
+        } else {
+            voxel_cloud1.to_mesh(&meshing_range)
+        };
+
+        match meshing_output {
             Some(value) => {
                 if analyze_bbox {
                     analytics::report_bounding_box_analysis(&value, log);

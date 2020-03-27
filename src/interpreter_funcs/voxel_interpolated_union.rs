@@ -136,6 +136,16 @@ impl Func for FuncInterpolatedUnion {
                 optional: false,
             },
             ParamInfo {
+                name: "Marching Cubes",
+                description: "Smoother result.\n\
+                \n\
+                If checked, the result will be smoother, otherwise it will be blocky.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
+                }),
+                optional: false,
+            },
+            ParamInfo {
                 name: "Prevent Unsafe Settings",
                 description: "Stop computation and throw error if the calculation may be too slow.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
@@ -177,9 +187,10 @@ impl Func for FuncInterpolatedUnion {
         let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
         let fill = args[3].unwrap_boolean();
         let interpolation_factor = args[4].unwrap_float();
-        let error_if_large = args[5].unwrap_boolean();
-        let analyze_bbox = args[6].unwrap_boolean();
-        let analyze_mesh = args[7].unwrap_boolean();
+        let marching_cubes = args[5].unwrap_boolean();
+        let error_if_large = args[6].unwrap_boolean();
+        let analyze_bbox = args[7].unwrap_boolean();
+        let analyze_mesh = args[8].unwrap_boolean();
 
         if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
             let error = FuncError::new(FuncInterpolatedUnionError::VoxelDimensionsZeroOrLess);
@@ -243,7 +254,13 @@ impl Func for FuncInterpolatedUnion {
             return Err(error);
         }
 
-        match voxel_cloud1.to_mesh(&volume_value_range) {
+        let meshing_output = if marching_cubes {
+            voxel_cloud1.to_marching_cubes(&volume_value_range)
+        } else {
+            voxel_cloud1.to_mesh(&volume_value_range)
+        };
+
+        match meshing_output {
             Some(value) => {
                 if analyze_bbox {
                     analytics::report_bounding_box_analysis(&value, log);
