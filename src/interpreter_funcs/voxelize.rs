@@ -19,7 +19,7 @@ const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 pub enum FuncVoxelizeError {
     WeldFailed,
     EmptyScalarField,
-    VoxelDimensionsZero,
+    VoxelDimensionsZeroOrLess,
     TooManyVoxels(u32, f32, f32, f32),
 }
 
@@ -31,7 +31,7 @@ impl fmt::Display for FuncVoxelizeError {
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
             FuncVoxelizeError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
-            FuncVoxelizeError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
+            FuncVoxelizeError::VoxelDimensionsZeroOrLess => write!(f, "One or more voxel dimensions are zero or less"),
             FuncVoxelizeError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
@@ -181,11 +181,8 @@ impl Func for FuncVoxelize {
         let analyze_bbox = args[6].unwrap_boolean();
         let analyze_mesh = args[7].unwrap_boolean();
 
-        if voxel_dimensions
-            .iter()
-            .any(|dimension| approx::relative_eq!(*dimension, 0.0))
-        {
-            let error = FuncError::new(FuncVoxelizeError::VoxelDimensionsZero);
+        if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
+            let error = FuncError::new(FuncVoxelizeError::VoxelDimensionsZeroOrLess);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }

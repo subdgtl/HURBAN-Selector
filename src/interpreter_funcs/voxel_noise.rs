@@ -13,7 +13,7 @@ use crate::interpreter::{
 };
 use crate::mesh::voxel_cloud::{self, ScalarField};
 
-const VOXEL_COUNT_THRESHOLD: u32 = 50000;
+const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncVoxelNoiseError {
@@ -221,7 +221,7 @@ impl Func for FuncVoxelNoise {
         }
 
         let mut scalar_field: ScalarField =
-            ScalarField::from_bounding_box_cartesian_space(&bbox, &Vector3::from(voxel_dimensions));
+            ScalarField::from_bounding_box_cartesian_space(&bbox, &voxel_dimensions);
 
         scalar_field.fill_with_noise(noise_scale, time_offset);
 
