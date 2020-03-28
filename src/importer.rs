@@ -41,7 +41,7 @@ impl error::Error for InvalidStructureError {}
 pub enum ImporterError {
     FileNotFound,
     PermissionDenied,
-    InvalidStructureError(InvalidStructureError),
+    InvalidStructure(InvalidStructureError),
     Other,
 }
 
@@ -49,9 +49,7 @@ impl fmt::Display for ImporterError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ImporterError::FileNotFound => write!(f, "File was not found."),
-            ImporterError::InvalidStructureError(e) => {
-                write!(f, "The obj file is not valid: {}", e)
-            }
+            ImporterError::InvalidStructure(e) => write!(f, "The obj file is not valid: {}", e),
             ImporterError::PermissionDenied => write!(f, "Permission denied."),
             ImporterError::Other => write!(f, "Unexpected error happened."),
         }
@@ -72,13 +70,13 @@ impl From<io::Error> for ImporterError {
 
 impl From<tobj::LoadError> for ImporterError {
     fn from(_err: tobj::LoadError) -> Self {
-        ImporterError::InvalidStructureError(InvalidStructureError::ParsingError)
+        ImporterError::InvalidStructure(InvalidStructureError::ParsingError)
     }
 }
 
 impl From<InvalidStructureError> for ImporterError {
     fn from(err: InvalidStructureError) -> Self {
-        ImporterError::InvalidStructureError(err)
+        ImporterError::InvalidStructure(err)
     }
 }
 

@@ -59,7 +59,7 @@ fn test_importer_import_obj_returns_error_when_importing_invalid_obj_file() {
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructureError(InvalidStructureError::ParsingError)
+        ImporterError::InvalidStructure(InvalidStructureError::ParsingError)
     );
 }
 
@@ -122,7 +122,7 @@ fn test_importer_import_obj_returns_error_when_invalid_unicode_character_is_enco
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructureError(InvalidStructureError::ParsingError)
+        ImporterError::InvalidStructure(InvalidStructureError::ParsingError)
     );
 }
 
@@ -137,7 +137,7 @@ fn test_importer_import_obj_returns_error_when_empty_model_is_encountered() {
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructureError(InvalidStructureError::BlankModel)
+        ImporterError::InvalidStructure(InvalidStructureError::BlankModel)
     );
 }
 
@@ -152,6 +152,6 @@ fn test_importer_import_obj_returns_error_when_duplicate_indices_are_encountered
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructureError(InvalidStructureError::DuplicateIndices)
+        ImporterError::InvalidStructure(InvalidStructureError::DuplicateIndices)
     );
 }
