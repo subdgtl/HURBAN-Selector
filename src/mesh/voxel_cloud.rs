@@ -556,11 +556,11 @@ impl ScalarField {
             volume_value_range_self.start_bound()
         {
             // Prefer the start value of `volume_value_range_self`.
-            *self_start as f64
+            f64::from(*self_start)
         } else if let Included(self_end) | Excluded(self_end) = volume_value_range_self.end_bound()
         {
             // If the start of the `volume_value_range_self` is unbounded, then use its end.
-            *self_end as f64
+            f64::from(*self_end)
         } else {
             // If the `volume_value_range_self` is unbounded on both ends,
             // use zero because it certainly is in the range and is in its
@@ -1035,13 +1035,13 @@ impl ScalarField {
                 &self.block_start,
                 &self.block_dimensions,
             );
-            let noise_scale_f64 = noise_scale as f64;
+            let noise_scale_f64 = f64::from(noise_scale);
 
             let noise_value = simplex.get([
-                absolute_coordinate.x as f64 * noise_scale_f64,
-                absolute_coordinate.y as f64 * noise_scale_f64,
-                absolute_coordinate.z as f64 * noise_scale_f64,
-                time_offset as f64,
+                f64::from(absolute_coordinate.x) * noise_scale_f64,
+                f64::from(absolute_coordinate.y) * noise_scale_f64,
+                f64::from(absolute_coordinate.z) * noise_scale_f64,
+                f64::from(time_offset),
             ]);
 
             *voxel = Some(noise_value as f32);

@@ -87,8 +87,9 @@ impl Func for FuncVoxelNoise {
             ParamInfo {
                 name: "Voxel Size",
                 description: "Size of a single cell in the regular three-dimensional voxel grid.\n\
+                \n\
                 High values produce coarser results, low values may increase precision but produce \
-                heavier geometry that significantly affect performance. Too high values produce \
+                heavier geometry that significantly affects performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     min_value: Some(f32::MIN_POSITIVE),
@@ -114,7 +115,7 @@ impl Func for FuncVoxelNoise {
                 description: "",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
                     default_value: Some(1.0),
-                    min_value: Some(f32::MIN_POSITIVE),
+                    min_value: None,
                     max_value: None,
                 }),
                 optional: false,
