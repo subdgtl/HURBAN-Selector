@@ -59,7 +59,9 @@ fn test_importer_import_obj_returns_error_when_importing_invalid_obj_file() {
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructure(InvalidStructureError::ParsingError)
+        ImporterError::InvalidStructure(InvalidStructureError::ParsingError(
+            tobj::LoadError::PositionParseError
+        ))
     );
 }
 
@@ -122,7 +124,9 @@ fn test_importer_import_obj_returns_error_when_invalid_unicode_character_is_enco
 
     assert_eq!(
         error,
-        ImporterError::InvalidStructure(InvalidStructureError::ParsingError)
+        ImporterError::InvalidStructure(InvalidStructureError::ParsingError(
+            tobj::LoadError::ReadError
+        ))
     );
 }
 

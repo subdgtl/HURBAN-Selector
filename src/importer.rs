@@ -13,12 +13,9 @@ use tobj;
 
 use crate::mesh::{Mesh, NormalStrategy, TriangleFace};
 
-// FIXME: ParsingError always comes from tobj. It could contain its LoadError,
-// for more granular error messages, but since it doesn't implement PartialEq,
-// we cannot use it for now.
 #[derive(Debug, PartialEq)]
 pub enum InvalidStructureError {
-    ParsingError,
+    ParsingError(tobj::LoadError),
     DuplicateIndices,
     BlankModel,
 }
@@ -26,7 +23,9 @@ pub enum InvalidStructureError {
 impl fmt::Display for InvalidStructureError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            InvalidStructureError::ParsingError => write!(f, "Parsing error."),
+            InvalidStructureError::ParsingError(tobj_err) => {
+                write!(f, "Parsing error: {}", tobj_err)
+            }
             InvalidStructureError::DuplicateIndices => {
                 write!(f, "Duplicate indices were found in one of the models.")
             }
@@ -69,8 +68,8 @@ impl From<io::Error> for ImporterError {
 }
 
 impl From<tobj::LoadError> for ImporterError {
-    fn from(_err: tobj::LoadError) -> Self {
-        ImporterError::InvalidStructure(InvalidStructureError::ParsingError)
+    fn from(err: tobj::LoadError) -> Self {
+        ImporterError::InvalidStructure(InvalidStructureError::ParsingError(err))
     }
 }
 
