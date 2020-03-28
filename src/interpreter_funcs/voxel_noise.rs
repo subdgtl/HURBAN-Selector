@@ -11,7 +11,7 @@ use crate::interpreter::{
     BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, FloatParamRefinement,
     Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh::voxel_cloud::ScalarField;
+use crate::mesh::voxel_cloud::{self, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 
@@ -19,7 +19,7 @@ const VOXEL_COUNT_THRESHOLD: u32 = 50000;
 pub enum FuncVoxelNoiseError {
     WeldFailed,
     EmptyScalarField,
-    VoxelDimensionsZero,
+    VoxelDimensionsZeroOrLess,
     TooManyVoxels(u32, f32, f32, f32),
 }
 
@@ -31,7 +31,7 @@ impl fmt::Display for FuncVoxelNoiseError {
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
             FuncVoxelNoiseError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
-            FuncVoxelNoiseError::VoxelDimensionsZero => write!(f, "One or more voxel dimensions are zero"),
+            FuncVoxelNoiseError::VoxelDimensionsZeroOrLess => write!(f, "One or more voxel dimensions are zero or less"),
             FuncVoxelNoiseError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
@@ -92,7 +92,7 @@ impl Func for FuncVoxelNoise {
                 heavier geometry that significantly affects performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
-                    min_value: Some(f32::MIN_POSITIVE),
+                    min_value: Some(0.005),
                     max_value: None,
                     default_value_x: Some(0.1),
                     default_value_y: Some(0.1),
@@ -128,6 +128,16 @@ impl Func for FuncVoxelNoise {
                     max_value: Some(1.0),
                     default_value_x: Some(-0.25),
                     default_value_y: Some(0.25),
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Marching Cubes",
+                description: "Smoother result.\n\
+                \n\
+                If checked, the result will be smoother, otherwise it will be blocky.",
+                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
+                    default_value: true,
                 }),
                 optional: false,
             },
@@ -170,57 +180,48 @@ impl Func for FuncVoxelNoise {
     ) -> Result<Value, FuncError> {
         let block_start = Point3::from(args[0].unwrap_float3());
         let block_end = Point3::from(args[1].unwrap_float3());
-        let voxel_dimensions = args[2].unwrap_float3();
+        let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
         let noise_scale = args[3].unwrap_float();
         let time_offset = args[4].unwrap_float();
         let volume_range_raw = args[5].unwrap_float2();
-        let error_if_large = args[6].unwrap_boolean();
-        let analyze_bbox = args[7].unwrap_boolean();
-        let analyze_mesh = args[8].unwrap_boolean();
+        let marching_cubes = args[6].unwrap_boolean();
+        let error_if_large = args[7].unwrap_boolean();
+        let analyze_bbox = args[8].unwrap_boolean();
+        let analyze_mesh = args[9].unwrap_boolean();
 
         let meshing_range = volume_range_raw[0]..=volume_range_raw[1];
 
-        if voxel_dimensions
-            .iter()
-            .any(|dimension| approx::relative_eq!(*dimension, 0.0))
-        {
-            let error = FuncError::new(FuncVoxelNoiseError::VoxelDimensionsZero);
+        if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
+            let error = FuncError::new(FuncVoxelNoiseError::VoxelDimensionsZeroOrLess);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
         let bbox = BoundingBox::new(&block_start, &block_end);
-
-        let bbox_diagonal = bbox.diagonal();
-        let voxel_count = (bbox_diagonal.x / voxel_dimensions[0]).ceil() as u32
-            * (bbox_diagonal.y / voxel_dimensions[1]).ceil() as u32
-            * (bbox_diagonal.z / voxel_dimensions[2]).ceil() as u32;
+        let voxel_count = voxel_cloud::evaluate_voxel_count(&bbox, &voxel_dimensions);
 
         log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
 
         if error_if_large && voxel_count > VOXEL_COUNT_THRESHOLD {
-            let vy_over_vx = voxel_dimensions[1] / voxel_dimensions[0];
-            let vz_over_vx = voxel_dimensions[2] / voxel_dimensions[0];
-            let vx = ((bbox_diagonal.x * bbox_diagonal.y * bbox_diagonal.z)
-                / (VOXEL_COUNT_THRESHOLD as f32 * vy_over_vx * vz_over_vx))
-                .cbrt();
-            let vy = vx * vy_over_vx;
-            let vz = vx * vz_over_vx;
+            let suggested_voxel_size =
+                voxel_cloud::suggest_voxel_size_to_fit_bbox_within_voxel_count(
+                    voxel_count,
+                    &voxel_dimensions,
+                    VOXEL_COUNT_THRESHOLD,
+                );
 
-            // The equation doesn't take rounding into consideration, hence the
-            // arbitrary multiplication by 1.1.
             let error = FuncError::new(FuncVoxelNoiseError::TooManyVoxels(
                 VOXEL_COUNT_THRESHOLD,
-                vx * 1.1,
-                vy * 1.1,
-                vz * 1.1,
+                suggested_voxel_size.x,
+                suggested_voxel_size.y,
+                suggested_voxel_size.z,
             ));
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
         let mut scalar_field: ScalarField =
-            ScalarField::from_cartesian_bounding_box(&bbox, &Vector3::from(voxel_dimensions));
+            ScalarField::from_bounding_box_cartesian_space(&bbox, &Vector3::from(voxel_dimensions));
 
         scalar_field.fill_with_noise(noise_scale, time_offset);
 
@@ -230,7 +231,13 @@ impl Func for FuncVoxelNoise {
             return Err(error);
         }
 
-        match scalar_field.to_mesh(&meshing_range) {
+        let meshing_output = if marching_cubes {
+            scalar_field.to_marching_cubes(&meshing_range)
+        } else {
+            scalar_field.to_mesh(&meshing_range)
+        };
+
+        match meshing_output {
             Some(value) => {
                 if analyze_bbox {
                     analytics::report_bounding_box_analysis(&value, log);
