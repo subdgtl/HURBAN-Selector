@@ -824,11 +824,11 @@ impl ScalarField {
             volume_value_range_self.start_bound()
         {
             // Prefer the start value of `volume_value_range_self`.
-            *self_start as f64
+            f64::from(*self_start)
         } else if let Included(self_end) | Excluded(self_end) = volume_value_range_self.end_bound()
         {
             // If the start of the `volume_value_range_self` is unbounded, then use its end.
-            *self_end as f64
+            f64::from(*self_end)
         } else {
             // If the `volume_value_range_self` is unbounded on both ends,
             // use zero because it certainly is in the range and is in its
@@ -1345,6 +1345,33 @@ impl ScalarField {
                 cast_u32(absolute_max.z - absolute_min.z + 1),
             );
             Some((absolute_min, block_dimensions))
+        }
+    }
+
+    /// Fills existing scalar field with simplex noise.
+    ///
+    /// The voxel values will be between -1.0 and 1.0.
+    pub fn fill_with_noise(&mut self, noise_scale: f32, time_offset: f32) {
+        use noise::{NoiseFn, OpenSimplex};
+
+        let simplex = OpenSimplex::new();
+
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+            );
+            let noise_scale_f64 = f64::from(noise_scale);
+
+            let noise_value = simplex.get([
+                f64::from(absolute_coordinate.x) * noise_scale_f64,
+                f64::from(absolute_coordinate.y) * noise_scale_f64,
+                f64::from(absolute_coordinate.z) * noise_scale_f64,
+                f64::from(time_offset),
+            ]);
+
+            *voxel = Some(noise_value as f32);
         }
     }
 }

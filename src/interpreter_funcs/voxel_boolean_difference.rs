@@ -13,7 +13,7 @@ use crate::interpreter::{
 };
 use crate::mesh::voxel_cloud::{self, ScalarField};
 
-const VOXEL_COUNT_THRESHOLD: u32 = 50000;
+const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncBooleanDifferenceError {
@@ -95,7 +95,7 @@ impl Func for FuncBooleanDifference {
                 description: "Size of a single cell in the regular three-dimensional voxel grid.\n\
                 \n\
                 High values produce coarser results, low values may increase precision but produce \
-                heavier geometry that significantly affect performance. Too high values produce \
+                heavier geometry that significantly affects performance. Too high values produce \
                 single large voxel, too low values may generate holes in the resulting geometry.",
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     min_value: Some(0.005),

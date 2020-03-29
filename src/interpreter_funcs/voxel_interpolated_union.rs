@@ -14,7 +14,7 @@ use crate::interpreter::{
 };
 use crate::mesh::voxel_cloud::{self, ScalarField};
 
-const VOXEL_COUNT_THRESHOLD: u32 = 50000;
+const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
 #[derive(Debug, PartialEq)]
 pub enum FuncInterpolatedUnionError {
