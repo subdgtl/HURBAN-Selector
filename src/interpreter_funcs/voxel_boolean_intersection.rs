@@ -16,23 +16,23 @@ use crate::mesh::voxel_cloud::{self, ScalarField};
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
 #[derive(Debug, PartialEq)]
-pub enum FuncVoxelizeError {
+pub enum FuncBooleanIntersectionError {
     WeldFailed,
     EmptyScalarField,
     VoxelDimensionsZeroOrLess,
     TooManyVoxels(u32, f32, f32, f32),
 }
 
-impl fmt::Display for FuncVoxelizeError {
+impl fmt::Display for FuncBooleanIntersectionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FuncVoxelizeError::WeldFailed => write!(
+            FuncBooleanIntersectionError::WeldFailed => write!(
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncVoxelizeError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
-            FuncVoxelizeError::VoxelDimensionsZeroOrLess => write!(f, "One or more voxel dimensions are zero or less"),
-            FuncVoxelizeError::TooManyVoxels(max_count, x, y, z) => write!(
+            FuncBooleanIntersectionError::EmptyScalarField => write!(f, "The resulting scalar field is empty"),
+            FuncBooleanIntersectionError::VoxelDimensionsZeroOrLess => write!(f, "One or more voxel dimensions are zero or less"),
+            FuncBooleanIntersectionError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
                 max_count, x, y, z
@@ -41,18 +41,21 @@ impl fmt::Display for FuncVoxelizeError {
     }
 }
 
-impl error::Error for FuncVoxelizeError {}
+impl error::Error for FuncBooleanIntersectionError {}
 
-pub struct FuncVoxelize;
+pub struct FuncBooleanIntersection;
 
-impl Func for FuncVoxelize {
+impl Func for FuncBooleanIntersection {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Voxelize Mesh",
-            description: "VOXELIZE MESH\n\
+            name: "Intersection",
+            description: "BOOLEAN INTERSECTION OF VOXEL CLOUDS FROM TWO MESH GEOMETRIES\n\
             \n\
-            Converts the input mesh geometry into voxel cloud and \
-            materializes the resulting voxel cloud into a welded mesh.\n\
+            Converts the input mesh geometries into voxel clouds, then performs \
+            boolean intersection of the first and second voxel clouds and eventually \
+            materializes the resulting voxel cloud into a welded mesh. \
+            Boolean intersection keeps only those parts of the volume, which are common \
+            to both input geometries. It is equivalent to logical AND operation.\n\
             \n\
             Voxels are three-dimensional pixels. They exist in a regular three-dimensional \
             grid of arbitrary dimensions (voxel size). The voxel can be turned on \
@@ -60,11 +63,11 @@ impl Func for FuncVoxelize {
             rectangular blocks. Voxelized meshes can be effectively smoothened by \
             Laplacian relaxation.
             \n\
-            The input mesh will be marked used and thus invisible in the viewport. \
-            It can still be used in subsequent operations.\n\
+            The input meshes will be marked used and thus invisible in the viewport. \
+            They can still be used in subsequent operations.\n\
             \n\
-            The resulting mesh geometry will be named 'Voxelized Mesh'.",
-            return_value_name: "Voxelized Mesh",
+            The resulting mesh geometry will be named 'Intersection Mesh'.",
+            return_value_name: "Intersection Mesh",
         }
     }
 
@@ -75,8 +78,14 @@ impl Func for FuncVoxelize {
     fn param_info(&self) -> &[ParamInfo] {
         &[
             ParamInfo {
-                name: "Mesh",
-                description: "Input mesh.",
+                name: "Mesh 1",
+                description: "First input mesh.",
+                refinement: ParamRefinement::Mesh,
+                optional: false,
+            },
+            ParamInfo {
+                name: "Mesh 2",
+                description: "Second input mesh.",
                 refinement: ParamRefinement::Mesh,
                 optional: false,
             },
@@ -171,24 +180,30 @@ impl Func for FuncVoxelize {
         args: &[Value],
         log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
-        let mesh = args[0].unwrap_mesh();
-        let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
-        let growth_u32 = args[2].unwrap_uint();
+        let mesh1 = args[0].unwrap_mesh();
+        let mesh2 = args[1].unwrap_mesh();
+        let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
+        let growth_u32 = args[3].unwrap_uint();
         let growth_f32 = growth_u32 as f32;
-        let fill = args[3].unwrap_boolean();
-        let marching_cubes = args[4].unwrap_boolean();
-        let error_if_large = args[5].unwrap_boolean();
-        let analyze_bbox = args[6].unwrap_boolean();
-        let analyze_mesh = args[7].unwrap_boolean();
+        let fill = args[4].unwrap_boolean();
+        let marching_cubes = args[5].unwrap_boolean();
+        let error_if_large = args[6].unwrap_boolean();
+        let analyze_bbox = args[7].unwrap_boolean();
+        let analyze_mesh = args[8].unwrap_boolean();
 
         if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
-            let error = FuncError::new(FuncVoxelizeError::VoxelDimensionsZeroOrLess);
+            let error = FuncError::new(FuncBooleanIntersectionError::VoxelDimensionsZeroOrLess);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
-        let bbox = mesh.bounding_box();
-        let voxel_count = voxel_cloud::evaluate_voxel_count(&bbox, &voxel_dimensions);
+        let bbox1 = mesh1.bounding_box();
+        let voxel_count1 = voxel_cloud::evaluate_voxel_count(&bbox1, &voxel_dimensions);
+
+        let bbox2 = mesh2.bounding_box();
+        let voxel_count2 = voxel_cloud::evaluate_voxel_count(&bbox2, &voxel_dimensions);
+
+        let voxel_count = voxel_count1.max(voxel_count2);
 
         log(LogMessage::info(format!("Voxel count = {}", voxel_count)));
 
@@ -200,7 +215,7 @@ impl Func for FuncVoxelize {
                     VOXEL_COUNT_THRESHOLD,
                 );
 
-            let error = FuncError::new(FuncVoxelizeError::TooManyVoxels(
+            let error = FuncError::new(FuncBooleanIntersectionError::TooManyVoxels(
                 VOXEL_COUNT_THRESHOLD,
                 suggested_voxel_size.x,
                 suggested_voxel_size.y,
@@ -210,9 +225,11 @@ impl Func for FuncVoxelize {
             return Err(error);
         }
 
-        let mut scalar_field = ScalarField::from_mesh(mesh, &voxel_dimensions, 0.0, growth_u32);
+        let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, growth_u32);
+        let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, growth_u32);
 
-        scalar_field.compute_distance_field(&(0.0..=0.0));
+        voxel_cloud1.compute_distance_field(&(0.0..=0.0));
+        voxel_cloud2.compute_distance_field(&(0.0..=0.0));
 
         let meshing_range = if fill {
             (Bound::Unbounded, Bound::Included(growth_f32))
@@ -220,16 +237,18 @@ impl Func for FuncVoxelize {
             (Bound::Included(-growth_f32), Bound::Included(growth_f32))
         };
 
-        if !scalar_field.contains_voxels_within_range(&meshing_range) {
-            let error = FuncError::new(FuncVoxelizeError::EmptyScalarField);
+        voxel_cloud1.boolean_intersection(&meshing_range, &voxel_cloud2, &meshing_range);
+
+        if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {
+            let error = FuncError::new(FuncBooleanIntersectionError::EmptyScalarField);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
         let meshing_output = if marching_cubes {
-            scalar_field.to_marching_cubes(&meshing_range)
+            voxel_cloud1.to_marching_cubes(&meshing_range)
         } else {
-            scalar_field.to_mesh(&meshing_range)
+            voxel_cloud1.to_mesh(&meshing_range)
         };
 
         match meshing_output {
@@ -243,7 +262,7 @@ impl Func for FuncVoxelize {
                 Ok(Value::Mesh(Arc::new(value)))
             }
             None => {
-                let error = FuncError::new(FuncVoxelizeError::WeldFailed);
+                let error = FuncError::new(FuncBooleanIntersectionError::WeldFailed);
                 log(LogMessage::error(format!("Error: {}", error)));
                 Err(error)
             }

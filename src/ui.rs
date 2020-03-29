@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::f32;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::convert::{
@@ -27,7 +28,7 @@ const PIPELINE_WINDOW_HEIGHT_MULT: f32 = 1.0 - OPERATIONS_WINDOW_HEIGHT_MULT;
 const PIPELINE_OPERATION_CONSOLE_HEIGHT: f32 = 40.0;
 
 const MENU_WINDOW_WIDTH: f32 = 160.0;
-const MENU_WINDOW_HEIGHT: f32 = 298.0;
+const MENU_WINDOW_HEIGHT: f32 = 321.0;
 
 const NOTIFICATIONS_WINDOW_WIDTH: f32 = 600.0;
 const NOTIFICATIONS_WINDOW_HEIGHT_MULT: f32 = 0.1;
@@ -106,12 +107,14 @@ pub enum OverwriteModalTrigger {
     OpenProject,
 }
 
+#[derive(Default)]
 pub struct MenuStatus {
     pub viewport_draw_used_values_changed: bool,
     pub reset_viewport: bool,
+    pub export_obj: bool,
     pub new_project: bool,
-    pub save_path: Option<String>,
-    pub open_path: Option<String>,
+    pub save_path: Option<PathBuf>,
+    pub open_path: Option<PathBuf>,
     pub prevent_overwrite_modal: Option<OverwriteModalTrigger>,
 }
 
@@ -813,17 +816,11 @@ impl<'a> UiFrame<'a> {
         viewport_draw_mode: &mut ViewportDrawMode,
         viewport_draw_used_values: &mut bool,
         project_status: &mut project::ProjectStatus,
+        session: &mut Session,
         notifications: &mut Notifications,
     ) -> MenuStatus {
         let ui = &self.imgui_ui;
-        let mut status = MenuStatus {
-            viewport_draw_used_values_changed: false,
-            reset_viewport: false,
-            new_project: false,
-            save_path: None,
-            open_path: None,
-            prevent_overwrite_modal: None,
-        };
+        let mut status = MenuStatus::default();
 
         let window_logical_size = ui.io().display_size;
         let window_inner_width = window_logical_size[0] - 2.0 * MARGIN;
@@ -990,7 +987,7 @@ impl<'a> UiFrame<'a> {
                 }
 
                 status.reset_viewport =
-                    ui.button(imgui::im_str!("Reset Viewport"), [-f32::MIN_POSITIVE, 0.0]);
+                    ui.button(imgui::im_str!("Reset viewport"), [-f32::MIN_POSITIVE, 0.0]);
                 if status.reset_viewport {
                     notifications.push(
                         current_time,
@@ -1008,24 +1005,7 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                if ui.button(imgui::im_str!("Save Screenshot"), [-f32::MIN_POSITIVE, 0.0]) {
-                    *screenshot_modal_open = true;
-                }
-                if ui.is_item_hovered() {
-                    ui.tooltip(|| {
-                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "SAVE SCREENSHOT\n\
-                        \n\
-                        Opens the dialog for saving the current viewport into a PNG file.");
-                        wrap_token.pop(ui);
-                    });
-                }
-
                 ui.separator();
-
-                let ext_description =
-                    &format!("H.U.R.B.A.N. selector project (.{})", project::PROJECT_EXTENSION);
-                let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
 
                 if ui.button(imgui::im_str!("New"), [-f32::MIN_POSITIVE, 0.0])
                     || project_status.new_requested
@@ -1054,19 +1034,60 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
+                                if ui.button(imgui::im_str!("Open"), [-f32::MIN_POSITIVE, 0.0])
+                    || project_status.open_requested
+                {
+                    // FIXME: @Refactoring Factor out this use of
+                    // tinyfiledialogs from this module
+                    if project_status.changed_since_last_save
+                        && project_status.prevent_overwrite_status.is_none()
+                    {
+                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::OpenProject);
+                    } else if let Some(path) = tinyfiledialogs::open_file_dialog(
+                        "Open",
+                        "",
+                        Some((project::EXTENSION_FILTER, project::EXTENSION_DESCRIPTION)),
+                    ) {
+                        status.open_path = Some(PathBuf::from(path));
+                    }
+
+                    project_status.prevent_overwrite_status = None;
+                    project_status.open_requested = false;
+                }
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "OPEN PROJECT FROM A .hurban FILE\n\
+                        \n\
+                        Opens the sequence of operations saved in a .hurban file.\n\
+                        \n\
+                        The .hurban project file contains only the operation pipeline. It does not contain any \
+                        actual geometry, but rather just the sequence of operations that generates the geometry \
+                        and references to the external files to import. \
+                        It is advised to keep the files to import next to the .hurban project file \
+                        and distribute them together.");
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                ui.separator();
+
                 if ui.button(imgui::im_str!("Save"), [-f32::MIN_POSITIVE, 0.0]) {
                     match &project_status.path {
-                        Some(project_path_str) => {
-                            status.save_path = Some(project_path_str.to_string())
+                        Some(project_path) => {
+                            status.save_path = Some(project_path.clone())
                         }
                         None => {
+                            // FIXME: @Refactoring Factor out this use of
+                            // tinyfiledialogs from this module
                             if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
                                 "Save",
-                                &format!("new_project.{}", project::PROJECT_EXTENSION),
-                                ext_filter,
-                                ext_description,
+                                project::DEFAULT_NEW_FILENAME,
+                                project::EXTENSION_FILTER,
+                                project::EXTENSION_DESCRIPTION,
                             ) {
-                                status.save_path = Some(path);
+                                status.save_path = Some(PathBuf::from(path));
                             }
                         }
                     }
@@ -1090,13 +1111,15 @@ impl<'a> UiFrame<'a> {
                 }
 
                 if ui.button(imgui::im_str!("Save as..."), [-f32::MIN_POSITIVE, 0.0]) {
+                    // FIXME: @Refactoring Factor out this use of
+                    // tinyfiledialogs from this module
                     if let Some(path) = tinyfiledialogs::save_file_dialog_with_filter(
                         "Save",
-                        &format!("new_project.{}", project::PROJECT_EXTENSION),
-                        ext_filter,
-                        ext_description,
+                        project::DEFAULT_NEW_FILENAME,
+                        project::EXTENSION_FILTER,
+                        project::EXTENSION_DESCRIPTION,
                     ) {
-                        status.save_path = Some(path);
+                        status.save_path = Some(PathBuf::from(path));
                     }
                 }
 
@@ -1117,40 +1140,59 @@ impl<'a> UiFrame<'a> {
                     });
                 }
 
-                if ui.button(imgui::im_str!("Open"), [-f32::MIN_POSITIVE, 0.0])
-                    || project_status.open_requested
-                {
-                    if project_status.changed_since_last_save
-                        && project_status.prevent_overwrite_status.is_none()
-                    {
-                        status.prevent_overwrite_modal = Some(OverwriteModalTrigger::OpenProject);
-                    } else if let Some(path) = tinyfiledialogs::open_file_dialog(
-                        "Open",
-                        "",
-                        Some((ext_filter, ext_description)),
-                    ) {
-                        status.open_path = Some(path);
-                    }
-
-                    project_status.prevent_overwrite_status = None;
-                    project_status.open_requested = false;
+                if ui.button(imgui::im_str!("Save screenshot..."), [-f32::MIN_POSITIVE, 0.0]) {
+                    *screenshot_modal_open = true;
                 }
-
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                        ui.text_colored(self.colors.tooltip_text, "OPEN PROJECT FROM A .hurban FILE\n\
+                        ui.text_colored(self.colors.tooltip_text, "SAVE SCREENSHOT\n\
                         \n\
-                        Opens the sequence of operations saved in a .hurban file.\n\
-                        \n\
-                        The .hurban project file contains only the operation pipeline. It does not contain any \
-                        actual geometry, but rather just the sequence of operations that generates the geometry \
-                        and references to the external files to import. \
-                        It is advised to keep the files to import next to the .hurban project file \
-                        and distribute them together.");
+                        Opens a system dialog for saving the current viewport into a PNG file.");
                         wrap_token.pop(ui);
                     });
                 }
+
+                let export_obj_disabled_unsynced = !session.synced();
+                let export_obj_disabled_empty = session.stmts().is_empty();
+                let export_obj_disabled = export_obj_disabled_unsynced || export_obj_disabled_empty;
+                let export_obj_button_tokens = if export_obj_disabled  {
+                    Some(push_disabled_style(ui))
+                } else {
+                    None
+                };
+                let export_obj = ui.button(
+                    imgui::im_str!("Export OBJ..."),
+                    [-f32::MIN_POSITIVE, 0.0],
+                );
+                if let Some((color_token, style_token)) = export_obj_button_tokens {
+                    color_token.pop(ui);
+                    style_token.pop(ui);
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        let wrap_token = ui.push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
+                        ui.text_colored(self.colors.tooltip_text, "EXPORT OBJ\n\
+                        \n\
+                        Opens a system dialog for exporting all unused geometry into an OBJ file.");
+                        if export_obj_disabled_unsynced {
+                            ui.text_colored(
+                                self.colors.log_message_warn,
+                                "WARNING: All operations must be executed before exporting.",
+                            );
+                        }
+                        if export_obj_disabled_empty {
+                            ui.text_colored(
+                                self.colors.log_message_warn,
+                                "WARNING: Can not export empty scene.\n\
+                                 Try adding operations to the pipeline and executing first.",
+                            );
+                        }
+                        wrap_token.pop(ui);
+                    });
+                }
+
+                status.export_obj = !export_obj_disabled && export_obj;
 
                 ui.separator();
 
@@ -1242,18 +1284,6 @@ impl<'a> UiFrame<'a> {
         save_modal_result
     }
 
-    pub fn draw_save_dialog(&self) -> Option<String> {
-        let ext_description = &format!("HURBAN selector project (.{})", project::PROJECT_EXTENSION);
-        let ext_filter: &[&str] = &[&format!("*.{}", project::PROJECT_EXTENSION)];
-
-        tinyfiledialogs::save_file_dialog_with_filter(
-            "Save",
-            &format!("new_project.{}", project::PROJECT_EXTENSION),
-            ext_filter,
-            ext_description,
-        )
-    }
-
     // FIXME: @Refactoring Refactor this once we have full-featured
     // functionality. Until then, this is exploratory code and we
     // don't care.
@@ -1297,7 +1327,8 @@ impl<'a> UiFrame<'a> {
                             \n\
                             Each operation in the pipeline generates data: either a mesh geometry or \
                             a mesh group which can be later used in a subsequent operation. Only unused \
-                            (freshly generated) geometry (mesh or group) is rendered in the viewport, \
+                            (freshly generated) geometry (mesh or group) is rendered in the viewport \
+                            by default, \
                             however even the geometry, which has been already used, can be reused in \
                             subsequent operations. Operations can take as an input only that geometry, \
                             which has been generated in the preceding operations in the pipeline.\n\
@@ -1833,7 +1864,11 @@ impl<'a> UiFrame<'a> {
                 };
 
                 let bold_font_token = ui.push_font(self.font_ids.bold);
-                if ui.button(imgui::im_str!("Run"), [-f32::MIN_POSITIVE, 25.0]) && running_enabled {
+                if ui.button(
+                    imgui::im_str!("Run (Enter)"),
+                    [-f32::MIN_POSITIVE, 25.0],
+                ) && running_enabled
+                {
                     interpret_clicked = true;
                 }
                 bold_font_token.pop(ui);
@@ -1868,7 +1903,7 @@ impl<'a> UiFrame<'a> {
                     Some(push_disabled_style(ui))
                 };
                 if ui.button(
-                    imgui::im_str!("Remove last operation"),
+                    imgui::im_str!("Remove last operation (Del)"),
                     [-f32::MIN_POSITIVE, 25.0],
                 ) && popping_enabled
                 {
@@ -2054,7 +2089,9 @@ impl<'a> UiFrame<'a> {
 
             let init_expr = ast::CallExpr::new(*func_ident, args);
             let stmt = ast::Stmt::VarDecl(ast::VarDeclStmt::new(
-                session.next_free_var_ident(),
+                session
+                    .next_free_var_ident()
+                    .expect("Failed to find free variable identifier"),
                 init_expr,
             ));
 
@@ -2123,13 +2160,11 @@ impl<'a> UiFrame<'a> {
                     .expect("Failed to find nth visible var to display preview value")
             })
             .map(|var_ident| {
-                format_var_name(
-                    session
-                        .var_name_for_ident(var_ident)
-                        .expect("Failed to find name for ident"),
-                    var_ident,
-                    ty == Ty::MeshArray,
-                )
+                let (var_decl_stmt_index, var_name) = session
+                    .var_decl_stmt_index_and_var_name_for_ident(var_ident)
+                    .expect("Failed to find name for ident");
+
+                format_var_name(var_decl_stmt_index, var_name, ty == Ty::MeshArray)
             })
             .unwrap_or_else(|| imgui::ImString::new("<Select one option>"));
 
@@ -2155,13 +2190,11 @@ impl<'a> UiFrame<'a> {
         ]);
         if let Some(combo_token) = combo.begin(ui) {
             for (index, var_ident) in visible_vars_iter.clone().enumerate() {
-                let text = format_var_name(
-                    session
-                        .var_name_for_ident(var_ident)
-                        .expect("Failed to find name for ident"),
-                    var_ident,
-                    ty == Ty::MeshArray,
-                );
+                let (var_decl_stmt_index, var_name) = session
+                    .var_decl_stmt_index_and_var_name_for_ident(var_ident)
+                    .expect("Failed to find name for ident");
+
+                let text = format_var_name(var_decl_stmt_index, var_name, ty == Ty::MeshArray);
                 let selected = if let Some(selected_var_index) = selected_var_index {
                     index == selected_var_index
                 } else {
@@ -2202,14 +2235,14 @@ impl<'a> UiFrame<'a> {
 }
 
 fn format_var_name(
-    name: &str,
-    ident: ast::VarIdent,
+    var_decl_stmt_index: usize,
+    var_name: &str,
     surround_with_brackets: bool,
 ) -> imgui::ImString {
     if surround_with_brackets {
-        imgui::im_str!("[{}] #{}", name, ident.0 + 1)
+        imgui::im_str!("[{}] #{}", var_name, var_decl_stmt_index + 1)
     } else {
-        imgui::im_str!("{} #{}", name, ident.0 + 1)
+        imgui::im_str!("{} #{}", var_name, var_decl_stmt_index + 1)
     }
 }
 

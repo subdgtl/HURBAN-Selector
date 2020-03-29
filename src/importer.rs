@@ -14,18 +14,41 @@ use tobj;
 use crate::mesh::{Mesh, NormalStrategy, TriangleFace};
 
 #[derive(Debug, PartialEq)]
+pub enum InvalidStructureError {
+    ParsingError(tobj::LoadError),
+    DuplicateIndices,
+    BlankModel,
+}
+
+impl fmt::Display for InvalidStructureError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InvalidStructureError::ParsingError(tobj_err) => {
+                write!(f, "Parsing error: {}", tobj_err)
+            }
+            InvalidStructureError::DuplicateIndices => {
+                write!(f, "Duplicate indices were found in one of the models.")
+            }
+            InvalidStructureError::BlankModel => write!(f, "One of the models is blank."),
+        }
+    }
+}
+
+impl error::Error for InvalidStructureError {}
+
+#[derive(Debug, PartialEq)]
 pub enum ImporterError {
     FileNotFound,
     PermissionDenied,
-    InvalidStructure,
+    InvalidStructure(InvalidStructureError),
     Other,
 }
 
 impl fmt::Display for ImporterError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
+        match self {
             ImporterError::FileNotFound => write!(f, "File was not found."),
-            ImporterError::InvalidStructure => write!(f, "The obj file is not valid."),
+            ImporterError::InvalidStructure(e) => write!(f, "The obj file is not valid: {}", e),
             ImporterError::PermissionDenied => write!(f, "Permission denied."),
             ImporterError::Other => write!(f, "Unexpected error happened."),
         }
@@ -45,8 +68,14 @@ impl From<io::Error> for ImporterError {
 }
 
 impl From<tobj::LoadError> for ImporterError {
-    fn from(_err: tobj::LoadError) -> Self {
-        ImporterError::InvalidStructure
+    fn from(err: tobj::LoadError) -> Self {
+        ImporterError::InvalidStructure(InvalidStructureError::ParsingError(err))
+    }
+}
+
+impl From<InvalidStructureError> for ImporterError {
+    fn from(err: InvalidStructureError) -> Self {
+        ImporterError::InvalidStructure(err)
     }
 }
 
@@ -139,6 +168,9 @@ impl<C: ObjCache> Importer<C> {
     /// Otherwise, file is read, checksum calculated and cache is checked whether
     /// given file contents were already saved. If not, obj file is parsed and
     /// cached.
+    ///
+    /// OBJ structure is also validated for our purposes. If any of the models
+    /// is invalid, this function returns an error.
     pub fn import_obj(&mut self, path: &str) -> ImporterResult {
         let mut file = fs::File::open(path)?;
         let file_metadata = file.metadata().expect("Failed to load obj file metadata");
@@ -160,7 +192,7 @@ impl<C: ObjCache> Importer<C> {
                     Some(models) => models.clone(),
                     None => {
                         let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
-                        tobj_to_internal(tobj_models)
+                        tobj_to_internal(tobj_models)?
                     }
                 };
 
@@ -190,10 +222,16 @@ pub fn obj_buf_into_tobj(file_contents: &mut &[u8]) -> tobj::LoadResult {
 /// Converts `tobj::Model` vector into vector of internal `Model` representations.
 /// It expects valid `tobj::Model` representation, eg. number of positions
 /// divisible by 3.
-pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
+pub fn tobj_to_internal(
+    tobj_models: Vec<tobj::Model>,
+) -> Result<Vec<Model>, InvalidStructureError> {
     let mut models = Vec::with_capacity(tobj_models.len());
 
     for model in tobj_models {
+        if model.mesh.indices.is_empty() {
+            return Err(InvalidStructureError::BlankModel);
+        }
+
         let vertex_positions: Vec<_> = model
             .mesh
             .positions
@@ -221,6 +259,12 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
             .map(|chunk| (chunk[0], chunk[1], chunk[2]))
             .collect();
 
+        for face in &faces_raw {
+            if face.0 == face.1 || face.0 == face.2 || face.1 == face.2 {
+                return Err(InvalidStructureError::DuplicateIndices);
+            }
+        }
+
         let mesh = if let Some(vertex_normals) = vertex_normals {
             Mesh::from_triangle_faces_with_vertices_and_normals(
                 faces_raw.into_iter().map(TriangleFace::from),
@@ -241,7 +285,7 @@ pub fn tobj_to_internal(tobj_models: Vec<tobj::Model>) -> Vec<Model> {
         });
     }
 
-    models
+    Ok(models)
 }
 
 pub fn calculate_checksum(string: &[u8]) -> u32 {
@@ -290,7 +334,8 @@ mod tests {
             vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
         );
         let tobj_models = vec![tobj_model.clone()];
-        let models = tobj_to_internal(tobj_models);
+        let models = tobj_to_internal(tobj_models)
+            .expect("Failed to convert tobj representation to internal one.");
 
         assert_eq!(
             models,
@@ -326,7 +371,8 @@ mod tests {
             vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
         );
         let tobj_models = vec![tobj_model_1.clone(), tobj_model_2.clone()];
-        let models = tobj_to_internal(tobj_models);
+        let models = tobj_to_internal(tobj_models)
+            .expect("Failed to convert tobj representation to internal one.");
 
         assert_eq!(
             models,
@@ -425,7 +471,8 @@ mod tests {
             checksum,
             last_modified: SystemTime::now(),
         };
-        let models = tobj_to_internal(vec![triangle()]);
+        let models = tobj_to_internal(vec![triangle()])
+            .expect("Failed to convert tobj representation to internal one.");
 
         cache.set(path.clone(), metadata, &models);
 
@@ -448,7 +495,8 @@ mod tests {
             checksum,
             last_modified: SystemTime::now(),
         };
-        let models = tobj_to_internal(vec![triangle()]);
+        let models = tobj_to_internal(vec![triangle()])
+            .expect("Failed to convert tobj representation to internal one.");
 
         cache.set(path.clone(), metadata, &models);
 
@@ -456,7 +504,8 @@ mod tests {
             vec![0, 1, 2],
             vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0],
             vec![0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0],
-        )]);
+        )])
+        .expect("Failed to convert tobj representation to internal one.");
 
         cache.set(path.clone(), metadata, &new_models);
 
@@ -479,7 +528,8 @@ mod tests {
             checksum: 1u32,
             last_modified: now,
         };
-        let models = tobj_to_internal(vec![triangle()]);
+        let models = tobj_to_internal(vec![triangle()])
+            .expect("Failed to convert tobj representation to internal one.");
         cache.set(path.clone(), metadata, &models);
 
         let loaded_models = cache.get_if_not_modified(&path, now);
@@ -496,7 +546,8 @@ mod tests {
             checksum: 1u32,
             last_modified: now,
         };
-        let models = tobj_to_internal(vec![triangle()]);
+        let models = tobj_to_internal(vec![triangle()])
+            .expect("Failed to convert tobj representation to internal one.");
         cache.set(path.clone(), metadata, &models);
 
         let loaded_models = cache.get_if_not_modified(
@@ -517,7 +568,8 @@ mod tests {
             checksum,
             last_modified: SystemTime::now(),
         };
-        let models = tobj_to_internal(vec![triangle()]);
+        let models = tobj_to_internal(vec![triangle()])
+            .expect("Failed to convert tobj representation to internal one.");
         cache.set(path.clone(), metadata, &models);
 
         let loaded_models = cache.get_by_checksum(checksum);
@@ -534,7 +586,8 @@ mod tests {
             checksum,
             last_modified: SystemTime::now(),
         };
-        let models = tobj_to_internal(vec![triangle()]);
+        let models = tobj_to_internal(vec![triangle()])
+            .expect("Failed to convert tobj representation to internal one.");
         cache.set(path.clone(), metadata, &models);
 
         let loaded_models = cache.get_by_checksum(checksum + 1);

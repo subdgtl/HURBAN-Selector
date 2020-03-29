@@ -53,6 +53,17 @@ pub struct Session {
     interpreter_edit_prog_requests_in_flight: HashSet<RequestId>,
 
     prog: Prog,
+    // FIXME: Add variable identifier compaction or other ability to reclaim
+    // unused idents when safe to do so. Currently we never reset the counter
+    // even if we load programs from disk, meaning the numbers accumulate
+    // forever. The software will crash eventually, after all values of u64 are
+    // exhausted. While we can not perform compaction while the program is being
+    // worked on (a `Session` instance already exists), we could provide a
+    // constructor, e.g. `Session::with_program`, that automatically compacts
+    // variable identifiers, preserving references between variable declarations
+    // and variable expressions that use them.
+    next_var_ident: u64,
+
     log_messages: Vec<Vec<LogMessage>>,
     error: Option<InterpretError>,
 
@@ -89,6 +100,8 @@ impl Session {
             diff_processed_idents: HashSet::with_capacity(64),
 
             prog: Prog::new(Vec::new()),
+            next_var_ident: 0,
+
             log_messages: Vec::new(),
             error: None,
 
@@ -128,7 +141,12 @@ impl Session {
 
     /// Pushes a new statement onto the program.
     ///
+    /// If the `Stmt` is `Stmt::VarDecl`, this function ensures that the next
+    /// variable identifier returned by `Session::next_free_var_ident` will not
+    /// conflict with the variable identifier contained in this statement.
+    ///
     /// # Panics
+    ///
     /// Panics if the interpreter is busy.
     pub fn push_prog_stmt(&mut self, current_time: Instant, stmt: Stmt) {
         // This is because the current session could want to report
@@ -142,6 +160,9 @@ impl Session {
         self.prog.push_stmt(stmt.clone());
         self.log_messages.push(Vec::new());
         self.error = None;
+
+        let Stmt::VarDecl(ref var_decl) = stmt;
+        self.next_var_ident = var_decl.ident().0 + 1;
 
         let request_id = self
             .interpreter_server
@@ -160,6 +181,7 @@ impl Session {
     /// Pops a statement from the program.
     ///
     /// # Panics
+    ///
     /// Panics if the interpreter is busy.
     pub fn pop_prog_stmt(&mut self, current_time: Instant) {
         // This is because the current session could want to report
@@ -190,7 +212,12 @@ impl Session {
 
     /// Edits a program statement at the index.
     ///
+    /// If the `Stmt` is `Stmt::VarDecl`, this function ensures that the next
+    /// variable identifier returned by `Session::next_free_var_ident` will not
+    /// conflict with the variable identifier contained in this statement.
+    ///
     /// # Panics
+    ///
     /// Panics if the interpreter is busy.
     pub fn set_prog_stmt_at(&mut self, current_time: Instant, stmt_index: usize, stmt: Stmt) {
         // This is because the current session could want to report
@@ -215,6 +242,9 @@ impl Session {
         self.last_uninterpreted_edit = Some(current_time);
         self.prog.set_stmt_at(stmt_index, stmt.clone());
         self.error = None;
+
+        let Stmt::VarDecl(ref var_decl) = stmt;
+        self.next_var_ident = var_decl.ident().0 + 1;
 
         let request_id = self
             .interpreter_server
@@ -241,32 +271,58 @@ impl Session {
         &self.function_table
     }
 
-    /// Returns the next free variable identifier for the current
-    /// program definition.
-    pub fn next_free_var_ident(&self) -> VarIdent {
-        VarIdent(self.prog.stmts().len() as u64)
+    /// Returns the next free variable identifier for the current program
+    /// definition.
+    ///
+    /// This currently generates idents by incrementing a single integer, but
+    /// this representation is not stable. Currently, this can generate up to
+    /// 2^64 - 1 var idents. The last value is the stopping condition.
+    ///
+    /// Does *NOT* reuse variable identifiers to prevent accidental "use after
+    /// free" on variables that have been removed from the program in the
+    /// session, e.g. when querying a name with
+    /// `Session::var_decl_stmt_index_and_var_name_for_ident`. Each instance of
+    /// `Session` starts counting from 0, but program modifying functions, such
+    /// as `Session::push_prog_stmt` check, whether the pushed statment contains
+    /// an identifier with a higher value and increments the counter
+    /// accordingly, if it does. This ensures that programs not generated with
+    /// help of `Session::next_free_var_ident` (such as handcrafted programs or
+    /// programs loaded from a save file) can be further modified in this
+    /// session without re-declaring variable identifiers.
+    pub fn next_free_var_ident(&mut self) -> Option<VarIdent> {
+        if self.next_var_ident == u64::max_value() {
+            None
+        } else {
+            let ident = VarIdent(self.next_var_ident);
+            self.next_var_ident += 1;
+
+            Some(ident)
+        }
     }
 
-    /// Returns human readable variable name for a variable identifier
-    /// or `None` if the variable identifier does not exist in the
-    /// current program.
-    pub fn var_name_for_ident(&self, var_ident: VarIdent) -> Option<&str> {
+    /// Returns variable declaration statement index paired with human readable
+    /// variable name for a variable identifier or `None` if the variable
+    /// identifier does not exist in the current program.
+    pub fn var_decl_stmt_index_and_var_name_for_ident(
+        &self,
+        var_ident: VarIdent,
+    ) -> Option<(usize, &str)> {
         // FIXME: @Optimization Don't iterate all the time
         self.stmts()
             .iter()
-            .find_map(|stmt| match stmt {
+            .enumerate()
+            .find_map(|(stmt_index, stmt)| match stmt {
                 Stmt::VarDecl(var_decl) => {
                     if var_decl.ident() == var_ident {
-                        Some(var_decl)
+                        let name = self.function_table[&var_decl.init_expr().ident()]
+                            .info()
+                            .return_value_name;
+
+                        Some((stmt_index, name))
                     } else {
                         None
                     }
                 }
-            })
-            .map(|var_decl| {
-                self.function_table[&var_decl.init_expr().ident()]
-                    .info()
-                    .return_value_name
             })
     }
 
@@ -304,6 +360,19 @@ impl Session {
         })
     }
 
+    /// Returns whether the session and underlying interpreter has any work that
+    /// has not yet been published to the callback provided to `Session::poll`.
+    ///
+    /// The session is considered *NOT* synced when either:
+    ///
+    /// - The interpreter is running (same as `Session::interpreter_busy()`)
+    /// - There have been edits to the program, but the interpreter hasn't been
+    ///   run yet.
+    pub fn synced(&self) -> bool {
+        self.interpreter_interpret_request_in_flight.is_none()
+            && self.last_uninterpreted_edit.is_none()
+    }
+
     /// Returns whether the interpreter is currently running. Program
     /// modifications and running the interpreter (again) are
     /// disallowed in this state.
@@ -319,6 +388,8 @@ impl Session {
             !self.interpreter_busy(),
             "Can't submit a request while the interpreter is already interpreting",
         );
+
+        self.last_uninterpreted_edit = None;
 
         let request_id = self
             .interpreter_server
@@ -349,7 +420,6 @@ impl Session {
                 if current_time.saturating_duration_since(last_uninterpreted_edit) > delay
                     && !self.interpreter_busy()
                 {
-                    self.last_uninterpreted_edit = None;
                     self.interpret();
                 }
             }

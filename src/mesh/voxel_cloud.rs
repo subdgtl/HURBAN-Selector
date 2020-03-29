@@ -2,14 +2,17 @@ use std::collections::VecDeque;
 use std::f32;
 use std::ops::RangeBounds;
 
+use arrayvec::ArrayVec;
+
 use nalgebra::{Point3, Vector2, Vector3};
 
 use crate::bounding_box::BoundingBox;
 use crate::convert::{cast_i32, cast_u32, cast_usize};
 use crate::geometry;
+use crate::math;
 use crate::plane::Plane;
 
-use super::{primitive, tools, Face, Mesh};
+use super::{primitive, tools, Face, Mesh, NormalStrategy};
 
 /// Discrete Scalar field is an abstract representation of points in a block of
 /// space. Each point is a center of a voxel - an abstract box of given
@@ -33,6 +36,17 @@ use super::{primitive, tools, Face, Mesh};
 /// value outside of the block will cause the program to panic. Reading a value
 /// from beyond the bounds returns None, which is also a valid value even inside
 /// the block.
+///
+/// In this struct's method parameters, `volume_value_range` is an interval
+/// defining which values of the scalar field should be considered to be a
+/// volume. The `ScalarField::from_mesh` generates a scalar field, which marks
+/// volume voxels with value `0`. `compute_distance_field` marks each voxel with
+/// a value representing the voxel's distance from the original volume,
+/// therefore the voxels right at the shell of the volume are marked 0, the
+/// layer around them is marked 1 or -1 (inside closed volumes) etc. Once the
+/// scalar field is populated with meaningful values, it is possible to treat
+/// (perform boolean operations or materialize into mesh) on various numerical
+/// ranges. Such range is specified ad-hoc by parameter `volume_value_range`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ScalarField {
     block_start: Point3<i32>,
@@ -76,7 +90,7 @@ impl ScalarField {
     /// # Panics
     ///
     /// Panics if any of the voxel dimensions is below or equal to zero.
-    pub fn from_cartesian_bounding_box(
+    pub fn from_bounding_box_cartesian_space(
         bounding_box: &BoundingBox<f32>,
         voxel_dimensions: &Vector3<f32>,
     ) -> Self {
@@ -140,7 +154,7 @@ impl ScalarField {
 
         // Target scalar field to be filled with points on the mesh surface.
         let mut scalar_field =
-            ScalarField::from_cartesian_bounding_box(&bounding_box_offset, voxel_dimensions);
+            ScalarField::from_bounding_box_cartesian_space(&bounding_box_offset, voxel_dimensions);
 
         // Going to populate the mesh with points as dense as the smallest voxel
         // dimension.
@@ -200,27 +214,34 @@ impl ScalarField {
         scalar_field
     }
 
+    /// Clears the scalar field, sets its block dimensions to zero.
+    pub fn wipe(&mut self) {
+        self.block_start = Point3::origin();
+        self.block_dimensions = Vector3::zeros();
+        self.voxels.resize(0, None);
+    }
+
+    /// Returns scalar field block end in absolute voxel coordinates.
+    #[allow(dead_code)]
+    fn block_end(&self) -> Point3<i32> {
+        Point3::new(
+            self.block_start.x + cast_i32(self.block_dimensions.x) - 1,
+            self.block_start.y + cast_i32(self.block_dimensions.y) - 1,
+            self.block_start.z + cast_i32(self.block_dimensions.z) - 1,
+        )
+    }
+
     /// Checks if the scalar field contains any voxel with a value from the
     /// given range.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn contains_voxels_within_range<U>(&self, volume_value_range: &U) -> bool
     where
         U: RangeBounds<f32>,
     {
-        self.voxels
-            .iter()
-            .any(|voxel| is_voxel_within_range(*voxel, volume_value_range))
+        self.voxels.iter().any(|voxel| {
+            voxel
+                .map(|value| volume_value_range.contains(&value))
+                .unwrap_or(false)
+        })
     }
 
     /// Gets the value of a voxel on absolute voxel coordinates (relative to the
@@ -239,34 +260,6 @@ impl ScalarField {
             Some(index) => self.voxels[index],
             _ => None,
         }
-    }
-
-    /// Returns true if the value of a voxel on absolute voxel coordinates
-    /// (relative to the voxel space origin) is within given range.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
-    pub fn is_value_at_absolute_voxel_coordinate_within_range<U>(
-        &self,
-        absolute_coordinate: &Point3<i32>,
-        volume_value_range: &U,
-    ) -> bool
-    where
-        U: RangeBounds<f32>,
-    {
-        is_voxel_within_range(
-            self.value_at_absolute_voxel_coordinate(absolute_coordinate),
-            volume_value_range,
-        )
     }
 
     /// Sets the value of a voxel defined in absolute voxel coordinates
@@ -304,18 +297,6 @@ impl ScalarField {
     /// this creates both, outer and inner boundary mesh. There is also a high
     /// risk of generating a non-manifold mesh if some voxels touch only
     /// diagonally.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn to_mesh<U>(&self, volume_value_range: &U) -> Option<Mesh>
     where
         U: RangeBounds<f32>,
@@ -411,7 +392,10 @@ impl ScalarField {
         // Iterate through the scalar field
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
             // If the current voxel is a volume voxel
-            if is_voxel_within_range(*voxel, volume_value_range) {
+            if voxel
+                .map(|value| volume_value_range.contains(&value))
+                .unwrap_or(false)
+            {
                 let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
                     one_dimensional,
                     &self.block_start,
@@ -434,7 +418,10 @@ impl ScalarField {
                     // If the neighbor voxel is not within the volume range,
                     // the boundary side of the voxel box should be
                     // materialized.
-                    if !is_voxel_within_range(neighbor_voxel, volume_value_range) {
+                    if neighbor_voxel
+                        .map(|value| !volume_value_range.contains(&value))
+                        .unwrap_or(true)
+                    {
                         // Add a rectangle
                         plane_meshes.push(primitive::create_mesh_plane(
                             Plane::from_origin_and_plane(
@@ -463,24 +450,623 @@ impl ScalarField {
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
+    /// Computes a relatively smooth triangulated welded mesh from the current
+    /// state of the scalar field.
+    ///
+    /// For watertight volumetric geometry (i.e. from a watertight source mesh)
+    /// this creates both, outer and inner boundary mesh. There is also a high
+    /// risk of generating a non-manifold mesh.
+    pub fn to_marching_cubes<U>(&self, volume_value_range: &U) -> Option<Mesh>
+    where
+        U: RangeBounds<f32>,
+    {
+        if self.block_dimensions.x == 0
+            || self.block_dimensions.y == 0
+            || self.block_dimensions.z == 0
+            || !self.contains_voxels_within_range(volume_value_range)
+        {
+            return None;
+        }
+
+        // A collection of mesh patches defining an outer envelope of volumes
+        // stored in the scalar field
+        let mut marching_cubes: Vec<Mesh> = Vec::new();
+
+        let block_end = self.block_end();
+
+        // Iterate through the scalar field. Consider 8 neighboring voxels to be
+        // corners of the test cube. Start iterating at position [-1, -1, -1]
+        // relative to the `block_start` and finish at [1, 1, 1] relative to the
+        // `block_end` to catch the block boundaries.
+        for z in (self.block_start.z - 1)..=block_end.z {
+            for y in (self.block_start.y - 1)..=block_end.y {
+                for x in (self.block_start.x - 1)..=block_end.x {
+                    //                 v4_______e4_____________v5
+                    //                  /|                    /|
+                    //                 / |                   / |
+                    //              e7/  |                e5/  |
+                    //               /___|______e6_________/   |
+                    //            v7|    |                 |v6 |e9
+                    //              |    |                 |   |
+                    //              |    |e8               |e10|
+                    //           e11|    |                 |   |
+                    //              |    |_________________|___|
+                    //              |   / v0    e0         |   /v1
+                    //              |  /                   |  /
+                    //              | /e3                  | /e1
+                    //              |/_____________________|/
+                    //              v3         e2          v2
+                    //
+                    // the current voxel center is `v3`, the other vertices are centers of
+                    // the neighboring voxels
+                    let corners_absolute_coordinates: [Point3<i32>; 8] = [
+                        Point3::new(x, y + 1, z),
+                        Point3::new(x + 1, y + 1, z),
+                        Point3::new(x + 1, y, z),
+                        Point3::new(x, y, z),
+                        Point3::new(x, y + 1, z + 1),
+                        Point3::new(x + 1, y + 1, z + 1),
+                        Point3::new(x + 1, y, z + 1),
+                        Point3::new(x, y, z + 1),
+                    ];
+
+                    let corners_cartesian_coordinates: [Point3<f32>; 8] = [
+                        absolute_voxel_to_cartesian_coordinate(
+                            &corners_absolute_coordinates[0],
+                            &self.voxel_dimensions,
+                        ),
+                        absolute_voxel_to_cartesian_coordinate(
+                            &corners_absolute_coordinates[1],
+                            &self.voxel_dimensions,
+                        ),
+                        absolute_voxel_to_cartesian_coordinate(
+                            &corners_absolute_coordinates[2],
+                            &self.voxel_dimensions,
+                        ),
+                        absolute_voxel_to_cartesian_coordinate(
+                            &corners_absolute_coordinates[3],
+                            &self.voxel_dimensions,
+                        ),
+                        absolute_voxel_to_cartesian_coordinate(
+                            &corners_absolute_coordinates[4],
+                            &self.voxel_dimensions,
+                        ),
+                        absolute_voxel_to_cartesian_coordinate(
+                            &corners_absolute_coordinates[5],
+                            &self.voxel_dimensions,
+                        ),
+                        absolute_voxel_to_cartesian_coordinate(
+                            &corners_absolute_coordinates[6],
+                            &self.voxel_dimensions,
+                        ),
+                        absolute_voxel_to_cartesian_coordinate(
+                            &corners_absolute_coordinates[7],
+                            &self.voxel_dimensions,
+                        ),
+                    ];
+
+                    // These points will become vertices of mesh patches forming
+                    // the outer envelope of the scalar field.
+                    let edge_midpoints: [Point3<f32>; 12] = [
+                        Point3::from(
+                            corners_cartesian_coordinates[0]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[1].coords, 0.5),
+                        ), //e0
+                        Point3::from(
+                            corners_cartesian_coordinates[1]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[2].coords, 0.5),
+                        ), //e1
+                        Point3::from(
+                            corners_cartesian_coordinates[2]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[3].coords, 0.5),
+                        ), //e2
+                        Point3::from(
+                            corners_cartesian_coordinates[3]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[0].coords, 0.5),
+                        ), //e3
+                        Point3::from(
+                            corners_cartesian_coordinates[4]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[5].coords, 0.5),
+                        ), //e4
+                        Point3::from(
+                            corners_cartesian_coordinates[5]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[6].coords, 0.5),
+                        ), //e5
+                        Point3::from(
+                            corners_cartesian_coordinates[6]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[7].coords, 0.5),
+                        ), //e6
+                        Point3::from(
+                            corners_cartesian_coordinates[7]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[4].coords, 0.5),
+                        ), //e7
+                        Point3::from(
+                            corners_cartesian_coordinates[0]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[4].coords, 0.5),
+                        ), //e8
+                        Point3::from(
+                            corners_cartesian_coordinates[1]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[5].coords, 0.5),
+                        ), //e9
+                        Point3::from(
+                            corners_cartesian_coordinates[2]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[6].coords, 0.5),
+                        ), //e10
+                        Point3::from(
+                            corners_cartesian_coordinates[3]
+                                .coords
+                                .lerp(&corners_cartesian_coordinates[7].coords, 0.5),
+                        ), //e11
+                    ];
+
+                    // Boolean vector marking each of the voxels either volume
+                    // (`true`) or void(`false`)
+                    let corners_inside_volume_pattern: ArrayVec<[_; 8]> =
+                        corners_absolute_coordinates
+                            .iter()
+                            .map(|a| {
+                                self.value_at_absolute_voxel_coordinate(&a)
+                                    .map(|value| volume_value_range.contains(&value))
+                                    .unwrap_or(false)
+                            })
+                            .collect();
+
+                    // The marching cubes lookup table contains 256 possible
+                    // samples of mesh patches. The sample index specifies the
+                    // proper sample for the current voxel group.
+                    let mut sample_index = 0_u8;
+                    if corners_inside_volume_pattern[0] {
+                        sample_index |= 1;
+                    }
+                    if corners_inside_volume_pattern[1] {
+                        sample_index |= 2;
+                    }
+                    if corners_inside_volume_pattern[2] {
+                        sample_index |= 4;
+                    }
+                    if corners_inside_volume_pattern[3] {
+                        sample_index |= 8;
+                    }
+                    if corners_inside_volume_pattern[4] {
+                        sample_index |= 16;
+                    }
+                    if corners_inside_volume_pattern[5] {
+                        sample_index |= 32;
+                    }
+                    if corners_inside_volume_pattern[6] {
+                        sample_index |= 64;
+                    }
+                    if corners_inside_volume_pattern[7] {
+                        sample_index |= 128;
+                    }
+
+                    // The marching cubes lookup table sample, that contains
+                    // triplets of indices to the edge midpoints (currently
+                    // already vertices) that will become mesh patch faces.
+                    let marching_cubes_faces =
+                        MARCHING_CUBES_LOOKUP_TABLE[usize::from(sample_index)].as_slice();
+
+                    // In some cases (when all the voxels are inside or outside
+                    // a volume), there is no mesh patch to be created.
+                    if !marching_cubes_faces.is_empty() {
+                        marching_cubes.push(
+                        // Generate new mesh path from all edge midpoint
+                        // vertices and only those faces that should be created
+                        // according to the marching cubes lookup table.
+                        //
+                        // FIXME: @Optimization remove unused vertices already
+                        // here and generate the mesh without the need of
+                        // removing orphans.
+                        Mesh::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
+                            marching_cubes_faces
+                                .iter()
+                                .map(|(a, b, c)| (u32::from(*a), u32::from(*b), u32::from(*c))),
+                            edge_midpoints.iter().copied(),
+                            // Sharp is more efficient and gets lost by welding anyway
+                            NormalStrategy::Sharp,
+                        ),
+                    );
+                    }
+                }
+            }
+        }
+
+        // Join separate mesh planes into one mesh
+        let joined_voxel_mesh = tools::join_multiple_meshes(&marching_cubes);
+        let min_voxel_dimension = self
+            .voxel_dimensions
+            .x
+            .min(self.voxel_dimensions.y.min(self.voxel_dimensions.z));
+        // and weld naked edges.
+        //
+        // FIXME: @Optimization Collect all the vertices already here, make sure
+        // they are deduplicated, reindex the faces for each marching cube and
+        // generate a valid watertight mesh without the need to weld it.
+        tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
+    }
+
+    /// Compute bounding box from scalar field. The bounding box will contain
+    /// the entire block of the voxel space described by the current scalar
+    /// field, regardless if it contains any voxels.
+    ///
+    /// The Bounding box will be defined in cartesian units.
+    pub fn bounding_box_cartesian_space(&self) -> BoundingBox<f32> {
+        let block_start_cartesian = Point3::new(
+            self.block_start.x as f32 * self.voxel_dimensions.x,
+            self.block_start.y as f32 * self.voxel_dimensions.y,
+            self.block_start.z as f32 * self.voxel_dimensions.z,
+        );
+        let block_end = self.block_end();
+        let block_end_cartesian = Point3::new(
+            block_end.x as f32 * self.voxel_dimensions.x,
+            block_end.y as f32 * self.voxel_dimensions.y,
+            block_end.z as f32 * self.voxel_dimensions.z,
+        );
+        BoundingBox::new(&block_start_cartesian, &block_end_cartesian)
+    }
+
+    /// Computes boolean intersection (logical AND operation) of the current and
+    /// another scalar field. The current scalar field will be mutated and
+    /// resized to the size and position of an intersection of the two scalar
+    /// fields' volumes. The two scalar fields do not have to contain voxels of
+    /// the same size.
+    pub fn boolean_intersection<U>(
+        &mut self,
+        volume_value_range_self: &U,
+        other: &ScalarField,
+        volume_value_range_other: &U,
+    ) where
+        U: RangeBounds<f32>,
+    {
+        // Find volume common to both scalar fields.
+        if let (Some(self_volume_bounding_box), Some(other_volume_bounding_box)) = (
+            self.bounding_box_volume_voxel_space(volume_value_range_self),
+            other.bounding_box_volume_voxel_space(volume_value_range_other),
+        ) {
+            if let Some(bounding_box) = BoundingBox::intersection(
+                [self_volume_bounding_box, other_volume_bounding_box]
+                    .iter()
+                    .copied(),
+            ) {
+                // Resize (keep or shrink) the existing scalar field so that
+                // that can possibly contain intersection voxels.
+                self.resize_to_bounding_box_voxel_space(&bounding_box);
+
+                let block_start = bounding_box.minimum_point();
+                let diagonal = bounding_box.diagonal();
+                let block_dimensions = Vector3::new(
+                    cast_u32(diagonal.x),
+                    cast_u32(diagonal.y),
+                    cast_u32(diagonal.z),
+                );
+                // Iterate through the block of space common to both scalar fields.
+                for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+                    // Perform boolean AND on voxel values of both scalar fields.
+                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                        one_dimensional,
+                        &block_start,
+                        &block_dimensions,
+                        &self.voxel_dimensions,
+                    );
+                    let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                        &cartesian_coordinate,
+                        &other.voxel_dimensions,
+                    );
+
+                    if other
+                        .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
+                        .map(|value| !volume_value_range_other.contains(&value))
+                        .unwrap_or(true)
+                    {
+                        *voxel = None;
+                    }
+                }
+                self.shrink_to_fit(volume_value_range_self);
+                // Return here because any other option needs to wipe the
+                // current scalar field.
+                return;
+            }
+        }
+        // If the two scalar fields do not intersect or one of them is empty,
+        // then wipe the resulting scalar field.
+        self.wipe();
+    }
+
+    /// Computes boolean union (logical OR operation) of two scalar fields. The
+    /// current scalar field will be mutated and resized to contain both input
+    /// scalar fields' volumes. The values from the other scalar field which are
+    /// considered a volume, will be remapped to the volume value range of the
+    /// source scalar field. The two scalar fields do not have to contain voxels
+    /// of the same size.
+    ///
+    /// # Panics
+    ///
+    /// Panics if one of the volume value ranges is infinite.
+    ///
+    /// # Warning
+    ///
+    /// If the input scalar fields are far apart, the resulting scalar field may
+    /// be huge.
+    pub fn boolean_union<U>(
+        &mut self,
+        volume_value_range_self: &U,
+        other: &ScalarField,
+        volume_value_range_other: &U,
+    ) where
+        U: RangeBounds<f32>,
+    {
+        use std::ops::Bound::*;
+
+        // FIXME: This discards the `other` scalar field's fine-grain value
+        // information, such as distance field. This is not a rare situation,
+        // because the ranges are infinite when the volumes should be considered
+        // filled. On the other hand, if the distance field values only make
+        // sense if the volume value ranges are the same for both scalar fields,
+        // which is na edge case now resolved in the remap function - it returns
+        // the unchanged value even if the ranges are identical, even if they
+        // are unbounded.
+        //
+        // Define a value that will be used for a volume voxel coming from the
+        // `other` scalar field in case the `volume_value_range_other` is
+        // unbounded (infinite) and therefore its values can't be remapped.
+        let self_certain_volume_value = if let Included(self_start) | Excluded(self_start) =
+            volume_value_range_self.start_bound()
+        {
+            // Prefer the start value of `volume_value_range_self`.
+            f64::from(*self_start)
+        } else if let Included(self_end) | Excluded(self_end) = volume_value_range_self.end_bound()
+        {
+            // If the start of the `volume_value_range_self` is unbounded, then use its end.
+            f64::from(*self_end)
+        } else {
+            // If the `volume_value_range_self` is unbounded on both ends,
+            // use zero because it certainly is in the range and is in its
+            // middle.
+            0_f64
+        };
+
+        let bounding_box_self = self.bounding_box_volume_voxel_space(volume_value_range_self);
+        let bounding_box_other = other.bounding_box_volume_voxel_space(volume_value_range_other);
+
+        // Early return if the other scalar field doesn't contain any voxels
+        // (there are no voxels to be added to self).
+        if bounding_box_other == None {
+            return;
+        }
+
+        let bounding_boxes = [bounding_box_self, bounding_box_other];
+
+        // Unwrap the bounding box options. the other bounding box must be valid
+        // at this point and the self can be None. In that case, all the volume
+        // voxels from the other scalar field will be remapped to the current
+        // scalar field.
+        let valid_bounding_boxes_iter = bounding_boxes.iter().filter_map(|b| *b);
+
+        if let Some(bounding_box) = BoundingBox::union(valid_bounding_boxes_iter) {
+            // Resize (keep or grow) the current scalar field to a block that
+            // will contain union voxels.
+            self.resize_to_bounding_box_voxel_space(&bounding_box);
+
+            // Iterate through the block of space containing volume voxels from
+            // both scalar fields. Iterate through the units of the current
+            // scalar field.
+            for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+                // If the current scalar field doesn't contain a volume voxel at
+                // the current position
+                if voxel
+                    .map(|value| !volume_value_range_self.contains(&value))
+                    .unwrap_or(true)
+                {
+                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                        one_dimensional,
+                        &self.block_start,
+                        &self.block_dimensions,
+                        &self.voxel_dimensions,
+                    );
+                    let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                        &cartesian_coordinate,
+                        &other.voxel_dimensions,
+                    );
+
+                    // If the other scalar field contains a voxel on the
+                    // cartesian coordinate of the current voxel, then remap the
+                    // other value to the volume value range of the current
+                    // scalar field and set the voxel to the value.
+                    if let Some(voxel_other) =
+                        other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
+                    {
+                        if volume_value_range_other.contains(&voxel_other) {
+                            // If the remap fails, the program should panic.
+                            *voxel = Some(
+                                math::remap(
+                                    voxel_other,
+                                    volume_value_range_other,
+                                    volume_value_range_self,
+                                )
+                                .unwrap_or(self_certain_volume_value)
+                                    as f32,
+                            );
+                        }
+                    }
+                }
+            }
+        } else {
+            // Wipe the current scalar field if none of the scalar fields
+            // contained any volume voxels.
+            self.wipe();
+        }
+    }
+
+    /// Computes boolean difference of the current scalar field minus the other
+    /// scalar field. The current scalar field will be modified so that voxels,
+    /// that are within volume value range in both scalar fields will be set to
+    /// None in the current scalar field, while the rest remains intact. The two
+    /// scalar fields do not have to contain voxels of the same size.
+    pub fn boolean_difference<U>(
+        &mut self,
+        volume_value_range_self: &U,
+        other: &ScalarField,
+        volume_value_range_other: &U,
+    ) where
+        U: RangeBounds<f32>,
+    {
+        // Iterate through the target scalar field
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            // If the current scalar field contains a volume voxel at the
+            // current position
+            if voxel
+                .map(|value| volume_value_range_self.contains(&value))
+                .unwrap_or(false)
+            {
+                let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                    one_dimensional,
+                    &self.block_start,
+                    &self.block_dimensions,
+                    &self.voxel_dimensions,
+                );
+
+                let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                    &cartesian_coordinate,
+                    &other.voxel_dimensions,
+                );
+                // and so does the other scalar field
+                if other
+                    .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
+                    .map(|value| volume_value_range_other.contains(&value))
+                    .unwrap_or(false)
+                {
+                    // then remove the voxel from the current scalar field
+                    *voxel = None;
+                }
+            }
+        }
+        self.shrink_to_fit(volume_value_range_self)
+    }
+
+    /// Interpolate values of the current scalar field to the values of the
+    /// other scalar field. The current scalar field will not be resized, so
+    /// only the overlapping areas will be will be interpolated. If the voxel in
+    /// the current or the other scalar field is None (does not contain any
+    /// voxel or does not exist), the output value will be also None. The two
+    /// scalar fields do not have to contain voxels of the same size. The
+    /// interpolation is linear.
+    ///
+    /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
+    /// between the current value to the other value. For factor outside this
+    /// range, the values will be extrapolated.
+    pub fn interpolate_to(&mut self, other: &ScalarField, interpolation_factor: f32) {
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+                &self.voxel_dimensions,
+            );
+            let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                &cartesian_coordinate,
+                &other.voxel_dimensions,
+            );
+
+            *voxel = if let (Some(value_self), Some(value_other)) = (
+                &voxel,
+                other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other),
+            ) {
+                let self_to_other_range = *value_self..value_other;
+
+                let value_interpolated_from_self_to_other =
+                    math::remap(interpolation_factor, &(0.0..1.0), &self_to_other_range)
+                        .expect("The target interval is infinite");
+
+                Some(value_interpolated_from_self_to_other as f32)
+            } else {
+                None
+            };
+        }
+    }
+
+    /// Resize the scalar field block to match new block start and block
+    /// dimensions.
+    ///
+    /// This clips the outstanding parts of the original scalar field and fills
+    /// the newly added parts with None (no voxel).
+    pub fn resize(
+        &mut self,
+        resized_block_start: &Point3<i32>,
+        resized_block_dimensions: &Vector3<u32>,
+    ) {
+        // Don't resize if the scalar field dimensions haven't changed.
+        if resized_block_start == &self.block_start
+            && resized_block_dimensions == &self.block_dimensions
+        {
+            return;
+        }
+
+        // Wipe if resizing to an empty scalar field.
+        if resized_block_dimensions == &Vector3::zeros() {
+            self.wipe();
+            return;
+        }
+
+        let resized_values_len = cast_usize(
+            resized_block_dimensions.x * resized_block_dimensions.y * resized_block_dimensions.z,
+        );
+
+        let mut new_voxels: Vec<Option<f32>> = Vec::with_capacity(resized_values_len);
+
+        for resized_one_dimensional in 0..resized_values_len {
+            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                resized_one_dimensional,
+                resized_block_start,
+                resized_block_dimensions,
+            );
+
+            let new_voxel = match absolute_voxel_to_one_dimensional_coordinate(
+                &absolute_coordinate,
+                &self.block_start,
+                &self.block_dimensions,
+            ) {
+                Some(original_one_dimensional) => self.voxels[original_one_dimensional],
+                None => None,
+            };
+            new_voxels.push(new_voxel);
+        }
+
+        self.voxels = new_voxels;
+        self.block_start = *resized_block_start;
+        self.block_dimensions = *resized_block_dimensions;
+    }
+
+    /// Resize the scalar field block to exactly fit the volumetric geometry.
+    pub fn shrink_to_fit<U>(&mut self, volume_value_range: &U)
+    where
+        U: RangeBounds<f32>,
+    {
+        if let Some((shrunk_block_start, shrunk_block_dimensions)) =
+            self.compute_volume_boundaries(volume_value_range)
+        {
+            self.resize(&shrunk_block_start, &shrunk_block_dimensions);
+        } else {
+            self.wipe();
+        }
+    }
+
     /// Compute discrete distance field.
     ///
     /// Each voxel will be set a value equal to its distance from the original
     /// volume. The voxels that were originally volume voxels, will be set to
     /// value 0. Voxels inside the closed volumes will have the distance value
     /// with a negative sign.
-    ///
-    /// The `volume_value_range` is an interval defining which values of the
-    /// scalar field should be considered to be a volume. The
-    /// `ScalarField::from_mesh` generates a scalar field, which marks volume
-    /// voxels with value `0`. `compute_distance_field` marks each voxel with a
-    /// value representing the voxel's distance from the original volume,
-    /// therefore the voxels right at the shell of the volume are marked 0, the
-    /// layer around them is marked 1 or -1 (inside closed volumes) etc. Once
-    /// the scalar field is populated with meaningful values, it is possible to
-    /// treat (perform boolean operations or materialize into mesh) on various
-    /// numerical ranges. Such range is specified ad-hoc by parameter
-    /// `volume_value_range`.
     pub fn compute_distance_field<U>(&mut self, volume_value_range: &U)
     where
         U: RangeBounds<f32>,
@@ -512,7 +1098,10 @@ impl ScalarField {
             );
 
             // If the voxel is void
-            if !is_voxel_within_range(*voxel, volume_value_range) {
+            if voxel
+                .map(|value| !volume_value_range.contains(&value))
+                .unwrap_or(true)
+            {
                 // If any of these is true, the coordinate is at the boundary of the
                 // scalar field block
                 if relative_coordinate.x == 0
@@ -550,10 +1139,11 @@ impl ScalarField {
             for neighbor_offset in &neighbor_offsets {
                 let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
                 // If the neighbor doesn't contain any volume
-                if !self.is_value_at_absolute_voxel_coordinate_within_range(
-                    &neighbor_absolute_coordinate,
-                    volume_value_range,
-                ) {
+                if self
+                    .value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
+                    .map(|value| !volume_value_range.contains(&value))
+                    .unwrap_or(true)
+                {
                     // and is not out of bounds
                     if let Some(neighbor_one_dimensional) =
                         absolute_voxel_to_one_dimensional_coordinate(
@@ -596,10 +1186,10 @@ impl ScalarField {
                 ) {
                     // and hasn't been discovered yet and is void,
                     if !discovered_for_distance_field[one_dimensional_neighbor]
-                        && !self.is_value_at_absolute_voxel_coordinate_within_range(
-                            &neighbor_absolute_coordinate,
-                            volume_value_range,
-                        )
+                        && self
+                            .value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
+                            .map(|value| !volume_value_range.contains(&value))
+                            .unwrap_or(true)
                     {
                         // put it into the processing queue with the distance
                         // one higher than the current
@@ -618,6 +1208,170 @@ impl ScalarField {
             } else {
                 Some(-distance)
             };
+        }
+    }
+
+    /// Resize the current scalar field to match the input bounding box in
+    /// voxel-space units
+    pub fn resize_to_bounding_box_voxel_space(&mut self, bounding_box: &BoundingBox<i32>) {
+        let diagonal = bounding_box.diagonal();
+        let block_dimensions = Vector3::new(
+            cast_u32(diagonal.x),
+            cast_u32(diagonal.y),
+            cast_u32(diagonal.z),
+        );
+        self.resize(&bounding_box.minimum_point(), &block_dimensions);
+    }
+
+    /// Resize the current scalar field to match the input bounding box in
+    /// cartesian units
+    pub fn resize_to_bounding_box_cartesian_space(&mut self, bounding_box: &BoundingBox<f32>) {
+        let minimum_point = cartesian_to_absolute_voxel_coordinate(
+            &bounding_box.minimum_point(),
+            &self.voxel_dimensions,
+        );
+        let diagonal = bounding_box.diagonal();
+        let block_dimensions_i32 =
+            cartesian_to_absolute_voxel_coordinate(&Point3::from(diagonal), &self.voxel_dimensions);
+        let block_dimensions_u32 = Vector3::new(
+            cast_u32(block_dimensions_i32.x),
+            cast_u32(block_dimensions_i32.y),
+            cast_u32(block_dimensions_i32.z),
+        );
+        self.resize(&minimum_point, &block_dimensions_u32);
+    }
+
+    /// Returns the bounding box in voxel units of the current scalar field
+    /// after shrinking to fit just the nonempty voxels.
+    pub fn bounding_box_volume_voxel_space<U>(
+        &self,
+        volume_value_range: &U,
+    ) -> Option<BoundingBox<i32>>
+    where
+        U: RangeBounds<f32>,
+    {
+        self.compute_volume_boundaries(volume_value_range).map(
+            |(volume_start, volume_dimensions)| {
+                let volume_end = volume_start
+                    + Vector3::new(
+                        cast_i32(volume_dimensions.x),
+                        cast_i32(volume_dimensions.y),
+                        cast_i32(volume_dimensions.z),
+                    );
+                BoundingBox::new(&volume_start, &volume_end)
+            },
+        )
+    }
+
+    /// Computes boundaries of volumes contained in scalar field. Returns tuple
+    /// `(block_start, block_dimensions)`. For empty scalar fields returns the
+    /// original block start and zero block dimensions.
+    fn compute_volume_boundaries<U>(
+        &self,
+        volume_value_range: &U,
+    ) -> Option<(Point3<i32>, Vector3<u32>)>
+    where
+        U: RangeBounds<f32>,
+    {
+        let mut absolute_min: Point3<i32> =
+            Point3::new(i32::max_value(), i32::max_value(), i32::max_value());
+        let mut absolute_max: Point3<i32> =
+            Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
+        for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
+            if voxel
+                .map(|value| volume_value_range.contains(&value))
+                .unwrap_or(false)
+            {
+                let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                    one_dimensional,
+                    &self.block_start,
+                    &self.block_dimensions,
+                );
+
+                if absolute_coordinate.x < absolute_min.x {
+                    absolute_min.x = absolute_coordinate.x;
+                }
+                if absolute_coordinate.x > absolute_max.x {
+                    absolute_max.x = absolute_coordinate.x;
+                }
+                if absolute_coordinate.y < absolute_min.y {
+                    absolute_min.y = absolute_coordinate.y;
+                }
+                if absolute_coordinate.y > absolute_max.y {
+                    absolute_max.y = absolute_coordinate.y;
+                }
+                if absolute_coordinate.z < absolute_min.z {
+                    absolute_min.z = absolute_coordinate.z;
+                }
+                if absolute_coordinate.z > absolute_max.z {
+                    absolute_max.z = absolute_coordinate.z;
+                }
+            }
+        }
+        // If the scalar field doesn't contain any voxels, all of the min/max
+        // values should remain unchanged. It's enough to check one of the
+        // values because if anything is found, all the values would change.
+        if absolute_min.x == i32::max_value() {
+            assert_eq!(
+                absolute_min.y,
+                i32::max_value(),
+                "scalar field emptiness check failed"
+            );
+            assert_eq!(
+                absolute_min.z,
+                i32::max_value(),
+                "scalar field emptiness check failed"
+            );
+            assert_eq!(
+                absolute_max.x,
+                i32::min_value(),
+                "scalar field emptiness check failed"
+            );
+            assert_eq!(
+                absolute_max.y,
+                i32::min_value(),
+                "scalar field emptiness check failed"
+            );
+            assert_eq!(
+                absolute_max.z,
+                i32::min_value(),
+                "scalar field emptiness check failed"
+            );
+            None
+        } else {
+            let block_dimensions = Vector3::new(
+                cast_u32(absolute_max.x - absolute_min.x + 1),
+                cast_u32(absolute_max.y - absolute_min.y + 1),
+                cast_u32(absolute_max.z - absolute_min.z + 1),
+            );
+            Some((absolute_min, block_dimensions))
+        }
+    }
+
+    /// Fills existing scalar field with simplex noise.
+    ///
+    /// The voxel values will be between -1.0 and 1.0.
+    pub fn fill_with_noise(&mut self, noise_scale: f32, time_offset: f32) {
+        use noise::{NoiseFn, OpenSimplex};
+
+        let simplex = OpenSimplex::new();
+
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+            );
+            let noise_scale_f64 = f64::from(noise_scale);
+
+            let noise_value = simplex.get([
+                f64::from(absolute_coordinate.x) * noise_scale_f64,
+                f64::from(absolute_coordinate.y) * noise_scale_f64,
+                f64::from(absolute_coordinate.z) * noise_scale_f64,
+                f64::from(time_offset),
+            ]);
+
+            *voxel = Some(noise_value as f32);
         }
     }
 }
@@ -654,19 +1408,6 @@ pub fn suggest_voxel_size_to_fit_bbox_within_voxel_count(
     // 1.1 is a quick fix.
     // FIXME: Come up with a precise equation
     current_voxel_dimensions * voxel_scaling_ratio_1d * 1.1
-}
-
-/// Returns `true` if the value of a voxel is within given value range. Returns
-/// `false` if the voxel value is not within the `value_range` or if the voxel
-/// does not exist or is out of scalar field's bounds.
-fn is_voxel_within_range<U>(voxel: Option<f32>, value_range: &U) -> bool
-where
-    U: RangeBounds<f32>,
-{
-    match voxel {
-        Some(value) => value_range.contains(&value),
-        None => false,
-    }
 }
 
 /// Computes a voxel position relative to the block start (relative coordinate)
@@ -740,6 +1481,27 @@ fn relative_voxel_to_cartesian_coordinate(
     )
 }
 
+/// Computes the center of a voxel in worlds space cartesian units from absolute
+/// voxel coordinates (relative to the voxel space origin start).
+///
+/// # Panics
+///
+/// Panics if any of the voxel dimensions is equal or below zero.
+fn absolute_voxel_to_cartesian_coordinate(
+    absolute_coordinate: &Point3<i32>,
+    voxel_dimensions: &Vector3<f32>,
+) -> Point3<f32> {
+    assert!(
+        voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
+        "Voxel dimensions can't be below or equal to zero"
+    );
+    Point3::new(
+        absolute_coordinate.x as f32 * voxel_dimensions.x,
+        absolute_coordinate.y as f32 * voxel_dimensions.y,
+        absolute_coordinate.z as f32 * voxel_dimensions.z,
+    )
+}
+
 /// Computes the absolute voxel space coordinate of a voxel containing the input
 /// point.
 ///
@@ -796,6 +1558,1081 @@ fn absolute_voxel_to_one_dimensional_coordinate(
     let relative_coordinate = absolute_coordinate - block_start.coords;
     relative_voxel_to_one_dimensional_coordinate(&relative_coordinate, block_dimensions)
 }
+
+/// Row in the marching cubes lookup table.
+///
+/// Fields are u8 so that more rows fit in an x86 cache line (64 bytes).
+/// With the current layout optimization, a row is 16 bytes, meaning 4 of them fit.
+struct Row {
+    /// Length of a valid data slice.
+    len: u8,
+    /// Row data.
+    data: [(u8, u8, u8); 5],
+}
+
+static_assertions::assert_eq_size!(Row, [u8; 16]);
+
+impl Row {
+    fn as_slice(&self) -> &[(u8, u8, u8)] {
+        &self.data[0..usize::from(self.len)]
+    }
+}
+
+const EMPTY: (u8, u8, u8) = (0, 0, 0);
+
+/// Lookup table of triangle faces suitable to the sample situation. Each vector
+/// item contains a vector of vertex indices. The vector indices correspond with
+/// the edge index.
+///
+///  # Corner and edge indices scheme
+///
+/// ```text
+///                 v4_______e4_____________v5
+///                  /|                    /|
+///                e7 |                  e5 |
+///                /  |                  /  |
+///               /___|______e6_________/   |
+///            v7|    |                 |v6 |e9
+///              |    |                 |   |
+///              |    |e8               |e10|
+///           e11|    |                 |   |
+///              |    |_________________|___|
+///              |   / v0    e0         |   /v1
+///              |  /                   |  /
+///              | /e3                  | /e1
+///              |/_____________________|/
+///              v3         e2          v2
+/// ```
+///
+/// # Source
+///
+/// http://paulbourke.net/geometry/polygonise/
+static MARCHING_CUBES_LOOKUP_TABLE: [Row; 256] = [
+    Row {
+        len: 0,
+        data: [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(0, 8, 3), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(0, 1, 9), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 8, 3), (9, 8, 1), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(1, 2, 10), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 8, 3), (1, 2, 10), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 2, 10), (0, 2, 9), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 8, 3), (2, 10, 8), (10, 9, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(3, 11, 2), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 11, 2), (8, 11, 0), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 9, 0), (2, 3, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 11, 2), (1, 9, 11), (9, 8, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(3, 10, 1), (11, 10, 3), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 10, 1), (0, 8, 10), (8, 11, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 9, 0), (3, 11, 9), (11, 10, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 8, 10), (10, 8, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(4, 7, 8), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(4, 3, 0), (7, 3, 4), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 1, 9), (8, 4, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 1, 9), (4, 7, 1), (7, 3, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 2, 10), (8, 4, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 4, 7), (3, 0, 4), (1, 2, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 2, 10), (9, 0, 2), (8, 4, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 10, 9), (2, 9, 7), (2, 7, 3), (7, 9, 4), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(8, 4, 7), (3, 11, 2), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 4, 7), (11, 2, 4), (2, 0, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 0, 1), (8, 4, 7), (2, 3, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 7, 11), (9, 4, 11), (9, 11, 2), (9, 2, 1), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 10, 1), (3, 11, 10), (7, 8, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 11, 10), (1, 4, 11), (1, 0, 4), (7, 11, 4), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 7, 8), (9, 0, 11), (9, 11, 10), (11, 0, 3), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 7, 11), (4, 11, 9), (9, 11, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(9, 5, 4), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 5, 4), (0, 8, 3), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 5, 4), (1, 5, 0), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 5, 4), (8, 3, 5), (3, 1, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 2, 10), (9, 5, 4), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 0, 8), (1, 2, 10), (4, 9, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 2, 10), (5, 4, 2), (4, 0, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 10, 5), (3, 2, 5), (3, 5, 4), (3, 4, 8), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 5, 4), (2, 3, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 11, 2), (0, 8, 11), (4, 9, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 5, 4), (0, 1, 5), (2, 3, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 1, 5), (2, 5, 8), (2, 8, 11), (4, 8, 5), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 3, 11), (10, 1, 3), (9, 5, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 9, 5), (0, 8, 1), (8, 10, 1), (8, 11, 10), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 4, 0), (5, 0, 11), (5, 11, 10), (11, 0, 3), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 4, 8), (5, 8, 10), (10, 8, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 7, 8), (5, 7, 9), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 3, 0), (9, 5, 3), (5, 7, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 7, 8), (0, 1, 7), (1, 5, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 5, 3), (3, 5, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 7, 8), (9, 5, 7), (10, 1, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 1, 2), (9, 5, 0), (5, 3, 0), (5, 7, 3), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 0, 2), (8, 2, 5), (8, 5, 7), (10, 5, 2), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 10, 5), (2, 5, 3), (3, 5, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(7, 9, 5), (7, 8, 9), (3, 11, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 5, 7), (9, 7, 2), (9, 2, 0), (2, 7, 11), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 3, 11), (0, 1, 8), (1, 7, 8), (1, 5, 7), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 2, 1), (11, 1, 7), (7, 1, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 5, 8), (8, 5, 7), (10, 1, 3), (10, 3, 11), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(5, 7, 0), (5, 0, 9), (7, 11, 0), (1, 0, 10), (11, 10, 0)],
+    },
+    Row {
+        len: 5,
+        data: [(11, 10, 0), (11, 0, 3), (10, 5, 0), (8, 0, 7), (5, 7, 0)],
+    },
+    Row {
+        len: 2,
+        data: [(11, 10, 5), (7, 11, 5), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(10, 6, 5), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 8, 3), (5, 10, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 0, 1), (5, 10, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 8, 3), (1, 9, 8), (5, 10, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 6, 5), (2, 6, 1), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 6, 5), (1, 2, 6), (3, 0, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 6, 5), (9, 0, 6), (0, 2, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 9, 8), (5, 8, 2), (5, 2, 6), (3, 2, 8), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(2, 3, 11), (10, 6, 5), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 0, 8), (11, 2, 0), (10, 6, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 1, 9), (2, 3, 11), (5, 10, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 10, 6), (1, 9, 2), (9, 11, 2), (9, 8, 11), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 3, 11), (6, 5, 3), (5, 1, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 8, 11), (0, 11, 5), (0, 5, 1), (5, 11, 6), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 11, 6), (0, 3, 6), (0, 6, 5), (0, 5, 9), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 5, 9), (6, 9, 11), (11, 9, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(5, 10, 6), (4, 7, 8), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 3, 0), (4, 7, 3), (6, 5, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 9, 0), (5, 10, 6), (8, 4, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 6, 5), (1, 9, 7), (1, 7, 3), (7, 9, 4), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 1, 2), (6, 5, 1), (4, 7, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 2, 5), (5, 2, 6), (3, 0, 4), (3, 4, 7), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 4, 7), (9, 0, 5), (0, 6, 5), (0, 2, 6), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(7, 3, 9), (7, 9, 4), (3, 2, 9), (5, 9, 6), (2, 6, 9)],
+    },
+    Row {
+        len: 3,
+        data: [(3, 11, 2), (7, 8, 4), (10, 6, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 10, 6), (4, 7, 2), (4, 2, 0), (2, 7, 11), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 1, 9), (4, 7, 8), (2, 3, 11), (5, 10, 6), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(9, 2, 1), (9, 11, 2), (9, 4, 11), (7, 11, 4), (5, 10, 6)],
+    },
+    Row {
+        len: 4,
+        data: [(8, 4, 7), (3, 11, 5), (3, 5, 1), (5, 11, 6), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(5, 1, 11), (5, 11, 6), (1, 0, 11), (7, 11, 4), (0, 4, 11)],
+    },
+    Row {
+        len: 5,
+        data: [(0, 5, 9), (0, 6, 5), (0, 3, 6), (11, 6, 3), (8, 4, 7)],
+    },
+    Row {
+        len: 4,
+        data: [(6, 5, 9), (6, 9, 11), (4, 7, 9), (7, 11, 9), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(10, 4, 9), (6, 4, 10), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 10, 6), (4, 9, 10), (0, 8, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 0, 1), (10, 6, 0), (6, 4, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 3, 1), (8, 1, 6), (8, 6, 4), (6, 1, 10), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 4, 9), (1, 2, 4), (2, 6, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 0, 8), (1, 2, 9), (2, 4, 9), (2, 6, 4), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 2, 4), (4, 2, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 3, 2), (8, 2, 4), (4, 2, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 4, 9), (10, 6, 4), (11, 2, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 8, 2), (2, 8, 11), (4, 9, 10), (4, 10, 6), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 11, 2), (0, 1, 6), (0, 6, 4), (6, 1, 10), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(6, 4, 1), (6, 1, 10), (4, 8, 1), (2, 1, 11), (8, 11, 1)],
+    },
+    Row {
+        len: 4,
+        data: [(9, 6, 4), (9, 3, 6), (9, 1, 3), (11, 6, 3), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(8, 11, 1), (8, 1, 0), (11, 6, 1), (9, 1, 4), (6, 4, 1)],
+    },
+    Row {
+        len: 3,
+        data: [(3, 11, 6), (3, 6, 0), (0, 6, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(6, 4, 8), (11, 6, 8), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(7, 10, 6), (7, 8, 10), (8, 9, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 7, 3), (0, 10, 7), (0, 9, 10), (6, 7, 10), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 6, 7), (1, 10, 7), (1, 7, 8), (1, 8, 0), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 6, 7), (10, 7, 1), (1, 7, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 2, 6), (1, 6, 8), (1, 8, 9), (8, 6, 7), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(2, 6, 9), (2, 9, 1), (6, 7, 9), (0, 9, 3), (7, 3, 9)],
+    },
+    Row {
+        len: 3,
+        data: [(7, 8, 0), (7, 0, 6), (6, 0, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(7, 3, 2), (6, 7, 2), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 3, 11), (10, 6, 8), (10, 8, 9), (8, 6, 7), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(2, 0, 7), (2, 7, 11), (0, 9, 7), (6, 7, 10), (9, 10, 7)],
+    },
+    Row {
+        len: 5,
+        data: [(1, 8, 0), (1, 7, 8), (1, 10, 7), (6, 7, 10), (2, 3, 11)],
+    },
+    Row {
+        len: 4,
+        data: [(11, 2, 1), (11, 1, 7), (10, 6, 1), (6, 7, 1), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(8, 9, 6), (8, 6, 7), (9, 1, 6), (11, 6, 3), (1, 3, 6)],
+    },
+    Row {
+        len: 2,
+        data: [(0, 9, 1), (11, 6, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(7, 8, 0), (7, 0, 6), (3, 11, 0), (11, 6, 0), EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(7, 11, 6), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(7, 6, 11), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(3, 0, 8), (11, 7, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 1, 9), (11, 7, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 1, 9), (8, 3, 1), (11, 7, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(10, 1, 2), (6, 11, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 2, 10), (3, 0, 8), (6, 11, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 9, 0), (2, 10, 9), (6, 11, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(6, 11, 7), (2, 10, 3), (10, 8, 3), (10, 9, 8), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(7, 2, 3), (6, 2, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(7, 0, 8), (7, 6, 0), (6, 2, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 7, 6), (2, 3, 7), (0, 1, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 6, 2), (1, 8, 6), (1, 9, 8), (8, 7, 6), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 7, 6), (10, 1, 7), (1, 3, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 7, 6), (1, 7, 10), (1, 8, 7), (1, 0, 8), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 3, 7), (0, 7, 10), (0, 10, 9), (6, 10, 7), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(7, 6, 10), (7, 10, 8), (8, 10, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(6, 8, 4), (11, 8, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 6, 11), (3, 0, 6), (0, 4, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 6, 11), (8, 4, 6), (9, 0, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 4, 6), (9, 6, 3), (9, 3, 1), (11, 3, 6), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 8, 4), (6, 11, 8), (2, 10, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 2, 10), (3, 0, 11), (0, 6, 11), (0, 4, 6), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 11, 8), (4, 6, 11), (0, 2, 9), (2, 10, 9), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(10, 9, 3), (10, 3, 2), (9, 4, 3), (11, 3, 6), (4, 6, 3)],
+    },
+    Row {
+        len: 3,
+        data: [(8, 2, 3), (8, 4, 2), (4, 6, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 4, 2), (4, 6, 2), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 9, 0), (2, 3, 4), (2, 4, 6), (4, 3, 8), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 9, 4), (1, 4, 2), (2, 4, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 1, 3), (8, 6, 1), (8, 4, 6), (6, 10, 1), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(10, 1, 0), (10, 0, 6), (6, 0, 4), EMPTY, EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(4, 6, 3), (4, 3, 8), (6, 10, 3), (0, 3, 9), (10, 9, 3)],
+    },
+    Row {
+        len: 2,
+        data: [(10, 9, 4), (6, 10, 4), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(4, 9, 5), (7, 6, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 8, 3), (4, 9, 5), (11, 7, 6), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 0, 1), (5, 4, 0), (7, 6, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(11, 7, 6), (8, 3, 4), (3, 5, 4), (3, 1, 5), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 5, 4), (10, 1, 2), (7, 6, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(6, 11, 7), (1, 2, 10), (0, 8, 3), (4, 9, 5), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(7, 6, 11), (5, 4, 10), (4, 2, 10), (4, 0, 2), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(3, 4, 8), (3, 5, 4), (3, 2, 5), (10, 5, 2), (11, 7, 6)],
+    },
+    Row {
+        len: 3,
+        data: [(7, 2, 3), (7, 6, 2), (5, 4, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 5, 4), (0, 8, 6), (0, 6, 2), (6, 8, 7), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 6, 2), (3, 7, 6), (1, 5, 0), (5, 4, 0), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(6, 2, 8), (6, 8, 7), (2, 1, 8), (4, 8, 5), (1, 5, 8)],
+    },
+    Row {
+        len: 4,
+        data: [(9, 5, 4), (10, 1, 6), (1, 7, 6), (1, 3, 7), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(1, 6, 10), (1, 7, 6), (1, 0, 7), (8, 7, 0), (9, 5, 4)],
+    },
+    Row {
+        len: 5,
+        data: [(4, 0, 10), (4, 10, 5), (0, 3, 10), (6, 10, 7), (3, 7, 10)],
+    },
+    Row {
+        len: 4,
+        data: [(7, 6, 10), (7, 10, 8), (5, 4, 10), (4, 8, 10), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 9, 5), (6, 11, 9), (11, 8, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 6, 11), (0, 6, 3), (0, 5, 6), (0, 9, 5), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 11, 8), (0, 5, 11), (0, 1, 5), (5, 6, 11), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(6, 11, 3), (6, 3, 5), (5, 3, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 2, 10), (9, 5, 11), (9, 11, 8), (11, 5, 6), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(0, 11, 3), (0, 6, 11), (0, 9, 6), (5, 6, 9), (1, 2, 10)],
+    },
+    Row {
+        len: 5,
+        data: [(11, 8, 5), (11, 5, 6), (8, 0, 5), (10, 5, 2), (0, 2, 5)],
+    },
+    Row {
+        len: 4,
+        data: [(6, 11, 3), (6, 3, 5), (2, 10, 3), (10, 5, 3), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 8, 9), (5, 2, 8), (5, 6, 2), (3, 8, 2), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 5, 6), (9, 6, 0), (0, 6, 2), EMPTY, EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(1, 5, 8), (1, 8, 0), (5, 6, 8), (3, 8, 2), (6, 2, 8)],
+    },
+    Row {
+        len: 2,
+        data: [(1, 5, 6), (2, 1, 6), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(1, 3, 6), (1, 6, 10), (3, 8, 6), (5, 6, 9), (8, 9, 6)],
+    },
+    Row {
+        len: 4,
+        data: [(10, 1, 0), (10, 0, 6), (9, 5, 0), (5, 6, 0), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 3, 8), (5, 6, 10), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(10, 5, 6), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(11, 5, 10), (7, 5, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 5, 10), (11, 7, 5), (8, 3, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 11, 7), (5, 10, 11), (1, 9, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(10, 7, 5), (10, 11, 7), (9, 8, 1), (8, 3, 1), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(11, 1, 2), (11, 7, 1), (7, 5, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 8, 3), (1, 2, 7), (1, 7, 5), (7, 2, 11), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 7, 5), (9, 2, 7), (9, 0, 2), (2, 11, 7), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(7, 5, 2), (7, 2, 11), (5, 9, 2), (3, 2, 8), (9, 8, 2)],
+    },
+    Row {
+        len: 3,
+        data: [(2, 5, 10), (2, 3, 5), (3, 7, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 2, 0), (8, 5, 2), (8, 7, 5), (10, 2, 5), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(9, 0, 1), (5, 10, 3), (5, 3, 7), (3, 10, 2), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(9, 8, 2), (9, 2, 1), (8, 7, 2), (10, 2, 5), (7, 5, 2)],
+    },
+    Row {
+        len: 2,
+        data: [(1, 3, 5), (3, 7, 5), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 8, 7), (0, 7, 1), (1, 7, 5), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(9, 0, 3), (9, 3, 5), (5, 3, 7), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 8, 7), (5, 9, 7), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 8, 4), (5, 10, 8), (10, 11, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(5, 0, 4), (5, 11, 0), (5, 10, 11), (11, 3, 0), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 1, 9), (8, 4, 10), (8, 10, 11), (10, 4, 5), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(10, 11, 4), (10, 4, 5), (11, 3, 4), (9, 4, 1), (3, 1, 4)],
+    },
+    Row {
+        len: 4,
+        data: [(2, 5, 1), (2, 8, 5), (2, 11, 8), (4, 5, 8), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(0, 4, 11), (0, 11, 3), (4, 5, 11), (2, 11, 1), (5, 1, 11)],
+    },
+    Row {
+        len: 5,
+        data: [(0, 2, 5), (0, 5, 9), (2, 11, 5), (4, 5, 8), (11, 8, 5)],
+    },
+    Row {
+        len: 2,
+        data: [(9, 4, 5), (2, 11, 3), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 5, 10), (3, 5, 2), (3, 4, 5), (3, 8, 4), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(5, 10, 2), (5, 2, 4), (4, 2, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(3, 10, 2), (3, 5, 10), (3, 8, 5), (4, 5, 8), (0, 1, 9)],
+    },
+    Row {
+        len: 4,
+        data: [(5, 10, 2), (5, 2, 4), (1, 9, 2), (9, 4, 2), EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(8, 4, 5), (8, 5, 3), (3, 5, 1), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 4, 5), (1, 0, 5), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(8, 4, 5), (8, 5, 3), (9, 0, 5), (0, 3, 5), EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(9, 4, 5), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 11, 7), (4, 9, 11), (9, 10, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(0, 8, 3), (4, 9, 7), (9, 11, 7), (9, 10, 11), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(1, 10, 11), (1, 11, 4), (1, 4, 0), (7, 4, 11), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(3, 1, 4), (3, 4, 8), (1, 10, 4), (7, 4, 11), (10, 11, 4)],
+    },
+    Row {
+        len: 4,
+        data: [(4, 11, 7), (9, 11, 4), (9, 2, 11), (9, 1, 2), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(9, 7, 4), (9, 11, 7), (9, 1, 11), (2, 11, 1), (0, 8, 3)],
+    },
+    Row {
+        len: 3,
+        data: [(11, 7, 4), (11, 4, 2), (2, 4, 0), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(11, 7, 4), (11, 4, 2), (8, 3, 4), (3, 2, 4), EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 9, 10), (2, 7, 9), (2, 3, 7), (7, 4, 9), EMPTY],
+    },
+    Row {
+        len: 5,
+        data: [(9, 10, 7), (9, 7, 4), (10, 2, 7), (8, 7, 0), (2, 0, 7)],
+    },
+    Row {
+        len: 5,
+        data: [(3, 7, 10), (3, 10, 2), (7, 4, 10), (1, 10, 0), (4, 0, 10)],
+    },
+    Row {
+        len: 2,
+        data: [(1, 10, 2), (8, 7, 4), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(4, 9, 1), (4, 1, 7), (7, 1, 3), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(4, 9, 1), (4, 1, 7), (0, 8, 1), (8, 7, 1), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(4, 0, 3), (7, 4, 3), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(4, 8, 7), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 10, 8), (10, 11, 8), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(3, 0, 9), (3, 9, 11), (11, 9, 10), EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(0, 1, 10), (0, 10, 8), (8, 10, 11), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(3, 1, 10), (11, 3, 10), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(1, 2, 11), (1, 11, 9), (9, 11, 8), EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(3, 0, 9), (3, 9, 11), (1, 2, 9), (2, 11, 9), EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(0, 2, 11), (8, 0, 11), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(3, 2, 11), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 3,
+        data: [(2, 3, 8), (2, 8, 10), (10, 8, 9), EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(9, 10, 2), (0, 9, 2), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 4,
+        data: [(2, 3, 8), (2, 8, 10), (0, 1, 8), (1, 10, 8), EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(1, 10, 2), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 2,
+        data: [(1, 3, 8), (9, 1, 8), EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(0, 9, 1), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 1,
+        data: [(0, 3, 8), EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+    Row {
+        len: 0,
+        data: [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+    },
+];
 
 #[cfg(test)]
 mod tests {
@@ -928,5 +2765,353 @@ mod tests {
         let voxel_mesh_synced = tools::synchronize_mesh_winding(&voxel_mesh, &f2f);
 
         assert!(analysis::are_similar(&voxel_mesh, &voxel_mesh_synced));
+    }
+
+    #[test]
+    fn test_scalar_field_boolean_intersection_all_volume() {
+        let mut sf_a = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_b = ScalarField::new(
+            &Point3::new(2, 1, 1),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_correct = ScalarField::new(
+            &Point3::new(2, 1, 1),
+            &Vector3::new(1, 2, 2),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        sf_a.fill_with(Some(0.0));
+        sf_b.fill_with(Some(0.0));
+        sf_correct.fill_with(Some(0.0));
+
+        sf_a.boolean_intersection(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
+
+        assert_eq!(sf_a, sf_correct);
+    }
+
+    #[test]
+    fn test_scalar_field_boolean_intersection_one_void() {
+        let mut sf_a = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_b = ScalarField::new(
+            &Point3::new(1, 1, 1),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_correct = ScalarField::new(
+            &Point3::new(1, 1, 1),
+            &Vector3::new(2, 2, 2),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        sf_a.fill_with(Some(0.0));
+        sf_b.fill_with(Some(0.0));
+        sf_b.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
+        sf_correct.fill_with(Some(0.0));
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
+
+        sf_a.boolean_intersection(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
+
+        assert_eq!(sf_a, sf_correct);
+    }
+
+    #[test]
+    fn test_scalar_field_boolean_union_shifted() {
+        let mut sf_a = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_b = ScalarField::new(
+            &Point3::new(1, 1, 1),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_correct = ScalarField::new(
+            &Point3::new(0, 0, 0),
+            &Vector3::new(4, 4, 4),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        sf_a.fill_with(Some(0.0));
+        sf_b.fill_with(Some(0.0));
+        sf_b.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
+        sf_correct.fill_with(Some(0.0));
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 1, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 2, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 3, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 1), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 2), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 0, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 0, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 1, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 2, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 3), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 2), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 1), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 3, 0), None);
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 3, 0), None);
+
+        sf_a.boolean_union(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
+
+        assert_eq!(sf_a, sf_correct);
+    }
+
+    #[test]
+    fn test_scalar_field_resize_zero_to_nonzero_all_void() {
+        let mut scalar_field: ScalarField = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::zeros(),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        scalar_field.resize(&Point3::origin(), &Vector3::new(1, 1, 1));
+
+        let voxel = scalar_field.value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 0));
+
+        assert_eq!(voxel, None);
+    }
+
+    #[test]
+    fn test_scalar_field_resize_zero_to_nonzero_correct_start_and_dimensions() {
+        let mut scalar_field: ScalarField = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::zeros(),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let new_origin = Point3::new(1, 2, 3);
+        let new_block_dimensions = Vector3::new(4, 5, 6);
+        scalar_field.resize(&new_origin, &new_block_dimensions);
+
+        assert_eq!(scalar_field.block_start, new_origin);
+        assert_eq!(scalar_field.block_dimensions, new_block_dimensions);
+        assert_eq!(scalar_field.voxels.len(), 4 * 5 * 6);
+    }
+
+    #[test]
+    fn test_scalar_field_resize_nonzero_to_zero_correct_start_and_dimensions() {
+        let mut scalar_field: ScalarField = ScalarField::new(
+            &Point3::new(1, 2, 3),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let new_origin = Point3::origin();
+        let new_block_dimensions = Vector3::zeros();
+        scalar_field.resize(&new_origin, &new_block_dimensions);
+
+        assert_eq!(scalar_field.block_start, new_origin);
+        assert_eq!(scalar_field.block_dimensions, new_block_dimensions);
+        assert_eq!(scalar_field.voxels.len(), 0);
+    }
+
+    #[test]
+    fn test_scalar_field_resize_nonzero_to_smaller_nonzero_correct_start_and_dimensions() {
+        let mut scalar_field: ScalarField = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let new_origin = Point3::new(1, 2, 3);
+        let new_block_dimensions = Vector3::new(1, 2, 3);
+        scalar_field.resize(&new_origin, &new_block_dimensions);
+
+        assert_eq!(scalar_field.block_start, new_origin);
+        assert_eq!(scalar_field.block_dimensions, new_block_dimensions);
+        assert_eq!(scalar_field.voxels.len(), 1 * 2 * 3);
+    }
+
+    #[test]
+    fn test_scalar_field_resize_nonzero_to_larger_nonzero_correct_start_and_dimensions() {
+        let mut scalar_field: ScalarField = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(1, 2, 3),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let new_origin = Point3::new(1, 2, 3);
+        let new_block_dimensions = Vector3::new(4, 5, 6);
+        scalar_field.resize(&new_origin, &new_block_dimensions);
+
+        assert_eq!(scalar_field.block_start, new_origin);
+        assert_eq!(scalar_field.block_dimensions, new_block_dimensions);
+        assert_eq!(scalar_field.voxels.len(), 4 * 5 * 6);
+    }
+
+    #[test]
+    fn test_scalar_field_resize_nonzero_to_larger_nonzero_grown_contains_none_rest_original() {
+        let original_origin = Point3::new(0i32, 0i32, 0i32);
+        let original_block_dimensions = Vector3::new(1u32, 10u32, 3u32);
+        let mut scalar_field: ScalarField = ScalarField::new(
+            &original_origin,
+            &original_block_dimensions,
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        let original_block_end = scalar_field.block_end();
+
+        scalar_field.fill_with(Some(0.0));
+
+        let new_origin = Point3::new(-1, 2, 3);
+        let new_block_dimensions = Vector3::new(4, 5, 6);
+        scalar_field.resize(&new_origin, &new_block_dimensions);
+
+        for (i, v) in scalar_field.voxels.iter().enumerate() {
+            let coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                i,
+                &scalar_field.block_start,
+                &scalar_field.block_dimensions,
+            );
+
+            if coordinate.x < original_origin.x
+                || coordinate.y < original_origin.y
+                || coordinate.z < original_origin.z
+                || coordinate.x > original_block_end.x
+                || coordinate.y > original_block_end.y
+                || coordinate.z > original_block_end.z
+            {
+                assert_eq!(*v, None);
+            } else {
+                let value = v.unwrap();
+                assert_eq!(value, 0.0);
+            }
+        }
+    }
+
+    #[test]
+    fn test_scalar_field_shrink_to_volume() {
+        let mut scalar_field: ScalarField = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        scalar_field.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 1, 1), Some(0.0));
+        scalar_field.shrink_to_fit(&(0.0..=0.0));
+
+        assert_eq!(scalar_field.block_start, Point3::new(1, 1, 1));
+        assert_eq!(scalar_field.block_dimensions, Vector3::new(1, 1, 1));
+        assert_eq!(scalar_field.voxels.len(), 1);
+        assert_eq!(
+            scalar_field
+                .value_at_absolute_voxel_coordinate(&Point3::new(1, 1, 1))
+                .unwrap(),
+            0.0
+        );
+    }
+
+    #[test]
+    fn test_scalar_field_shrink_to_empty() {
+        let mut scalar_field: ScalarField = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(1.0, 1.0, 1.0),
+        );
+        scalar_field.shrink_to_fit(&(0.0..=0.0));
+
+        assert_eq!(scalar_field.block_start, Point3::origin());
+        assert_eq!(scalar_field.block_dimensions, Vector3::new(0, 0, 0));
+        assert_eq!(scalar_field.voxels.len(), 0);
+    }
+
+    #[test]
+    fn test_scalar_field_boolean_difference_no_change() {
+        let mut sf_a = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_b = ScalarField::new(
+            &Point3::new(4, 4, 4),
+            &Vector3::new(1, 1, 1),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_correct = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        sf_a.fill_with(Some(0.0));
+        sf_b.fill_with(Some(0.0));
+        sf_correct.fill_with(Some(0.0));
+
+        sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
+
+        assert_eq!(sf_a, sf_correct);
+    }
+
+    #[test]
+    fn test_scalar_field_boolean_difference_empty() {
+        let mut sf_a = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_b = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(4, 5, 6),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let sf_correct = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(0, 0, 0),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        sf_a.fill_with(Some(0.0));
+        sf_b.fill_with(Some(0.0));
+
+        sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
+
+        assert_eq!(sf_a, sf_correct);
+    }
+
+    #[test]
+    fn test_scalar_field_boolean_difference_chop_off_corner() {
+        let mut sf_a = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_b = ScalarField::new(
+            &Point3::new(2, 2, 2),
+            &Vector3::new(2, 3, 4),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+        let mut sf_correct = ScalarField::new(
+            &Point3::origin(),
+            &Vector3::new(3, 3, 3),
+            &Vector3::new(0.5, 0.5, 0.5),
+        );
+
+        sf_a.fill_with(Some(0.0));
+        sf_b.fill_with(Some(0.0));
+        sf_correct.fill_with(Some(0.0));
+        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
+
+        sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
+
+        assert_eq!(sf_a, sf_correct);
+    }
+
+    #[test]
+    fn test_marching_cubes_lookup_table_len_check() {
+        for (r, row) in MARCHING_CUBES_LOOKUP_TABLE.iter().enumerate() {
+            for (i, face) in row.data.iter().enumerate() {
+                if i < usize::from(row.len) {
+                    assert_ne!(face, &EMPTY, "Row {} length isn't set correctly", r);
+                } else {
+                    assert_eq!(face, &EMPTY, "Row {} length isn't set correctly", r);
+                }
+            }
+        }
     }
 }

@@ -1,9 +1,16 @@
 use std::fmt;
 
+// Note that by deriving serde::Serialize and serde::Deserialize on FuncIdent
+// and VarIdent, we accidentally stabilized their internal representation even
+// if it is `pub(crate)`. We therefore document that no assumptions must be made
+// about those 64 bits, so that we can change the way we generate those
+// identifiers later.
+
 /// A unique function identifier.
 ///
-/// Has to stay stable for the lifetime of the interpreter and program
-/// using it.
+/// Has to stay stable for the lifetime of the interpreter and program using
+/// it. Internally has 64-bits of precision, but no assumptions must be made
+/// about the meaning of those bits.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -17,8 +24,9 @@ impl fmt::Display for FuncIdent {
 
 /// A unique variable identifier.
 ///
-/// Has to stay stable for the lifetime of the interpreter and program
-/// using it.
+/// Has to stay stable for the lifetime of the interpreter and program using
+/// it. Internally has 64-bits of precision, but no assumptions must be made
+/// about the meaning of those bits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct VarIdent(pub(crate) u64);
 
