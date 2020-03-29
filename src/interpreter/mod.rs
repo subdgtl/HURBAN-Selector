@@ -311,11 +311,18 @@ pub struct InterpretValue {
     pub unused_values: Vec<(VarIdent, Value)>,
 }
 
+/// A variable value stored in the environment.
+///
+/// Contains metadata helpful to determine when the value should be invalidated
+/// or forgotten.
 #[derive(Debug, Clone)]
-struct VarInfo {
+struct VarValue {
     /// The parameters and function call this variable was created
     /// with. Used to verify validity of this variable.
     created_call: ast::CallExpr,
+
+    /// The epoch this variable was created.
+    created_epoch: u64,
 
     /// Current value of this variable.
     value: Value,
@@ -334,7 +341,7 @@ pub struct Interpreter {
 
     /// The environment (scope) of the program's memory. Every
     /// variable's value is looked up here.
-    env: HashMap<VarIdent, VarInfo>,
+    env: HashMap<VarIdent, VarValue>,
 
     /// The log messages output by functions. The outer vector has the
     /// same length as the program and is indexed by the same
@@ -370,20 +377,14 @@ impl Interpreter {
 
     pub fn set_prog(&mut self, prog: ast::Prog) {
         self.prog = prog;
-
-        self.env.clear();
         self.log_messages
             .resize_with(self.prog.stmts().len(), Vec::new);
-
         self.epoch += 1;
     }
 
     pub fn clear_prog(&mut self) {
         self.prog = ast::Prog::default();
-
-        self.env.clear();
         self.log_messages.clear();
-
         self.epoch += 1;
     }
 
@@ -513,6 +514,7 @@ impl Interpreter {
             if let Err(err) = eval_stmt(
                 stmt_index,
                 stmt,
+                self.epoch,
                 &mut self.funcs,
                 &mut self.env,
                 &mut self.log_messages,
@@ -603,13 +605,12 @@ impl Interpreter {
 
     /// Invalidates variables in the environment.
     ///
-    /// Verify all variables we have computed already, invalidating
-    /// all that could have possibly changed since last execution.
-    /// Invalidated variables are simply removed from the environment
-    /// and will be re-computed a-fresh during evaluation. We count on
-    /// the fact that any dependency must come before its dependents
-    /// in the examined statements due to the serialized nature of the
-    /// program.
+    /// Verify all variables we have computed already, invalidating all whose
+    /// values should possibly change since last execution. Invalidated
+    /// variables are simply removed from the environment and will be
+    /// re-computed a-fresh during evaluation. We count on the fact that any
+    /// dependency must come before its dependents in the examined statements
+    /// due to the serialized nature of the program.
     ///
     /// There are 3 types of variable invalidation:
     ///
@@ -617,8 +618,17 @@ impl Interpreter {
     ///    is not pure (import, random, etc.)
     /// 2) Definition invalidation: the call expression definition has
     ///    changed (either the function or the parameters),
-    /// 3) Dependency invalidation: variables referenced in the
-    ///    parameters have have been invalidated.
+    /// 3) Dependency invalidation: dependencies (variables referenced in the
+    ///    function's parameters) have have not been deemed valid, either
+    ///    because they were invalidated themselves, or are newer than the
+    ///    variable being checked. This can happen when the environment hasn't
+    ///    been cleared but the statements creating variables in that
+    ///    environment have already been removed from the program. By subsequent
+    ///    program modifications and running, it is possible to achieve an
+    ///    interpreter state where a variable declaration statement that
+    ///    produces an older variable depends on a variable declaration
+    ///    statement that produces a newer variable without any other
+    ///    invalidation being triggered.
     fn invalidate(&mut self) {
         // FIXME: We'd like to have this return an execution plan so
         // that we don't necessarily try to execute stmts only to find
@@ -660,10 +670,44 @@ impl Interpreter {
 
                     // Perform 3) Dependency invalidation
 
-                    for expr in var_decl.init_expr().args() {
-                        if let ast::Expr::Var(var) = expr {
-                            if !self.env.contains_key(&var.ident()) {
-                                log::debug!("Performing dependency invalidation of {}", var_ident);
+                    for dependency_expr in var_decl.init_expr().args() {
+                        if let ast::Expr::Var(dependency_var) = dependency_expr {
+                            if let Some(dependency) = self.env.get(&dependency_var.ident()) {
+                                let dependency_created_epoch = dependency.created_epoch;
+                                // FIXME: While it would have been simpler to
+                                // remove stale variables from the cache when
+                                // statements are popped from the program
+                                // (pop_prog_stmt), we might want to make cache
+                                // clearing explicit so that the user can
+                                // potentially keep the cache warm and still get
+                                // the correct results. Note that we do clear
+                                // all stored logs in all program manipulation
+                                // methods and perhaps we also shouldn't, and
+                                // instead of storing the logs in the
+                                // interpreter just publish them to a callback
+                                // as they are being produced. This would also
+                                // potentially alleviate the need for some
+                                // clones, and even save allocations in case the
+                                // log messages are completely static.
+
+                                if let Entry::Occupied(occupied) = self.env.entry(var_ident) {
+                                    let dependent = occupied.get();
+
+                                    if dependency_created_epoch > dependent.created_epoch {
+                                        log::debug!(
+                                            "Performing dependency invalidation of {} (dep newer)",
+                                            var_ident,
+                                        );
+                                        occupied.remove_entry();
+
+                                        break;
+                                    }
+                                }
+                            } else {
+                                log::debug!(
+                                    "Performing dependency invalidation of {} (dep invalidated)",
+                                    var_ident,
+                                );
                                 self.env.remove(&var_ident);
 
                                 break;
@@ -679,8 +723,9 @@ impl Interpreter {
 fn eval_stmt(
     stmt_index: usize,
     stmt: &ast::Stmt,
+    epoch: u64,
     funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
     log_messages: &mut [Vec<LogMessage>],
 ) -> Result<(), RuntimeError> {
     let time_start = Instant::now();
@@ -688,7 +733,7 @@ fn eval_stmt(
 
     let result = match stmt {
         ast::Stmt::VarDecl(var_decl) => {
-            eval_var_decl_stmt(stmt_index, var_decl, funcs, env, &mut |message| {
+            eval_var_decl_stmt(stmt_index, var_decl, epoch, funcs, env, &mut |message| {
                 log_messages[stmt_index].push(message);
             })
         }
@@ -725,8 +770,9 @@ fn eval_stmt(
 fn eval_var_decl_stmt(
     stmt_index: usize,
     var_decl: &ast::VarDeclStmt,
+    epoch: u64,
     funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
     log: &mut dyn FnMut(LogMessage),
 ) -> Result<bool, RuntimeError> {
     let var_ident = var_decl.ident();
@@ -753,8 +799,9 @@ fn eval_var_decl_stmt(
 
             env.insert(
                 var_ident,
-                VarInfo {
+                VarValue {
                     created_call: init_expr.clone(),
+                    created_epoch: epoch,
                     value,
                 },
             );
@@ -766,7 +813,7 @@ fn eval_var_decl_stmt(
 
 fn eval_expr(
     expr: &ast::Expr,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
 ) -> Result<Value, RuntimeError> {
     match expr {
         ast::Expr::Lit(lit) => eval_lit_expr(lit),
@@ -791,7 +838,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
 
 fn eval_var_expr(
     var: &ast::VarExpr,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
 ) -> Result<Value, RuntimeError> {
     let var_ident = var.ident();
     let var_info = &env[&var_ident];
@@ -803,7 +850,7 @@ fn eval_call_expr(
     stmt_index: usize,
     call: &ast::CallExpr,
     funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
     log: &mut dyn FnMut(LogMessage),
 ) -> Result<Value, RuntimeError> {
     // FIXME: @Diagnostics use the func name and the param names in
@@ -1580,6 +1627,124 @@ mod tests {
 
         assert_eq!(n_calls1.get(), 2);
         assert_eq!(n_calls2.get(), 2);
+    }
+
+    #[test]
+    fn test_interpreter_interpret_newer_parameter_value_dependency_invalidation() {
+        // We have 3 pure functions. Functions 1 and 2 have the same signature
+        // except for the ident. When we do the following, we test that when a
+        // dependency has a newer value, the dependent get's invalidated:
+
+        // 1) Push stmt with func1, declaring var0
+        // 2) Push stmt with func3, declaring var1, depending on var0
+        // 3) Execute
+        // 4) Pop stmt with func3
+        // 5) Pop stmt with func1
+        // 6) Push stmt with func2, declaring var0
+        // 7) Execute (this would normally shadow the value in the environment,
+        //    unless we tracked the epoch when the variable value was created)
+        // 8) Push stmt with func3, declaring var1, depending on var0
+        // 9) Execute
+        // 10) Verify that value from func3 changed
+        // 10) Verify that call counts: func1 -> 1, func2 -> 1, func3 -> 2
+
+        let n_calls1 = Rc::new(CallCount::new());
+        let n_calls2 = Rc::new(CallCount::new());
+        let n_calls3 = Rc::new(CallCount::new());
+        let c1 = Rc::clone(&n_calls1);
+        let c2 = Rc::clone(&n_calls2);
+        let c3 = Rc::clone(&n_calls3);
+
+        let (func_id1, func1) = (
+            FuncIdent(0),
+            TestFunc::new(
+                move |_| {
+                    c1.inc();
+                    Ok(Value::Boolean(true))
+                },
+                FuncFlags::PURE,
+                vec![],
+                Ty::Boolean,
+            ),
+        );
+
+        let (func_id2, func2) = (
+            FuncIdent(1),
+            TestFunc::new(
+                move |_| {
+                    c2.inc();
+                    Ok(Value::Boolean(false))
+                },
+                FuncFlags::PURE,
+                vec![],
+                Ty::Boolean,
+            ),
+        );
+
+        let (func_id3, func3) = (
+            FuncIdent(2),
+            TestFunc::new(
+                move |values| {
+                    c3.inc();
+                    Ok(Value::Boolean(values[0].unwrap_boolean()))
+                },
+                FuncFlags::PURE,
+                vec![param_info(Ty::Boolean, false)],
+                Ty::Boolean,
+            ),
+        );
+
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
+        funcs.insert(func_id1, Box::new(func1));
+        funcs.insert(func_id2, Box::new(func2));
+        funcs.insert(func_id3, Box::new(func3));
+
+        let mut interpreter = Interpreter::new(funcs);
+        interpreter.push_prog_stmt(ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(0),
+            ast::CallExpr::new(func_id1, vec![]),
+        )));
+        interpreter.push_prog_stmt(ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(1),
+            ast::CallExpr::new(
+                func_id3,
+                vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(0)))],
+            ),
+        )));
+
+        let value = interpreter.interpret().result.unwrap();
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
+        assert_eq!(n_calls1.get(), 1);
+        assert_eq!(n_calls2.get(), 0);
+        assert_eq!(n_calls3.get(), 1);
+
+        interpreter.pop_prog_stmt();
+        interpreter.pop_prog_stmt();
+        interpreter.push_prog_stmt(ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(0),
+            ast::CallExpr::new(func_id2, vec![]),
+        )));
+
+        // This sets the `created_epoch` for the stored value of var0
+        let value = interpreter.interpret().result.unwrap();
+        assert_eq!(value.last_value, Some(Value::Boolean(false)));
+        assert_eq!(n_calls1.get(), 1);
+        assert_eq!(n_calls2.get(), 1);
+        assert_eq!(n_calls3.get(), 1);
+
+        interpreter.push_prog_stmt(ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(1),
+            ast::CallExpr::new(
+                func_id3,
+                vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(0)))],
+            ),
+        )));
+
+        let value = interpreter.interpret().result.unwrap();
+        assert_eq!(value.last_value, Some(Value::Boolean(false)));
+        assert_eq!(n_calls1.get(), 1);
+        assert_eq!(n_calls2.get(), 1);
+        assert_eq!(n_calls3.get(), 2);
     }
 
     // FIXME: Prog manipulation tests
