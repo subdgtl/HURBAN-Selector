@@ -1,5 +1,4 @@
-End-User License Agreement (EULA) of H.U.R.B.A.N. selector
-==========================================================
+END-USER LICENSE AGREEMENT (EULA) OF H.U.R.B.A.N. SELECTOR
 
 This End-User License Agreement ("EULA") is a legal agreement between you and
 Slovak Design Center.
@@ -33,8 +32,7 @@ supplements, Internet-based services, and support services for the Software,
 unless other terms accompany those items on delivery. If so, those terms apply.
 This EULA was created by EULA Template for H.U.R.B.A.N. selector.
 
-License Grant
--------------
+LICENSE GRANT
 
 Slovak Design Center. hereby grants you a personal, non-transferable,
 non-exclusive licence to use the H.U.R.B.A.N. selector software on your devices
@@ -56,8 +54,7 @@ You are not permitted to:
 * Use the Software for any purpose that Slovak Design Center considers is a
   breach of this EULA agreement
 
-Intellectual Property and Ownership
------------------------------------
+INTELLECTUAL PROPERTY AND OWNERSHIP
 
 Slovak Design Center and Subdigital s.r.o. shall at all times retain ownership
 of the Software as originally downloaded by you and all subsequent downloads of
@@ -69,8 +66,7 @@ Subdigital s.r.o..
 Slovak Design Center. reserves the right to grant licences to use the Software
 to third parties.
 
-Termination
------------
+TERMINATION
 
 This EULA agreement is effective from the date you first use the Software and
 shall continue until terminated. You may terminate it at any time upon written
@@ -82,8 +78,7 @@ agreement will immediately terminate and you agree to stop all access and use of
 the Software. The provisions that by their nature continue and survive will
 survive any termination of this EULA agreement.
 
-Governing Law
--------------
+GOVERNING LAW
 
 This EULA agreement, and any dispute arising out of or in connection with this
 EULA agreement, shall be governed by and construed in accordance with the laws
