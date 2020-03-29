@@ -14,6 +14,7 @@ DefaultDirName={autopf}\{#AppSetupName}
 DefaultGroupName={#AppSetupName}
 OutputBaseFilename={#AppSetupName}-{#AppVersion}
 OutputDir=bin
+LicenseFile=..\eula.txt
 
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64
@@ -27,6 +28,7 @@ DisableReadyMemo=no
 
 [Files]
 Source: "..\target\release\{#AppExeName}"; DestDir: "{app}"; Check: IsX64
+Source: "..\eula.txt"; DestDir: "{app}"
 
 [Icons]
 Name: "{userdesktop}\{#AppSetupName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
