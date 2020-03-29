@@ -34,7 +34,7 @@ This EULA was created by EULA Template for H.U.R.B.A.N. selector.
 
 LICENSE GRANT
 
-Slovak Design Center. hereby grants you a personal, non-transferable,
+Slovak Design Center hereby grants you a personal, non-transferable,
 non-exclusive licence to use the H.U.R.B.A.N. selector software on your devices
 in accordance with the terms of this EULA agreement.
 
