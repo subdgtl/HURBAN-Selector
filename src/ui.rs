@@ -2068,13 +2068,11 @@ impl<'a> UiFrame<'a> {
                     .expect("Failed to find nth visible var to display preview value")
             })
             .map(|var_ident| {
-                format_var_name(
-                    session
-                        .var_name_for_ident(var_ident)
-                        .expect("Failed to find name for ident"),
-                    var_ident,
-                    ty == Ty::MeshArray,
-                )
+                let (var_decl_stmt_index, var_name) = session
+                    .var_decl_stmt_index_and_var_name_for_ident(var_ident)
+                    .expect("Failed to find name for ident");
+
+                format_var_name(var_decl_stmt_index, var_name, ty == Ty::MeshArray)
             })
             .unwrap_or_else(|| imgui::ImString::new("<Select one option>"));
 
@@ -2100,13 +2098,11 @@ impl<'a> UiFrame<'a> {
         ]);
         if let Some(combo_token) = combo.begin(ui) {
             for (index, var_ident) in visible_vars_iter.clone().enumerate() {
-                let text = format_var_name(
-                    session
-                        .var_name_for_ident(var_ident)
-                        .expect("Failed to find name for ident"),
-                    var_ident,
-                    ty == Ty::MeshArray,
-                );
+                let (var_decl_stmt_index, var_name) = session
+                    .var_decl_stmt_index_and_var_name_for_ident(var_ident)
+                    .expect("Failed to find name for ident");
+
+                let text = format_var_name(var_decl_stmt_index, var_name, ty == Ty::MeshArray);
                 let selected = if let Some(selected_var_index) = selected_var_index {
                     index == selected_var_index
                 } else {
@@ -2147,14 +2143,14 @@ impl<'a> UiFrame<'a> {
 }
 
 fn format_var_name(
-    name: &str,
-    ident: ast::VarIdent,
+    var_decl_stmt_index: usize,
+    var_name: &str,
     surround_with_brackets: bool,
 ) -> imgui::ImString {
     if surround_with_brackets {
-        imgui::im_str!("[{}] #{}", name, ident.0 + 1)
+        imgui::im_str!("[{}] #{}", var_name, var_decl_stmt_index + 1)
     } else {
-        imgui::im_str!("{} #{}", name, ident.0 + 1)
+        imgui::im_str!("{} #{}", var_name, var_decl_stmt_index + 1)
     }
 }
 
