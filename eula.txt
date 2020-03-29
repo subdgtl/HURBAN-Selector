@@ -5,7 +5,7 @@ Slovak Design Center.
 
 This EULA agreement governs your acquisition and use of our H.U.R.B.A.N.
 selector software ("Software") directly from Slovak Design Center or indirectly
-through a Slovak Design Center. authorized reseller or distributor (a
+through a Slovak Design Center authorized reseller or distributor (a
 "Reseller").
 
 Please read this EULA agreement carefully before completing the installation
@@ -26,8 +26,8 @@ or if you do not agree with the terms and conditions of this EULA agreement, do
 not install or use the Software, and you must not accept this EULA agreement.
 
 This EULA agreement shall apply only to the Software supplied by Slovak Design
-Center. herewith regardless of whether other software is referred to or
-described herein. The terms also apply to any Slovak Design Center. updates,
+Center herewith regardless of whether other software is referred to or
+described herein. The terms also apply to any Slovak Design Center updates,
 supplements, Internet-based services, and support services for the Software,
 unless other terms accompany those items on delivery. If so, those terms apply.
 This EULA was created by EULA Template for H.U.R.B.A.N. selector.
@@ -63,7 +63,7 @@ property rights of whatever nature in the Software, including any modifications
 made thereto) are and shall remain the property of Slovak Design Center and
 Subdigital s.r.o..
 
-Slovak Design Center. reserves the right to grant licences to use the Software
+Slovak Design Center reserves the right to grant licences to use the Software
 to third parties.
 
 TERMINATION
