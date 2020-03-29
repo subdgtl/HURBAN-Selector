@@ -311,11 +311,18 @@ pub struct InterpretValue {
     pub unused_values: Vec<(VarIdent, Value)>,
 }
 
+/// A variable value stored in the environment.
+///
+/// Contains metadata helpful to determine when the value should be invalidated
+/// or forgotten.
 #[derive(Debug, Clone)]
-struct VarInfo {
+struct VarValue {
     /// The parameters and function call this variable was created
     /// with. Used to verify validity of this variable.
     created_call: ast::CallExpr,
+
+    /// The epoch this variable was created.
+    created_epoch: u64,
 
     /// Current value of this variable.
     value: Value,
@@ -334,7 +341,7 @@ pub struct Interpreter {
 
     /// The environment (scope) of the program's memory. Every
     /// variable's value is looked up here.
-    env: HashMap<VarIdent, VarInfo>,
+    env: HashMap<VarIdent, VarValue>,
 
     /// The log messages output by functions. The outer vector has the
     /// same length as the program and is indexed by the same
@@ -370,20 +377,14 @@ impl Interpreter {
 
     pub fn set_prog(&mut self, prog: ast::Prog) {
         self.prog = prog;
-
-        self.env.clear();
         self.log_messages
             .resize_with(self.prog.stmts().len(), Vec::new);
-
         self.epoch += 1;
     }
 
     pub fn clear_prog(&mut self) {
         self.prog = ast::Prog::default();
-
-        self.env.clear();
         self.log_messages.clear();
-
         self.epoch += 1;
     }
 
@@ -513,6 +514,7 @@ impl Interpreter {
             if let Err(err) = eval_stmt(
                 stmt_index,
                 stmt,
+                self.epoch,
                 &mut self.funcs,
                 &mut self.env,
                 &mut self.log_messages,
@@ -603,13 +605,12 @@ impl Interpreter {
 
     /// Invalidates variables in the environment.
     ///
-    /// Verify all variables we have computed already, invalidating
-    /// all that could have possibly changed since last execution.
-    /// Invalidated variables are simply removed from the environment
-    /// and will be re-computed a-fresh during evaluation. We count on
-    /// the fact that any dependency must come before its dependents
-    /// in the examined statements due to the serialized nature of the
-    /// program.
+    /// Verify all variables we have computed already, invalidating all whose
+    /// values should possibly change since last execution. Invalidated
+    /// variables are simply removed from the environment and will be
+    /// re-computed a-fresh during evaluation. We count on the fact that any
+    /// dependency must come before its dependents in the examined statements
+    /// due to the serialized nature of the program.
     ///
     /// There are 3 types of variable invalidation:
     ///
@@ -617,8 +618,17 @@ impl Interpreter {
     ///    is not pure (import, random, etc.)
     /// 2) Definition invalidation: the call expression definition has
     ///    changed (either the function or the parameters),
-    /// 3) Dependency invalidation: variables referenced in the
-    ///    parameters have have been invalidated.
+    /// 3) Dependency invalidation: dependencies (variables referenced in the
+    ///    function's parameters) have have not been deemed valid, either
+    ///    because they were invalidated themselves, or are newer than the
+    ///    variable being checked. This can happen when the environment hasn't
+    ///    been cleared but the statements creating variables in that
+    ///    environment have already been removed from the program. By subsequent
+    ///    program modifications and running, it is possible to achieve an
+    ///    interpreter state where a variable declaration statement that
+    ///    produces an older variable depends on a variable declaration
+    ///    statement that produces a newer variable without any other
+    ///    invalidation being triggered.
     fn invalidate(&mut self) {
         // FIXME: We'd like to have this return an execution plan so
         // that we don't necessarily try to execute stmts only to find
@@ -660,10 +670,44 @@ impl Interpreter {
 
                     // Perform 3) Dependency invalidation
 
-                    for expr in var_decl.init_expr().args() {
-                        if let ast::Expr::Var(var) = expr {
-                            if !self.env.contains_key(&var.ident()) {
-                                log::debug!("Performing dependency invalidation of {}", var_ident);
+                    for dependency_expr in var_decl.init_expr().args() {
+                        if let ast::Expr::Var(dependency_var) = dependency_expr {
+                            if let Some(dependency) = self.env.get(&dependency_var.ident()) {
+                                let dependency_created_epoch = dependency.created_epoch;
+                                // FIXME: While it would have been simpler to
+                                // remove stale variables from the cache when
+                                // statements are popped from the program
+                                // (pop_prog_stmt), we might want to make cache
+                                // clearing explicit so that the user can
+                                // potentially keep the cache warm and still get
+                                // the correct results. Note that we do clear
+                                // all stored logs in all program manipulation
+                                // methods and perhaps we also shouldn't, and
+                                // instead of storing the logs in the
+                                // interpreter just publish them to a callback
+                                // as they are being produced. This would also
+                                // potentially alleviate the need for some
+                                // clones, and even save allocations in case the
+                                // log messages are completely static.
+
+                                if let Entry::Occupied(occupied) = self.env.entry(var_ident) {
+                                    let dependent = occupied.get();
+
+                                    if dependency_created_epoch > dependent.created_epoch {
+                                        log::debug!(
+                                            "Performing dependency invalidation of {} (dep newer)",
+                                            var_ident,
+                                        );
+                                        occupied.remove_entry();
+
+                                        break;
+                                    }
+                                }
+                            } else {
+                                log::debug!(
+                                    "Performing dependency invalidation of {} (dep invalidated)",
+                                    var_ident,
+                                );
                                 self.env.remove(&var_ident);
 
                                 break;
@@ -679,8 +723,9 @@ impl Interpreter {
 fn eval_stmt(
     stmt_index: usize,
     stmt: &ast::Stmt,
+    epoch: u64,
     funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
     log_messages: &mut [Vec<LogMessage>],
 ) -> Result<(), RuntimeError> {
     let time_start = Instant::now();
@@ -688,7 +733,7 @@ fn eval_stmt(
 
     let result = match stmt {
         ast::Stmt::VarDecl(var_decl) => {
-            eval_var_decl_stmt(stmt_index, var_decl, funcs, env, &mut |message| {
+            eval_var_decl_stmt(stmt_index, var_decl, epoch, funcs, env, &mut |message| {
                 log_messages[stmt_index].push(message);
             })
         }
@@ -725,8 +770,9 @@ fn eval_stmt(
 fn eval_var_decl_stmt(
     stmt_index: usize,
     var_decl: &ast::VarDeclStmt,
+    epoch: u64,
     funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
     log: &mut dyn FnMut(LogMessage),
 ) -> Result<bool, RuntimeError> {
     let var_ident = var_decl.ident();
@@ -753,8 +799,9 @@ fn eval_var_decl_stmt(
 
             env.insert(
                 var_ident,
-                VarInfo {
+                VarValue {
                     created_call: init_expr.clone(),
+                    created_epoch: epoch,
                     value,
                 },
             );
@@ -766,7 +813,7 @@ fn eval_var_decl_stmt(
 
 fn eval_expr(
     expr: &ast::Expr,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
 ) -> Result<Value, RuntimeError> {
     match expr {
         ast::Expr::Lit(lit) => eval_lit_expr(lit),
@@ -791,7 +838,7 @@ fn eval_lit_expr(lit: &ast::LitExpr) -> Result<Value, RuntimeError> {
 
 fn eval_var_expr(
     var: &ast::VarExpr,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
 ) -> Result<Value, RuntimeError> {
     let var_ident = var.ident();
     let var_info = &env[&var_ident];
@@ -803,7 +850,7 @@ fn eval_call_expr(
     stmt_index: usize,
     call: &ast::CallExpr,
     funcs: &mut BTreeMap<FuncIdent, Box<dyn Func>>,
-    env: &mut HashMap<VarIdent, VarInfo>,
+    env: &mut HashMap<VarIdent, VarValue>,
     log: &mut dyn FnMut(LogMessage),
 ) -> Result<Value, RuntimeError> {
     // FIXME: @Diagnostics use the func name and the param names in
