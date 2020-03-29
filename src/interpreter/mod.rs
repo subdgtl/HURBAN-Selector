@@ -1582,6 +1582,124 @@ mod tests {
         assert_eq!(n_calls2.get(), 2);
     }
 
+    #[test]
+    fn test_interpreter_interpret_newer_parameter_value_dependency_invalidation() {
+        // We have 3 pure functions. Functions 1 and 2 have the same signature
+        // except for the ident. When we do the following, we test that when a
+        // dependency has a newer value, the dependent get's invalidated:
+
+        // 1) Push stmt with func1, declaring var0
+        // 2) Push stmt with func3, declaring var1, depending on var0
+        // 3) Execute
+        // 4) Pop stmt with func3
+        // 5) Pop stmt with func1
+        // 6) Push stmt with func2, declaring var0
+        // 7) Execute (this would normally shadow the value in the environment,
+        //    unless we tracked the epoch when the variable value was created)
+        // 8) Push stmt with func3, declaring var1, depending on var0
+        // 9) Execute
+        // 10) Verify that value from func3 changed
+        // 10) Verify that call counts: func1 -> 1, func2 -> 1, func3 -> 2
+
+        let n_calls1 = Rc::new(CallCount::new());
+        let n_calls2 = Rc::new(CallCount::new());
+        let n_calls3 = Rc::new(CallCount::new());
+        let c1 = Rc::clone(&n_calls1);
+        let c2 = Rc::clone(&n_calls2);
+        let c3 = Rc::clone(&n_calls3);
+
+        let (func_id1, func1) = (
+            FuncIdent(0),
+            TestFunc::new(
+                move |_| {
+                    c1.inc();
+                    Ok(Value::Boolean(true))
+                },
+                FuncFlags::PURE,
+                vec![],
+                Ty::Boolean,
+            ),
+        );
+
+        let (func_id2, func2) = (
+            FuncIdent(1),
+            TestFunc::new(
+                move |_| {
+                    c2.inc();
+                    Ok(Value::Boolean(false))
+                },
+                FuncFlags::PURE,
+                vec![],
+                Ty::Boolean,
+            ),
+        );
+
+        let (func_id3, func3) = (
+            FuncIdent(2),
+            TestFunc::new(
+                move |values| {
+                    c3.inc();
+                    Ok(Value::Boolean(values[0].unwrap_boolean()))
+                },
+                FuncFlags::PURE,
+                vec![param_info(Ty::Boolean, false)],
+                Ty::Boolean,
+            ),
+        );
+
+        let mut funcs: BTreeMap<FuncIdent, Box<dyn Func>> = BTreeMap::new();
+        funcs.insert(func_id1, Box::new(func1));
+        funcs.insert(func_id2, Box::new(func2));
+        funcs.insert(func_id3, Box::new(func3));
+
+        let mut interpreter = Interpreter::new(funcs);
+        interpreter.push_prog_stmt(ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(0),
+            ast::CallExpr::new(func_id1, vec![]),
+        )));
+        interpreter.push_prog_stmt(ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(1),
+            ast::CallExpr::new(
+                func_id3,
+                vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(0)))],
+            ),
+        )));
+
+        let value = interpreter.interpret().result.unwrap();
+        assert_eq!(value.last_value, Some(Value::Boolean(true)));
+        assert_eq!(n_calls1.get(), 1);
+        assert_eq!(n_calls2.get(), 0);
+        assert_eq!(n_calls3.get(), 1);
+
+        interpreter.pop_prog_stmt();
+        interpreter.pop_prog_stmt();
+        interpreter.push_prog_stmt(ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(0),
+            ast::CallExpr::new(func_id2, vec![]),
+        )));
+
+        // This sets the `created_epoch` for the stored value of var0
+        let value = interpreter.interpret().result.unwrap();
+        assert_eq!(value.last_value, Some(Value::Boolean(false)));
+        assert_eq!(n_calls1.get(), 1);
+        assert_eq!(n_calls2.get(), 1);
+        assert_eq!(n_calls3.get(), 1);
+
+        interpreter.push_prog_stmt(ast::Stmt::VarDecl(ast::VarDeclStmt::new(
+            VarIdent(1),
+            ast::CallExpr::new(
+                func_id3,
+                vec![ast::Expr::Var(ast::VarExpr::new(VarIdent(0)))],
+            ),
+        )));
+
+        let value = interpreter.interpret().result.unwrap();
+        assert_eq!(value.last_value, Some(Value::Boolean(false)));
+        assert_eq!(n_calls1.get(), 1);
+        assert_eq!(n_calls2.get(), 1);
+        assert_eq!(n_calls3.get(), 2);
+    }
+
     // FIXME: Prog manipulation tests
 
     // Name resolution tests
