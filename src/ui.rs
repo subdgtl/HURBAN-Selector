@@ -586,11 +586,11 @@ impl<'a> UiFrame<'a> {
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(imgui::im_str!("\
                     This End-User License Agreement ('EULA') is a legal agreement between you \
-                    and Slovak Design Center and Subdigital s.r.o.\n\
+                    and Slovak Design Center\n\
                     \n\
                     This EULA agreement governs your acquisition and use of our H.U.R.B.A.N. \
-                    selector software ('Software') directly from Slovak Design Center and Subdigital \
-                    s.r.o. or indirectly through a Slovak Design Center and Subdigital s.r.o. \
+                    selector software ('Software') directly from Slovak Design Center \
+                    or indirectly through a Slovak Design Center \
                     authorized reseller or distributor (a 'Reseller').\n\
                     \n\
                     Please read this EULA agreement carefully before completing the installation \
@@ -610,9 +610,9 @@ impl<'a> UiFrame<'a> {
                     install or use the Software, and you must not accept this EULA agreement.\n\
                     \n\
                     This EULA agreement shall apply only to the Software supplied by Slovak Design \
-                    Center and Subdigital s.r.o. herewith regardless of whether other software is \
+                    Center herewith regardless of whether other software is \
                     referred to or described herein. The terms also apply to any Slovak Design Center \
-                    and Subdigital s.r.o. updates, supplements, Internet-based services, and support \
+                    updates, supplements, Internet-based services, and support \
                     services for the Software, unless other terms accompany those items on delivery. \
                     If so, those terms apply. This EULA was created by EULA Template for H.U.R.B.A.N. \
                     selector."));
@@ -620,7 +620,7 @@ impl<'a> UiFrame<'a> {
                 ui.text(imgui::im_str!("LICENSE AGREEMENT"));
                 ui.new_line();
                 ui.text_wrapped(imgui::im_str!("\
-                    Slovak Design Center and Subdigital s.r.o. hereby grants you a personal, \
+                    Slovak Design Center hereby grants you a personal, \
                     non-transferable, non-exclusive licence to use the H.U.R.B.A.N. selector software \
                     on your devices in accordance with the terms of this EULA agreement.\n\
                     \n\
@@ -635,7 +635,7 @@ impl<'a> UiFrame<'a> {
                     any third party\n\
                     * Use the Software in any way which breaches any applicable local, national or \
                     international law\n\
-                    * Use the Software for any purpose that Slovak Design Center and Subdigital s.r.o. \
+                    * Use the Software for any purpose that Slovak Design Center \
                     considers is a breach of this EULA agreement"));
                 ui.new_line();
                 ui.text(imgui::im_str!("INTELLECTUAL PROPERTY AND OWNERSHIP"));
@@ -647,7 +647,7 @@ impl<'a> UiFrame<'a> {
                     rights of whatever nature in the Software, including any modifications made thereto) \
                     are and shall remain the property of Slovak Design Center and Subdigital s.r.o..\n\
                     \n\
-                    Slovak Design Center and Subdigital s.r.o. reserves the right to grant licences to \
+                    Slovak Design Center reserves the right to grant licences to \
                     use the Software to third parties."));
                 ui.new_line();
                 ui.text(imgui::im_str!("TERMINATION"));
@@ -655,7 +655,7 @@ impl<'a> UiFrame<'a> {
                 ui.text_wrapped(imgui::im_str!("\
                     This EULA agreement is effective from the date you first use the Software and shall \
                     continue until terminated. You may terminate it at any time upon written notice to \
-                    Slovak Design Center and Subdigital s.r.o..\n\
+                    Slovak Design Center.\n\
                     \n\
                     It will also terminate immediately if you fail to comply with any term of this EULA \
                     agreement. Upon such termination, the licenses granted by this EULA agreement will \
