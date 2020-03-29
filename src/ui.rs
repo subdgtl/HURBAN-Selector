@@ -568,7 +568,7 @@ impl<'a> UiFrame<'a> {
                 ).build(ui);
                 ui.new_line();
 
-                ui.text(imgui::im_str!("LICENSE"));
+                ui.text(imgui::im_str!("SOURCE CODE LICENSE"));
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(imgui::im_str!(
                     "The editor source code is provided under the GNU GENERAL PUBLIC \
@@ -579,7 +579,99 @@ impl<'a> UiFrame<'a> {
                     \n\
                     The source code of H.U.R.B.A.N. selector written in Rust can be found on \
                     GitHub (https://github.com/subdgtl/HURBAN-Selector)."));
-                    ui.new_line();
+                ui.new_line();
+                regular_font_token.pop(ui);
+                ui.new_line();
+                ui.separator();
+                ui.new_line();
+                ui.text(imgui::im_str!("END-USER LICENSE AGREEMENT of H.U.R.B.A.N. selector"));
+                ui.new_line();
+                regular_font_token = ui.push_font(self.font_ids.regular);
+                ui.text_wrapped(imgui::im_str!("\
+                    This End-User License Agreement ('EULA') is a legal agreement between you \
+                    and Slovak Design Center\n\
+                    \n\
+                    This EULA agreement governs your acquisition and use of our H.U.R.B.A.N. \
+                    selector software ('Software') directly from Slovak Design Center \
+                    or indirectly through a Slovak Design Center \
+                    authorized reseller or distributor (a 'Reseller').\n\
+                    \n\
+                    Please read this EULA agreement carefully before completing the installation \
+                    process and using the H.U.R.B.A.N. selector software. It provides a license to \
+                    use the H.U.R.B.A.N. selector software and contains warranty information and \
+                    liability disclaimers.\n\
+                    \n\
+                    If you register for a free trial of the H.U.R.B.A.N. selector software, this EULA \
+                    agreement will also govern that trial. By clicking 'accept' or installing and/or \
+                    using the H.U.R.B.A.N. selector software, you are confirming your acceptance of \
+                    the Software and agreeing to become bound by the terms of this EULA agreement.\n\
+                    \n\
+                    If you are entering into this EULA agreement on behalf of a company or other legal \
+                    entity, you represent that you have the authority to bind such entity and its \
+                    affiliates to these terms and conditions. If you do not have such authority or if \
+                    you do not agree with the terms and conditions of this EULA agreement, do not \
+                    install or use the Software, and you must not accept this EULA agreement.\n\
+                    \n\
+                    This EULA agreement shall apply only to the Software supplied by Slovak Design \
+                    Center herewith regardless of whether other software is \
+                    referred to or described herein. The terms also apply to any Slovak Design Center \
+                    updates, supplements, Internet-based services, and support \
+                    services for the Software, unless other terms accompany those items on delivery. \
+                    If so, those terms apply. This EULA was created by EULA Template for H.U.R.B.A.N. \
+                    selector."));
+                ui.new_line();
+                ui.text(imgui::im_str!("LICENSE AGREEMENT"));
+                ui.new_line();
+                ui.text_wrapped(imgui::im_str!("\
+                    Slovak Design Center hereby grants you a personal, \
+                    non-transferable, non-exclusive licence to use the H.U.R.B.A.N. selector software \
+                    on your devices in accordance with the terms of this EULA agreement.\n\
+                    \n\
+                    You are permitted to load the H.U.R.B.A.N. selector software (for example a PC, \
+                    laptop, mobile or tablet) under your control. You are responsible for ensuring \
+                    your device meets the minimum requirements of the H.U.R.B.A.N. selector software.\n\
+                    \n\
+                    You are not permitted to:\n\
+                    * Reproduce, copy, distribute, resell or otherwise use the Software for any \
+                    commercial purpose\n\
+                    * Allow any third party to use the Software on behalf of or for the benefit of \
+                    any third party\n\
+                    * Use the Software in any way which breaches any applicable local, national or \
+                    international law\n\
+                    * Use the Software for any purpose that Slovak Design Center \
+                    considers is a breach of this EULA agreement"));
+                ui.new_line();
+                ui.text(imgui::im_str!("INTELLECTUAL PROPERTY AND OWNERSHIP"));
+                ui.new_line();
+                ui.text_wrapped(imgui::im_str!("\
+                    Slovak Design Center and Subdigital s.r.o. shall at all times retain ownership of \
+                    the Software as originally downloaded by you and all subsequent downloads of the \
+                    Software by you. The Software (and the copyright, and other intellectual property \
+                    rights of whatever nature in the Software, including any modifications made thereto) \
+                    are and shall remain the property of Slovak Design Center and Subdigital s.r.o..\n\
+                    \n\
+                    Slovak Design Center reserves the right to grant licences to \
+                    use the Software to third parties."));
+                ui.new_line();
+                ui.text(imgui::im_str!("TERMINATION"));
+                ui.new_line();
+                ui.text_wrapped(imgui::im_str!("\
+                    This EULA agreement is effective from the date you first use the Software and shall \
+                    continue until terminated. You may terminate it at any time upon written notice to \
+                    Slovak Design Center.\n\
+                    \n\
+                    It will also terminate immediately if you fail to comply with any term of this EULA \
+                    agreement. Upon such termination, the licenses granted by this EULA agreement will \
+                    immediately terminate and you agree to stop all access and use of the Software. \
+                    The provisions that by their nature continue and survive will survive any termination \
+                    of this EULA agreement."));
+                ui.new_line();
+                ui.text(imgui::im_str!("GOVERNING LAW"));
+                ui.new_line();
+                ui.text_wrapped(imgui::im_str!("\
+                    This EULA agreement, and any dispute arising out of or in connection with this EULA \
+                    agreement, shall be governed by and construed in accordance with the laws of \
+                    Slovak republic."));
                 regular_font_token.pop(ui);
                 wrap_token.pop(ui);
             });
@@ -2068,13 +2160,11 @@ impl<'a> UiFrame<'a> {
                     .expect("Failed to find nth visible var to display preview value")
             })
             .map(|var_ident| {
-                format_var_name(
-                    session
-                        .var_name_for_ident(var_ident)
-                        .expect("Failed to find name for ident"),
-                    var_ident,
-                    ty == Ty::MeshArray,
-                )
+                let (var_decl_stmt_index, var_name) = session
+                    .var_decl_stmt_index_and_var_name_for_ident(var_ident)
+                    .expect("Failed to find name for ident");
+
+                format_var_name(var_decl_stmt_index, var_name, ty == Ty::MeshArray)
             })
             .unwrap_or_else(|| imgui::ImString::new("<Select one option>"));
 
@@ -2100,13 +2190,11 @@ impl<'a> UiFrame<'a> {
         ]);
         if let Some(combo_token) = combo.begin(ui) {
             for (index, var_ident) in visible_vars_iter.clone().enumerate() {
-                let text = format_var_name(
-                    session
-                        .var_name_for_ident(var_ident)
-                        .expect("Failed to find name for ident"),
-                    var_ident,
-                    ty == Ty::MeshArray,
-                );
+                let (var_decl_stmt_index, var_name) = session
+                    .var_decl_stmt_index_and_var_name_for_ident(var_ident)
+                    .expect("Failed to find name for ident");
+
+                let text = format_var_name(var_decl_stmt_index, var_name, ty == Ty::MeshArray);
                 let selected = if let Some(selected_var_index) = selected_var_index {
                     index == selected_var_index
                 } else {
@@ -2147,14 +2235,14 @@ impl<'a> UiFrame<'a> {
 }
 
 fn format_var_name(
-    name: &str,
-    ident: ast::VarIdent,
+    var_decl_stmt_index: usize,
+    var_name: &str,
     surround_with_brackets: bool,
 ) -> imgui::ImString {
     if surround_with_brackets {
-        imgui::im_str!("[{}] #{}", name, ident.0 + 1)
+        imgui::im_str!("[{}] #{}", var_name, var_decl_stmt_index + 1)
     } else {
-        imgui::im_str!("{} #{}", name, ident.0 + 1)
+        imgui::im_str!("{} #{}", var_name, var_decl_stmt_index + 1)
     }
 }
 

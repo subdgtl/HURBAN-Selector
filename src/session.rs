@@ -279,14 +279,16 @@ impl Session {
     /// 2^64 - 1 var idents. The last value is the stopping condition.
     ///
     /// Does *NOT* reuse variable identifiers to prevent accidental "use after
-    /// free" on variables that have been removed from the program. Each
-    /// instance of `Session` starts counting from 0, but program modifying
-    /// functions, such as `Session::push_prog_stmt` check, whether the pushed
-    /// statment contains an identifier with a higher value and increments the
-    /// counter accordingly, if it does. This ensures that programs not
-    /// generated with help of `Session::next_free_var_ident` (such as programs
-    /// loaded into the software) can be further modified in this session
-    /// without re-declaring variable identifiers.
+    /// free" on variables that have been removed from the program in the
+    /// session, e.g. when querying a name with
+    /// `Session::var_decl_stmt_index_and_var_name_for_ident`. Each instance of
+    /// `Session` starts counting from 0, but program modifying functions, such
+    /// as `Session::push_prog_stmt` check, whether the pushed statment contains
+    /// an identifier with a higher value and increments the counter
+    /// accordingly, if it does. This ensures that programs not generated with
+    /// help of `Session::next_free_var_ident` (such as handcrafted programs or
+    /// programs loaded from a save file) can be further modified in this
+    /// session without re-declaring variable identifiers.
     pub fn next_free_var_ident(&mut self) -> Option<VarIdent> {
         if self.next_var_ident == u64::max_value() {
             None
@@ -298,26 +300,29 @@ impl Session {
         }
     }
 
-    /// Returns human readable variable name for a variable identifier
-    /// or `None` if the variable identifier does not exist in the
-    /// current program.
-    pub fn var_name_for_ident(&self, var_ident: VarIdent) -> Option<&str> {
+    /// Returns variable declaration statement index paired with human readable
+    /// variable name for a variable identifier or `None` if the variable
+    /// identifier does not exist in the current program.
+    pub fn var_decl_stmt_index_and_var_name_for_ident(
+        &self,
+        var_ident: VarIdent,
+    ) -> Option<(usize, &str)> {
         // FIXME: @Optimization Don't iterate all the time
         self.stmts()
             .iter()
-            .find_map(|stmt| match stmt {
+            .enumerate()
+            .find_map(|(stmt_index, stmt)| match stmt {
                 Stmt::VarDecl(var_decl) => {
                     if var_decl.ident() == var_ident {
-                        Some(var_decl)
+                        let name = self.function_table[&var_decl.init_expr().ident()]
+                            .info()
+                            .return_value_name;
+
+                        Some((stmt_index, name))
                     } else {
                         None
                     }
                 }
-            })
-            .map(|var_decl| {
-                self.function_table[&var_decl.init_expr().ident()]
-                    .info()
-                    .return_value_name
             })
     }
 

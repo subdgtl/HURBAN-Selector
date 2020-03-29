@@ -805,16 +805,20 @@ pub fn init_and_run(options: Options) -> ! {
                             .map(|(value_path, (_, mesh))| {
                                 if value_path.1 == 0 {
                                     // Do not suffix zero mesh-array index
-                                    let name = match session.var_name_for_ident(value_path.0) {
-                                        Some(name) => Cow::Borrowed(name),
+                                    let name = match session
+                                        .var_decl_stmt_index_and_var_name_for_ident(value_path.0)
+                                    {
+                                        Some((_, name)) => Cow::Borrowed(name),
                                         None => Cow::Owned(value_path.0.to_string()),
                                     };
 
                                     (name, mesh.as_ref())
                                 } else {
                                     // Suffix mesh-array index if nonzero
-                                    let name = match session.var_name_for_ident(value_path.0) {
-                                        Some(name) => {
+                                    let name = match session
+                                        .var_decl_stmt_index_and_var_name_for_ident(value_path.0)
+                                    {
+                                        Some((_, name)) => {
                                             Cow::Owned(format!("{} [{}]", name, value_path.1))
                                         }
                                         None => Cow::Owned(format!(
