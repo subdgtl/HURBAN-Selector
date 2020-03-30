@@ -138,6 +138,7 @@ pub fn init_and_run(options: Options) -> ! {
 
     let window = winit::window::WindowBuilder::new()
         .with_title(BASE_WINDOW_TITLE)
+        .with_inner_size(winit::dpi::LogicalSize::new(1280, 720))
         .with_maximized(true)
         .with_window_icon(Some(icon))
         .build(&event_loop)
