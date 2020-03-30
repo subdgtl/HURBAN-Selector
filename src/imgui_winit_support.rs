@@ -31,6 +31,7 @@ use winit::window::{CursorIcon as MouseCursor, Window};
 pub struct WinitPlatform {
     hidpi_mode: ActiveHiDpiMode,
     hidpi_factor: f64,
+    cursor_in_window_client_area: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -116,6 +117,10 @@ impl WinitPlatform {
         WinitPlatform {
             hidpi_mode: ActiveHiDpiMode::Default,
             hidpi_factor: 1.0,
+            // Note: We get a notification from winit when the cursor enters the
+            // window for the first time, even if the window spawns directly on
+            // top of the cursor.
+            cursor_in_window_client_area: false,
         }
     }
 
@@ -291,6 +296,12 @@ impl WinitPlatform {
                 let position = self.scale_pos_from_winit(window, position);
                 io.mouse_pos = [position.x as f32, position.y as f32];
             }
+            WindowEvent::CursorEntered { .. } => {
+                self.cursor_in_window_client_area = true;
+            }
+            WindowEvent::CursorLeft { .. } => {
+                self.cursor_in_window_client_area = false;
+            }
             WindowEvent::MouseWheel {
                 delta,
                 phase: TouchPhase::Moved,
@@ -360,16 +371,18 @@ impl WinitPlatform {
             match ui.mouse_cursor() {
                 Some(mouse_cursor) if !io.mouse_draw_cursor => {
                     window.set_cursor_visible(true);
-                    window.set_cursor_icon(match mouse_cursor {
-                        imgui::MouseCursor::Arrow => MouseCursor::Arrow,
-                        imgui::MouseCursor::TextInput => MouseCursor::Text,
-                        imgui::MouseCursor::ResizeAll => MouseCursor::Move,
-                        imgui::MouseCursor::ResizeNS => MouseCursor::NsResize,
-                        imgui::MouseCursor::ResizeEW => MouseCursor::EwResize,
-                        imgui::MouseCursor::ResizeNESW => MouseCursor::NeswResize,
-                        imgui::MouseCursor::ResizeNWSE => MouseCursor::NwseResize,
-                        imgui::MouseCursor::Hand => MouseCursor::Hand,
-                    });
+                    if self.cursor_in_window_client_area {
+                        window.set_cursor_icon(match mouse_cursor {
+                            imgui::MouseCursor::Arrow => MouseCursor::Arrow,
+                            imgui::MouseCursor::TextInput => MouseCursor::Text,
+                            imgui::MouseCursor::ResizeAll => MouseCursor::Move,
+                            imgui::MouseCursor::ResizeNS => MouseCursor::NsResize,
+                            imgui::MouseCursor::ResizeEW => MouseCursor::EwResize,
+                            imgui::MouseCursor::ResizeNESW => MouseCursor::NeswResize,
+                            imgui::MouseCursor::ResizeNWSE => MouseCursor::NwseResize,
+                            imgui::MouseCursor::Hand => MouseCursor::Hand,
+                        });
+                    }
                 }
                 _ => window.set_cursor_visible(false),
             }
