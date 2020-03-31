@@ -3,7 +3,7 @@ use std::collections::{HashSet, VecDeque};
 use nalgebra as na;
 use nalgebra::Point3;
 
-use crate::convert::cast_i32;
+use crate::convert::{cast_i32, cast_usize};
 
 use super::{Mesh, OrientedEdge, UnorientedEdge};
 
@@ -193,14 +193,57 @@ pub fn border_vertex_indices(edge_sharing: &EdgeSharingMap) -> HashSet<u32> {
     border_vertices
 }
 
+#[derive(Debug, PartialEq)]
+pub enum BorderEdgeLoopsResult {
+    Found(Vec<Vec<OrientedEdge>>),
+    FoundWithNondeterminism(Vec<Vec<OrientedEdge>>),
+    Watertight,
+}
+
 /// Finds continuous loops of border edges, starting from a random edge.
 ///
 /// The mesh may contain holes or islands, therefore it may have an unknown
-/// number of edge loops. If two or more edge loops meet at a single vertex, it
-/// is undefined whether they end up in the result as separate border edge
-/// loops, or are joined into a single border edge loop.
-pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<OrientedEdge>> {
+/// number of edge loops. If two or more edge loops meet at a single vertex, the
+/// result is non-deterministic: a random path of more possibilities is chosen
+/// to form an edge loop.
+pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> BorderEdgeLoopsResult {
     let mut border_edges: Vec<_> = border_edges(edge_sharing).collect();
+
+    // If there are no border edges, the mesh is watertight.
+    if border_edges.is_empty() {
+        return BorderEdgeLoopsResult::Watertight;
+    }
+
+    // Check if the border edges are branching (the loops are touching at a
+    // single vertex). If they are, the result is non-deterministic.
+
+    // FIXME: @Optimization: use a Map structure or at least trim the list of
+    // vertices also from below. Find the maximum index that occurs in the
+    // border edge loop.
+    let max_vertex_index = border_edges
+        .iter()
+        .fold(0, |max, edge| max.max(edge.vertices.0.max(edge.vertices.1)));
+    // A helper vector - each index represents a vertex in the mesh. The items
+    // represent the number of occurrences of each respective vertex in the
+    // border edge list.
+    let mut vertex_occurrence_counts: Vec<u32> = vec![0; cast_usize(max_vertex_index) + 1];
+    // Count the vertex orccurences
+    for edge in &border_edges {
+        vertex_occurrence_counts[cast_usize(edge.vertices.0)] += 1;
+        vertex_occurrence_counts[cast_usize(edge.vertices.1)] += 1;
+    }
+
+    // For a deterministic result, each vertex should occur in the list of
+    // boundary edges exactly twice - in two edges, which meet at the vertex.
+    // Higher number means that more edge loops meet at one vertex and therefore
+    // the edge loop list is non-deterministic and possible wrong. If the vertex
+    // appears only once, the mesh may be erroneous. There are holes in the list
+    // of vertex occurrence, therefore some items may be zero.
+    // FIXME: Panic if the occurrence is 1
+    let mut non_deterministic = vertex_occurrence_counts
+        .iter()
+        .any(|count| *count != 2 && *count != 0);
+
     let mut edge_loops: Vec<Vec<OrientedEdge>> = Vec::new();
 
     while let Some(edge) = border_edges.pop() {
@@ -222,9 +265,27 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<OrientedEdge>
                     break;
                 }
 
+                let other_edge_reverted = other_edge.to_reverted();
+                if other_edge_reverted.chains_to(front) {
+                    current_chain.push_front(other_edge_reverted);
+                    border_edges.remove(i);
+                    found = true;
+
+                    break;
+                }
+
                 let back = current_chain[current_chain.len() - 1];
                 if back.chains_to(*other_edge) {
-                    current_chain.push_back(border_edges.remove(i));
+                    current_chain.push_back(*other_edge);
+                    found = true;
+                    border_edges.remove(i);
+
+                    break;
+                }
+
+                if back.chains_to(other_edge_reverted) {
+                    current_chain.push_back(other_edge_reverted);
+                    border_edges.remove(i);
                     found = true;
 
                     break;
@@ -242,14 +303,18 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> Vec<Vec<OrientedEdge>
             }
         };
 
-        // There can theoretically exist chains of edges that do not form border
-        // edge loops, e.g. if the mesh is non-manifold. We do not output those.
-        if loop_closed {
-            edge_loops.push(Vec::from(current_chain));
+        edge_loops.push(Vec::from(current_chain));
+
+        if !loop_closed {
+            non_deterministic = true;
         }
     }
 
-    edge_loops
+    if non_deterministic {
+        BorderEdgeLoopsResult::FoundWithNondeterminism(edge_loops)
+    } else {
+        BorderEdgeLoopsResult::Found(edge_loops)
+    }
 }
 
 /// Checks if all the face normals point the same way.
@@ -333,7 +398,6 @@ pub fn are_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
 pub fn are_visually_similar(mesh1: &Mesh, mesh2: &Mesh) -> bool {
     use nalgebra::Vector3;
 
-    use crate::convert::cast_usize;
     use crate::mesh::Face;
 
     struct UnpackedFace {
@@ -807,6 +871,94 @@ mod tests {
         (faces, vertices)
     }
 
+    /// ```text
+    /// 0 @@@@@@@@@@@@@@@@@@@@@@@@@@ 1 &@@@@@@@@@@@@@  2 @@@@@@@@@@@@@@@@@@@@@@@@@ 3
+    ///  @@@@@@@@@@@@@@@@@@@@@@@@@@     @@@@@@@@@@@     @@@@@@@@@@@@@@@@@@@@@@@@@@@
+    ///   @@@@@@@@@@@@@@@@@@@@@@@@       @@@@@@@@@       @@@@@@@@@@@@@@@@@@@@@@@@
+    ///    @@@@@@@@@@@@@@@@@@@@@           @@@@@           @@@@@@@@@@@@@@@@@@@@@
+    ///      @@@@@@@@@@@@@@@@@@             @ @             @@@@@@@@@@@@@@@@@@       
+    ///       @@@@@@@@@@@@@@@                4               #@@@@@@@@@@@@@@@
+    ///        (@@@@@@@@@@@@                @ @                @@@@@@@@@@@@
+    ///          @@@@@@@@@.               @@@@@@@               @@@@@@@@@@
+    ///           @@@@@@@                @@@@@@@@@                @@@@@@/
+    ///             @@@@               @@@@@@@@@@@@                @@@@
+    ///                               @@@@@@@@@@@@@@@
+    ///                5 @@@@@@@@@@ 6                 7 @@@@@@@@@@@ 8
+    ///                 @@@@@@@@@@@                     @@@@@@@@@@@
+    ///                   @@@@@@@@                       @@@@@@@@
+    ///                    @@@@@                           @@@@@
+    ///                     .
+    ///                       9 @@@@@@@@@@@@@@@@@@@@@@@@@@@ 10
+    ///                         @@@@@@@@@@@@@@@@@@@@@@@@@@@
+    ///                          @@@@@@@@@@@@@@@@@@@@@@@@@
+    ///                           @@@@@@@@@@@@@@@@@@@@@@@
+    ///                             @@@@@@@@@@@@@@@@@@@
+    ///                              @@@@@@@@@@@@@@@@@
+    ///                                @@@@@@@@@@@@@
+    ///                                 @@@@@@@@@@@
+    ///                                  ,@@@@@@@
+    ///                                    @   @
+    ///                                      11
+    /// ```
+    fn tessellated_triangle_with_three_holes() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+        let vertices = vec![
+            Point3::new(-3.0, 2.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+            Point3::new(3.0, 2.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(-1.0, 0.0, 0.0),
+            Point3::new(-1.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(0.0, -3.0, 0.0),
+        ];
+
+        let faces = vec![
+            (0, 5, 1),
+            (1, 4, 2),
+            (2, 8, 3),
+            (4, 6, 7),
+            (5, 9, 6),
+            (7, 10, 8),
+            (9, 11, 10),
+        ];
+
+        (faces, vertices)
+    }
+
+    fn tessellated_triangle_with_three_holes_and_mismatched_winding(
+    ) -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+        let vertices = vec![
+            Point3::new(-3.0, 2.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+            Point3::new(3.0, 2.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(-1.0, 0.0, 0.0),
+            Point3::new(-1.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(0.0, -3.0, 0.0),
+        ];
+
+        let faces = vec![
+            (0, 5, 1),
+            (1, 4, 2),
+            (2, 8, 3),
+            (4, 7, 6), // flipped winding
+            (5, 9, 6),
+            (7, 10, 8),
+            (9, 11, 10),
+        ];
+
+        (faces, vertices)
+    }
+
     #[test]
     fn test_edge_sharing() {
         let (faces, vertices) = quad();
@@ -1157,12 +1309,15 @@ mod tests {
             OrientedEdge::new(0, 3),
         ];
 
-        let computed_loops = border_edge_loops(&edge_sharing_map);
-
-        assert_eq!(computed_loops.len(), 1);
-        assert_eq!(computed_loops[0].len(), correct_loop.len());
-        for edge in correct_loop {
-            assert!(computed_loops[0].iter().any(|e| *e == edge));
+        if let BorderEdgeLoopsResult::Found(computed_loops) = border_edge_loops(&edge_sharing_map) {
+            dbg!("{}", computed_loops.clone());
+            assert_eq!(computed_loops.len(), 1);
+            assert_eq!(computed_loops[0].len(), correct_loop.len());
+            for edge in correct_loop {
+                assert!(computed_loops[0].iter().any(|e| *e == edge));
+            }
+        } else {
+            panic!();
         }
     }
 
@@ -1179,7 +1334,7 @@ mod tests {
 
         let computed_loops = border_edge_loops(&edge_sharing_map);
 
-        assert!(computed_loops.is_empty());
+        assert!(computed_loops == BorderEdgeLoopsResult::Watertight);
     }
 
     #[test]
@@ -1213,29 +1368,98 @@ mod tests {
             ],
         ];
 
-        let computed_loops = border_edge_loops(&edge_sharing_map);
+        if let BorderEdgeLoopsResult::Found(computed_loops) = border_edge_loops(&edge_sharing_map) {
+            assert_eq!(computed_loops.len(), 2);
+            assert!(
+                computed_loops[0].len() == correct_loops[0].len()
+                    || computed_loops[0].len() == correct_loops[1].len()
+            );
 
-        assert_eq!(computed_loops.len(), 2);
-        assert!(
-            computed_loops[0].len() == correct_loops[0].len()
-                || computed_loops[0].len() == correct_loops[1].len()
-        );
-
-        if computed_loops[0].len() == correct_loops[0].len() {
-            assert_eq!(computed_loops[1].len(), correct_loops[1].len());
-            for (i, correct_loop) in correct_loops.iter().enumerate() {
-                for edge in correct_loop {
-                    assert!(computed_loops[i].iter().any(|e| e == edge));
+            if computed_loops[0].len() == correct_loops[0].len() {
+                assert_eq!(computed_loops[1].len(), correct_loops[1].len());
+                for (i, correct_loop) in correct_loops.iter().enumerate() {
+                    for edge in correct_loop {
+                        assert!(computed_loops[i].iter().any(|e| e == edge));
+                    }
+                }
+            } else {
+                assert_eq!(computed_loops[1].len(), correct_loops[0].len());
+                for (i, correct_loop) in correct_loops.iter().enumerate() {
+                    for edge in correct_loop {
+                        assert!(computed_loops[(i + 1) % 2].iter().any(|e| e == edge));
+                    }
                 }
             }
         } else {
-            assert_eq!(computed_loops[1].len(), correct_loops[0].len());
-            for (i, correct_loop) in correct_loops.iter().enumerate() {
-                for edge in correct_loop {
-                    assert!(computed_loops[(i + 1) % 2].iter().any(|e| e == edge));
-                }
-            }
+            panic!();
         }
+    }
+
+    #[test]
+    fn test_border_edge_loops_returns_nondeterministic_for_tessellated_triangle_with_three_holes() {
+        let (faces, vertices) = tessellated_triangle_with_three_holes();
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
+            NormalStrategy::Sharp,
+        );
+
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_sharing(&oriented_edges);
+
+        if let BorderEdgeLoopsResult::FoundWithNondeterminism(edge_loops) =
+            border_edge_loops(&edge_sharing_map)
+        {
+            assert!(
+                edge_loops.len() > 1,
+                "More than one edge loop should be found"
+            );
+        } else {
+            panic!("The edge loops should be non-deterministic");
+        }
+    }
+
+    #[test]
+    fn test_border_edge_loops_returns_nondeterministic_for_tessellated_triangle_with_three_holes_and_mismatched_winding(
+    ) {
+        let (faces, vertices) = tessellated_triangle_with_three_holes_and_mismatched_winding();
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
+            NormalStrategy::Sharp,
+        );
+
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_sharing(&oriented_edges);
+
+        if let BorderEdgeLoopsResult::FoundWithNondeterminism(edge_loops) =
+            border_edge_loops(&edge_sharing_map)
+        {
+            assert!(
+                edge_loops.len() > 1,
+                "More than one edge loop should be found"
+            );
+        } else {
+            panic!("The edge loops should be non-deterministic");
+        }
+    }
+
+    #[test]
+    fn test_border_edge_loops_returns_watertight_for_torus() {
+        let (faces, vertices) = torus();
+        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
+            faces,
+            vertices,
+            NormalStrategy::Sharp,
+        );
+
+        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
+        let edge_sharing_map = edge_sharing(&oriented_edges);
+
+        assert_eq!(
+            BorderEdgeLoopsResult::Watertight,
+            border_edge_loops(&edge_sharing_map)
+        );
     }
 
     #[test]
