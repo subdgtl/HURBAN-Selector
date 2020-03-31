@@ -141,17 +141,9 @@ impl Func for FuncCreateUvSphere {
                 optional: false,
             },
             ParamInfo {
-                name: "Bounding Box Analysis",
-                description: "Reports basic and quick analytic information on the created mesh.",
-                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
-                    default_value: true,
-                }),
-                optional: false,
-            },
-            ParamInfo {
-                name: "Detailed Mesh Analysis",
+                name: "Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                              The analysis may be slow, therefore it is by default off.",
+                The analysis may be slow, turn it on only when needed.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -175,8 +167,7 @@ impl Func for FuncCreateUvSphere {
         let n_parallels = args[3].unwrap_uint();
         let n_meridians = args[4].unwrap_uint();
         let smooth = args[5].unwrap_boolean();
-        let analyze_bbox = args[6].unwrap_boolean();
-        let analyze_mesh = args[7].unwrap_boolean();
+        let analyze_mesh = args[6].unwrap_boolean();
 
         if n_parallels < Self::MIN_PARALLELS {
             let error = FuncError::new(FuncCreateUvSphereError::TooFewParallels {
@@ -213,10 +204,8 @@ impl Func for FuncCreateUvSphere {
             normal_strategy,
         );
 
-        if analyze_bbox {
-            analytics::report_bounding_box_analysis(&value, log);
-        }
         if analyze_mesh {
+            analytics::report_bounding_box_analysis(&value, log);
             analytics::report_mesh_analysis(&value, log);
         }
 
