@@ -92,9 +92,9 @@ impl Func for FuncVoxelTransform {
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     min_value: Some(0.005),
                     max_value: None,
-                    default_value_x: Some(0.25),
-                    default_value_y: Some(0.25),
-                    default_value_z: Some(0.25),
+                    default_value_x: Some(1.0),
+                    default_value_y: Some(1.0),
+                    default_value_z: Some(1.0),
                 }),
                 optional: false,
             },
@@ -223,11 +223,9 @@ impl Func for FuncVoxelTransform {
         let analyze_mesh = args[10].unwrap_boolean();
 
         if voxel_dimensions.iter().any(|dim| dim <= &0.0) {
-            return {
-                let error = FuncError::new(FuncVoxelTransformError::VoxelDimensionZeroOrLess);
-                log(LogMessage::error(format!("Error: {}", error)));
-                Err(error)
-            };
+            let error = FuncError::new(FuncVoxelTransformError::VoxelDimensionZeroOrLess);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
         }
 
         let bbox = mesh.bounding_box();
@@ -257,21 +255,21 @@ impl Func for FuncVoxelTransform {
 
         voxel_cloud.compute_distance_field(&(0.0..=0.0));
 
-        let rotation = Rotation::from_euler_angles(
+        let rotate = Rotation::from_euler_angles(
             rotate[0].to_radians(),
             rotate[1].to_radians(),
             rotate[2].to_radians(),
         );
 
-        let scaling = Vector3::from(scale);
+        let scale = Vector3::from(scale);
 
         if let Some(transformed_sf) = ScalarField::from_scalar_field_transformed(
             &voxel_cloud,
             &(0.0..=0.0),
             &voxel_dimensions,
             &translate,
-            &rotation,
-            &scaling,
+            &rotate,
+            &scale,
         ) {
             let meshing_range = if fill {
                 (Bound::Unbounded, Bound::Included(growth_f32))

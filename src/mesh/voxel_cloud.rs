@@ -217,6 +217,8 @@ impl ScalarField {
     /// Creates a new scalar field with arbitrary voxel dimensions from another
     /// scalar field.
     ///
+    /// Returns None for empty source scalar field.
+    ///
     /// # Panics
     ///
     /// Panics if any of the voxel dimensions is below or equal to zero.
@@ -285,7 +287,12 @@ impl ScalarField {
     }
 
     /// Creates a new scalar field from another scalar field transformed
-    /// (scaled, rotated, moved) in a cartesian space.
+    /// (scaled, rotated, moved) in a cartesian space. The new scalar field can
+    /// contain voxels of arbitrary dimensions, which can be different from
+    /// voxel dimensions of the source scalar field.
+    ///
+    /// Returns None for empty source scalar field and if the transformation
+    /// matrix can't be reverted.
     ///
     /// # Panics
     ///
@@ -294,44 +301,33 @@ impl ScalarField {
         source_scalar_field: &ScalarField,
         volume_value_range: &U,
         voxel_dimensions: &Vector3<f32>,
-        cartesian_translation: &Vector3<f32>,
-        rotation: &Rotation3<f32>,
-        scale_factor: &Vector3<f32>,
+        cartesian_translate: &Vector3<f32>,
+        rotate: &Rotation3<f32>,
+        scale: &Vector3<f32>,
     ) -> Option<Self>
     where
         U: RangeBounds<f32>,
     {
-        let euler_angles = rotation.euler_angles();
-        // If the transformation is identity
-        if approx::relative_eq!(cartesian_translation, &Vector3::zeros())
-            && approx::relative_eq!(euler_angles.0, 0.0)
-            && approx::relative_eq!(euler_angles.1, 0.0)
-            && approx::relative_eq!(euler_angles.2, 0.0)
-            && approx::relative_eq!(scale_factor, &Vector3::new(1.0, 1.0, 1.0))
-        {
-            // and the voxel dimensions don't change
-            if approx::relative_eq!(voxel_dimensions, &source_scalar_field.voxel_dimensions) {
-                // return identical copy of self
-                return Some(ScalarField {
-                    block_start: source_scalar_field.block_start,
-                    block_dimensions: source_scalar_field.block_dimensions,
-                    voxel_dimensions: source_scalar_field.voxel_dimensions,
-                    voxels: source_scalar_field.voxels.to_vec(),
-                });
-            } else {
-                // or resample to new voxel dimensions and return.
-                return ScalarField::from_scalar_field(
-                    source_scalar_field,
-                    volume_value_range,
-                    voxel_dimensions,
-                );
-            }
-        }
-
         assert!(
             voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
             "One mor more voxel dimensions is below or equal to zero"
         );
+
+        let euler_angles = rotate.euler_angles();
+        // If the transformation is identity
+        if approx::relative_eq!(cartesian_translate, &Vector3::zeros())
+            && approx::relative_eq!(euler_angles.0, 0.0)
+            && approx::relative_eq!(euler_angles.1, 0.0)
+            && approx::relative_eq!(euler_angles.2, 0.0)
+            && approx::relative_eq!(scale, &Vector3::new(1.0, 1.0, 1.0))
+        {
+            // resample to new voxel dimensions and return.
+            return ScalarField::from_scalar_field(
+                source_scalar_field,
+                volume_value_range,
+                voxel_dimensions,
+            );
+        }
 
         // Make a bounding box of the source scalar field's mesh volume. This
         // will be the volume to be scanned for any voxels.
@@ -345,7 +341,7 @@ impl ScalarField {
             // field.
             let transformation_to_origin = Matrix4::new_translation(&vector_to_origin);
             let compound_transformation =
-                Matrix4::from(*rotation) * Matrix4::new_nonuniform_scaling(scale_factor);
+                Matrix4::from(*rotate) * Matrix4::new_nonuniform_scaling(scale);
 
             let source_sf_bounding_box_corners = source_sf_bounding_box.corners();
             let transformed_bounding_box_corners = source_sf_bounding_box_corners.iter().map(|v| {
@@ -395,7 +391,7 @@ impl ScalarField {
                         .value_at_absolute_voxel_coordinate(&absolute_coordinate);
                 }
 
-                let cartesian_final_translation_vector = cartesian_translation - vector_to_origin;
+                let cartesian_final_translation_vector = cartesian_translate - vector_to_origin;
 
                 let voxel_final_translation_vector = cartesian_to_absolute_voxel_coordinate(
                     &Point3::from(cartesian_final_translation_vector),
@@ -655,10 +651,9 @@ impl ScalarField {
     }
 
     /// Returns the bounding box of the mesh produced by `ScalarField::to_mesh`
-    /// for the current scalar field.
+    /// and `ScalarField::to_marching_cubes` for the current scalar field.
     ///
     /// The Bounding box will be defined in cartesian units.
-    ///
     pub fn bounding_box_mesh_volume_cartesian_space<U>(
         &self,
         volume_value_range: &U,
@@ -688,7 +683,9 @@ impl ScalarField {
         )
     }
 
-    /// Compute discrete distance field.
+    /// Computes a relatively smooth triangulated welded mesh from the current
+    /// state of the scalar field. The mesh will be made of triangular faces
+    /// positioned in discrete 40 degree steps.
     ///
     /// Computes a relatively smooth triangulated welded mesh from the current
     /// state of the scalar field.
