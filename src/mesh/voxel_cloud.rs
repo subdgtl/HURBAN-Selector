@@ -259,21 +259,15 @@ impl ScalarField {
                 );
 
                 for (one_dimensional, voxel) in target_scalar_field.voxels.iter_mut().enumerate() {
-                    let cartesian_coordinate_target = one_dimensional_to_cartesian_coordinate(
+                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                         one_dimensional,
                         &target_scalar_field.block_start,
                         &target_scalar_field.block_dimensions,
                         &target_scalar_field.voxel_dimensions,
                     );
 
-                    // Set the new voxel value according to a sampled value from
-                    // the source scalar field.
-                    let absolute_coordinate_source = cartesian_to_absolute_voxel_coordinate(
-                        &cartesian_coordinate_target,
-                        &source_scalar_field.voxel_dimensions,
-                    );
-                    *voxel = source_scalar_field
-                        .value_at_absolute_voxel_coordinate(&absolute_coordinate_source);
+                    *voxel =
+                        source_scalar_field.value_at_cartesian_coordinate(&cartesian_coordinate);
                 }
 
                 // FIXME: @Optimization In some cases it might be not easy to
@@ -456,6 +450,21 @@ impl ScalarField {
             absolute_coordinate,
             &self.block_start,
             &self.block_dimensions,
+        ) {
+            Some(index) => self.voxels[index],
+            _ => None,
+        }
+    }
+
+    /// Gets the value of a voxel on cartesian space coordinates
+    ///
+    /// Returns None if voxel is empty or out of bounds
+    pub fn value_at_cartesian_coordinate(&self, cartesian_coordinate: &Point3<f32>) -> Option<f32> {
+        match cartesian_to_one_dimensional_coordinate(
+            cartesian_coordinate,
+            &self.block_start,
+            &self.block_dimensions,
+            &self.voxel_dimensions,
         ) {
             Some(index) => self.voxels[index],
             _ => None,
@@ -686,9 +695,6 @@ impl ScalarField {
     /// Computes a relatively smooth triangulated welded mesh from the current
     /// state of the scalar field. The mesh will be made of triangular faces
     /// positioned in discrete 40 degree steps.
-    ///
-    /// Computes a relatively smooth triangulated welded mesh from the current
-    /// state of the scalar field.
     ///
     /// For watertight volumetric geometry (i.e. from a watertight source mesh)
     /// this creates both, outer and inner boundary mesh. There is also a high
@@ -1757,6 +1763,22 @@ fn cartesian_to_absolute_voxel_coordinate(
         (point.x / voxel_dimensions.x).round() as i32,
         (point.y / voxel_dimensions.y).round() as i32,
         (point.z / voxel_dimensions.z).round() as i32,
+    )
+}
+
+/// Computes an index to the linear representation of the voxel block from
+/// cartesian space coordinate.
+fn cartesian_to_one_dimensional_coordinate(
+    point: &Point3<f32>,
+    block_start: &Point3<i32>,
+    block_dimensions: &Vector3<u32>,
+    voxel_dimensions: &Vector3<f32>,
+) -> Option<usize> {
+    let absolute_voxel_coordiante = cartesian_to_absolute_voxel_coordinate(point, voxel_dimensions);
+    absolute_voxel_to_one_dimensional_coordinate(
+        &absolute_voxel_coordiante,
+        block_start,
+        block_dimensions,
     )
 }
 
