@@ -373,17 +373,10 @@ impl ScalarField {
                     // Transform each new voxel inverse to the user
                     // transformation.
                     let transformed_voxel_center_cartesian = reversed_user_transformation
-                        .transform_point(&cartesian_coordinate_target)
-                        - vector_to_origin;
+                        .transform_point(&(cartesian_coordinate_target - vector_to_origin));
 
-                    // Set the new voxel state according to a sampled value from
-                    // the source scalar field.
-                    let absolute_coordinate = cartesian_to_absolute_voxel_coordinate(
-                        &transformed_voxel_center_cartesian,
-                        &source_scalar_field.voxel_dimensions,
-                    );
                     *voxel_target = source_scalar_field
-                        .value_at_absolute_voxel_coordinate(&absolute_coordinate);
+                        .value_at_cartesian_coordinate(&transformed_voxel_center_cartesian);
                 }
 
                 let cartesian_final_translation_vector = cartesian_translate - vector_to_origin;
@@ -395,6 +388,9 @@ impl ScalarField {
                 .coords;
 
                 target_scalar_field.block_start += voxel_final_translation_vector;
+                // FIXME: Consider not shrinking to fit because in most cases it
+                // won't be much larger than it has to be.
+                target_scalar_field.shrink_to_fit(volume_value_range);
 
                 return Some(target_scalar_field);
             }
@@ -1795,9 +1791,9 @@ fn cartesian_to_one_dimensional_coordinate(
     block_dimensions: &Vector3<u32>,
     voxel_dimensions: &Vector3<f32>,
 ) -> Option<usize> {
-    let absolute_voxel_coordiante = cartesian_to_absolute_voxel_coordinate(point, voxel_dimensions);
+    let absolute_voxel_coordinate = cartesian_to_absolute_voxel_coordinate(point, voxel_dimensions);
     absolute_voxel_to_one_dimensional_coordinate(
-        &absolute_voxel_coordiante,
+        &absolute_voxel_coordinate,
         block_start,
         block_dimensions,
     )
