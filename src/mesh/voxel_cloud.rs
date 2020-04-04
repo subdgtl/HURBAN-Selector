@@ -323,28 +323,29 @@ impl ScalarField {
             );
         }
 
-        // Make a bounding box of the source scalar field's mesh volume. This
-        // will be the volume to be scanned for any voxels.
+        // Make a bounding box of the source scalar field's volume. This will be
+        // the volume to be scanned for voxels.
         if let Some(source_sf_bounding_box) =
-            source_scalar_field.bounding_box_mesh_volume_cartesian_space(volume_value_range)
+            source_scalar_field.bounding_box_volume_cartesian_space(volume_value_range)
         {
             let vector_to_origin = Vector3::zeros() - source_sf_bounding_box.center().coords;
 
             // Transform the source mesh volume bounding box and calculate a new
             // bounding box that will encompass the transformed source scalar
             // field.
-            let transformation_to_origin = Matrix4::new_translation(&vector_to_origin);
-            let compound_transformation =
+            let transformation_translate_to_origin = Matrix4::new_translation(&vector_to_origin);
+            let transformation_rotate_scale =
                 Matrix4::from(*rotate) * Matrix4::new_nonuniform_scaling(scale);
 
             let source_sf_bounding_box_corners = source_sf_bounding_box.corners();
-            let transformed_bounding_box_corners = source_sf_bounding_box_corners.iter().map(|v| {
-                let v1 = transformation_to_origin.transform_point(v);
-                compound_transformation.transform_point(&v1)
-            });
+            let transformed_source_sf_bounding_box_corners =
+                source_sf_bounding_box_corners.iter().map(|v| {
+                    let v1 = transformation_translate_to_origin.transform_point(v);
+                    transformation_rotate_scale.transform_point(&v1)
+                });
 
             let transformed_bounding_box =
-                BoundingBox::from_points(transformed_bounding_box_corners)
+                BoundingBox::from_points(transformed_source_sf_bounding_box_corners)
                     .expect("No source bounding box");
 
             // New scalar field that can encompass the transformed source scalar
@@ -357,7 +358,7 @@ impl ScalarField {
             // Transform the target voxels inverse to the user transformation so
             // that it is possible to sample the source scalar field.
             if let Ok(reversed_user_transformation) =
-                compound_transformation.pseudo_inverse(f32::EPSILON)
+                transformation_rotate_scale.pseudo_inverse(f32::EPSILON)
             {
                 for (one_dimensional_target, voxel_target) in
                     target_scalar_field.voxels.iter_mut().enumerate()
@@ -395,16 +396,9 @@ impl ScalarField {
 
                 target_scalar_field.block_start += voxel_final_translation_vector;
 
-                // FIXME: @Optimization In some cases it might be not easy to
-                // determine the minimal needed bounding box due to the
-                // differences in the voxel sizes. Leaving the scalar field
-                // bigger should be also considered.
-                target_scalar_field.shrink_to_fit(volume_value_range);
-
                 return Some(target_scalar_field);
             }
         }
-
         None
     }
 
@@ -1467,7 +1461,7 @@ impl ScalarField {
     }
 
     /// Resize the current scalar field to match the input bounding box in
-    /// cartesian units
+    /// cartesian units.
     pub fn resize_to_bounding_box_cartesian_space(&mut self, bounding_box: &BoundingBox<f32>) {
         let minimum_point = cartesian_to_absolute_voxel_coordinate(
             &bounding_box.minimum_point(),
@@ -1502,6 +1496,33 @@ impl ScalarField {
                         cast_i32(volume_dimensions.z),
                     );
                 BoundingBox::new(&volume_start, &volume_end)
+            },
+        )
+    }
+
+    /// Returns the bounding box in cartesian units after shrinking to fit just
+    /// the nonempty voxels.
+    pub fn bounding_box_volume_cartesian_space<U>(
+        &self,
+        volume_value_range: &U,
+    ) -> Option<BoundingBox<f32>>
+    where
+        U: RangeBounds<f32>,
+    {
+        self.compute_volume_boundaries(volume_value_range).map(
+            |(volume_start, volume_dimensions)| {
+                let volume_end = volume_start
+                    + Vector3::new(
+                        cast_i32(volume_dimensions.x),
+                        cast_i32(volume_dimensions.y),
+                        cast_i32(volume_dimensions.z),
+                    );
+                let volume_start_cartesian_space =
+                    absolute_voxel_to_cartesian_coordinate(&volume_start, &self.voxel_dimensions);
+                let volume_end_cartesian_space =
+                    absolute_voxel_to_cartesian_coordinate(&volume_end, &self.voxel_dimensions);
+
+                BoundingBox::new(&volume_start_cartesian_space, &volume_end_cartesian_space)
             },
         )
     }
