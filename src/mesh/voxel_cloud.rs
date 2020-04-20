@@ -684,7 +684,7 @@ impl ScalarField {
 
     /// Computes a relatively smooth triangulated welded mesh from the current
     /// state of the scalar field. The mesh will be made of triangular faces
-    /// positioned in discrete 40 degree steps.
+    /// positioned in discrete 45 degree steps.
     ///
     /// For watertight volumetric geometry (i.e. from a watertight source mesh)
     /// this creates both, outer and inner boundary mesh. There is also a high
