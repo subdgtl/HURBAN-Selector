@@ -330,6 +330,7 @@ impl ScalarField {
         if let Some(source_sf_bounding_box) =
             source_scalar_field.bounding_box_volume_cartesian_space(volume_value_range)
         {
+            // TODO: check the transformation sequence
             let vector_to_origin = Vector3::zeros() - source_sf_bounding_box.center().coords;
 
             // Transform the source mesh volume bounding box and calculate a new
@@ -340,11 +341,12 @@ impl ScalarField {
                 Matrix4::from(*rotate) * Matrix4::new_nonuniform_scaling(scale);
 
             let source_sf_bounding_box_corners = source_sf_bounding_box.corners();
-            let transformed_source_sf_bounding_box_corners =
+            // TODO: remove the collection
+            let transformed_source_sf_bounding_box_corners: Vec<_> =
                 source_sf_bounding_box_corners.iter().map(|v| {
                     let v1 = transformation_translate_to_origin.transform_point(v);
                     transformation_rotate_scale.transform_point(&v1)
-                });
+                }).collect();
 
             dbg!("{}", &source_sf_bounding_box);
             dbg!("{}", &source_sf_bounding_box_corners);

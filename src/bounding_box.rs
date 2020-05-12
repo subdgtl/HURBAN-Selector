@@ -105,9 +105,7 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
         let mut max_y = T::min_value();
         let mut max_z = T::min_value();
 
-        dbg!("----------------------");
         for point in points_iter {
-            dbg!("Point: {}, {}, {}", point.x, point.y, point.z);
             if point.x < min_x {
                 min_x = point.x;
             }
@@ -130,10 +128,6 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
 
         let minimum_point = Point3::new(min_x, min_y, min_z);
         let maximum_point = Point3::new(max_x, max_y, max_z);
-
-        dbg!("{}", minimum_point);
-        dbg!("{}", maximum_point);
-        dbg!("=====================");
 
         Some(BoundingBox {
             minimum_point,
