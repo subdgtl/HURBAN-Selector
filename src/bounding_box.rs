@@ -91,6 +91,7 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
     pub fn from_points<I>(points: I) -> Option<Self>
     where
         I: IntoIterator<Item = Point3<T>>,
+        T: std::fmt::Display,
     {
         let mut points_iter = points.into_iter().peekable();
 
@@ -104,7 +105,9 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
         let mut max_y = T::min_value();
         let mut max_z = T::min_value();
 
+        dbg!("----------------------");
         for point in points_iter {
+            dbg!("Point: {}, {}, {}", point.x, point.y, point.z);
             if point.x < min_x {
                 min_x = point.x;
             }
@@ -125,9 +128,16 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
             }
         }
 
+        let minimum_point = Point3::new(min_x, min_y, min_z);
+        let maximum_point = Point3::new(max_x, max_y, max_z);
+
+        dbg!("{}", minimum_point);
+        dbg!("{}", maximum_point);
+        dbg!("=====================");
+
         Some(BoundingBox {
-            minimum_point: Point3::new(min_x, min_y, min_z),
-            maximum_point: Point3::new(max_x, max_y, max_z),
+            minimum_point,
+            maximum_point,
         })
     }
 
@@ -139,6 +149,7 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
     pub fn union<I>(bounding_boxes: I) -> Option<Self>
     where
         I: IntoIterator<Item = BoundingBox<T>>,
+        T: std::fmt::Display,
     {
         let points = bounding_boxes
             .into_iter()
@@ -387,6 +398,42 @@ mod tests {
 
         assert_eq!(bb.minimum_point, Point3::new(0_i32, 1_i32, 2_i32));
         assert_eq!(bb.maximum_point, Point3::new(4_i32, 5_i32, 6_i32));
+    }
+
+    #[test]
+    fn test_bounding_box_from_points_negative_i32() {
+        let mut points: Vec<Point3<i32>> = Vec::new();
+
+        for x in -5..5_i32 {
+            for y in (-1..6_i32).rev() {
+                for z in -2..7_i32 {
+                    points.push(Point3::new(x, y, z));
+                }
+            }
+        }
+
+        let bb = BoundingBox::from_points(points).unwrap();
+
+        assert_eq!(bb.minimum_point, Point3::new(-5_i32, -1_i32, -2_i32));
+        assert_eq!(bb.maximum_point, Point3::new(4_i32, 5_i32, 6_i32));
+    }
+
+    #[test]
+    fn test_bounding_box_from_points_negative_f32() {
+        let mut points: Vec<Point3<f32>> = Vec::new();
+
+        for x in -5_i32..5_i32 {
+            for y in (-1_i32..6_i32).rev() {
+                for z in -2_i32..7_i32 {
+                    points.push(Point3::new(x as f32, y as f32, z as f32));
+                }
+            }
+        }
+
+        let bb = BoundingBox::from_points(points).unwrap();
+
+        assert_eq!(bb.minimum_point, Point3::new(-5_f32, -1_f32, -2_f32));
+        assert_eq!(bb.maximum_point, Point3::new(4_f32, 5_f32, 6_f32));
     }
 
     #[test]

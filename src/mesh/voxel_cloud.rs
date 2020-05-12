@@ -309,19 +309,21 @@ impl ScalarField {
 
         let euler_angles = rotate.euler_angles();
         // If the transformation is identity
-        if approx::relative_eq!(cartesian_translate, &Vector3::zeros())
-            && approx::relative_eq!(euler_angles.0, 0.0)
-            && approx::relative_eq!(euler_angles.1, 0.0)
-            && approx::relative_eq!(euler_angles.2, 0.0)
-            && approx::relative_eq!(scale, &Vector3::new(1.0, 1.0, 1.0))
-        {
-            // resample to new voxel dimensions and return.
-            return ScalarField::from_scalar_field(
-                source_scalar_field,
-                volume_value_range,
-                voxel_dimensions,
-            );
-        }
+        // if approx::relative_eq!(cartesian_translate, &Vector3::zeros())
+        //     && approx::relative_eq!(euler_angles.0, 0.0)
+        //     && approx::relative_eq!(euler_angles.1, 0.0)
+        //     && approx::relative_eq!(euler_angles.2, 0.0)
+        //     && approx::relative_eq!(scale, &Vector3::new(1.0, 1.0, 1.0))
+        // {
+        //     // resample to new voxel dimensions and return.
+        //     return ScalarField::from_scalar_field(
+        //         source_scalar_field,
+        //         volume_value_range,
+        //         voxel_dimensions,
+        //     );
+        // }
+
+        dbg!("{}", source_scalar_field);
 
         // Make a bounding box of the source scalar field's volume. This will be
         // the volume to be scanned for voxels.
@@ -344,9 +346,21 @@ impl ScalarField {
                     transformation_rotate_scale.transform_point(&v1)
                 });
 
+            dbg!("{}", &source_sf_bounding_box);
+            dbg!("{}", &source_sf_bounding_box_corners);
+            dbg!(
+                "-----------------============YOLO============----------------- {}",
+                &transformed_source_sf_bounding_box_corners
+            );
+
             let transformed_bounding_box =
                 BoundingBox::from_points(transformed_source_sf_bounding_box_corners)
                     .expect("No source bounding box");
+
+            dbg!(
+                "-----------------============END OF YOLO============----------------- {}",
+                transformed_bounding_box
+            );
 
             // New scalar field that can encompass the transformed source scalar
             // field's mesh.
@@ -450,15 +464,13 @@ impl ScalarField {
     ///
     /// Returns None if voxel is empty or out of bounds
     pub fn value_at_cartesian_coordinate(&self, cartesian_coordinate: &Point3<f32>) -> Option<f32> {
-        match cartesian_to_one_dimensional_coordinate(
+        cartesian_to_one_dimensional_coordinate(
             cartesian_coordinate,
             &self.block_start,
             &self.block_dimensions,
             &self.voxel_dimensions,
-        ) {
-            Some(index) => self.voxels[index],
-            _ => None,
-        }
+        )
+        .and_then(|index| self.voxels[index])
     }
 
     /// Sets the value of a voxel defined in absolute voxel coordinates
