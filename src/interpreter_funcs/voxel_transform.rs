@@ -254,8 +254,6 @@ impl Func for FuncVoxelTransform {
         let mut voxel_cloud = ScalarField::from_mesh(mesh, &voxel_dimensions, 0.0, growth_u32);
 
         voxel_cloud.compute_distance_field(&(0.0..=0.0));
-        
-        dbg!("Operation Voxel transform {}", &voxel_cloud);
 
         let rotate = Rotation::from_euler_angles(
             rotate[0].to_radians(),

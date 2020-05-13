@@ -214,8 +214,6 @@ impl Func for FuncVoxelize {
 
         scalar_field.compute_distance_field(&(0.0..=0.0));
 
-        dbg!("Operation Voxelize {}", &scalar_field);
-
         let meshing_range = if fill {
             (Bound::Unbounded, Bound::Included(growth_f32))
         } else {

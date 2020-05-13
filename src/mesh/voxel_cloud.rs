@@ -309,128 +309,139 @@ impl ScalarField {
 
         let euler_angles = rotate.euler_angles();
         // If the transformation is identity
-        // if approx::relative_eq!(cartesian_translate, &Vector3::zeros())
-        //     && approx::relative_eq!(euler_angles.0, 0.0)
-        //     && approx::relative_eq!(euler_angles.1, 0.0)
-        //     && approx::relative_eq!(euler_angles.2, 0.0)
-        //     && approx::relative_eq!(scale, &Vector3::new(1.0, 1.0, 1.0))
-        // {
-        //     // resample to new voxel dimensions and return.
-        //     return ScalarField::from_scalar_field(
-        //         source_scalar_field,
-        //         volume_value_range,
-        //         voxel_dimensions,
-        //     );
-        // }
-
-        dbg!("{}", source_scalar_field);
-
-        // Make a bounding box (source bounding box) from the source scalar
-        // field. Move the source bounding box so that its center matches world
-        // origin (translation1). Extract corner points (source points) of the
-        // source bounding box. Apply user rotation and scaling
-        // (transformation1) the source points (transformed points). Move the
-        // transformed points back to the source bounding box center (reverted
-        // translation1) and from there apply user translation (translation2).
-        // There create a bounding box (target bounding box) from the latest
-        // points. Make a target scalar field from the target bounding box. With
-        // each voxel center of the target scalar field do the following:
-        // translate it along a reverted user translation (reverted
-        // translation2) and from there along translation1. Apply inverted user
-        // rotation and scaling (inverted transformation1) and move it back
-        // along reverted translation1. Here request the source scalar field for
-        // the voxel value and pply it to the respective voxel in the target
-        // scalar field.
-
-        // Make a bounding box of the source scalar field's volume. This will be
-        // the volume to be scanned for voxels.
-        if let Some(source_sf_bounding_box) =
-            source_scalar_field.bounding_box_volume_cartesian_space(volume_value_range)
+        if approx::relative_eq!(cartesian_translate, &Vector3::zeros())
+            && approx::relative_eq!(euler_angles.0, 0.0)
+            && approx::relative_eq!(euler_angles.1, 0.0)
+            && approx::relative_eq!(euler_angles.2, 0.0)
+            && approx::relative_eq!(scale, &Vector3::new(1.0, 1.0, 1.0))
         {
-            // TODO: check the transformation sequence
-            let vector_to_origin = Vector3::zeros() - source_sf_bounding_box.center().coords;
-
-            // Transform the source mesh volume bounding box and calculate a new
-            // bounding box that will encompass the transformed source scalar
-            // field.
-            let transformation_translate_to_origin = Matrix4::new_translation(&vector_to_origin);
-            let transformation_rotate_scale =
-                Matrix4::from(*rotate) * Matrix4::new_nonuniform_scaling(scale);
-
-            let source_sf_bounding_box_corners = source_sf_bounding_box.corners();
-            // TODO: remove the collection
-            let transformed_source_sf_bounding_box_corners: Vec<_> = source_sf_bounding_box_corners
-                .iter()
-                .map(|v| {
-                    let v1 = transformation_translate_to_origin.transform_point(v);
-                    transformation_rotate_scale.transform_point(&v1)
-                })
-                .collect();
-
-            dbg!("{}", &source_sf_bounding_box);
-            dbg!("{}", &source_sf_bounding_box_corners);
-            dbg!(
-                "-----------------============YOLO============----------------- {}",
-                &transformed_source_sf_bounding_box_corners
+            // resample to new voxel dimensions and return.
+            return ScalarField::from_scalar_field(
+                source_scalar_field,
+                volume_value_range,
+                voxel_dimensions,
             );
-
-            let transformed_bounding_box =
-                BoundingBox::from_points(transformed_source_sf_bounding_box_corners)
-                    .expect("No source bounding box");
-
-            dbg!(
-                "-----------------============END OF YOLO============----------------- {}",
-                transformed_bounding_box
-            );
-
-            // New scalar field that can encompass the transformed source scalar
-            // field's mesh.
-            let mut target_scalar_field = ScalarField::from_bounding_box_cartesian_space(
-                &transformed_bounding_box,
-                &voxel_dimensions,
-            );
-
-            // Transform the target voxels inverse to the user transformation so
-            // that it is possible to sample the source scalar field.
-            if let Ok(reversed_user_transformation) =
-                transformation_rotate_scale.pseudo_inverse(f32::EPSILON)
-            {
-                for (one_dimensional_target, voxel_target) in
-                    target_scalar_field.voxels.iter_mut().enumerate()
-                {
-                    let cartesian_coordinate_target = one_dimensional_to_cartesian_coordinate(
-                        one_dimensional_target,
-                        &target_scalar_field.block_start,
-                        &target_scalar_field.block_dimensions,
-                        &target_scalar_field.voxel_dimensions,
-                    );
-
-                    // Transform each new voxel inverse to the user
-                    // transformation.
-                    let transformed_voxel_center_cartesian = reversed_user_transformation
-                        .transform_point(&(cartesian_coordinate_target - vector_to_origin));
-
-                    *voxel_target = source_scalar_field
-                        .value_at_cartesian_coordinate(&transformed_voxel_center_cartesian);
-                }
-
-                let cartesian_final_translation_vector = cartesian_translate - vector_to_origin;
-
-                let voxel_final_translation_vector = cartesian_to_absolute_voxel_coordinate(
-                    &Point3::from(cartesian_final_translation_vector),
-                    &target_scalar_field.voxel_dimensions,
-                )
-                .coords;
-
-                target_scalar_field.block_start += voxel_final_translation_vector;
-                // FIXME: Consider not shrinking to fit because in most cases it
-                // won't be much larger than it has to be.
-                target_scalar_field.shrink_to_fit(volume_value_range);
-
-                return Some(target_scalar_field);
-            }
         }
-        None
+
+        // Scalar field transformation process:
+        // 1. Make a bounding box (`source_sf_bounding_box`) from the source
+        //    scalar field.
+        // 2. Move the `source_sf_bounding_box` so that its center matches world
+        //    origin (`transformation_translate_to_origin`).
+        // 3. Extract corner points (source points) of the
+        //    `source_sf_bounding_box`.
+        // 4. Apply user rotation and scaling (`transformation_rotate_scale`)
+        //    the source points (transformed points).
+        // 5. Move the transformed points back to the `source_sf_bounding_box`
+        //    center (`transformation_translate_to_origin_reverted`) and from
+        //    there apply user translation (`transformation_user_translation`).
+        // 6. There create a bounding box (`transformed_bounding_box`) from the
+        //    latest points.
+        // 7. Make the `target_scalar_field` from the
+        //    `transformed_bounding_box`.
+        //
+        // With each voxel center of the `target_scalar_field` do the following:
+        // 8. translate it along a reverted user translation (reverted
+        //    `transformation_user_translation`) and from there along
+        //    `transformation_translate_to_origin`.
+        // 9. Apply inverted user rotation and scaling (inverted
+        //    `transformation_rotate_scale`)
+        // 10. and move it back along reverted
+        //     `transformation_translate_to_origin`.
+        // 11. Here request the source scalar field for the voxel value
+        // 12. and apply it to the respective voxel in the
+        //     `target_scalar_field`.
+
+        // 1. Make a bounding box (`source_sf_bounding_box`) from the source
+        //    scalar field.
+        source_scalar_field
+            .bounding_box_volume_cartesian_space(volume_value_range)
+            .and_then(|source_sf_bounding_box| {
+                // 2. Move the source bounding box so that its center matches world
+                //    origin (`transformation_translate_to_origin`).
+                let vector_to_origin = Vector3::zeros() - source_sf_bounding_box.center().coords;
+                let transformation_translate_to_origin =
+                    Matrix4::new_translation(&vector_to_origin);
+                // 3. Extract corner points (source points) of the source bounding
+                //    box.
+                let source_sf_bounding_box_corners = source_sf_bounding_box.corners();
+                // 4. Apply user rotation and scaling
+                //    (`transformation_rotate_scale`) the source points (transformed
+                //    points).
+                let transformation_rotate_scale =
+                    Matrix4::from(*rotate) * Matrix4::new_nonuniform_scaling(scale);
+                // 5. Move the transformed points back to the source bounding box
+                //    center (`transformation_translate_to_origin_reverted`) and
+                //    from there apply user translation
+                //    (`transformation_user_translation`).
+                let transformation_translate_to_origin_reverted =
+                    Matrix4::new_translation(&(-vector_to_origin));
+                let transformation_user_translation =
+                    Matrix4::new_translation(&cartesian_translate);
+                let transformation_user_translation_reverted =
+                    Matrix4::new_translation(&(-cartesian_translate));
+
+                // Apply transformations
+                let transformed_source_sf_bounding_box_corners =
+                    source_sf_bounding_box_corners.iter().map(|v| {
+                        let v1 = transformation_translate_to_origin.transform_point(v);
+                        let v2 = transformation_rotate_scale.transform_point(&v1);
+                        let v3 = transformation_translate_to_origin_reverted.transform_point(&v2);
+                        transformation_user_translation.transform_point(&v3)
+                    });
+
+                // 6. There create a bounding box (`transformed_bounding_box`) from
+                //    the latest points.
+                let transformed_bounding_box =
+                    BoundingBox::from_points(transformed_source_sf_bounding_box_corners)
+                        .expect("No source bounding box");
+
+                // 7. Make the `target_scalar_field` from the
+                //    `transformed_bounding_box`.
+                let mut target_scalar_field = ScalarField::from_bounding_box_cartesian_space(
+                    &transformed_bounding_box,
+                    &voxel_dimensions,
+                );
+
+                if let Ok(transformation_rotate_scale_reverted) =
+                    transformation_rotate_scale.pseudo_inverse(f32::EPSILON)
+                {
+                    for (one_dimensional_target, voxel_target) in
+                        target_scalar_field.voxels.iter_mut().enumerate()
+                    {
+                        let cartesian_coordinate_target = one_dimensional_to_cartesian_coordinate(
+                            one_dimensional_target,
+                            &target_scalar_field.block_start,
+                            &target_scalar_field.block_dimensions,
+                            &target_scalar_field.voxel_dimensions,
+                        );
+
+                        // 8. translate it along a reverted user translation
+                        //    (reverted `transformation_user_translation`) and from
+                        //    there along `transformation_translate_to_origin`.
+                        let v1 = transformation_user_translation_reverted
+                            .transform_point(&cartesian_coordinate_target);
+                        let v2 = transformation_translate_to_origin.transform_point(&v1);
+                        // 9. Apply inverted user rotation and scaling (inverted
+                        //    `transformation_rotate_scale`)
+                        let v3 = transformation_rotate_scale_reverted.transform_point(&v2);
+                        // 10. and move it back along reverted
+                        //     `transformation_translate_to_origin`.
+                        let transformed_target_voxel_center =
+                            transformation_translate_to_origin_reverted.transform_point(&v3);
+
+                        // 11. Here request the source scalar field for the voxel
+                        //     value
+                        // 12. and apply it to the respective voxel in the
+                        //     `target_scalar_field`.
+                        *voxel_target = source_scalar_field
+                            .value_at_cartesian_coordinate(&transformed_target_voxel_center);
+                    }
+                    Some(target_scalar_field)
+                } else {
+                    None
+                }
+            })
     }
 
     /// Clears the scalar field, sets its block dimensions to zero.
