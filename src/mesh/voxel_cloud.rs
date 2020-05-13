@@ -325,6 +325,23 @@ impl ScalarField {
 
         dbg!("{}", source_scalar_field);
 
+        // Make a bounding box (source bounding box) from the source scalar
+        // field. Move the source bounding box so that its center matches world
+        // origin (translation1). Extract corner points (source points) of the
+        // source bounding box. Apply user rotation and scaling
+        // (transformation1) the source points (transformed points). Move the
+        // transformed points back to the source bounding box center (reverted
+        // translation1) and from there apply user translation (translation2).
+        // There create a bounding box (target bounding box) from the latest
+        // points. Make a target scalar field from the target bounding box. With
+        // each voxel center of the target scalar field do the following:
+        // translate it along a reverted user translation (reverted
+        // translation2) and from there along translation1. Apply inverted user
+        // rotation and scaling (inverted transformation1) and move it back
+        // along reverted translation1. Here request the source scalar field for
+        // the voxel value and pply it to the respective voxel in the target
+        // scalar field.
+
         // Make a bounding box of the source scalar field's volume. This will be
         // the volume to be scanned for voxels.
         if let Some(source_sf_bounding_box) =
@@ -342,11 +359,13 @@ impl ScalarField {
 
             let source_sf_bounding_box_corners = source_sf_bounding_box.corners();
             // TODO: remove the collection
-            let transformed_source_sf_bounding_box_corners: Vec<_> =
-                source_sf_bounding_box_corners.iter().map(|v| {
+            let transformed_source_sf_bounding_box_corners: Vec<_> = source_sf_bounding_box_corners
+                .iter()
+                .map(|v| {
                     let v1 = transformation_translate_to_origin.transform_point(v);
                     transformation_rotate_scale.transform_point(&v1)
-                }).collect();
+                })
+                .collect();
 
             dbg!("{}", &source_sf_bounding_box);
             dbg!("{}", &source_sf_bounding_box_corners);
