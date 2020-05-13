@@ -149,7 +149,7 @@ impl ScalarField {
             voxel_dimensions.z * growth_offset as f32,
         );
         let bounding_box_offset =
-            bounding_box_tight.offset(growth_offset_vector_in_cartesian_units);
+            bounding_box_tight.offset(&growth_offset_vector_in_cartesian_units);
 
         // Target scalar field to be filled with points on the mesh surface.
         let mut scalar_field =

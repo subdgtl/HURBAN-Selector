@@ -7,6 +7,7 @@ use std::sync::Arc;
 use nalgebra::{Rotation, Vector3};
 
 use crate::analytics;
+use crate::convert::cast_i32;
 use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
@@ -21,6 +22,7 @@ pub enum FuncVoxelTransformError {
     TransformFailed,
     VoxelDimensionZeroOrLess,
     TooManyVoxels(u32, f32, f32, f32),
+    NoVolumeVoxels,
 }
 
 impl fmt::Display for FuncVoxelTransformError {
@@ -37,6 +39,7 @@ impl fmt::Display for FuncVoxelTransformError {
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
                 max_count, x, y, z
             ),
+            FuncVoxelTransformError::NoVolumeVoxels => write!(f, "The scalar field contains no volume voxels"),
         }
     }
 }
@@ -213,6 +216,7 @@ impl Func for FuncVoxelTransform {
         let voxel_dimensions = Vector3::from(args[1].unwrap_float3());
         let growth_u32 = args[2].unwrap_uint();
         let growth_f32 = growth_u32 as f32;
+        let growth_i32 = cast_i32(growth_u32);
         let fill = args[3].unwrap_boolean();
         let translate = Vector3::from(args[4].unwrap_float3());
         let rotate = args[5].unwrap_float3();
@@ -263,7 +267,7 @@ impl Func for FuncVoxelTransform {
 
         let scale = Vector3::from(scale);
 
-        if let Some(transformed_sf) = ScalarField::from_scalar_field_transformed(
+        if let Some(mut transformed_sf) = ScalarField::from_scalar_field_transformed(
             &voxel_cloud,
             &(0.0..=0.0),
             &voxel_dimensions,
@@ -271,33 +275,46 @@ impl Func for FuncVoxelTransform {
             &rotate,
             &scale,
         ) {
-            let meshing_range = if fill {
-                (Bound::Unbounded, Bound::Included(growth_f32))
-            } else {
-                (Bound::Included(-growth_f32), Bound::Included(growth_f32))
-            };
+            if let Some(transformed_sf_bounding_box) =
+                transformed_sf.bounding_box_volume_voxel_space(&(0.0..=0.0))
+            {
+                let growth_vector = Vector3::new(growth_i32, growth_i32, growth_i32);
+                let offset_bounding_box = transformed_sf_bounding_box.offset(&growth_vector);
+                transformed_sf.resize_to_bounding_box_voxel_space(&offset_bounding_box);
+                transformed_sf.compute_distance_field(&(0.0..=0.0));
 
-            let meshing_output = if marching_cubes {
-                transformed_sf.to_marching_cubes(&meshing_range)
-            } else {
-                transformed_sf.to_mesh(&meshing_range)
-            };
+                let meshing_range = if fill {
+                    (Bound::Unbounded, Bound::Included(growth_f32))
+                } else {
+                    (Bound::Included(-growth_f32), Bound::Included(growth_f32))
+                };
 
-            match meshing_output {
-                Some(value) => {
-                    if analyze_bbox {
-                        analytics::report_bounding_box_analysis(&value, log);
+                let meshing_output = if marching_cubes {
+                    transformed_sf.to_marching_cubes(&meshing_range)
+                } else {
+                    transformed_sf.to_mesh(&meshing_range)
+                };
+
+                match meshing_output {
+                    Some(value) => {
+                        if analyze_bbox {
+                            analytics::report_bounding_box_analysis(&value, log);
+                        }
+                        if analyze_mesh {
+                            analytics::report_mesh_analysis(&value, log);
+                        }
+                        Ok(Value::Mesh(Arc::new(value)))
                     }
-                    if analyze_mesh {
-                        analytics::report_mesh_analysis(&value, log);
+                    None => {
+                        let error = FuncError::new(FuncVoxelTransformError::WeldFailed);
+                        log(LogMessage::error(format!("Error: {}", error)));
+                        Err(error)
                     }
-                    Ok(Value::Mesh(Arc::new(value)))
                 }
-                None => {
-                    let error = FuncError::new(FuncVoxelTransformError::WeldFailed);
-                    log(LogMessage::error(format!("Error: {}", error)));
-                    Err(error)
-                }
+            } else {
+                let error = FuncError::new(FuncVoxelTransformError::NoVolumeVoxels);
+                log(LogMessage::error(format!("Error: {}", error)));
+                Err(error)
             }
         } else {
             {

@@ -153,7 +153,7 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
 
     /// Grows (or shrinks for negative values) the bounding box by the given
     /// offset distance.
-    pub fn offset(&self, offset: Vector3<T>) -> Self {
+    pub fn offset(&self, offset: &Vector3<T>) -> Self {
         BoundingBox::new(
             &Point3::new(
                 self.minimum_point.x - offset.x,
