@@ -205,7 +205,13 @@ pub enum BorderEdgeLoopsResult {
 /// The mesh may contain holes or islands, therefore it may have an unknown
 /// number of edge loops. If two or more edge loops meet at a single vertex, the
 /// result is non-deterministic: a random path of more possibilities is chosen
-/// to form an edge loop.
+/// to form an edge loop. The algorithm internally operates on oriented edges,
+/// however, it may revert them to become a valid continuation of an edge loop.
+/// This is to make sure it operates well also on non-orientable meshes. There
+/// is no user interaction with edges of any kind in our current front-end but
+/// once there is, it will be similar to other 3D editing software - all edges
+/// will seem unoriented, therefore the orientation of oriented edges doesn't
+/// matter.
 pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> BorderEdgeLoopsResult {
     let mut border_edges: Vec<_> = border_edges(edge_sharing).collect();
 
@@ -227,7 +233,7 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> BorderEdgeLoopsResult
     // represent the number of occurrences of each respective vertex in the
     // border edge list.
     let mut vertex_occurrence_counts: Vec<u32> = vec![0; cast_usize(max_vertex_index) + 1];
-    // Count the vertex orccurences
+    // Count the vertex occurrences
     for edge in &border_edges {
         vertex_occurrence_counts[cast_usize(edge.vertices.0)] += 1;
         vertex_occurrence_counts[cast_usize(edge.vertices.1)] += 1;
@@ -239,8 +245,11 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> BorderEdgeLoopsResult
     // the edge loop list is non-deterministic and possible wrong. If the vertex
     // appears only once, the mesh may be erroneous. There are holes in the list
     // of vertex occurrence, therefore some items may be zero.
-    // FIXME: Panic if the occurrence is 1
-    let mut non_deterministic = vertex_occurrence_counts
+
+    // FIXME: Examine situation when occurrence is 1 and determine what to do.
+    // In a broader scope start asserting all edge sharing data comes from a
+    // mesh and is not handcrafted and thus possibly invalid.
+    let non_deterministic = vertex_occurrence_counts
         .iter()
         .any(|count| *count != 2 && *count != 0);
 
@@ -277,8 +286,8 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> BorderEdgeLoopsResult
                 let back = current_chain[current_chain.len() - 1];
                 if back.chains_to(*other_edge) {
                     current_chain.push_back(*other_edge);
-                    found = true;
                     border_edges.remove(i);
+                    found = true;
 
                     break;
                 }
@@ -306,7 +315,7 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> BorderEdgeLoopsResult
         edge_loops.push(Vec::from(current_chain));
 
         if !loop_closed {
-            non_deterministic = true;
+            panic!("Edge loop not closed!");
         }
     }
 
@@ -871,94 +880,6 @@ mod tests {
         (faces, vertices)
     }
 
-    /// ```text
-    /// 0 @@@@@@@@@@@@@@@@@@@@@@@@@@ 1 &@@@@@@@@@@@@@  2 @@@@@@@@@@@@@@@@@@@@@@@@@ 3
-    ///  @@@@@@@@@@@@@@@@@@@@@@@@@@     @@@@@@@@@@@     @@@@@@@@@@@@@@@@@@@@@@@@@@@
-    ///   @@@@@@@@@@@@@@@@@@@@@@@@       @@@@@@@@@       @@@@@@@@@@@@@@@@@@@@@@@@
-    ///    @@@@@@@@@@@@@@@@@@@@@           @@@@@           @@@@@@@@@@@@@@@@@@@@@
-    ///      @@@@@@@@@@@@@@@@@@             @ @             @@@@@@@@@@@@@@@@@@       
-    ///       @@@@@@@@@@@@@@@                4               #@@@@@@@@@@@@@@@
-    ///        (@@@@@@@@@@@@                @ @                @@@@@@@@@@@@
-    ///          @@@@@@@@@.               @@@@@@@               @@@@@@@@@@
-    ///           @@@@@@@                @@@@@@@@@                @@@@@@/
-    ///             @@@@               @@@@@@@@@@@@                @@@@
-    ///                               @@@@@@@@@@@@@@@
-    ///                5 @@@@@@@@@@ 6                 7 @@@@@@@@@@@ 8
-    ///                 @@@@@@@@@@@                     @@@@@@@@@@@
-    ///                   @@@@@@@@                       @@@@@@@@
-    ///                    @@@@@                           @@@@@
-    ///                     .
-    ///                       9 @@@@@@@@@@@@@@@@@@@@@@@@@@@ 10
-    ///                         @@@@@@@@@@@@@@@@@@@@@@@@@@@
-    ///                          @@@@@@@@@@@@@@@@@@@@@@@@@
-    ///                           @@@@@@@@@@@@@@@@@@@@@@@
-    ///                             @@@@@@@@@@@@@@@@@@@
-    ///                              @@@@@@@@@@@@@@@@@
-    ///                                @@@@@@@@@@@@@
-    ///                                 @@@@@@@@@@@
-    ///                                  ,@@@@@@@
-    ///                                    @   @
-    ///                                      11
-    /// ```
-    fn tessellated_triangle_with_three_holes() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
-        let vertices = vec![
-            Point3::new(-3.0, 2.0, 0.0),
-            Point3::new(0.0, 2.0, 0.0),
-            Point3::new(0.0, 2.0, 0.0),
-            Point3::new(3.0, 2.0, 0.0),
-            Point3::new(0.0, 1.0, 0.0),
-            Point3::new(-1.0, 0.0, 0.0),
-            Point3::new(-1.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(-1.0, -1.0, 0.0),
-            Point3::new(1.0, -1.0, 0.0),
-            Point3::new(0.0, -3.0, 0.0),
-        ];
-
-        let faces = vec![
-            (0, 5, 1),
-            (1, 4, 2),
-            (2, 8, 3),
-            (4, 6, 7),
-            (5, 9, 6),
-            (7, 10, 8),
-            (9, 11, 10),
-        ];
-
-        (faces, vertices)
-    }
-
-    fn tessellated_triangle_with_three_holes_and_mismatched_winding(
-    ) -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
-        let vertices = vec![
-            Point3::new(-3.0, 2.0, 0.0),
-            Point3::new(0.0, 2.0, 0.0),
-            Point3::new(0.0, 2.0, 0.0),
-            Point3::new(3.0, 2.0, 0.0),
-            Point3::new(0.0, 1.0, 0.0),
-            Point3::new(-1.0, 0.0, 0.0),
-            Point3::new(-1.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(-1.0, -1.0, 0.0),
-            Point3::new(1.0, -1.0, 0.0),
-            Point3::new(0.0, -3.0, 0.0),
-        ];
-
-        let faces = vec![
-            (0, 5, 1),
-            (1, 4, 2),
-            (2, 8, 3),
-            (4, 7, 6), // flipped winding
-            (5, 9, 6),
-            (7, 10, 8),
-            (9, 11, 10),
-        ];
-
-        (faces, vertices)
-    }
-
     #[test]
     fn test_edge_sharing() {
         let (faces, vertices) = quad();
@@ -1310,7 +1231,6 @@ mod tests {
         ];
 
         if let BorderEdgeLoopsResult::Found(computed_loops) = border_edge_loops(&edge_sharing_map) {
-            dbg!("{}", computed_loops.clone());
             assert_eq!(computed_loops.len(), 1);
             assert_eq!(computed_loops[0].len(), correct_loop.len());
             for edge in correct_loop {
@@ -1375,72 +1295,24 @@ mod tests {
                     || computed_loops[0].len() == correct_loops[1].len()
             );
 
-            if computed_loops[0].len() == correct_loops[0].len() {
+            let computed_loops_tuple = if computed_loops[0].len() == correct_loops[0].len() {
                 assert_eq!(computed_loops[1].len(), correct_loops[1].len());
-                for (i, correct_loop) in correct_loops.iter().enumerate() {
-                    for edge in correct_loop {
-                        assert!(computed_loops[i].iter().any(|e| e == edge));
-                    }
-                }
+                (&computed_loops[0], &computed_loops[1])
             } else {
                 assert_eq!(computed_loops[1].len(), correct_loops[0].len());
-                for (i, correct_loop) in correct_loops.iter().enumerate() {
-                    for edge in correct_loop {
-                        assert!(computed_loops[(i + 1) % 2].iter().any(|e| e == edge));
-                    }
-                }
+                assert_eq!(computed_loops[0].len(), correct_loops[1].len());
+                (&computed_loops[1], &computed_loops[0])
+            };
+
+            for edge in &correct_loops[0] {
+                assert!(computed_loops_tuple.0.iter().any(|e| e == edge));
+            }
+
+            for edge in &correct_loops[1] {
+                assert!(computed_loops_tuple.1.iter().any(|e| e == edge));
             }
         } else {
             panic!();
-        }
-    }
-
-    #[test]
-    fn test_border_edge_loops_returns_nondeterministic_for_tessellated_triangle_with_three_holes() {
-        let (faces, vertices) = tessellated_triangle_with_three_holes();
-        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces,
-            vertices,
-            NormalStrategy::Sharp,
-        );
-
-        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_sharing(&oriented_edges);
-
-        if let BorderEdgeLoopsResult::FoundWithNondeterminism(edge_loops) =
-            border_edge_loops(&edge_sharing_map)
-        {
-            assert!(
-                edge_loops.len() > 1,
-                "More than one edge loop should be found"
-            );
-        } else {
-            panic!("The edge loops should be non-deterministic");
-        }
-    }
-
-    #[test]
-    fn test_border_edge_loops_returns_nondeterministic_for_tessellated_triangle_with_three_holes_and_mismatched_winding(
-    ) {
-        let (faces, vertices) = tessellated_triangle_with_three_holes_and_mismatched_winding();
-        let mesh = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
-            faces,
-            vertices,
-            NormalStrategy::Sharp,
-        );
-
-        let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
-        let edge_sharing_map = edge_sharing(&oriented_edges);
-
-        if let BorderEdgeLoopsResult::FoundWithNondeterminism(edge_loops) =
-            border_edge_loops(&edge_sharing_map)
-        {
-            assert!(
-                edge_loops.len() > 1,
-                "More than one edge loop should be found"
-            );
-        } else {
-            panic!("The edge loops should be non-deterministic");
         }
     }
 
