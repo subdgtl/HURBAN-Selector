@@ -14,6 +14,27 @@ use crate::plane::Plane;
 
 use super::{primitive, tools, Face, Mesh, NormalStrategy};
 
+/// Describes how should be empty (None) voxel be treated. Either as None or as
+/// a constant value. This is used for arithmetic functions, such as addition.
+#[allow(dead_code)]
+#[derive(Debug)]
+pub enum TreatEmpty {
+    AsNone,
+    AsValue(f32),
+}
+
+/// Selects falloff function for the falloff field computation. The parameter
+/// specifies a distance multiplier.
+#[allow(dead_code)]
+#[derive(Debug)]
+pub enum FalloffFunction {
+    Linear(f32),
+    Square(f32),
+    InverseLinear(f32),
+    InverseSquare(f32),
+    Perlin(f32),
+}
+
 /// Discrete Scalar field is an abstract representation of points in a block of
 /// space. Each point is a center of a voxel - an abstract box of given
 /// dimensions in a discrete spatial grid.
@@ -222,7 +243,6 @@ impl ScalarField {
     }
 
     /// Returns scalar field block end in absolute voxel coordinates.
-    #[allow(dead_code)]
     fn block_end(&self) -> Point3<i32> {
         Point3::new(
             self.block_start.x + cast_i32(self.block_dimensions.x) - 1,
@@ -995,6 +1015,45 @@ impl ScalarField {
         }
     }
 
+    /// Add values of the other scalar fields to the respective voxels of the
+    /// current scalar field. The current scalar field will not be resized, so
+    /// only the overlapping areas will be will be added. If the voxel in the
+    /// current or the other scalar field is None (does not contain any voxel or
+    /// does not exist), it is treated according to the selected
+    /// `empty_voxels_treatment` - it is either replaced with a constant value
+    /// or considered None and then also the resulting voxel will become None.
+    #[allow(dead_code)]
+    pub fn add_values(&mut self, other: &ScalarField, empty_voxels_treatment: TreatEmpty) {
+        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+            let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+                &self.voxel_dimensions,
+            );
+            let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                &cartesian_coordinate,
+                &other.voxel_dimensions,
+            );
+            let voxel_other = other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other);
+
+            match empty_voxels_treatment {
+                TreatEmpty::AsNone => {
+                    *voxel = if let (Some(value_self), Some(value_other)) = (&voxel, voxel_other) {
+                        Some(value_self + value_other)
+                    } else {
+                        None
+                    };
+                }
+                TreatEmpty::AsValue(v) => {
+                    let value_self = voxel.unwrap_or(v);
+                    let value_other = voxel_other.unwrap_or(v);
+                    *voxel = Some(value_self + value_other);
+                }
+            }
+        }
+    }
+
     /// Resize the scalar field block to match new block start and block
     /// dimensions.
     ///
@@ -1067,8 +1126,11 @@ impl ScalarField {
     /// volume. The voxels that were originally volume voxels, will be set to
     /// value 0. Voxels inside the closed volumes will have the distance value
     /// with a negative sign.
-    pub fn compute_distance_field<U>(&mut self, volume_value_range: &U)
-    where
+    pub fn compute_distance_field<U>(
+        &mut self,
+        volume_value_range: &U,
+        falloff_function: FalloffFunction,
+    ) where
         U: RangeBounds<f32>,
     {
         // Lookup table of neighbor coordinates
@@ -1200,13 +1262,98 @@ impl ScalarField {
                     }
                 }
             }
+            let is_outside = discovered_as_outer_and_empty[one_dimensional];
 
-            // Process the current voxel. If it is outside the volumes, set its
-            // value to be positive, if it's inside, set it to negative.
-            self.voxels[one_dimensional] = if discovered_as_outer_and_empty[one_dimensional] {
-                Some(distance)
-            } else {
-                Some(-distance)
+            // Process the current voxel.
+
+            self.voxels[one_dimensional] = match falloff_function {
+                FalloffFunction::Linear(mul) => {
+                    // distance values: 0 to infinity
+                    // suggested multiplier: 1
+                    // output values: 0 to infinity
+                    // value on volume: 0
+                    if distance == 0.0 {
+                        Some(0.0)
+                    } else {
+                        let value = distance * mul;
+                        if is_outside {
+                            Some(value)
+                        } else {
+                            Some(-value)
+                        }
+                    }
+                }
+                FalloffFunction::Square(mul) => {
+                    // distance values: 0 to infinity
+                    // suggested multiplier: 1
+                    // output values: 0 to infinity
+                    // value on volume: 0
+                    if distance == 0.0 {
+                        Some(0.0)
+                    } else {
+                        let value = distance * mul * distance * mul;
+                        if is_outside {
+                            Some(value)
+                        } else {
+                            Some(-value)
+                        }
+                    }
+                }
+                FalloffFunction::InverseLinear(mul) => {
+                    // distance values: 0 (excl) to infinity
+                    // suggested multiplier: 1
+                    // output values: 1 to 0 (excl)
+                    // value on volume: 1
+                    if distance == 0.0 {
+                        Some(1.0)
+                    } else {
+                        let value = 1.0 / (distance * mul);
+                        if is_outside {
+                            Some(value)
+                        } else {
+                            Some(1.0 + value)
+                        }
+                    }
+                }
+                FalloffFunction::InverseSquare(mul) => {
+                    // distance values: 0 (excl) to infinity
+                    // suggested multiplier: 1
+                    // output values: 1 to 0 (excl)
+                    // value on volume: 1
+                    if distance == 0.0 {
+                        Some(1.0)
+                    } else {
+                        let value = 1.0 / (distance * mul * distance * mul);
+                        if is_outside {
+                            Some(value)
+                        } else {
+                            Some(1.0 + value)
+                        }
+                    }
+                }
+                FalloffFunction::Perlin(mul) => {
+                    // http://www.geisswerks.com/ryan/BLOBS/blobs.html
+                    // distance values: 0 to 1
+                    // suggested multiplier: 1 / growth
+                    // output values: 0 to 1
+                    // value on volume: 1
+                    if distance == 0.0 {
+                        Some(1.0)
+                    } else {
+                        let value = distance
+                            * mul
+                            * distance
+                            * mul
+                            * distance
+                            * mul
+                            * (distance * mul * (distance * mul * 6.0 - 15.0) + 10.0);
+                        if is_outside {
+                            Some(1.0 / value)
+                        } else {
+                            Some(1.0 + value)
+                        }
+                    }
+                }
             };
         }
     }
