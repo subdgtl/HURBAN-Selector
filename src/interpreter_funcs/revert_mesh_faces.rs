@@ -47,17 +47,9 @@ impl Func for FuncRevertMeshFaces {
                 optional: false,
             },
             ParamInfo {
-                name: "Bounding Box Analysis",
-                description: "Reports basic and quick analytic information on the created mesh.",
-                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
-                    default_value: true,
-                }),
-                optional: false,
-            },
-            ParamInfo {
-                name: "Detailed Mesh Analysis",
+                name: "Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                              The analysis may be slow, therefore it is by default off.",
+                              The analysis may be slow, turn it on only when needed.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -76,15 +68,12 @@ impl Func for FuncRevertMeshFaces {
         log: &mut dyn FnMut(LogMessage),
     ) -> Result<Value, FuncError> {
         let mesh = args[0].unwrap_mesh();
-        let analyze_bbox = args[1].unwrap_boolean();
-        let analyze_mesh = args[2].unwrap_boolean();
+        let analyze_mesh = args[1].unwrap_boolean();
 
         let value = tools::revert_mesh_faces(mesh);
 
-        if analyze_bbox {
-            analytics::report_bounding_box_analysis(&value, log);
-        }
         if analyze_mesh {
+            analytics::report_bounding_box_analysis(&value, log);
             analytics::report_mesh_analysis(&value, log);
         }
         Ok(Value::Mesh(Arc::new(value)))
