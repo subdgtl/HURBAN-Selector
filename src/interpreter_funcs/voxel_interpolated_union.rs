@@ -234,6 +234,7 @@ impl Func for FuncInterpolatedUnion {
         ) {
             voxel_cloud1.resize_to_bounding_box_cartesian_space(&bounding_box);
             voxel_cloud1.compute_distance_field(&volume_value_range);
+            voxel_cloud2.resize_to_bounding_box_cartesian_space(&bounding_box);
             voxel_cloud2.compute_distance_field(&volume_value_range);
 
             voxel_cloud1.interpolate_to(&voxel_cloud2, interpolation_factor);
