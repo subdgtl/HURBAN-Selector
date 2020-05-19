@@ -248,7 +248,8 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> BorderEdgeLoopsResult
 
     // FIXME: Examine situation when occurrence is 1 and determine what to do.
     // In a broader scope start asserting all edge sharing data comes from a
-    // mesh and is not handcrafted and thus possibly invalid.
+    // mesh and is not handcrafted and thus possibly invalid and change API of
+    // `edge_sharing` to take `&Mesh` instead of iterator of edges.
     let non_deterministic = vertex_occurrence_counts
         .iter()
         .any(|count| *count != 2 && *count != 0);
@@ -266,15 +267,17 @@ pub fn border_edge_loops(edge_sharing: &EdgeSharingMap) -> BorderEdgeLoopsResult
             let mut found = false;
 
             for (i, other_edge) in border_edges.iter().enumerate() {
+                let other_edge_reverted = other_edge.to_reverted();
+
                 let front = current_chain[0];
                 if other_edge.chains_to(front) {
-                    current_chain.push_front(border_edges.remove(i));
+                    current_chain.push_front(*other_edge);
+                    border_edges.remove(i);
                     found = true;
 
                     break;
                 }
 
-                let other_edge_reverted = other_edge.to_reverted();
                 if other_edge_reverted.chains_to(front) {
                     current_chain.push_front(other_edge_reverted);
                     border_edges.remove(i);
@@ -1330,7 +1333,7 @@ mod tests {
 
         assert_eq!(
             BorderEdgeLoopsResult::Watertight,
-            border_edge_loops(&edge_sharing_map)
+            border_edge_loops(&edge_sharing_map),
         );
     }
 
