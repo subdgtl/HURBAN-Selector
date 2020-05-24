@@ -5,11 +5,9 @@ use std::fs;
 use std::io::{self, Read};
 use std::time::SystemTime;
 
-use crc32fast;
 #[cfg(test)]
 use mockall::{automock, lazy_static, predicate};
 use nalgebra::{Point3, Vector3};
-use tobj;
 
 use crate::mesh::{Mesh, NormalStrategy, TriangleFace};
 
@@ -189,7 +187,7 @@ impl<C: ObjCache> Importer<C> {
                 let checksum = calculate_checksum(&file_contents);
 
                 let models = match self.cache.get_by_checksum(checksum) {
-                    Some(models) => models.clone(),
+                    Some(models) => models,
                     None => {
                         let (tobj_models, _) = obj_buf_into_tobj(&mut file_contents.as_slice())?;
                         tobj_to_internal(tobj_models)?

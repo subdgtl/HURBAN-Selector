@@ -1,6 +1,6 @@
 pub use self::scene_renderer::{AddMeshError, DirectionalLight, GpuMesh, GpuMeshHandle, Material};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::io;
 use std::mem;
@@ -10,7 +10,6 @@ use nalgebra::Matrix4;
 
 use crate::convert::{cast_u32, cast_u64};
 
-use self::common::wgpu_size_of;
 use self::imgui_renderer::{ImguiRenderer, Options as ImguiRendererOptions};
 use self::scene_renderer::{Options as SceneRendererOptions, SceneRenderer};
 
@@ -38,9 +37,7 @@ const TEXTURE_FORMAT_DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Fl
 pub struct Options {
     /// Which multi-sampling setting to use.
     pub msaa: Msaa,
-    /// Whether to run with VSync or not.
-    pub vsync: bool,
-    /// Whether to select an explicit gpu backend for the renderer to use.
+    /// Whether to use explicit gpu backend or allow the renderer choose a default.
     pub backend: Option<GpuBackend>,
     /// Whether to select an explicit power preference profile for the renderer
     /// to use when choosing a GPU.
@@ -134,6 +131,22 @@ impl fmt::Display for GpuPowerPreference {
 #[derive(Debug, PartialEq, Eq)]
 pub struct OffscreenRenderTargetHandle(u64);
 
+pub struct OffscreenRenderTargetReadMapping {
+    width: u32,
+    height: u32,
+    mapping: wgpu::BufferReadMapping,
+}
+
+impl OffscreenRenderTargetReadMapping {
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    pub fn data(&self) -> &[u8] {
+        self.mapping.as_slice()
+    }
+}
+
 /// High level renderer abstraction over wgpu-rs.
 ///
 /// Handles GPU resources (swap chain, msaa buffer, depth buffer) and
@@ -149,18 +162,13 @@ pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface,
-    width: u32,
-    height: u32,
     swap_chain: wgpu::SwapChain,
-    msaa_texture_view: Option<wgpu::TextureView>,
-    color_texture_view: wgpu::TextureView,
-    depth_texture_view: wgpu::TextureView,
-    offscreen_render_targets: HashMap<u64, OffscreenRenderTarget>,
+    screen_render_target: RenderTarget,
+    offscreen_render_targets: HashMap<u64, RenderTarget>,
     offscreen_render_targets_next_handle: u64,
     blit_pass_bind_group_color: wgpu::BindGroup,
     #[cfg(not(feature = "dist"))]
     blit_pass_bind_group_depth: wgpu::BindGroup,
-    blit_texture_bind_group: wgpu::BindGroup,
     blit_render_pipeline: wgpu::RenderPipeline,
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
@@ -175,51 +183,57 @@ impl Renderer {
         imgui_font_atlas: imgui::FontAtlasRefMut,
         options: Options,
     ) -> Self {
-        let backends = match options.backend {
-            Some(GpuBackend::Vulkan) => wgpu::BackendBit::VULKAN,
-            Some(GpuBackend::D3d12) => wgpu::BackendBit::DX12,
-            Some(GpuBackend::Metal) => wgpu::BackendBit::METAL,
-            None => wgpu::BackendBit::PRIMARY,
+        #[cfg(target_os = "windows")]
+        const DEFAULT_BACKEND: GpuBackend = GpuBackend::Vulkan;
+        #[cfg(target_os = "macos")]
+        const DEFAULT_BACKEND: GpuBackend = GpuBackend::Metal;
+        #[cfg(target_os = "linux")]
+        const DEFAULT_BACKEND: GpuBackend = GpuBackend::Vulkan;
+
+        let gpu_backend = options.backend.unwrap_or(DEFAULT_BACKEND);
+        log::info!("GPU will run on {} backend", gpu_backend);
+
+        let backend_bits = match gpu_backend {
+            GpuBackend::Vulkan => wgpu::BackendBit::VULKAN,
+            GpuBackend::D3d12 => wgpu::BackendBit::DX12,
+            GpuBackend::Metal => wgpu::BackendBit::METAL,
         };
 
-        if let Some(backend) = options.backend {
-            log::info!("Selected {} GPU backend", backend);
-        } else {
-            log::info!("No GPU backend selected, will run on default backend");
-        }
+        let gpu_power_preference = options
+            .power_preference
+            .unwrap_or(GpuPowerPreference::LowPower);
+        log::info!("GPU will use power preference: {}", gpu_power_preference);
 
-        let power_preference = match options.power_preference {
-            Some(GpuPowerPreference::HighPerformance) => wgpu::PowerPreference::HighPerformance,
-            Some(GpuPowerPreference::LowPower) => wgpu::PowerPreference::LowPower,
-            None => wgpu::PowerPreference::Default,
+        let power_preference = match gpu_power_preference {
+            GpuPowerPreference::LowPower => wgpu::PowerPreference::LowPower,
+            GpuPowerPreference::HighPerformance => wgpu::PowerPreference::HighPerformance,
         };
-
-        if let Some(power_preference) = options.power_preference {
-            log::info!("Selected {} GPU power preference", power_preference);
-        } else {
-            log::info!("No GPU power preference selected, will select a default GPU");
-        }
 
         let surface = wgpu::Surface::create(window);
-        let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
-            power_preference,
-            backends,
-        })
+        let adapter = futures::executor::block_on(wgpu::Adapter::request(
+            &wgpu::RequestAdapterOptions {
+                power_preference,
+                compatible_surface: Some(&surface),
+            },
+            backend_bits,
+        ))
         .expect("Failed to acquire GPU adapter");
-        log::debug!("GPU adapter info: {:?}", adapter.get_info());
+        log::info!("GPU adapter info: {:?}", adapter.get_info());
 
-        let (device, mut queue) = adapter.request_device(&wgpu::DeviceDescriptor {
-            extensions: wgpu::Extensions {
-                anisotropic_filtering: false,
-            },
-            limits: wgpu::Limits {
-                // FIXME: @Optimization Use less bind groups if possible.
-                max_bind_groups: 6,
-            },
-        });
+        let (device, mut queue) =
+            futures::executor::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+                extensions: wgpu::Extensions {
+                    anisotropic_filtering: false,
+                },
+                limits: wgpu::Limits {
+                    // FIXME: @Optimization Use less bind groups if possible.
+                    max_bind_groups: 6,
+                },
+            }));
 
-        let swap_chain = create_swap_chain(&device, &surface, width, height, options.vsync);
-        log::info!("Selected multisampling level: {}", options.msaa);
+        let swap_chain = create_swap_chain(&device, &surface, width, height);
+
+        log::info!("GPU will use multisampling level: {}", options.msaa);
         let msaa_texture = if options.msaa.enabled() {
             Some(create_msaa_texture(
                 &device,
@@ -259,23 +273,28 @@ impl Renderer {
         )
         .expect("Failed to create imgui renderer");
 
-        let blit_pass_buffer_size = wgpu_size_of::<BlitPassUniforms>();
-        let blit_pass_buffer_color = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
-            .fill_from_slice(&[BlitPassUniforms {
+        let blit_pass_buffer_size = common::wgpu_size_of::<BlitPassUniforms>();
+        let blit_pass_buffer_color = common::create_buffer(
+            &device,
+            wgpu::BufferUsage::UNIFORM,
+            &[BlitPassUniforms {
                 blit_sampler: BlitSampler::Color,
-            }]);
+            }],
+        );
 
         #[cfg(not(feature = "dist"))]
-        let blit_pass_buffer_depth = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
-            .fill_from_slice(&[BlitPassUniforms {
+        let blit_pass_buffer_depth = common::create_buffer(
+            &device,
+            wgpu::BufferUsage::UNIFORM,
+            &[BlitPassUniforms {
                 blit_sampler: BlitSampler::Depth,
-            }]);
+            }],
+        );
 
         let blit_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
+                label: None,
+                bindings: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::UniformBuffer { dynamic: false },
@@ -283,6 +302,7 @@ impl Renderer {
             });
 
         let blit_pass_bind_group_color = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout: &blit_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -295,6 +315,7 @@ impl Renderer {
 
         #[cfg(not(feature = "dist"))]
         let blit_pass_bind_group_depth = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout: &blit_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -305,7 +326,8 @@ impl Renderer {
             }],
         });
 
-        let blit_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let color_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout: scene_renderer.sampled_texture_bind_group_layout(),
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -348,8 +370,10 @@ impl Renderer {
                 write_mask: wgpu::ColorWrite::ALL,
             }],
             depth_stencil_state: None,
-            index_format: wgpu::IndexFormat::Uint32,
-            vertex_buffers: &[],
+            vertex_state: wgpu::VertexStateDescriptor {
+                index_format: wgpu::IndexFormat::Uint32,
+                vertex_buffers: &[],
+            },
             sample_count: 1,
             sample_mask: !0,
             alpha_to_coverage_enabled: false,
@@ -359,18 +383,21 @@ impl Renderer {
             device,
             queue,
             surface,
-            width,
-            height,
             swap_chain,
-            msaa_texture_view: msaa_texture.map(|texture| texture.create_default_view()),
-            color_texture_view,
-            depth_texture_view: depth_texture.create_default_view(),
+            screen_render_target: RenderTarget {
+                width,
+                height,
+                msaa_texture_view: msaa_texture.map(|texture| texture.create_default_view()),
+                color_texture,
+                color_texture_view,
+                color_texture_bind_group,
+                depth_texture_view: depth_texture.create_default_view(),
+            },
             offscreen_render_targets: HashMap::new(),
             offscreen_render_targets_next_handle: 0,
             blit_pass_bind_group_color,
             #[cfg(not(feature = "dist"))]
             blit_pass_bind_group_depth,
-            blit_texture_bind_group,
             blit_render_pipeline,
             scene_renderer,
             imgui_renderer,
@@ -378,27 +405,25 @@ impl Renderer {
         }
     }
 
-    /// Update window size. Recreate swap chain, the primary render
-    /// target textures, and the bind group responsible for reading
-    /// the primary color texture.
+    /// Update window size. Recreate swap chain, the screen render target
+    /// textures, and the bind group responsible for reading the color texture.
     pub fn set_window_size(&mut self, width: u32, height: u32) {
-        if (width, height) != (self.width, self.height) {
+        if (width, height)
+            != (
+                self.screen_render_target.width,
+                self.screen_render_target.height,
+            )
+        {
             log::debug!(
                 "Resizing renderer screen textures to dimensions: {}x{}",
                 width,
                 height,
             );
 
-            self.width = width;
-            self.height = height;
+            self.screen_render_target.width = width;
+            self.screen_render_target.height = height;
 
-            self.swap_chain = create_swap_chain(
-                &self.device,
-                &self.surface,
-                width,
-                height,
-                self.options.vsync,
-            );
+            self.swap_chain = create_swap_chain(&self.device, &self.surface, width, height);
 
             if self.options.msaa.enabled() {
                 let msaa_texture = create_msaa_texture(
@@ -407,28 +432,31 @@ impl Renderer {
                     height,
                     self.options.msaa.sample_count(),
                 );
-                self.msaa_texture_view = Some(msaa_texture.create_default_view());
+                self.screen_render_target.msaa_texture_view =
+                    Some(msaa_texture.create_default_view());
             }
 
             let color_texture = create_color_texture(&self.device, width, height);
-            self.color_texture_view = color_texture.create_default_view();
-
+            self.screen_render_target.color_texture_view = color_texture.create_default_view();
             let depth_texture = create_depth_texture(
                 &self.device,
                 width,
                 height,
                 self.options.msaa.sample_count(),
             );
-            self.depth_texture_view = depth_texture.create_default_view();
+            self.screen_render_target.depth_texture_view = depth_texture.create_default_view();
 
             // Also need to re-create the bind group for reading the
             // newly created color texture.
-            self.blit_texture_bind_group =
+            self.screen_render_target.color_texture_bind_group =
                 self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: None,
                     layout: self.scene_renderer.sampled_texture_bind_group_layout(),
                     bindings: &[wgpu::Binding {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&self.color_texture_view),
+                        resource: wgpu::BindingResource::TextureView(
+                            &self.screen_render_target.color_texture_view,
+                        ),
                     }],
                 });
         }
@@ -472,21 +500,23 @@ impl Renderer {
         let color_texture_view = color_texture.create_default_view();
         let depth_texture = create_depth_texture(&self.device, width, height, msaa.sample_count());
 
-        let read_buffer_size = 4 * cast_u64(width) * cast_u64(height);
-        let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            size: read_buffer_size,
-            usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
+        let color_texture_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: self.scene_renderer.sampled_texture_bind_group_layout(),
+            bindings: &[wgpu::Binding {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&color_texture_view),
+            }],
         });
 
-        let offscreen_render_target = OffscreenRenderTarget {
+        let offscreen_render_target = RenderTarget {
             width,
             height,
             msaa_texture_view: msaa_texture.map(|texture| texture.create_default_view()),
             color_texture,
             color_texture_view,
+            color_texture_bind_group,
             depth_texture_view: depth_texture.create_default_view(),
-            read_buffer_size,
-            read_buffer,
         };
 
         self.offscreen_render_targets
@@ -501,27 +531,62 @@ impl Renderer {
         self.offscreen_render_targets.remove(&handle.0);
     }
 
-    pub fn offscreen_render_target_data<F: FnOnce(u32, u32, &[u8]) + 'static>(
+    pub fn offscreen_render_target_data(
         &mut self,
         handle: &OffscreenRenderTargetHandle,
-        callback: F,
-    ) {
+    ) -> OffscreenRenderTargetReadMapping {
         let offscreen_render_target = &self.offscreen_render_targets[&handle.0];
         let width = offscreen_render_target.width;
         let height = offscreen_render_target.height;
 
-        // If the render target was rendered to, we already filled
-        // this buffer.
-        offscreen_render_target.read_buffer.map_read_async(
-            0,
-            offscreen_render_target.read_buffer_size,
-            move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
-                let data = result.unwrap().data;
-                callback(width, height, data);
+        // FIXME: @Optimization Reuse a single buffer and only recreate if larger needed
+        let read_buffer_size = 4 * cast_u64(width) * cast_u64(height);
+        let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: read_buffer_size,
+            usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
+        });
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        encoder.copy_texture_to_buffer(
+            wgpu::TextureCopyView {
+                texture: &offscreen_render_target.color_texture,
+                mip_level: 0,
+                array_layer: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            wgpu::BufferCopyView {
+                buffer: &read_buffer,
+                offset: 0,
+                bytes_per_row: cast_u32(mem::size_of::<[u8; 4]>()) * width,
+                rows_per_image: height,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth: 1,
             },
         );
 
-        self.device.poll(true);
+        self.queue.submit(&[encoder.finish()]);
+
+        // Read from the buffer we just copied to. Immediately after we request
+        // the mapping we wait on the device to provide it and block.
+
+        // FIXME: Make this async - let's not wait, let's poll
+        let future = read_buffer.map_read(0, read_buffer_size);
+
+        self.device.poll(wgpu::Maintain::Wait);
+        let mapping = futures::executor::block_on(future).expect("Failed to map buffer");
+
+        OffscreenRenderTargetReadMapping {
+            width,
+            height,
+            mapping,
+        }
     }
 
     /// Uploads mesh to the GPU to be used in scene rendering.
@@ -565,7 +630,10 @@ impl Renderer {
 
     /// Starts recording draw commands in an append only log.
     ///
-    /// Underlying render passes will use given `clear_color`.
+    /// Underlying render passes will use given `clear_color`. If
+    /// `offscreen_render_target_handle` is given, it will be used instead of
+    /// the screen render target. If swap chain texture is requested, it can be
+    /// rendered into.
     ///
     /// Everything recorded in a command buffer holds until it is overriden by
     /// later recordings, e.g. `CommandBuffer::set_light` can be called multiple
@@ -573,32 +641,48 @@ impl Renderer {
     ///
     /// Render target resources, such as the offscreen texture or the shadow map
     /// are cleared exactly once per command buffer.
-    pub fn begin_command_buffer(&mut self, clear_color: [f64; 4]) -> CommandBuffer {
-        let frame = self.swap_chain.get_next_texture();
+    pub fn begin_command_buffer(
+        &mut self,
+        clear_color: [f64; 4],
+        offscreen_render_target_handle: Option<&OffscreenRenderTargetHandle>,
+        request_swap_chain_texture: bool,
+    ) -> CommandBuffer {
+        let render_target = if let Some(handle) = offscreen_render_target_handle {
+            &self.offscreen_render_targets[&handle.0]
+        } else {
+            &self.screen_render_target
+        };
+
+        let frame = if request_swap_chain_texture {
+            if let Ok(frame) = self.swap_chain.get_next_texture() {
+                Some(frame)
+            } else {
+                log::warn!("Requesting swap chain texture timed out");
+                None
+            }
+        } else {
+            None
+        };
+
         let encoder = self
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         CommandBuffer {
-            backbuffer_needs_clearing: true,
-            primary_render_target_needs_clearing: true,
+            swap_chain_needs_clearing: true,
+            render_target_needs_clearing: true,
             clear_color,
             device: &self.device,
             queue: &mut self.queue,
             encoder: Some(encoder),
             frame,
-            msaa_texture_view: &self.msaa_texture_view,
-            color_texture_view: &self.color_texture_view,
-            depth_texture_view: &self.depth_texture_view,
-            offscreen_render_targets: &self.offscreen_render_targets,
-            offscreen_render_targets_cleared: HashSet::new(),
+            render_target,
             blit_pass_bind_group_color: &self.blit_pass_bind_group_color,
             #[cfg(not(feature = "dist"))]
             blit_pass_bind_group_depth: &self.blit_pass_bind_group_depth,
-            blit_texture_bind_group: &self.blit_texture_bind_group,
             blit_render_pipeline: &self.blit_render_pipeline,
             scene_renderer: &mut self.scene_renderer,
-            imgui_renderer: &self.imgui_renderer,
+            imgui_renderer: &mut self.imgui_renderer,
         }
     }
 }
@@ -606,25 +690,20 @@ impl Renderer {
 /// An ongoing recording of draw commands. Submit with
 /// `CommandBuffer::submit()`. Must be submitted before it is dropped.
 pub struct CommandBuffer<'a> {
-    backbuffer_needs_clearing: bool,
-    primary_render_target_needs_clearing: bool,
+    swap_chain_needs_clearing: bool,
+    render_target_needs_clearing: bool,
     clear_color: [f64; 4],
     device: &'a wgpu::Device,
     queue: &'a mut wgpu::Queue,
     encoder: Option<wgpu::CommandEncoder>,
-    frame: wgpu::SwapChainOutput<'a>,
-    msaa_texture_view: &'a Option<wgpu::TextureView>,
-    color_texture_view: &'a wgpu::TextureView,
-    depth_texture_view: &'a wgpu::TextureView,
-    offscreen_render_targets: &'a HashMap<u64, OffscreenRenderTarget>,
-    offscreen_render_targets_cleared: HashSet<u64>,
+    frame: Option<wgpu::SwapChainOutput>,
+    render_target: &'a RenderTarget,
     blit_pass_bind_group_color: &'a wgpu::BindGroup,
     #[cfg(not(feature = "dist"))]
     blit_pass_bind_group_depth: &'a wgpu::BindGroup,
-    blit_texture_bind_group: &'a wgpu::BindGroup,
     blit_render_pipeline: &'a wgpu::RenderPipeline,
     scene_renderer: &'a mut SceneRenderer,
-    imgui_renderer: &'a ImguiRenderer,
+    imgui_renderer: &'a mut ImguiRenderer,
 }
 
 impl CommandBuffer<'_> {
@@ -651,8 +730,8 @@ impl CommandBuffer<'_> {
         );
     }
 
-    /// Record a mesh drawing operation targeting the primary render target to
-    /// the command buffer.
+    /// Record a mesh drawing operation targeting the render target to the
+    /// command buffer.
     ///
     /// # Warning
     ///
@@ -666,173 +745,121 @@ impl CommandBuffer<'_> {
     /// objects rendered in subsequent calls (in addition to casting shadows on
     /// objects rendered within the same call), but the shadows won't be present
     /// on objects rendered in prior calls.
-    pub fn draw_meshes_to_primary_render_target<'a, P>(&mut self, mesh_props: P)
+    pub fn draw_meshes_to_render_target<'a, P>(&mut self, mesh_props: P)
     where
         P: Iterator<Item = (&'a GpuMeshHandle, Material, bool)> + Clone,
     {
         self.scene_renderer.draw_meshes(
-            self.primary_render_target_needs_clearing,
+            self.render_target_needs_clearing,
             self.clear_color,
             self.encoder
                 .as_mut()
                 .expect("Need encoder to record drawing"),
-            self.msaa_texture_view.as_ref(),
-            &self.color_texture_view,
-            &self.depth_texture_view,
+            self.render_target.msaa_texture_view.as_ref(),
+            &self.render_target.color_texture_view,
+            &self.render_target.depth_texture_view,
             mesh_props,
         );
 
-        self.primary_render_target_needs_clearing = false;
+        self.render_target_needs_clearing = false;
     }
 
-    /// Record a mesh drawing operation targeting a previously created
-    /// offcreen render target to the command buffer.
-    ///
-    /// # Warning
-    ///
-    /// Drawing consists of multiple render passes, some of which compute
-    /// metadata (e.g. a shadow map) that is later used in the actual
-    /// drawing. Calling this multiple times adds to this metadata every
-    /// time. Each subsequent call will have available the information computed
-    /// in previous calls, but not vice versa.
-    ///
-    /// For example, An object rendered in a first call will cast shadows on
-    /// objects rendered in subsequent calls (in addition to casting shadows on
-    /// objects rendered within the same call), but the shadows won't be present
-    /// on objects rendered in prior calls.
-    pub fn draw_meshes_to_offscreen_render_target<'a, P>(
-        &mut self,
-        render_target_handle: &OffscreenRenderTargetHandle,
-        mesh_props: P,
-    ) where
-        P: Iterator<Item = (&'a GpuMeshHandle, Material, bool)> + Clone,
-    {
-        let offscreen_render_target = &self.offscreen_render_targets[&render_target_handle.0];
-        let offscreen_render_target_needs_clearing = self
-            .offscreen_render_targets_cleared
-            .insert(render_target_handle.0);
-
-        let encoder = self
-            .encoder
-            .as_mut()
-            .expect("Need encoder to record drawing");
-
-        self.scene_renderer.draw_meshes(
-            offscreen_render_target_needs_clearing,
-            self.clear_color,
-            encoder,
-            offscreen_render_target.msaa_texture_view.as_ref(),
-            &offscreen_render_target.color_texture_view,
-            &offscreen_render_target.depth_texture_view,
-            mesh_props,
-        );
-
-        encoder.copy_texture_to_buffer(
-            wgpu::TextureCopyView {
-                texture: &offscreen_render_target.color_texture,
-                mip_level: 0,
-                array_layer: 0,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            wgpu::BufferCopyView {
-                buffer: &offscreen_render_target.read_buffer,
-                offset: 0,
-                row_pitch: cast_u32(mem::size_of::<[u8; 4]>()) * offscreen_render_target.width,
-                image_height: offscreen_render_target.height,
-            },
-            wgpu::Extent3d {
-                width: offscreen_render_target.width,
-                height: offscreen_render_target.height,
-                depth: 1,
-            },
-        );
-    }
-
-    /// Record a UI drawing operation targeting the backbuffer to the
+    /// Record a UI drawing operation targeting the swap chain to the
     /// command buffer. Textures referenced by the draw data must be
     /// present in the renderer.
-    pub fn draw_ui_to_backbuffer(&mut self, draw_data: &imgui::DrawData) {
-        self.imgui_renderer
-            .draw_ui(
-                self.backbuffer_needs_clearing,
-                self.clear_color,
-                self.device,
-                self.encoder
-                    .as_mut()
-                    .expect("Need encoder to record drawing"),
-                &self.frame.view,
-                draw_data,
-            )
-            .expect("Imgui drawing failed");
+    pub fn draw_ui_to_swap_chain(&mut self, draw_data: &imgui::DrawData) {
+        if let Some(frame) = &self.frame {
+            self.imgui_renderer
+                .draw_ui(
+                    self.swap_chain_needs_clearing,
+                    self.clear_color,
+                    self.device,
+                    self.encoder
+                        .as_mut()
+                        .expect("Need encoder to record drawing"),
+                    &frame.view,
+                    draw_data,
+                )
+                .expect("Imgui drawing failed");
 
-        self.backbuffer_needs_clearing = false;
+            self.swap_chain_needs_clearing = false;
+        } else {
+            log::warn!("Can not draw to absent swap chain texture");
+        }
     }
 
-    /// Record a copy operation from the primary render target to the
-    /// backbuffer.
-    pub fn blit_primary_render_target_to_backbuffer(&mut self) {
-        let encoder = self
-            .encoder
-            .as_mut()
-            .expect("Need encoder to record drawing");
+    /// Record a copy operation from the render target to the swap chain.
+    pub fn blit_render_target_to_swap_chain(&mut self) {
+        if let Some(frame) = &self.frame {
+            let encoder = self
+                .encoder
+                .as_mut()
+                .expect("Need encoder to record drawing");
 
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: &self.frame.view,
-                resolve_target: None,
-                load_op: if self.backbuffer_needs_clearing {
-                    wgpu::LoadOp::Clear
-                } else {
-                    wgpu::LoadOp::Load
-                },
-                store_op: wgpu::StoreOp::Store,
-                // If we see this color, something has gone wrong :)
-                clear_color: COLOR_DEBUG_PURPLE,
-            }],
-            depth_stencil_attachment: None,
-        });
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                    attachment: &frame.view,
+                    resolve_target: None,
+                    load_op: if self.swap_chain_needs_clearing {
+                        wgpu::LoadOp::Clear
+                    } else {
+                        wgpu::LoadOp::Load
+                    },
+                    store_op: wgpu::StoreOp::Store,
+                    // If we see this color, something has gone wrong :)
+                    clear_color: COLOR_DEBUG_PURPLE,
+                }],
+                depth_stencil_attachment: None,
+            });
 
-        rpass.set_pipeline(self.blit_render_pipeline);
-        rpass.set_bind_group(0, &self.blit_pass_bind_group_color, &[]);
-        rpass.set_bind_group(1, self.scene_renderer.sampler_bind_group(), &[]);
-        rpass.set_bind_group(2, self.blit_texture_bind_group, &[]);
-        rpass.draw(0..3, 0..1);
+            rpass.set_pipeline(self.blit_render_pipeline);
+            rpass.set_bind_group(0, &self.blit_pass_bind_group_color, &[]);
+            rpass.set_bind_group(1, self.scene_renderer.sampler_bind_group(), &[]);
+            rpass.set_bind_group(2, &self.render_target.color_texture_bind_group, &[]);
+            rpass.draw(0..3, 0..1);
 
-        self.backbuffer_needs_clearing = false;
+            self.swap_chain_needs_clearing = false;
+        } else {
+            log::warn!("Can not draw to absent swap chain texture");
+        }
     }
 
-    /// Record a copy operation from the shadow map to the backbuffer. Use for
+    /// Record a copy operation from the shadow map to the swap chain. Use for
     /// debugging.
     #[cfg(not(feature = "dist"))]
-    pub fn blit_shadow_map_to_backbuffer(&mut self) {
-        let encoder = self
-            .encoder
-            .as_mut()
-            .expect("Need encoder to record drawing");
+    pub fn blit_shadow_map_to_swap_chain(&mut self) {
+        if let Some(frame) = &self.frame {
+            let encoder = self
+                .encoder
+                .as_mut()
+                .expect("Need encoder to record drawing");
 
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: &self.frame.view,
-                resolve_target: None,
-                load_op: if self.backbuffer_needs_clearing {
-                    wgpu::LoadOp::Clear
-                } else {
-                    wgpu::LoadOp::Load
-                },
-                store_op: wgpu::StoreOp::Store,
-                // If we see this color, something has gone wrong :)
-                clear_color: COLOR_DEBUG_PURPLE,
-            }],
-            depth_stencil_attachment: None,
-        });
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                    attachment: &frame.view,
+                    resolve_target: None,
+                    load_op: if self.swap_chain_needs_clearing {
+                        wgpu::LoadOp::Clear
+                    } else {
+                        wgpu::LoadOp::Load
+                    },
+                    store_op: wgpu::StoreOp::Store,
+                    // If we see this color, something has gone wrong :)
+                    clear_color: COLOR_DEBUG_PURPLE,
+                }],
+                depth_stencil_attachment: None,
+            });
 
-        rpass.set_pipeline(self.blit_render_pipeline);
-        rpass.set_bind_group(0, &self.blit_pass_bind_group_depth, &[]);
-        rpass.set_bind_group(1, self.scene_renderer.sampler_bind_group(), &[]);
-        rpass.set_bind_group(2, self.scene_renderer.shadow_map_texture_bind_group(), &[]);
-        rpass.draw(0..3, 0..1);
+            rpass.set_pipeline(self.blit_render_pipeline);
+            rpass.set_bind_group(0, &self.blit_pass_bind_group_depth, &[]);
+            rpass.set_bind_group(1, self.scene_renderer.sampler_bind_group(), &[]);
+            rpass.set_bind_group(2, self.scene_renderer.shadow_map_texture_bind_group(), &[]);
+            rpass.draw(0..3, 0..1);
 
-        self.backbuffer_needs_clearing = false;
+            self.swap_chain_needs_clearing = false;
+        } else {
+            log::warn!("Can not draw to absent swap chain texture");
+        }
     }
 
     /// Submit the built command buffer for drawing.
@@ -854,28 +881,27 @@ impl Drop for CommandBuffer<'_> {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, zerocopy::AsBytes)]
 struct BlitPassUniforms {
     blit_sampler: BlitSampler,
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, zerocopy::AsBytes)]
 enum BlitSampler {
     Color = 0,
     #[cfg(not(feature = "dist"))]
     Depth = 1,
 }
 
-struct OffscreenRenderTarget {
+struct RenderTarget {
     width: u32,
     height: u32,
     msaa_texture_view: Option<wgpu::TextureView>,
     color_texture: wgpu::Texture,
     color_texture_view: wgpu::TextureView,
+    color_texture_bind_group: wgpu::BindGroup,
     depth_texture_view: wgpu::TextureView,
-    read_buffer_size: u64,
-    read_buffer: wgpu::Buffer,
 }
 
 fn create_swap_chain(
@@ -883,15 +909,8 @@ fn create_swap_chain(
     surface: &wgpu::Surface,
     width: u32,
     height: u32,
-    vsync: bool,
 ) -> wgpu::SwapChain {
-    log::debug!(
-        "Creating swapchain with dimensions {}x{} and vsync: {}",
-        width,
-        height,
-        vsync,
-    );
-
+    log::debug!("Creating swapchain with dimensions {}x{}", width, height);
     device.create_swap_chain(
         &surface,
         &wgpu::SwapChainDescriptor {
@@ -899,11 +918,7 @@ fn create_swap_chain(
             format: TEXTURE_FORMAT_SWAP_CHAIN,
             width,
             height,
-            present_mode: if vsync {
-                wgpu::PresentMode::Vsync
-            } else {
-                wgpu::PresentMode::NoVsync
-            },
+            present_mode: wgpu::PresentMode::Fifo,
         },
     )
 }
@@ -917,6 +932,7 @@ fn create_color_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu:
     );
 
     device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
         size: wgpu::Extent3d {
             width,
             height,
@@ -953,6 +969,7 @@ fn create_msaa_texture(
     );
 
     device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
         size: wgpu::Extent3d {
             width,
             height,
@@ -982,6 +999,7 @@ fn create_depth_texture(
     );
 
     device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
         size: wgpu::Extent3d {
             width,
             height,

@@ -13,8 +13,7 @@ impl Func for FuncJoinGroup {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Join Group",
-            description:
-                "JOIN MESH GROUP INTO A SINGLE MESH\n\
+            description: "JOIN MESH GROUP INTO A SINGLE MESH\n\
                  \n\
                  Joins all mesh geometries from a mesh group into a single mesh. \
                  Creates a new mesh containing vertices and triangles \

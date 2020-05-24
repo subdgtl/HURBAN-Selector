@@ -3,14 +3,12 @@ pub use crate::renderer::{GpuBackend, GpuPowerPreference, Msaa};
 pub use crate::ui::Theme;
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::f32;
 use std::fs::File;
 use std::io::BufWriter;
 use std::mem;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -73,8 +71,6 @@ pub struct Options {
     pub theme: Theme,
     /// Which multi-sampling setting to use.
     pub msaa: Msaa,
-    /// Whether to run with VSync or not.
-    pub vsync: bool,
     /// Whether to select an explicit gpu backend for the renderer to use.
     pub gpu_backend: Option<GpuBackend>,
     /// Whether to select an explicit power preference profile for the renderer
@@ -154,22 +150,20 @@ pub fn init_and_run(options: Options) -> ! {
     let initial_window_size = window.inner_size();
     let initial_window_width = initial_window_size.width;
     let initial_window_height = initial_window_size.height;
-    let initial_window_aspect_ratio = initial_window_width as f32 / initial_window_height as f32;
 
     let mut session = Session::new();
     session.set_autorun_delay(Some(DURATION_AUTORUN_DELAY));
+
     let mut input_manager = InputManager::new();
-
-    let notifications = Rc::new(RefCell::new(Notifications::with_ttl(DURATION_NOTIFICATION)));
-
+    let mut notifications = Notifications::with_ttl(DURATION_NOTIFICATION);
     let mut ui = Ui::new(&window, options.theme);
-
     let mut project_status = project::ProjectStatus::default();
 
     change_window_title(&window, &project_status);
 
     let mut camera = Camera::new(
-        initial_window_aspect_ratio,
+        initial_window_width,
+        initial_window_height,
         5.0,
         270_f32.to_radians(),
         60_f32.to_radians(),
@@ -211,13 +205,7 @@ pub fn init_and_run(options: Options) -> ! {
         initial_window_height,
         ui.fonts(),
         RendererOptions {
-            // FIXME: @Correctness Msaa X4 is the only value currently
-            // working on all devices we tried. Once msaa capabilities
-            // are queryable with wgpu `Limits`, we should have a
-            // chain of options the renderer tries before giving up,
-            // and this field should be renamed to `desired_msaa`.
             msaa: options.msaa,
-            vsync: options.vsync,
             backend: options.gpu_backend,
             power_preference: options.gpu_power_preference,
             flat_material_color: [0.0, 0.0, 0.0, 0.1],
@@ -420,7 +408,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 .expect("Failed to add ground plane mesh"),
                         );
 
-                        notifications.borrow_mut().push(
+                        notifications.push(
                             time,
                             NotificationLevel::Info,
                             "Execution of the Operation pipeline finished successfully.",
@@ -428,7 +416,7 @@ pub fn init_and_run(options: Options) -> ! {
                     }
 
                     PollNotification::FinishedWithError(error_message) => {
-                        notifications.borrow_mut().push(
+                        notifications.push(
                             time,
                             NotificationLevel::Error,
                             format!(
@@ -482,7 +470,7 @@ pub fn init_and_run(options: Options) -> ! {
                     &mut viewport_draw_used_values,
                     &mut project_status,
                     &mut session,
-                    &mut notifications.borrow_mut(),
+                    &mut notifications,
                 );
 
                 ui_frame.draw_subdigital_logo(
@@ -579,7 +567,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                             project_status.save(&save_path);
                             change_window_title(&window, &project_status);
-                            notifications.borrow_mut().push(
+                            notifications.push(
                                 time,
                                 NotificationLevel::Info,
                                 format!("Project saved as {}", &save_path),
@@ -634,7 +622,7 @@ pub fn init_and_run(options: Options) -> ! {
 
                             change_window_title(&window, &project_status);
 
-                            notifications.borrow_mut().push(
+                            notifications.push(
                                 time,
                                 NotificationLevel::Info,
                                 format!("Opened project {}", &open_path.to_string_lossy()),
@@ -675,7 +663,7 @@ pub fn init_and_run(options: Options) -> ! {
                     height_logos,
                 );
 
-                ui_frame.draw_notifications_window(&notifications.borrow());
+                ui_frame.draw_notifications_window(&notifications);
 
                 if ui_frame.draw_pipeline_window(time, &mut session) {
                     project_status.changed_since_last_save = true;
@@ -686,7 +674,7 @@ pub fn init_and_run(options: Options) -> ! {
                 if ui_frame.draw_operations_window(
                     time,
                     &mut session,
-                    &mut notifications.borrow_mut(),
+                    &mut notifications,
                     DURATION_AUTORUN_DELAY,
                 ) {
                     project_status.changed_since_last_save = true;
@@ -838,7 +826,7 @@ pub fn init_and_run(options: Options) -> ! {
                         match exporter::export_obj(&mut writer, unused_values_iter, f32::DIGITS) {
                             Ok(()) => {
                                 log::info!("OBJ exported to: {}", path);
-                                notifications.borrow_mut().push(
+                                notifications.push(
                                     time,
                                     NotificationLevel::Info,
                                     format!("OBJ exported to: {}", path),
@@ -846,7 +834,7 @@ pub fn init_and_run(options: Options) -> ! {
                             }
                             Err(err) => {
                                 log::error!("OBJ export failed: {}", err);
-                                notifications.borrow_mut().push(
+                                notifications.push(
                                     time,
                                     NotificationLevel::Error,
                                     "OBJ export failed",
@@ -855,15 +843,6 @@ pub fn init_and_run(options: Options) -> ! {
                         }
                     }
                 }
-
-                let screenshot_render_target = if take_screenshot {
-                    Some(renderer.add_offscreen_render_target(
-                        screenshot_options.width,
-                        screenshot_options.height,
-                    ))
-                } else {
-                    None
-                };
 
                 if input_state.close_requested {
                     if project_status.changed_since_last_save {
@@ -885,7 +864,7 @@ pub fn init_and_run(options: Options) -> ! {
                     if width >= 16 && height >= 16 {
                         screenshot_options.width = width;
                         screenshot_options.height = height;
-                        camera.set_viewport_aspect_ratio(width as f32 / height as f32);
+                        camera.set_screen_dimensions(width, height);
                         renderer.set_window_size(width, height);
                     } else {
                         log::warn!("Ignoring new window physical size {}x{}", width, height);
@@ -902,108 +881,11 @@ pub fn init_and_run(options: Options) -> ! {
                         camera_interpolation = None;
                     }
                 }
-                notifications.borrow_mut().update(time);
+                notifications.update(time);
 
-                let imgui_draw_data = ui_frame.render(&window);
+                // -- Draw to offscreen render target for screenshots --
 
-                let mut window_command_buffer = renderer.begin_command_buffer(clear_color);
-                window_command_buffer.set_light(&compute_light(
-                    &ground_plane_mesh_bounding_box,
-                    &scene_bounding_box,
-                    &camera,
-                ));
-                window_command_buffer
-                    .set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
-
-                match viewport_draw_mode {
-                    ViewportDrawMode::Wireframe => {
-                        window_command_buffer.draw_meshes_to_primary_render_target(
-                            scene_gpu_mesh_handles
-                                .values()
-                                .filter(|(used, _)| viewport_draw_used_values || !used)
-                                .map(|(used, handle)| {
-                                    if *used {
-                                        (handle, Material::TransparentMatcapShaded, false)
-                                    } else {
-                                        (handle, Material::Edges, true)
-                                    }
-                                }),
-                        );
-                    }
-                    ViewportDrawMode::Shaded => {
-                        window_command_buffer.draw_meshes_to_primary_render_target(
-                            scene_gpu_mesh_handles
-                                .values()
-                                .filter(|(used, _)| viewport_draw_used_values || !used)
-                                .map(|(used, handle)| {
-                                    if *used {
-                                        (handle, Material::TransparentMatcapShaded, false)
-                                    } else {
-                                        (handle, Material::MatcapShaded, true)
-                                    }
-                                }),
-                        );
-                    }
-                    ViewportDrawMode::ShadedWireframe => {
-                        window_command_buffer.draw_meshes_to_primary_render_target(
-                            scene_gpu_mesh_handles
-                                .values()
-                                .filter(|(used, _)| viewport_draw_used_values || !used)
-                                .map(|(used, handle)| {
-                                    if *used {
-                                        (handle, Material::TransparentMatcapShaded, false)
-                                    } else {
-                                        (handle, Material::MatcapShadedEdges, true)
-                                    }
-                                }),
-                        );
-                    }
-                    ViewportDrawMode::ShadedWireframeXray => {
-                        window_command_buffer.draw_meshes_to_primary_render_target(
-                            scene_gpu_mesh_handles
-                                .values()
-                                .filter(|(used, _)| viewport_draw_used_values || !used)
-                                .map(|(used, handle)| {
-                                    if *used {
-                                        (handle, Material::TransparentMatcapShaded, false)
-                                    } else {
-                                        (handle, Material::MatcapShaded, true)
-                                    }
-                                }),
-                        );
-
-                        window_command_buffer.draw_meshes_to_primary_render_target(
-                            scene_gpu_mesh_handles
-                                .values()
-                                .filter(|(used, _)| !used)
-                                .map(|(_, handle)| (handle, Material::EdgesXray, false)),
-                        );
-                    }
-                }
-
-                window_command_buffer.draw_meshes_to_primary_render_target(
-                    ground_plane_gpu_mesh_handle
-                        .iter()
-                        .map(|handle| (handle, Material::FlatWithShadows, false)),
-                );
-
-                #[cfg(not(feature = "dist"))]
-                match renderer_debug_view {
-                    RendererDebugView::Off => {
-                        window_command_buffer.blit_primary_render_target_to_backbuffer();
-                    }
-                    RendererDebugView::ShadowMap => {
-                        window_command_buffer.blit_shadow_map_to_backbuffer();
-                    }
-                }
-
-                #[cfg(feature = "dist")]
-                window_command_buffer.blit_primary_render_target_to_backbuffer();
-
-                window_command_buffer.draw_ui_to_backbuffer(imgui_draw_data);
-                window_command_buffer.submit();
-
-                if let Some(screenshot_render_target) = screenshot_render_target {
+                if take_screenshot {
                     log::info!(
                         "Capturing screenshot with dimensions {}x{} and transparency {}",
                         screenshot_options.width,
@@ -1011,11 +893,14 @@ pub fn init_and_run(options: Options) -> ! {
                         screenshot_options.transparent,
                     );
 
-                    let screenshot_aspect_ratio =
-                        screenshot_options.width as f32 / screenshot_options.height as f32;
+                    let screenshot_render_target = renderer.add_offscreen_render_target(
+                        screenshot_options.width,
+                        screenshot_options.height,
+                    );
 
                     let mut screenshot_camera = camera.clone();
-                    screenshot_camera.set_viewport_aspect_ratio(screenshot_aspect_ratio);
+                    screenshot_camera
+                        .set_screen_dimensions(screenshot_options.width, screenshot_options.height);
 
                     let screenshot_clear_color = if screenshot_options.transparent {
                         [0.0; 4]
@@ -1023,13 +908,12 @@ pub fn init_and_run(options: Options) -> ! {
                         clear_color
                     };
 
-                    let mut screenshot_command_buffer =
-                        renderer.begin_command_buffer(screenshot_clear_color);
-                    screenshot_command_buffer.set_light(&compute_light(
-                        &ground_plane_mesh_bounding_box,
-                        &scene_bounding_box,
-                        &camera,
-                    ));
+                    let mut screenshot_command_buffer = renderer.begin_command_buffer(
+                        screenshot_clear_color,
+                        Some(&screenshot_render_target),
+                        false,
+                    );
+                    screenshot_command_buffer.set_light(&compute_scene_light(scene_bounding_box));
                     screenshot_command_buffer.set_camera_matrices(
                         &screenshot_camera.projection_matrix(),
                         &screenshot_camera.view_matrix(),
@@ -1039,8 +923,7 @@ pub fn init_and_run(options: Options) -> ! {
                     // don't render the ground on purpose.
                     match viewport_draw_mode {
                         ViewportDrawMode::Wireframe => {
-                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                                &screenshot_render_target,
+                            screenshot_command_buffer.draw_meshes_to_render_target(
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
@@ -1054,8 +937,7 @@ pub fn init_and_run(options: Options) -> ! {
                             );
                         }
                         ViewportDrawMode::Shaded => {
-                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                                &screenshot_render_target,
+                            screenshot_command_buffer.draw_meshes_to_render_target(
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
@@ -1069,8 +951,7 @@ pub fn init_and_run(options: Options) -> ! {
                             );
                         }
                         ViewportDrawMode::ShadedWireframe => {
-                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                                &screenshot_render_target,
+                            screenshot_command_buffer.draw_meshes_to_render_target(
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
@@ -1084,8 +965,7 @@ pub fn init_and_run(options: Options) -> ! {
                             );
                         }
                         ViewportDrawMode::ShadedWireframeXray => {
-                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                                &screenshot_render_target,
+                            screenshot_command_buffer.draw_meshes_to_render_target(
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| viewport_draw_used_values || !used)
@@ -1098,8 +978,7 @@ pub fn init_and_run(options: Options) -> ! {
                                     }),
                             );
 
-                            screenshot_command_buffer.draw_meshes_to_offscreen_render_target(
-                                &screenshot_render_target,
+                            screenshot_command_buffer.draw_meshes_to_render_target(
                                 scene_gpu_mesh_handles
                                     .values()
                                     .filter(|(used, _)| !used)
@@ -1110,82 +989,166 @@ pub fn init_and_run(options: Options) -> ! {
 
                     screenshot_command_buffer.submit();
 
-                    let screenshot_notifications = Rc::clone(&notifications);
-                    renderer.offscreen_render_target_data(
-                        &screenshot_render_target,
-                        move |width, height, data| {
-                            let actual_data_len = data.len();
-                            let expected_data_len = cast_usize(width)
-                                * cast_usize(height)
-                                * cast_usize(mem::size_of::<[u8; 4]>());
-                            if expected_data_len != actual_data_len {
-                                log::error!(
-                                    "Screenshot data is {} bytes, but was expected to be {} bytes",
-                                    actual_data_len,
-                                    expected_data_len,
-                                );
+                    let mapping = renderer.offscreen_render_target_data(&screenshot_render_target);
+                    let (width, height) = mapping.dimensions();
+                    let data = mapping.data();
 
-                                return;
-                            }
+                    let actual_data_len = data.len();
+                    let expected_data_len = cast_usize(width)
+                        * cast_usize(height)
+                        * cast_usize(mem::size_of::<[u8; 4]>());
+                    if expected_data_len != actual_data_len {
+                        log::error!(
+                            "Screenshot data is {} bytes, but was expected to be {} bytes",
+                            actual_data_len,
+                            expected_data_len,
+                        );
+                    }
 
-                            if let Some(mut path) = dirs::picture_dir() {
-                                path.push(format!(
-                                    "hurban_selector-{}.png",
-                                    chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
-                                ));
+                    if let Some(mut path) = dirs::picture_dir() {
+                        path.push(format!(
+                            "hurban_selector-{}.png",
+                            chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
+                        ));
 
-                                let file = File::create(&path).expect("Failed to create PNG file");
-                                let mut png_encoder = png::Encoder::new(file, width, height);
-                                png_encoder.set_color(png::ColorType::RGBA);
-                                png_encoder.set_depth(png::BitDepth::Eight);
+                        let file = File::create(&path).expect("Failed to create PNG file");
+                        let mut png_encoder = png::Encoder::new(file, width, height);
+                        png_encoder.set_color(png::ColorType::RGBA);
+                        png_encoder.set_depth(png::BitDepth::Eight);
 
-                                png_encoder
-                                    .write_header()
-                                    .expect("Failed to write png header")
-                                    .write_image_data(data)
-                                    .expect("Failed to write png data");
+                        png_encoder
+                            .write_header()
+                            .expect("Failed to write png header")
+                            .write_image_data(data)
+                            .expect("Failed to write png data");
 
-                                let path_str = path.to_string_lossy();
-                                log::info!("Screenshot saved in {}", path_str);
-                                screenshot_notifications.borrow_mut().push(
-                                    time,
-                                    NotificationLevel::Info,
-                                    format!("Screenshot saved in {}", path_str),
-                                );
-                            } else {
-                                log::error!("Failed to find picture directory");
-                                screenshot_notifications.borrow_mut().push(
-                                    time,
-                                    NotificationLevel::Warn,
-                                    "Failed to find picture directory",
-                                );
-                            }
-                        },
-                    );
+                        let path_str = path.to_string_lossy();
+                        log::info!("Screenshot saved in {}", path_str);
+                        notifications.push(
+                            time,
+                            NotificationLevel::Info,
+                            format!("Screenshot saved in {}", path_str),
+                        );
+                    } else {
+                        log::error!("Failed to find picture directory");
+                        notifications.push(
+                            time,
+                            NotificationLevel::Warn,
+                            "Failed to find picture directory",
+                        );
+                    }
 
                     renderer.remove_offscreen_render_target(screenshot_render_target);
                 }
+
+                // -- Draw to viewport --
+
+                let imgui_draw_data = ui_frame.render(&window);
+
+                let mut window_command_buffer =
+                    renderer.begin_command_buffer(clear_color, None, true);
+                window_command_buffer.set_light(&compute_scene_light(scene_bounding_box));
+                window_command_buffer
+                    .set_camera_matrices(&camera.projection_matrix(), &camera.view_matrix());
+
+                match viewport_draw_mode {
+                    ViewportDrawMode::Wireframe => {
+                        window_command_buffer.draw_meshes_to_render_target(
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(used, handle)| {
+                                    if *used {
+                                        (handle, Material::TransparentMatcapShaded, false)
+                                    } else {
+                                        (handle, Material::Edges, true)
+                                    }
+                                }),
+                        );
+                    }
+                    ViewportDrawMode::Shaded => {
+                        window_command_buffer.draw_meshes_to_render_target(
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(used, handle)| {
+                                    if *used {
+                                        (handle, Material::TransparentMatcapShaded, false)
+                                    } else {
+                                        (handle, Material::MatcapShaded, true)
+                                    }
+                                }),
+                        );
+                    }
+                    ViewportDrawMode::ShadedWireframe => {
+                        window_command_buffer.draw_meshes_to_render_target(
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(used, handle)| {
+                                    if *used {
+                                        (handle, Material::TransparentMatcapShaded, false)
+                                    } else {
+                                        (handle, Material::MatcapShadedEdges, true)
+                                    }
+                                }),
+                        );
+                    }
+                    ViewportDrawMode::ShadedWireframeXray => {
+                        window_command_buffer.draw_meshes_to_render_target(
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| viewport_draw_used_values || !used)
+                                .map(|(used, handle)| {
+                                    if *used {
+                                        (handle, Material::TransparentMatcapShaded, false)
+                                    } else {
+                                        (handle, Material::MatcapShaded, true)
+                                    }
+                                }),
+                        );
+
+                        window_command_buffer.draw_meshes_to_render_target(
+                            scene_gpu_mesh_handles
+                                .values()
+                                .filter(|(used, _)| !used)
+                                .map(|(_, handle)| (handle, Material::EdgesXray, false)),
+                        );
+                    }
+                }
+
+                window_command_buffer.draw_meshes_to_render_target(
+                    ground_plane_gpu_mesh_handle
+                        .iter()
+                        .map(|handle| (handle, Material::FlatWithShadows, false)),
+                );
+
+                #[cfg(not(feature = "dist"))]
+                match renderer_debug_view {
+                    RendererDebugView::Off => {
+                        window_command_buffer.blit_render_target_to_swap_chain();
+                    }
+                    RendererDebugView::ShadowMap => {
+                        window_command_buffer.blit_shadow_map_to_swap_chain();
+                    }
+                }
+
+                #[cfg(feature = "dist")]
+                window_command_buffer.blit_render_target_to_swap_chain();
+
+                window_command_buffer.draw_ui_to_swap_chain(imgui_draw_data);
+                window_command_buffer.submit();
             }
 
             winit::event::Event::RedrawRequested(_) => {
-                // We don't answer redraw requests and instead draw in
-                // the "events cleared" for 2 reasons:
-                //
-                // 1) Doing it with VSync is challenging - redrawing at the OS's
-                //    whim is incompatible with blocking until the monitor flips
-                //    each time. We could still redraw here only when we were
-                //    running without VSync or just use this to set a dirty
-                //    flag, but there is also...
-                //
-                // 2) ImGui produces a draw list with `render()`. The drawlist
-                //    shares the lifetime of the `Ui` frame context, which is
-                //    dropped at the end of "events cleared". We could copy the
-                //    draw list and stash it for our subsequent handling of
-                //    redraw requests, but it contains raw pointers to the `Ui`
-                //    frame context which I am not sure are alive (or even
-                //    contain correct data) by the time we get here. We could
-                //    also try to prolong the lifetime of the `Ui` by not
-                //    dropping it, but this is Rust.
+                // FIXME: @Correctness We don't answer redraw requests and
+                // instead draw in the "events cleared", because imgui ui
+                // containing the draw list does not live long
+                // enough. Refactoring to on-demand rendering could unlock some
+                // energy-savings in the future. Also note that winit coalesces
+                // `RedrawRequested` events, so having `wgpu::PresentMode::Fifo`
+                // *shouldn't* mean we pile up redraws if the OS notifies us to
+                // redraw.
             }
 
             _ => (),
@@ -1259,40 +1222,33 @@ fn decode_image_rgba8_unorm(data: &[u8]) -> (Vec<u8>, u32, u32) {
     (rgba, width, height)
 }
 
-fn compute_light(
-    ground_plane_bounding_box: &BoundingBox<f32>,
-    scene_bounding_box: &BoundingBox<f32>,
-    camera: &Camera,
-) -> DirectionalLight {
-    let (camera_origin, camera_radius) = camera.visible_sphere();
-    let camera_radius_vector = Vector3::new(camera_radius, camera_radius, camera_radius) * 5.0;
-    let camera_bounding_box = BoundingBox::new(
-        &(camera_origin - camera_radius_vector),
-        &(camera_origin + camera_radius_vector),
-    );
-    let bounding_box = BoundingBox::intersection(
+fn compute_scene_light(scene_meshes_bounding_box: BoundingBox<f32>) -> DirectionalLight {
+    // Extend the bounding box to always contain a point with Z=0 so that we can
+    // cast shadows on the ground plane.
+    let scene_center = scene_meshes_bounding_box.center();
+    let point_on_ground = Point3::new(scene_center.x, scene_center.y, 0.0);
+
+    let bounding_box = BoundingBox::from_points(
         [
-            *ground_plane_bounding_box,
-            *scene_bounding_box,
-            camera_bounding_box,
+            scene_meshes_bounding_box.minimum_point(),
+            scene_meshes_bounding_box.maximum_point(),
+            point_on_ground,
         ]
         .iter()
         .copied(),
     )
-    .unwrap_or(camera_bounding_box);
+    .expect("Must produce a bounding box for non-empty iterator");
 
-    let diagonal_length = bounding_box.diagonal().norm() * 1.2;
-    // We need to skew the directional vector so that it is never equal to the Z
-    // axis and it is possible to compute a view matrix from it. The decision is
-    // arbitrary as long as it is consistent, but we skew it in the Y axis only
-    // so that the light looks slightly in the positive Y direction.
-    let skew = diagonal_length * 0.01;
+    let diagonal = bounding_box.diagonal() * 1.1;
+    let width = diagonal.x.max(diagonal.y);
+    let height = diagonal.z;
+
     DirectionalLight {
-        position: bounding_box.center() + Vector3::new(0.0, 0.0, diagonal_length / 2.0),
-        direction: Vector3::new(0.0, skew, -diagonal_length).normalize(),
-        min_range: 0.1,
-        max_range: diagonal_length,
-        width: diagonal_length,
+        position: bounding_box.center() + Vector3::new(0.0, 0.0, height / 2.0),
+        direction: Vector3::new(0.0, 0.0, -height),
+        min_range: 0.001,
+        max_range: height,
+        width,
     }
 }
 

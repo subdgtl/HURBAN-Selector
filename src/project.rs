@@ -5,8 +5,7 @@ use std::io::prelude::*;
 use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 
-use ron;
-use serde::Serialize;
+use serde::Serialize as _;
 
 use crate::interpreter::ast;
 

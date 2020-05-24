@@ -44,8 +44,7 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Import OBJ as Group",
-            description:
-                "IMPORT OBJ FILE AS A MESH GROUP\n\
+            description: "IMPORT OBJ FILE AS A MESH GROUP\n\
                  \n\
                  Loads the content of an OBJ file as a mesh group.\n\
                  \n\

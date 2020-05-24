@@ -1,8 +1,7 @@
 #version 450
 
 layout(set = 0, binding = 0) uniform Transform {
-    vec2 u_translate;
-    vec2 u_scale;
+    mat4 u_matrix;
 };
 
 layout(location = 0) in vec2 a_pos;
@@ -18,5 +17,5 @@ void main() {
                    (a_color >> 8) & 0xFF,
                    (a_color >> 16) & 0xFF,
                    (a_color >> 24) & 0xFF) / 255.0;
-    gl_Position = vec4(a_pos.xy * u_scale + u_translate, 0.0, 1.0);
+    gl_Position = u_matrix * vec4(a_pos.xy, 0.0, 1.0);
 }

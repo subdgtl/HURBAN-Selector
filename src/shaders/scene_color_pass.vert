@@ -41,10 +41,6 @@ void main() {
     v_barycentric = get_barycentric_coord(a_barycentric);
 
     v_frag_pos_light_space = u_light_space_matrix * a_position;
-    // These are manual OpenGL to Vulkan NDC space corrections. We can't just
-    // use the correction matrix as our projection matrix for shadow casting is
-    // ortographic.
-    v_frag_pos_light_space.y = -v_frag_pos_light_space.y;
 
     gl_Position = u_projection_matrix * u_view_matrix * a_position;
 }

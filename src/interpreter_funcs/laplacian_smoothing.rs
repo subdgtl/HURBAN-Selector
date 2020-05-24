@@ -14,8 +14,7 @@ impl Func for FuncLaplacianSmoothing {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Relax",
-            description:
-                "RELAX MESH WITH LAPLACIAN SMOOTHING\n\
+            description: "RELAX MESH WITH LAPLACIAN SMOOTHING\n\
                  \n\
                  Creates a new relaxed mesh geometry using laplacian smoothing algorithm. \
                  Laplacian smoothing is an algorithm to smoothen a polygonal mesh. \
@@ -61,8 +60,7 @@ impl Func for FuncLaplacianSmoothing {
             },
             ParamInfo {
                 name: "Smooth normals",
-                description:
-                    "Sets the per-vertex mesh normals to be interpolated from \
+                description: "Sets the per-vertex mesh normals to be interpolated from \
                      connected face normals. As a result, the rendered geometry will have \
                      a smooth surface material even though the mesh itself may be coarse.\n\
                      \n\
