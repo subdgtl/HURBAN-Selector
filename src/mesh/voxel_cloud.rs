@@ -58,7 +58,7 @@ pub enum FalloffFunction {
 }
 
 impl FalloffFunction {
-    pub fn apply(&self, distance: f32, is_outside: bool) -> Option<f32> {
+    pub fn apply(self, distance: f32, is_outside: bool) -> Option<f32> {
         match self {
             FalloffFunction::Linear(mul) => {
                 if distance == 0.0 {
