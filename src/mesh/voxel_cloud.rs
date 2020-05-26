@@ -238,12 +238,7 @@ impl ScalarField {
         // If the target scalar field should be identical
         if approx::relative_eq!(*voxel_dimensions, source_scalar_field.voxel_dimensions) {
             // return identical copy of self.
-            return Some(ScalarField {
-                block_start: source_scalar_field.block_start,
-                block_dimensions: source_scalar_field.block_dimensions,
-                voxel_dimensions: source_scalar_field.voxel_dimensions,
-                voxels: source_scalar_field.voxels.clone(),
-            });
+            return Some(source_scalar_field.clone());
         }
 
         // Make a bounding box of the source bounding box's mesh volume. This
