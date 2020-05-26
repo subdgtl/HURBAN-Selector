@@ -3,19 +3,23 @@ const DEFAULT_LIB_LOG_LEVEL: LogLevel = LogLevel::Warning;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
+    Off,
     Error,
     Warning,
     Info,
     Debug,
+    Trace,
 }
 
 impl Into<log::LevelFilter> for LogLevel {
     fn into(self) -> log::LevelFilter {
         match self {
+            Self::Off => log::LevelFilter::Off,
             Self::Error => log::LevelFilter::Error,
             Self::Warning => log::LevelFilter::Warn,
             Self::Info => log::LevelFilter::Info,
             Self::Debug => log::LevelFilter::Debug,
+            Self::Trace => log::LevelFilter::Trace,
         }
     }
 }
