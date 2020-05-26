@@ -242,7 +242,7 @@ impl ScalarField {
                 block_start: source_scalar_field.block_start,
                 block_dimensions: source_scalar_field.block_dimensions,
                 voxel_dimensions: source_scalar_field.voxel_dimensions,
-                voxels: source_scalar_field.voxels.to_vec(),
+                voxels: source_scalar_field.voxels.clone(),
             });
         }
 

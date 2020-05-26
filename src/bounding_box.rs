@@ -91,7 +91,6 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
     pub fn from_points<I>(points: I) -> Option<Self>
     where
         I: IntoIterator<Item = Point3<T>>,
-        T: std::fmt::Display,
     {
         let mut points_iter = points.into_iter().peekable();
 
@@ -143,7 +142,6 @@ impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
     pub fn union<I>(bounding_boxes: I) -> Option<Self>
     where
         I: IntoIterator<Item = BoundingBox<T>>,
-        T: std::fmt::Display,
     {
         let points = bounding_boxes
             .into_iter()
