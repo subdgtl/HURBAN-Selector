@@ -1389,8 +1389,9 @@ impl ScalarField {
     /// only the overlapping areas will be will be added. If the voxel in the
     /// current or the other scalar field is None (does not contain any voxel or
     /// does not exist), it is treated according to the selected
-    /// `empty_voxels_treatment` - it is either replaced with a constant value
-    /// or considered None and then also the resulting voxel will become None.
+    /// `empty_voxels_treatment` for both, the current and the other scalar
+    /// field - it is either replaced with a constant value or considered None
+    /// and then also the resulting voxel will become None.
     // FIXME: Join with interpolate_to
     pub fn add_values(
         &mut self,
