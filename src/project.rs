@@ -110,7 +110,11 @@ pub fn save<P: AsRef<Path>>(path: P, project: Project) -> Result<PathBuf, Projec
 
     let mut output: Vec<u8> = Vec::new();
 
-    let pretty_config = ron::ser::PrettyConfig::default();
+    let pretty_config = ron::ser::PrettyConfig::new()
+        .with_indentor("  ".to_string())
+        .with_new_line("\n".to_string())
+        .with_separate_tuple_members(false)
+        .with_enumerate_arrays(false);
     let mut serializer = ron::ser::Serializer::new(&mut output, Some(pretty_config), true)?;
 
     project.serialize(&mut serializer)?;
