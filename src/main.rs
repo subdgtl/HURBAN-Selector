@@ -28,18 +28,6 @@ fn main() {
         })
         .unwrap_or(hs::Msaa::Disabled);
 
-    let vsync = env::var("HS_VSYNC")
-        .ok()
-        .map(|vsync| match vsync.as_str() {
-            "0" => false,
-            "1" => true,
-            unsupported_vsync => panic!(
-                "Unsupported vsync behavior requested: {}",
-                unsupported_vsync,
-            ),
-        })
-        .unwrap_or(true);
-
     let gpu_backend = env::var("HS_GPU_BACKEND")
         .ok()
         .map(|backend| match backend.as_str() {
@@ -84,7 +72,6 @@ fn main() {
     hs::init_and_run(hs::Options {
         theme,
         msaa,
-        vsync,
         gpu_backend,
         gpu_power_preference,
         app_log_level,

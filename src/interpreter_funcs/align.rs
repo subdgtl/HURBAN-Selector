@@ -13,8 +13,7 @@ impl Func for FuncAlign {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Align",
-            description:
-                "ALIGN MESH TO ANOTHER\n\
+            description: "ALIGN MESH TO ANOTHER\n\
                  \n\
                  Moves and scales a mesh to match another mesh. 'Mesh to align' will be \
                  translated so that its center matches the center of 'Align to mesh'. \
