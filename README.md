@@ -69,8 +69,6 @@ Optionally configure one of the following:
 **HS_MSAA**: Choose the number of multisampling samples. Either 1, 2,
   4, 8, or 16. Default is 1.
 
-**HS_VSYNC**: Enable (1) or disable (0) VSync. Default is enabled.
-
 **HS_GPU_BACKEND**: Force a GPU backend. A gpu backend is
   automatically selected, but optionally a non-default gpu backend can
   be specified. Can take the following values:

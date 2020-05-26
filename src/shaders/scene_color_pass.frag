@@ -54,34 +54,41 @@ void main() {
 
     // -- Compute shadow --
 
-    // Since this is not a glsl builtin, we have to perform perspective divide
-    // and remap depth from [-1, 1] to [0, 1] ourselves
-    vec3 frag_pos_light_space = (v_frag_pos_light_space.xyz / v_frag_pos_light_space.w) * 0.5 + 0.5;
+    // Since this is not a glsl builtin, we have to perform perspective divide ourselves.
+    vec3 frag_pos_light_space = v_frag_pos_light_space.xyz / v_frag_pos_light_space.w;
+
+    // Remap NDC coords ([-1, 1]) to texture coords ([0, 1]) and keep depth.
+    vec2 shadow_tex_coords = vec2(frag_pos_light_space.x, -frag_pos_light_space.y) * 0.5 + 0.5;
+    float shadow_depth = frag_pos_light_space.z;
 
     float shadow = 0.0;
     vec2 shadow_map_texel_size = 1.0 / textureSize(sampler2DShadow(u_shadow_map_texture,
                                                                    u_shadow_sampler), 0);
 
-    // Protect against sampling beyong depth 1.0 (the light's far plane).
-    if (bool(u_shading_mode & SHADING_MODE_SHADOWED) && frag_pos_light_space.z <= 1.0) {
+    if (bool(u_shading_mode & SHADING_MODE_SHADOWED)) {
         // Use Percentage Closer Filtering (PCF) - sample the depth texture sixteen
         // times, each time between texels.
         // https://developer.nvidia.com/gpugems/gpugems/part-ii-lighting-and-shadows/chapter-11-shadow-map-antialiasing
-        for (float x = -1.5; x <= 1.5; x += 1.0) {
-            for (float y = -1.5; y <= 1.5; y += 1.0) {
-                vec2 offset = vec2(x, y) * shadow_map_texel_size;
-                vec3 lookup_coords = vec3(frag_pos_light_space.xy + offset, frag_pos_light_space.z);
 
-                // Protect against oversampling. If we were to sample outside the
-                // shadow map, let's not accumulate any shadow.
-                if (lookup_coords.x >= 0.0
-                    && lookup_coords.y <= 1.0
-                    && lookup_coords.y >= 0.0
-                    && lookup_coords.y <= 1.0)
-                {
-                    // Accumulate shadow if the depth comparison succeeds
-                    shadow += texture(sampler2DShadow(u_shadow_map_texture,
-                                                      u_shadow_sampler), lookup_coords);
+        // Protect against sampling beyong depth 1.0 (the light's far plane).
+        if (shadow_depth <= 1.0) {
+
+            for (float x = -1.5; x <= 1.5; x += 1.0) {
+                for (float y = -1.5; y <= 1.5; y += 1.0) {
+                    vec2 offset = vec2(x, y) * shadow_map_texel_size;
+                    vec3 lookup_coords = vec3(shadow_tex_coords + offset, shadow_depth);
+
+                    // Protect against oversampling. If we were to sample
+                    // outside the shadow map, let's not accumulate any shadow.
+                    if (lookup_coords.x >= 0.0
+                        && lookup_coords.x <= 1.0
+                        && lookup_coords.y >= 0.0
+                        && lookup_coords.y <= 1.0)
+                        {
+                            // Accumulate shadow if the depth comparison succeeds
+                            shadow += texture(sampler2DShadow(u_shadow_map_texture,
+                                                              u_shadow_sampler), lookup_coords);
+                        }
                 }
             }
         }

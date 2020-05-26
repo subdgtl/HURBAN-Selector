@@ -13,8 +13,7 @@ impl Func for FuncDisjointMesh {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Disjoint Mesh",
-            description:
-                "DISJOINT MESH INTO A MESH GROUP\n\
+            description: "DISJOINT MESH INTO A MESH GROUP\n\
                  \n\
                  Splits the visually separate / unwelded / island geometries \
                  from their common mesh geometry and stores the resulting \

@@ -1,4 +1,8 @@
+use std::f32;
 use std::ops::RangeBounds;
+
+// FIXME: Use f32::consts::TAU once stabilized
+pub const TAU: f32 = f32::consts::PI * 2.0;
 
 pub fn clamp(x: f32, min: f32, max: f32) -> f32 {
     // FIXME: clamp may eventually be stabilized in std

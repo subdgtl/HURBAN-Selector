@@ -26,6 +26,7 @@ use self::voxel_boolean_union::FuncBooleanUnion;
 use self::voxel_interpolated_union::FuncInterpolatedUnion;
 use self::voxel_metaballs::FuncVoxelMetaballs;
 use self::voxel_noise::FuncVoxelNoise;
+use self::voxel_transform::FuncVoxelTransform;
 use self::voxelize::FuncVoxelize;
 use self::weld::FuncWeld;
 
@@ -52,6 +53,7 @@ mod voxel_boolean_union;
 mod voxel_interpolated_union;
 mod voxel_metaballs;
 mod voxel_noise;
+mod voxel_transform;
 mod voxelize;
 mod weld;
 
@@ -86,7 +88,8 @@ pub const FUNC_ID_BOOLEAN_INTERSECTION: FuncIdent = FuncIdent(8001);
 pub const FUNC_ID_BOOLEAN_UNION: FuncIdent = FuncIdent(8002);
 pub const FUNC_ID_BOOLEAN_DIFFERENCE: FuncIdent = FuncIdent(8003);
 pub const FUNC_ID_VOXEL_NOISE: FuncIdent = FuncIdent(8004);
-pub const FUNC_ID_VOXEL_METABALLS: FuncIdent = FuncIdent(8005);
+pub const FUNC_ID_VOXEL_TRANSFORM: FuncIdent = FuncIdent(8005);
+pub const FUNC_ID_VOXEL_METABALLS: FuncIdent = FuncIdent(8006);
 
 // Hybridization funcs: 10xxx
 pub const FUNC_ID_INTERPOLATED_UNION: FuncIdent = FuncIdent(10000);
@@ -141,7 +144,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     );
     funcs.insert(FUNC_ID_LOOP_SUBDIVISION, Box::new(FuncLoopSubdivision));
 
-    // Voxel-based funcs: 8xxx
+    // Voxel-based funcs
     funcs.insert(FUNC_ID_VOXELIZE, Box::new(FuncVoxelize));
     funcs.insert(
         FUNC_ID_BOOLEAN_INTERSECTION,
@@ -150,6 +153,7 @@ pub fn create_function_table() -> BTreeMap<FuncIdent, Box<dyn Func>> {
     funcs.insert(FUNC_ID_BOOLEAN_UNION, Box::new(FuncBooleanUnion));
     funcs.insert(FUNC_ID_BOOLEAN_DIFFERENCE, Box::new(FuncBooleanDifference));
     funcs.insert(FUNC_ID_VOXEL_NOISE, Box::new(FuncVoxelNoise));
+    funcs.insert(FUNC_ID_VOXEL_TRANSFORM, Box::new(FuncVoxelTransform));
     funcs.insert(FUNC_ID_VOXEL_METABALLS, Box::new(FuncVoxelMetaballs));
 
     // Hybridization funcs

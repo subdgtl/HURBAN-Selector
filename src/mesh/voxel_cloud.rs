@@ -3,8 +3,7 @@ use std::f32;
 use std::ops::RangeBounds;
 
 use arrayvec::ArrayVec;
-
-use nalgebra::{Point3, Vector2, Vector3};
+use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
 
 use crate::bounding_box::BoundingBox;
 use crate::convert::{cast_i32, cast_u32, cast_usize};
@@ -267,7 +266,7 @@ impl ScalarField {
             voxel_dimensions.z * growth_offset as f32,
         );
         let bounding_box_offset =
-            bounding_box_tight.offset(growth_offset_vector_in_cartesian_units);
+            bounding_box_tight.offset(&growth_offset_vector_in_cartesian_units);
 
         // Target scalar field to be filled with points on the mesh surface.
         let mut scalar_field =
@@ -331,6 +330,232 @@ impl ScalarField {
         scalar_field
     }
 
+    /// Resamples the source scalar field with voxels of a different size.
+    /// Creates a new scalar field with arbitrary voxel dimensions from another
+    /// scalar field.
+    ///
+    /// Returns None for empty source scalar field.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the voxel dimensions is below or equal to zero.
+    pub fn from_scalar_field<U>(
+        source_scalar_field: &ScalarField,
+        volume_value_range: &U,
+        voxel_dimensions: &Vector3<f32>,
+    ) -> Option<Self>
+    where
+        U: RangeBounds<f32>,
+    {
+        assert!(
+            voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
+            "One mor more voxel dimensions is below or equal to zero"
+        );
+
+        // If the target scalar field should be identical
+        if approx::relative_eq!(*voxel_dimensions, source_scalar_field.voxel_dimensions) {
+            // return identical copy of self.
+            return Some(source_scalar_field.clone());
+        }
+
+        // Make a bounding box of the source bounding box's mesh volume. This
+        // will be the volume to be scanned for any voxels.
+        source_scalar_field
+            .bounding_box_mesh_volume_cartesian_space(volume_value_range)
+            .map(|source_sf_bounding_box| {
+                // New scalar field that can encompass the source
+                // scalar field's mesh.
+                let mut target_scalar_field = ScalarField::from_bounding_box_cartesian_space(
+                    &source_sf_bounding_box,
+                    &voxel_dimensions,
+                );
+
+                for (one_dimensional, voxel) in target_scalar_field.voxels.iter_mut().enumerate() {
+                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                        one_dimensional,
+                        &target_scalar_field.block_start,
+                        &target_scalar_field.block_dimensions,
+                        &target_scalar_field.voxel_dimensions,
+                    );
+
+                    *voxel =
+                        source_scalar_field.value_at_cartesian_coordinate(&cartesian_coordinate);
+                }
+
+                // FIXME: @Optimization In some cases it might be not easy to
+                // determine the minimal needed bounding box due to the
+                // differences in the voxel sizes. Leaving the scalar field
+                // bigger should be also considered.
+                target_scalar_field.shrink_to_fit(volume_value_range);
+
+                target_scalar_field
+            })
+    }
+
+    /// Creates a new scalar field from another scalar field transformed
+    /// (scaled, rotated, moved) in a cartesian space. The new scalar field can
+    /// contain voxels of arbitrary dimensions, which can be different from
+    /// voxel dimensions of the source scalar field.
+    ///
+    /// Returns None for empty source scalar field and if the transformation
+    /// matrix can't be reverted.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the voxel dimension is below or equal to zero.
+    pub fn from_scalar_field_transformed<U>(
+        source_scalar_field: &ScalarField,
+        volume_value_range: &U,
+        voxel_dimensions: &Vector3<f32>,
+        cartesian_translate: &Vector3<f32>,
+        rotate: &Rotation3<f32>,
+        scale: &Vector3<f32>,
+    ) -> Option<Self>
+    where
+        U: RangeBounds<f32>,
+    {
+        assert!(
+            voxel_dimensions.x > 0.0 && voxel_dimensions.y > 0.0 && voxel_dimensions.z > 0.0,
+            "One mor more voxel dimensions is below or equal to zero"
+        );
+
+        let euler_angles = rotate.euler_angles();
+        // If the transformation is identity
+        if approx::relative_eq!(cartesian_translate, &Vector3::zeros())
+            && approx::relative_eq!(euler_angles.0, 0.0)
+            && approx::relative_eq!(euler_angles.1, 0.0)
+            && approx::relative_eq!(euler_angles.2, 0.0)
+            && approx::relative_eq!(scale, &Vector3::new(1.0, 1.0, 1.0))
+        {
+            // resample to new voxel dimensions and return.
+            return ScalarField::from_scalar_field(
+                source_scalar_field,
+                volume_value_range,
+                voxel_dimensions,
+            );
+        }
+
+        // Scalar field transformation process:
+        // 1. Make a bounding box (`source_sf_bounding_box`) from the source
+        //    scalar field.
+        // 2. Move the `source_sf_bounding_box` so that its center matches world
+        //    origin (`transformation_translate_to_origin`).
+        // 3. Extract corner points (source points) of the
+        //    `source_sf_bounding_box`.
+        // 4. Apply user rotation and scaling (`transformation_rotate_scale`)
+        //    the source points (transformed points).
+        // 5. Move the transformed points back to the `source_sf_bounding_box`
+        //    center (`transformation_translate_to_origin_reverted`) and from
+        //    there apply user translation (`transformation_user_translation`).
+        // 6. There create a bounding box (`transformed_bounding_box`) from the
+        //    latest points.
+        // 7. Make the `target_scalar_field` from the
+        //    `transformed_bounding_box`.
+        //
+        // With each voxel center of the `target_scalar_field` do the following:
+        // 8. translate it along a reverted user translation (reverted
+        //    `transformation_user_translation`) and from there along
+        //    `transformation_translate_to_origin`.
+        // 9. Apply inverted user rotation and scaling (inverted
+        //    `transformation_rotate_scale`)
+        // 10. and move it back along reverted
+        //     `transformation_translate_to_origin`.
+        // 11. Here request the source scalar field for the voxel value
+        // 12. and apply it to the respective voxel in the
+        //     `target_scalar_field`.
+
+        // 1. Make a bounding box (`source_sf_bounding_box`) from the source
+        //    scalar field.
+        source_scalar_field
+            .bounding_box_volume_cartesian_space(volume_value_range)
+            .and_then(|source_sf_bounding_box| {
+                // 2. Move the source bounding box so that its center matches world
+                //    origin (`transformation_translate_to_origin`).
+                let vector_to_origin = Vector3::zeros() - source_sf_bounding_box.center().coords;
+                let transformation_translate_to_origin =
+                    Matrix4::new_translation(&vector_to_origin);
+                // 3. Extract corner points (source points) of the source bounding
+                //    box.
+                let source_sf_bounding_box_corners = source_sf_bounding_box.corners();
+                // 4. Apply user rotation and scaling
+                //    (`transformation_rotate_scale`) the source points (transformed
+                //    points).
+                let transformation_rotate_scale =
+                    Matrix4::from(*rotate) * Matrix4::new_nonuniform_scaling(scale);
+                // 5. Move the transformed points back to the source bounding box
+                //    center (`transformation_translate_to_origin_reverted`) and
+                //    from there apply user translation
+                //    (`transformation_user_translation`).
+                let transformation_translate_to_origin_reverted =
+                    Matrix4::new_translation(&(-vector_to_origin));
+                let transformation_user_translation =
+                    Matrix4::new_translation(&cartesian_translate);
+                let transformation_user_translation_reverted =
+                    Matrix4::new_translation(&(-cartesian_translate));
+
+                // Apply transformations
+                let transformed_source_sf_bounding_box_corners =
+                    source_sf_bounding_box_corners.iter().map(|v| {
+                        let v1 = transformation_translate_to_origin.transform_point(v);
+                        let v2 = transformation_rotate_scale.transform_point(&v1);
+                        let v3 = transformation_translate_to_origin_reverted.transform_point(&v2);
+                        transformation_user_translation.transform_point(&v3)
+                    });
+
+                // 6. There create a bounding box (`transformed_bounding_box`) from
+                //    the latest points.
+                let transformed_bounding_box =
+                    BoundingBox::from_points(transformed_source_sf_bounding_box_corners)
+                        .expect("No source bounding box");
+
+                // 7. Make the `target_scalar_field` from the
+                //    `transformed_bounding_box`.
+                let mut target_scalar_field = ScalarField::from_bounding_box_cartesian_space(
+                    &transformed_bounding_box,
+                    &voxel_dimensions,
+                );
+
+                if let Ok(transformation_rotate_scale_reverted) =
+                    transformation_rotate_scale.pseudo_inverse(f32::EPSILON)
+                {
+                    for (one_dimensional_target, voxel_target) in
+                        target_scalar_field.voxels.iter_mut().enumerate()
+                    {
+                        let cartesian_coordinate_target = one_dimensional_to_cartesian_coordinate(
+                            one_dimensional_target,
+                            &target_scalar_field.block_start,
+                            &target_scalar_field.block_dimensions,
+                            &target_scalar_field.voxel_dimensions,
+                        );
+
+                        // 8. translate it along a reverted user translation
+                        //    (reverted `transformation_user_translation`) and from
+                        //    there along `transformation_translate_to_origin`.
+                        let v1 = transformation_user_translation_reverted
+                            .transform_point(&cartesian_coordinate_target);
+                        let v2 = transformation_translate_to_origin.transform_point(&v1);
+                        // 9. Apply inverted user rotation and scaling (inverted
+                        //    `transformation_rotate_scale`)
+                        let v3 = transformation_rotate_scale_reverted.transform_point(&v2);
+                        // 10. and move it back along reverted
+                        //     `transformation_translate_to_origin`.
+                        let transformed_target_voxel_center =
+                            transformation_translate_to_origin_reverted.transform_point(&v3);
+
+                        // 11. Here request the source scalar field for the voxel
+                        //     value
+                        // 12. and apply it to the respective voxel in the
+                        //     `target_scalar_field`.
+                        *voxel_target = source_scalar_field
+                            .value_at_cartesian_coordinate(&transformed_target_voxel_center);
+                    }
+                    Some(target_scalar_field)
+                } else {
+                    None
+                }
+            })
+    }
+
     /// Clears the scalar field, sets its block dimensions to zero.
     pub fn wipe(&mut self) {
         self.block_start = Point3::origin();
@@ -376,6 +601,19 @@ impl ScalarField {
             Some(index) => self.voxels[index],
             _ => None,
         }
+    }
+
+    /// Gets the value of a voxel on cartesian space coordinates
+    ///
+    /// Returns None if voxel is empty or out of bounds
+    pub fn value_at_cartesian_coordinate(&self, cartesian_coordinate: &Point3<f32>) -> Option<f32> {
+        cartesian_to_one_dimensional_coordinate(
+            cartesian_coordinate,
+            &self.block_start,
+            &self.block_dimensions,
+            &self.voxel_dimensions,
+        )
+        .and_then(|index| self.voxels[index])
     }
 
     /// Sets the value of a voxel defined in absolute voxel coordinates
@@ -566,8 +804,42 @@ impl ScalarField {
         tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
     }
 
+    /// Returns the bounding box of the mesh produced by `ScalarField::to_mesh`
+    /// and `ScalarField::to_marching_cubes` for the current scalar field.
+    ///
+    /// The Bounding box will be defined in cartesian units.
+    pub fn bounding_box_mesh_volume_cartesian_space<U>(
+        &self,
+        volume_value_range: &U,
+    ) -> Option<BoundingBox<f32>>
+    where
+        U: RangeBounds<f32>,
+    {
+        let voxel_dimensions = self.voxel_dimensions;
+        self.compute_volume_boundaries(volume_value_range).map(
+            |(volume_start, volume_dimensions)| {
+                BoundingBox::new(
+                    &Point3::new(
+                        (volume_start.x as f32 - 0.5) * voxel_dimensions.x,
+                        (volume_start.y as f32 - 0.5) * voxel_dimensions.y,
+                        (volume_start.z as f32 - 0.5) * voxel_dimensions.z,
+                    ),
+                    &Point3::new(
+                        (volume_start.x as f32 + volume_dimensions.x as f32 + 0.5)
+                            * voxel_dimensions.x,
+                        (volume_start.y as f32 + volume_dimensions.y as f32 + 0.5)
+                            * voxel_dimensions.y,
+                        (volume_start.z as f32 + volume_dimensions.z as f32 + 0.5)
+                            * voxel_dimensions.z,
+                    ),
+                )
+            },
+        )
+    }
+
     /// Computes a relatively smooth triangulated welded mesh from the current
-    /// state of the scalar field.
+    /// state of the scalar field. The mesh will be made of triangular faces
+    /// positioned in discrete 45 degree steps.
     ///
     /// For watertight volumetric geometry (i.e. from a watertight source mesh)
     /// this creates both, outer and inner boundary mesh. There is also a high
@@ -1408,7 +1680,7 @@ impl ScalarField {
     }
 
     /// Resize the current scalar field to match the input bounding box in
-    /// cartesian units
+    /// cartesian units.
     pub fn resize_to_bounding_box_cartesian_space(&mut self, bounding_box: &BoundingBox<f32>) {
         let minimum_point = cartesian_to_absolute_voxel_coordinate(
             &bounding_box.minimum_point(),
@@ -1443,6 +1715,33 @@ impl ScalarField {
                         cast_i32(volume_dimensions.z),
                     );
                 BoundingBox::new(&volume_start, &volume_end)
+            },
+        )
+    }
+
+    /// Returns the bounding box in cartesian units after shrinking to fit just
+    /// the nonempty voxels.
+    pub fn bounding_box_volume_cartesian_space<U>(
+        &self,
+        volume_value_range: &U,
+    ) -> Option<BoundingBox<f32>>
+    where
+        U: RangeBounds<f32>,
+    {
+        self.compute_volume_boundaries(volume_value_range).map(
+            |(volume_start, volume_dimensions)| {
+                let volume_end = volume_start
+                    + Vector3::new(
+                        cast_i32(volume_dimensions.x),
+                        cast_i32(volume_dimensions.y),
+                        cast_i32(volume_dimensions.z),
+                    );
+                let volume_start_cartesian_space =
+                    absolute_voxel_to_cartesian_coordinate(&volume_start, &self.voxel_dimensions);
+                let volume_end_cartesian_space =
+                    absolute_voxel_to_cartesian_coordinate(&volume_end, &self.voxel_dimensions);
+
+                BoundingBox::new(&volume_start_cartesian_space, &volume_end_cartesian_space)
             },
         )
     }
@@ -1704,6 +2003,22 @@ fn cartesian_to_absolute_voxel_coordinate(
         (point.x / voxel_dimensions.x).round() as i32,
         (point.y / voxel_dimensions.y).round() as i32,
         (point.z / voxel_dimensions.z).round() as i32,
+    )
+}
+
+/// Computes an index to the linear representation of the voxel block from
+/// cartesian space coordinate.
+fn cartesian_to_one_dimensional_coordinate(
+    point: &Point3<f32>,
+    block_start: &Point3<i32>,
+    block_dimensions: &Vector3<u32>,
+    voxel_dimensions: &Vector3<f32>,
+) -> Option<usize> {
+    let absolute_voxel_coordinate = cartesian_to_absolute_voxel_coordinate(point, voxel_dimensions);
+    absolute_voxel_to_one_dimensional_coordinate(
+        &absolute_voxel_coordinate,
+        block_start,
+        block_dimensions,
     )
 }
 
@@ -3203,6 +3518,72 @@ mod tests {
         assert_eq!(scalar_field.block_start, Point3::origin());
         assert_eq!(scalar_field.block_dimensions, Vector3::new(0, 0, 0));
         assert_eq!(scalar_field.voxels.len(), 0);
+    }
+
+    #[test]
+    fn test_scalar_field_transform_box_at_origin_identity() {
+        let mesh = primitive::create_box(
+            Point3::origin(),
+            Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field: ScalarField =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0.0, 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            &(0.0..=0.0),
+            &Vector3::new(0.25, 0.25, 0.25),
+            &Vector3::zeros(),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        assert_eq!(transformed_scalar_field, scalar_field);
+    }
+
+    #[test]
+    fn test_scalar_field_transform_box_at_random_location_identity() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field: ScalarField =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0.0, 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            &(0.0..=0.0),
+            &Vector3::new(0.25, 0.25, 0.25),
+            &Vector3::zeros(),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        assert_eq!(transformed_scalar_field, scalar_field);
+    }
+
+    #[test]
+    fn test_scalar_field_transform_box_at_random_location_rotated_identity() {
+        let mesh = primitive::create_box(
+            Point3::new(5.1, 6.2, 7.3),
+            Rotation3::from_euler_angles(1.1, 2.2, 3.3),
+            Vector3::new(1.0, 2.0, 3.0),
+        );
+        let scalar_field: ScalarField =
+            ScalarField::from_mesh(&mesh, &Vector3::new(0.25, 0.25, 0.25), 0.0, 0);
+        let transformed_scalar_field = ScalarField::from_scalar_field_transformed(
+            &scalar_field,
+            &(0.0..=0.0),
+            &Vector3::new(0.25, 0.25, 0.25),
+            &Vector3::zeros(),
+            &Rotation3::from_euler_angles(0.0, 0.0, 0.0),
+            &Vector3::new(1.0, 1.0, 1.0),
+        )
+        .unwrap();
+
+        assert_eq!(transformed_scalar_field, scalar_field);
     }
 
     #[test]

@@ -1,11 +1,10 @@
 use std::io;
 
-use imgui;
-use imgui::internal::RawWrapper;
+use imgui::internal::RawWrapper as _;
 
 use crate::include_shader;
 
-use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
+use super::common;
 
 static SHADER_IMGUI_VERT: &[u8] = include_shader!("imgui.vert.spv");
 static SHADER_IMGUI_FRAG: &[u8] = include_shader!("imgui.frag.spv");
@@ -27,6 +26,8 @@ pub struct ImguiRenderer {
     transform_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     render_pipeline: wgpu::RenderPipeline,
+    vertex_buffers: Vec<wgpu::Buffer>,
+    index_buffers: Vec<wgpu::Buffer>,
 }
 
 impl ImguiRenderer {
@@ -36,8 +37,6 @@ impl ImguiRenderer {
         queue: &mut wgpu::Queue,
         options: Options,
     ) -> Result<ImguiRenderer, Error> {
-        // Link shaders
-
         let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_IMGUI_VERT))
             .expect("Couldn't read pre-built SPIR-V");
         let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_IMGUI_FRAG))
@@ -46,15 +45,17 @@ impl ImguiRenderer {
         let fs_module = device.create_shader_module(&fs_words);
 
         // Create transform uniform buffer bind group
-        let transform_buffer_size = wgpu_size_of::<TransformUniforms>();
+        let transform_buffer_size = common::wgpu_size_of::<TransformUniforms>();
         let transform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
             size: transform_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         });
 
         let transform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
+                label: None,
+                bindings: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
                     ty: wgpu::BindingType::UniformBuffer { dynamic: false },
@@ -62,6 +63,7 @@ impl ImguiRenderer {
             });
 
         let transform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout: &transform_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -75,19 +77,21 @@ impl ImguiRenderer {
         // Create texture uniform bind group
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
                 bindings: &[
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
                         ty: wgpu::BindingType::SampledTexture {
-                            multisampled: false,
                             dimension: wgpu::TextureViewDimension::D2,
+                            component_type: wgpu::TextureComponentType::Float,
+                            multisampled: false,
                         },
                     },
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler,
+                        ty: wgpu::BindingType::Sampler { comparison: false },
                     },
                 ],
             });
@@ -130,28 +134,30 @@ impl ImguiRenderer {
             }],
             // Disable depth test
             depth_stencil_state: None,
-            index_format: wgpu::IndexFormat::Uint16,
-            vertex_buffers: &[wgpu::VertexBufferDescriptor {
-                stride: wgpu_size_of::<imgui::DrawVert>(),
-                step_mode: wgpu::InputStepMode::Vertex,
-                attributes: &[
-                    wgpu::VertexAttributeDescriptor {
-                        offset: 0,
-                        format: wgpu::VertexFormat::Float2,
-                        shader_location: 0,
-                    },
-                    wgpu::VertexAttributeDescriptor {
-                        offset: 8,
-                        format: wgpu::VertexFormat::Float2,
-                        shader_location: 1,
-                    },
-                    wgpu::VertexAttributeDescriptor {
-                        offset: 16,
-                        format: wgpu::VertexFormat::Uint,
-                        shader_location: 2,
-                    },
-                ],
-            }],
+            vertex_state: wgpu::VertexStateDescriptor {
+                index_format: wgpu::IndexFormat::Uint16,
+                vertex_buffers: &[wgpu::VertexBufferDescriptor {
+                    stride: common::wgpu_size_of::<imgui::DrawVert>(),
+                    step_mode: wgpu::InputStepMode::Vertex,
+                    attributes: &[
+                        wgpu::VertexAttributeDescriptor {
+                            offset: 0,
+                            format: wgpu::VertexFormat::Float2,
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttributeDescriptor {
+                            offset: 8,
+                            format: wgpu::VertexFormat::Float2,
+                            shader_location: 1,
+                        },
+                        wgpu::VertexAttributeDescriptor {
+                            offset: 16,
+                            format: wgpu::VertexFormat::Uint,
+                            shader_location: 2,
+                        },
+                    ],
+                }],
+            },
             sample_count: 1,
             sample_mask: !0,
             alpha_to_coverage_enabled: false,
@@ -161,6 +167,7 @@ impl ImguiRenderer {
 
         let font_atlas_image = imgui_font_atlas.build_rgba32_texture();
         let font_atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
             size: wgpu::Extent3d {
                 width: font_atlas_image.width,
                 height: font_atlas_image.height,
@@ -174,7 +181,7 @@ impl ImguiRenderer {
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
-        upload_texture_rgba8_unorm(
+        common::upload_texture_rgba8_unorm(
             device,
             queue,
             &font_atlas_texture,
@@ -192,7 +199,7 @@ impl ImguiRenderer {
             mipmap_filter: wgpu::FilterMode::Linear,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare_function: wgpu::CompareFunction::Always,
+            compare: wgpu::CompareFunction::Always,
         });
 
         let font_atlas_texture_resource = Texture::new(
@@ -212,6 +219,8 @@ impl ImguiRenderer {
             transform_buffer,
             transform_bind_group,
             texture_bind_group_layout,
+            vertex_buffers: Vec::new(),
+            index_buffers: Vec::new(),
         })
     }
 
@@ -232,6 +241,7 @@ impl ImguiRenderer {
         assert_eq!(data.len() % 4, 0);
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -245,7 +255,7 @@ impl ImguiRenderer {
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
-        upload_texture_rgba8_unorm(device, queue, &texture, width, height, data);
+        common::upload_texture_rgba8_unorm(device, queue, &texture, width, height, data);
 
         let texture_resource = Texture::new(
             device,
@@ -261,7 +271,7 @@ impl ImguiRenderer {
     }
 
     pub fn draw_ui(
-        &self,
+        &mut self,
         color_needs_clearing: bool,
         clear_color: [f64; 4],
         device: &wgpu::Device,
@@ -280,27 +290,41 @@ impl ImguiRenderer {
             return Ok(());
         }
 
-        let scale = [
-            2.0 / draw_data.display_size[0],
-            2.0 / draw_data.display_size[1],
-        ];
-        let translate = [
-            -1.0 - draw_data.display_pos[0] * scale[0],
-            -1.0 - draw_data.display_pos[1] * scale[1],
-        ];
+        let transform_matrix = {
+            // Setup orthographic projection matrix. Our visible imgui space
+            // lies from `draw_data.display_pos` (top left) to
+            // `draw_data->display_pos + data_data->display_size` (bottom
+            // right).
+            let l = draw_data.display_pos[0];
+            let r = draw_data.display_pos[0] + draw_data.display_size[0];
+            let t = draw_data.display_pos[1];
+            let b = draw_data.display_pos[1] + draw_data.display_size[1];
 
-        let transform_uniforms = TransformUniforms { translate, scale };
-        let transform_uniforms_size = wgpu_size_of::<TransformUniforms>();
-        let transform_transfer_buffer = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-            .fill_from_slice(&[transform_uniforms]);
+            #[rustfmt::skip]
+            let matrix = [
+                [2.0 / (r - l)    , 0.0              , 0.0, 0.0],
+                [0.0              , 2.0 / (t - b)    , 0.0, 0.0],
+                [0.0              , 0.0              , 0.5, 0.0],
+                [(r + l) / (l - r), (t + b) / (b - t), 0.5, 1.0],
+            ];
+
+            matrix
+        };
+
+        let transform_transfer_buffer = common::create_buffer(
+            device,
+            wgpu::BufferUsage::COPY_SRC,
+            &[TransformUniforms {
+                matrix: transform_matrix,
+            }],
+        );
 
         encoder.copy_buffer_to_buffer(
             &transform_transfer_buffer,
             0,
             &self.transform_buffer,
             0,
-            transform_uniforms_size,
+            common::wgpu_size_of::<TransformUniforms>(),
         );
 
         // Will project scissor/clipping rectangles into framebuffer space
@@ -346,19 +370,27 @@ impl ImguiRenderer {
         rpass.set_pipeline(&self.render_pipeline);
         rpass.set_bind_group(0, &self.transform_bind_group, &[]);
 
+        self.vertex_buffers.clear();
+        self.index_buffers.clear();
+
+        // We enumerate twice, because we need to keep the created buffers alive
+        // for the duration of the render pass.
+
         for draw_list in draw_data.draw_lists() {
-            let vtx_buffer = draw_list.vtx_buffer();
-            let vertex_buffer = device
-                .create_buffer_mapped(vtx_buffer.len(), wgpu::BufferUsage::VERTEX)
-                .fill_from_slice(vtx_buffer);
+            let vtx_buffer = ImguiVertex::cast(draw_list.vtx_buffer());
+            let vertex_buffer =
+                common::create_buffer(device, wgpu::BufferUsage::VERTEX, vtx_buffer);
 
             let idx_buffer = draw_list.idx_buffer();
-            let index_buffer = device
-                .create_buffer_mapped(idx_buffer.len(), wgpu::BufferUsage::INDEX)
-                .fill_from_slice(idx_buffer);
+            let index_buffer = common::create_buffer(device, wgpu::BufferUsage::INDEX, idx_buffer);
 
-            rpass.set_vertex_buffers(0, &[(&vertex_buffer, 0)]);
-            rpass.set_index_buffer(&index_buffer, 0);
+            self.vertex_buffers.push(vertex_buffer);
+            self.index_buffers.push(index_buffer);
+        }
+
+        for (draw_list_index, draw_list) in draw_data.draw_lists().enumerate() {
+            rpass.set_vertex_buffer(0, &self.vertex_buffers[draw_list_index], 0, 0);
+            rpass.set_index_buffer(&self.index_buffers[draw_list_index], 0, 0);
 
             let mut idx_start = 0;
             for cmd in draw_list.commands() {
@@ -433,6 +465,7 @@ impl Texture {
         let view = texture.create_default_view();
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout,
             bindings: &[
                 wgpu::Binding {
@@ -455,8 +488,30 @@ impl Texture {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, zerocopy::AsBytes)]
+struct ImguiVertex {
+    pos: [f32; 2],
+    uv: [f32; 2],
+    col: [u8; 4],
+}
+
+static_assertions::assert_eq_size!(ImguiVertex, imgui::DrawVert);
+static_assertions::assert_eq_align!(ImguiVertex, imgui::DrawVert);
+
+impl ImguiVertex {
+    /// Transmutes `&[imgui::DrawVert]` to `&[ImguiVertex]`.
+    pub fn cast(slice: &[imgui::DrawVert]) -> &[ImguiVertex] {
+        let len = slice.len();
+        let ptr = slice.as_ptr() as *const ImguiVertex;
+
+        // SAFETY: This is only safe when `imgui::DrawVert` and `ImguiVertex`
+        // have the same memory layout, size and alignment.
+        unsafe { std::slice::from_raw_parts(ptr, len) }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, zerocopy::AsBytes)]
 struct TransformUniforms {
-    translate: [f32; 2],
-    scale: [f32; 2],
+    matrix: [[f32; 4]; 4],
 }

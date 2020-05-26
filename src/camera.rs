@@ -3,9 +3,8 @@ use std::f32;
 
 use nalgebra::{Matrix4, Point3, Rotation3, Vector3};
 
-use crate::math::clamp;
+use crate::math::{clamp, TAU};
 
-const TWO_PI: f32 = f32::consts::PI * 2.0;
 const ZOOM_SPEED_BASE: f32 = 0.95;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,7 +23,8 @@ pub struct CameraOptions {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Camera {
-    aspect_ratio: f32,
+    screen_width: u32,
+    screen_height: u32,
     radius: f32,
     azimuthal_angle: f32,
     polar_angle: f32,
@@ -33,22 +33,24 @@ pub struct Camera {
 }
 
 impl Camera {
-    /// Creates a new camera with aspect ratio, radius, azimuthal and polar angle.
+    /// Creates a new camera with screen dimensions, radius, azimuthal and polar angle.
     ///
     /// Azimuthal angle is computed counter-clockwise from the unit vector
     /// `[1,0]` lying on the XY plane. Polar angle is the angle between the Z
     /// axis and the current camera position.
     pub fn new(
-        aspect_ratio: f32,
+        screen_width: u32,
+        screen_height: u32,
         radius: f32,
         azimuthal_angle: f32,
         polar_angle: f32,
         options: CameraOptions,
     ) -> Camera {
         Camera {
-            aspect_ratio,
+            screen_width,
+            screen_height,
             radius: clamp(radius, options.radius_min, options.radius_max),
-            azimuthal_angle: azimuthal_angle % TWO_PI,
+            azimuthal_angle: azimuthal_angle % TAU,
             polar_angle: clamp(
                 polar_angle,
                 options.polar_angle_distance_min,
@@ -67,11 +69,19 @@ impl Camera {
         self.origin + Vector3::new(x, y, z)
     }
 
-    pub fn set_viewport_aspect_ratio(&mut self, aspect_ratio: f32) {
-        self.aspect_ratio = aspect_ratio;
+    pub fn set_screen_dimensions(&mut self, screen_width: u32, screen_height: u32) {
+        self.screen_width = screen_width;
+        self.screen_height = screen_height;
     }
 
+    pub fn screen_aspect_ratio(&self) -> f32 {
+        self.screen_width as f32 / self.screen_height as f32
+    }
+
+    /// Pans the camera by changing the camera position against the ground plane
+    /// (XY). `dx` and `dy` are in screen space.
     pub fn pan_ground(&mut self, dx: f32, dy: f32) {
+        // FIXME: Raycast against ground plane for nicer movement.
         let pan_factor = self.options.speed_pan * self.radius / self.options.radius_max;
         let ground_translation = Vector3::new(dx, dy, 0.0) * pan_factor;
         let camera_rotation =
@@ -79,6 +89,8 @@ impl Camera {
         self.origin += camera_rotation * ground_translation;
     }
 
+    /// Pans the camera by changing the camera position against the screen
+    /// plane. `dx` and `dy` are in screen space.
     pub fn pan_screen(&mut self, dx: f32, dy: f32) {
         let pan_factor = self.options.speed_pan * self.radius / self.options.radius_max;
         let ground_translation = Vector3::new(dx, dy, 0.0) * pan_factor;
@@ -96,11 +108,12 @@ impl Camera {
         }
     }
 
+    /// Rotates the camera by changing azimuthal (theta) and polar (phi) angles.
     pub fn rotate(&mut self, dtheta: f32, dphi: f32) {
         let dtheta = dtheta * self.options.speed_rotate;
         let dphi = dphi * self.options.speed_rotate;
 
-        self.azimuthal_angle = (self.azimuthal_angle + dtheta) % TWO_PI;
+        self.azimuthal_angle = (self.azimuthal_angle + dtheta) % TAU;
         self.polar_angle = clamp(
             self.polar_angle + dphi,
             self.options.polar_angle_distance_min,
@@ -150,8 +163,7 @@ impl Camera {
         (self.origin, sphere_radius)
     }
 
-    /// Attempt to fit a sphere into camera view, not matter the
-    /// rotation.
+    /// Attempt to fit a sphere into camera view, no matter the rotation.
     ///
     /// Camera options may affect the outcome. A too small
     /// `radius_max` or a too large `radius_min` may cause the result
@@ -169,13 +181,12 @@ impl Camera {
     }
 
     pub fn view_matrix(&self) -> Matrix4<f32> {
-        let eye = self.position();
-        Matrix4::look_at_rh(&eye, &self.origin, &Vector3::z())
+        Matrix4::look_at_rh(&self.position(), &self.origin, &Vector3::z())
     }
 
     pub fn projection_matrix(&self) -> Matrix4<f32> {
         Matrix4::new_perspective(
-            self.aspect_ratio,
+            self.screen_aspect_ratio(),
             self.options.fovy,
             self.options.znear,
             self.options.zfar,
@@ -184,7 +195,7 @@ impl Camera {
 
     fn compute_visible_sphere_alpha(&self) -> f32 {
         let fovy = self.options.fovy;
-        let fovx = fovy * self.aspect_ratio;
+        let fovx = fovy * self.screen_aspect_ratio();
         let fov = fovy.min(fovx);
 
         fov / 2.0

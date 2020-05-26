@@ -38,8 +38,7 @@ impl Func for FuncLoopSubdivision {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
             name: "Smoothen",
-            description:
-                "SMOOTHEN MESH WITH LOOP SUBDIVISION\n\
+            description: "SMOOTHEN MESH WITH LOOP SUBDIVISION\n\
                  \n\
                  Creates a new smoothened mesh geometry using Loop subdivision algorithm. \
                  Loop subdivision surface is an approximating subdivision scheme developed \
@@ -94,8 +93,7 @@ impl Func for FuncLoopSubdivision {
             },
             ParamInfo {
                 name: "Smooth normals",
-                description:
-                    "Sets the per-vertex mesh normals to be interpolated from \
+                description: "Sets the per-vertex mesh normals to be interpolated from \
                      connected face normals. As a result, the rendered geometry will have \
                      a smooth surface material even though the mesh itself may be coarse.\n\
                      \n\
