@@ -123,7 +123,8 @@ impl Func for FuncInterpolatedUnion {
             },
             ParamInfo {
                 name: "Factor",
-                description: "Proportional interpolation factor between the first and the second mesh.\n\
+                description:
+                    "Proportional interpolation factor between the first and the second mesh.\n\
                 \n\
                 Factor = 0.0: the result is equal to the first mesh.\n\
                 Factor = 0.5: the result is half way between the first and the second mesh.\n\

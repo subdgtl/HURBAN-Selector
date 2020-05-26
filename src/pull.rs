@@ -1,6 +1,5 @@
 use std::f32;
 
-use nalgebra;
 use nalgebra::{Point3, Rotation3, Vector3};
 
 use crate::convert::cast_usize;

@@ -65,8 +65,7 @@ impl Func for FuncWeld {
             },
             ParamInfo {
                 name: "Tolerance",
-                description:
-                    "Limit distance of two vertices to be welded into one.\n\
+                description: "Limit distance of two vertices to be welded into one.\n\
                      \n\
                      Weld may result in invalid (non-manifold or collapsed) mesh in cases, \
                      when the welding tolerance is too high.",
@@ -79,8 +78,7 @@ impl Func for FuncWeld {
             },
             ParamInfo {
                 name: "Mesh Analysis",
-                description:
-                    "Reports detailed analytic information on the created mesh.\n\
+                description: "Reports detailed analytic information on the created mesh.\n\
                      The analysis may be slow but it is crucial to check the validity of welding.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,

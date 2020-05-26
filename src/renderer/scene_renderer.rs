@@ -11,7 +11,7 @@ use nalgebra::{Matrix4, Point3, Vector3};
 use crate::convert::cast_usize;
 use crate::mesh::{Face, Mesh};
 
-use super::common::{upload_texture_rgba8_unorm, wgpu_size_of};
+use super::common;
 
 static SHADER_COLOR_PASS_VERT: &[u8] = include_shader!("scene_color_pass.vert.spv");
 static SHADER_COLOR_PASS_FRAG: &[u8] = include_shader!("scene_color_pass.frag.spv");
@@ -343,21 +343,24 @@ impl SceneRenderer {
             .expect("Couldn't read pre-build SPIR-V");
         let shadow_pass_vs_module = device.create_shader_module(&shadow_pass_vs_words);
 
-        let matrix_buffer_size = wgpu_size_of::<MatrixUniforms>();
+        let matrix_buffer_size = common::wgpu_size_of::<MatrixUniforms>();
         let matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
             size: matrix_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         });
 
         let matrix_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
+                label: None,
+                bindings: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
                     ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                 }],
             });
         let matrix_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout: &matrix_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -368,55 +371,66 @@ impl SceneRenderer {
             }],
         });
 
-        let color_pass_buffer_size = wgpu_size_of::<ColorPassUniforms>();
-        let color_pass_buffer_edges = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
-            .fill_from_slice(&[ColorPassUniforms {
+        let color_pass_buffer_size = common::wgpu_size_of::<ColorPassUniforms>();
+        let color_pass_buffer_edges = common::create_buffer(
+            device,
+            wgpu::BufferUsage::UNIFORM,
+            &[ColorPassUniforms {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.239, 0.306, 0.400],
                 shading_mode_shaded_alpha: 1.0,
                 shading_mode: ShadingMode::EDGES,
-            }]);
+            }],
+        );
 
-        let color_pass_buffer_matcap_shaded = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
-            .fill_from_slice(&[ColorPassUniforms {
+        let color_pass_buffer_matcap_shaded = common::create_buffer(
+            device,
+            wgpu::BufferUsage::UNIFORM,
+            &[ColorPassUniforms {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.0, 0.0, 0.0],
                 shading_mode_shaded_alpha: 1.0,
                 shading_mode: ShadingMode::SHADED,
-            }]);
+            }],
+        );
 
-        let color_pass_buffer_matcap_shaded_transparent = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
-            .fill_from_slice(&[ColorPassUniforms {
+        let color_pass_buffer_matcap_shaded_transparent = common::create_buffer(
+            device,
+            wgpu::BufferUsage::UNIFORM,
+            &[ColorPassUniforms {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.0, 0.0, 0.0],
                 shading_mode_shaded_alpha: options.transparent_matcap_shaded_material_alpha as f32,
                 shading_mode: ShadingMode::SHADED,
-            }]);
+            }],
+        );
 
-        let color_pass_buffer_matcap_shaded_edges = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
-            .fill_from_slice(&[ColorPassUniforms {
+        let color_pass_buffer_matcap_shaded_edges = common::create_buffer(
+            device,
+            wgpu::BufferUsage::UNIFORM,
+            &[ColorPassUniforms {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.239, 0.306, 0.400],
                 shading_mode_shaded_alpha: 1.0,
                 shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
-            }]);
+            }],
+        );
 
-        let color_pass_buffer_matcap_shaded_edges_transparent = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
-            .fill_from_slice(&[ColorPassUniforms {
+        let color_pass_buffer_matcap_shaded_edges_transparent = common::create_buffer(
+            device,
+            wgpu::BufferUsage::UNIFORM,
+            &[ColorPassUniforms {
                 shading_mode_flat_color: [0.0, 0.0, 0.0, 0.0],
                 shading_mode_edges_color: [0.239, 0.306, 0.400],
                 shading_mode_shaded_alpha: options.transparent_matcap_shaded_material_alpha as f32,
                 shading_mode: ShadingMode::SHADED | ShadingMode::EDGES,
-            }]);
+            }],
+        );
 
-        let color_pass_buffer_flat_with_shadows = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
-            .fill_from_slice(&[ColorPassUniforms {
+        let color_pass_buffer_flat_with_shadows = common::create_buffer(
+            device,
+            wgpu::BufferUsage::UNIFORM,
+            &[ColorPassUniforms {
                 shading_mode_flat_color: [
                     options.flat_material_color[0] as f32,
                     options.flat_material_color[1] as f32,
@@ -426,11 +440,13 @@ impl SceneRenderer {
                 shading_mode_edges_color: [0.0, 0.0, 0.0],
                 shading_mode_shaded_alpha: 1.0,
                 shading_mode: ShadingMode::FLAT | ShadingMode::SHADOWED,
-            }]);
+            }],
+        );
 
         let color_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
+                label: None,
+                bindings: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::UniformBuffer { dynamic: false },
@@ -438,6 +454,7 @@ impl SceneRenderer {
             });
 
         let color_pass_bind_group_edges = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout: &color_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -450,6 +467,7 @@ impl SceneRenderer {
 
         let color_pass_bind_group_matcap_shaded =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
@@ -462,6 +480,7 @@ impl SceneRenderer {
 
         let color_pass_bind_group_matcap_shaded_transparent =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
@@ -474,6 +493,7 @@ impl SceneRenderer {
 
         let color_pass_bind_group_matcap_shaded_edges =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
@@ -486,6 +506,7 @@ impl SceneRenderer {
 
         let color_pass_bind_group_matcap_shaded_edges_transparent =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
@@ -498,6 +519,7 @@ impl SceneRenderer {
 
         let color_pass_bind_group_flat_with_shadows =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
@@ -530,6 +552,7 @@ impl SceneRenderer {
         };
 
         let color_pass_matcap_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
             size: wgpu::Extent3d {
                 width: matcap_texture_width,
                 height: matcap_texture_height,
@@ -552,7 +575,7 @@ impl SceneRenderer {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare_function: wgpu::CompareFunction::Always,
+            compare: wgpu::CompareFunction::Always,
         });
 
         let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -564,38 +587,44 @@ impl SceneRenderer {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare_function: wgpu::CompareFunction::Greater,
+            compare: wgpu::CompareFunction::Greater,
         });
 
         let sampler_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
                 bindings: &[
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler,
+                        ty: wgpu::BindingType::Sampler { comparison: false },
                     },
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler,
+                        // This is a comparison sampler sampling the depth
+                        // texture for shadow mapping.
+                        ty: wgpu::BindingType::Sampler { comparison: true },
                     },
                 ],
             });
 
         let sampled_texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
+                label: None,
+                bindings: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::SampledTexture {
-                        multisampled: false,
                         dimension: wgpu::TextureViewDimension::D2,
+                        component_type: wgpu::TextureComponentType::Float,
+                        multisampled: false,
                     },
                 }],
             });
 
         let sampler_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout: &sampler_bind_group_layout,
             bindings: &[
                 wgpu::Binding {
@@ -611,6 +640,7 @@ impl SceneRenderer {
 
         let color_pass_matcap_texture_bind_group =
             device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
                 layout: &sampled_texture_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
@@ -620,7 +650,7 @@ impl SceneRenderer {
                 }],
             });
 
-        upload_texture_rgba8_unorm(
+        common::upload_texture_rgba8_unorm(
             device,
             queue,
             &color_pass_matcap_texture,
@@ -629,13 +659,15 @@ impl SceneRenderer {
             &matcap_texture_data,
         );
 
-        let shadow_pass_buffer_size = wgpu_size_of::<ShadowPassUniforms>();
+        let shadow_pass_buffer_size = common::wgpu_size_of::<ShadowPassUniforms>();
         let shadow_pass_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
             size: shadow_pass_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         });
 
         let shadow_map_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
             size: wgpu::Extent3d {
                 width: 2048,
                 height: 2048,
@@ -651,6 +683,7 @@ impl SceneRenderer {
         let shadow_map_texture_view = shadow_map_texture.create_default_view();
 
         let shadow_map_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout: &sampled_texture_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -660,13 +693,15 @@ impl SceneRenderer {
 
         let shadow_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
+                label: None,
+                bindings: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
                     ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                 }],
             });
         let shadow_pass_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
             layout: &shadow_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -756,20 +791,22 @@ impl SceneRenderer {
                 stencil_read_mask: 0,
                 stencil_write_mask: 0,
             }),
-            index_format: wgpu::IndexFormat::Uint32,
-            vertex_buffers: &[wgpu::VertexBufferDescriptor {
-                stride: wgpu_size_of::<GpuMeshVertex>(),
-                step_mode: wgpu::InputStepMode::Vertex,
-                attributes: &[
-                    wgpu::VertexAttributeDescriptor {
-                        offset: 0,
-                        format: wgpu::VertexFormat::Float4,
-                        shader_location: 0,
-                    },
-                    // Note: We don't use other data from `GpuMeshVertex`,
-                    // just the position, we just stride over them.
-                ],
-            }],
+            vertex_state: wgpu::VertexStateDescriptor {
+                index_format: wgpu::IndexFormat::Uint32,
+                vertex_buffers: &[wgpu::VertexBufferDescriptor {
+                    stride: common::wgpu_size_of::<GpuMeshVertex>(),
+                    step_mode: wgpu::InputStepMode::Vertex,
+                    attributes: &[
+                        wgpu::VertexAttributeDescriptor {
+                            offset: 0,
+                            format: wgpu::VertexFormat::Float4,
+                            shader_location: 0,
+                        },
+                        // Note: We don't use other data from `GpuMeshVertex`,
+                        // just the position, we just stride over them.
+                    ],
+                }],
+            },
             sample_count: 1,
             sample_mask: !0,
             alpha_to_coverage_enabled: false,
@@ -837,27 +874,42 @@ impl SceneRenderer {
             light.min_range,
             light.max_range,
         );
-        let light_view_matrix = Matrix4::look_at_rh(
-            &light.position,
-            &(light.position + light.direction.normalize() * light.max_range),
-            &Vector3::z(),
-        );
 
-        let shadow_pass_uniforms_size = wgpu_size_of::<ShadowPassUniforms>();
-        let shadow_pass_uniforms = ShadowPassUniforms {
-            light_space_matrix: (light_projection_matrix * light_view_matrix).into(),
+        let light_direction =
+            Vector3::new(light.direction.x, light.direction.y, light.direction.z).normalize();
+
+        // Compute light_up so that it is never the same as light_direction. We
+        // pick one vector that doesn't have the same direction as the light and
+        // use that.
+        let light_up = if approx::relative_eq!(Vector3::z().dot(&light_direction).abs(), 1.0) {
+            Vector3::y()
+        } else {
+            Vector3::z()
         };
 
-        let transfer_buffer = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-            .fill_from_slice(&[shadow_pass_uniforms]);
+        let light_view_matrix = Matrix4::look_at_rh(
+            &light.position,
+            &(light.position + light_direction * light.max_range),
+            &light_up,
+        );
+
+        let transfer_buffer = common::create_buffer(
+            device,
+            wgpu::BufferUsage::COPY_SRC,
+            &[ShadowPassUniforms {
+                light_space_matrix: (correction_matrix()
+                    * light_projection_matrix
+                    * light_view_matrix)
+                    .into(),
+            }],
+        );
 
         encoder.copy_buffer_to_buffer(
             &transfer_buffer,
             0,
             &self.shadow_pass_buffer,
             0,
-            shadow_pass_uniforms_size,
+            common::wgpu_size_of::<ShadowPassUniforms>(),
         );
     }
 
@@ -869,22 +921,21 @@ impl SceneRenderer {
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
     ) {
-        let matrix_uniforms_size = wgpu_size_of::<MatrixUniforms>();
-        let matrix_uniforms = MatrixUniforms {
-            projection_matrix: (wgpu_correction_matrix() * projection_matrix).into(),
-            view_matrix: view_matrix.clone().into(),
-        };
-
-        let transfer_buffer = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-            .fill_from_slice(&[matrix_uniforms]);
+        let transfer_buffer = common::create_buffer(
+            device,
+            wgpu::BufferUsage::COPY_SRC,
+            &[MatrixUniforms {
+                projection_matrix: (correction_matrix() * projection_matrix).into(),
+                view_matrix: view_matrix.clone().into(),
+            }],
+        );
 
         encoder.copy_buffer_to_buffer(
             &transfer_buffer,
             0,
             &self.matrix_buffer,
             0,
-            matrix_uniforms_size,
+            common::wgpu_size_of::<MatrixUniforms>(),
         );
 
         self.render_list_sort_matrix = *view_matrix;
@@ -916,13 +967,9 @@ impl SceneRenderer {
                 index_count,
             );
 
-            let vertex_buffer = device
-                .create_buffer_mapped(vertex_data.len(), wgpu::BufferUsage::VERTEX)
-                .fill_from_slice(vertex_data);
-
-            let index_buffer = device
-                .create_buffer_mapped(indices.len(), wgpu::BufferUsage::INDEX)
-                .fill_from_slice(indices);
+            let vertex_buffer =
+                common::create_buffer(device, wgpu::BufferUsage::VERTEX, vertex_data);
+            let index_buffer = common::create_buffer(device, wgpu::BufferUsage::INDEX, indices);
 
             MeshResource {
                 centroid: mesh.centroid,
@@ -936,9 +983,8 @@ impl SceneRenderer {
                 vertex_data_count
             );
 
-            let vertex_buffer = device
-                .create_buffer_mapped(vertex_data.len(), wgpu::BufferUsage::VERTEX)
-                .fill_from_slice(vertex_data);
+            let vertex_buffer =
+                common::create_buffer(device, wgpu::BufferUsage::VERTEX, vertex_data);
 
             MeshResource {
                 centroid: mesh.centroid,
@@ -1053,7 +1099,7 @@ impl SceneRenderer {
 
             for (handle, _, cast_shadows) in mesh_props {
                 if cast_shadows {
-                    record(&self.mesh_resources, handle.0, &mut shadow_pass)
+                    record(&self.mesh_resources, handle.0, &mut shadow_pass);
                 }
             }
         }
@@ -1226,16 +1272,18 @@ impl SceneRenderer {
     }
 }
 
-fn record(
-    mesh_resources: &HashMap<u64, MeshResource>,
+fn record<'a, 'b>(
+    mesh_resources: &'a HashMap<u64, MeshResource>,
     raw_handle: u64,
-    rpass: &mut wgpu::RenderPass,
+    rpass: &'b mut wgpu::RenderPass<'a>,
 ) {
     let mesh_resource = &mesh_resources[&raw_handle];
+
     let (vertex_buffer, vertex_count) = &mesh_resource.vertices;
-    rpass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
+    rpass.set_vertex_buffer(0, vertex_buffer, 0, 0);
+
     if let Some((index_buffer, index_count)) = &mesh_resource.indices {
-        rpass.set_index_buffer(&index_buffer, 0);
+        rpass.set_index_buffer(&index_buffer, 0, 0);
         rpass.draw_indexed(0..*index_count, 0, 0..1);
     } else {
         rpass.draw(0..*vertex_count, 0..1);
@@ -1254,7 +1302,7 @@ struct MeshResource {
 /// component filled in as 1.0 or 0.0 for points and vectors
 /// respectively.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, zerocopy::AsBytes)]
 struct GpuMeshVertex {
     /// The position of the vertex in world-space. Last component is 1.
     position: [f32; 4],
@@ -1269,14 +1317,14 @@ struct GpuMeshVertex {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, zerocopy::AsBytes)]
 struct MatrixUniforms {
     projection_matrix: [[f32; 4]; 4],
     view_matrix: [[f32; 4]; 4],
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, zerocopy::AsBytes)]
 struct ColorPassUniforms {
     shading_mode_flat_color: [f32; 4],
     shading_mode_edges_color: [f32; 3],
@@ -1285,6 +1333,8 @@ struct ColorPassUniforms {
 }
 
 bitflags! {
+    #[repr(C)]
+    #[derive(zerocopy::AsBytes)]
     struct ShadingMode: u32 {
         const FLAT = 0x01;
         const SHADED = 0x02;
@@ -1294,36 +1344,28 @@ bitflags! {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, zerocopy::AsBytes)]
 struct ShadowPassUniforms {
     light_space_matrix: [[f32; 4]; 4],
 }
 
-/// Returns Vulkan (and currently wgpu-rs) correction matrix to the projection
-/// matrix.
-fn wgpu_correction_matrix() -> Matrix4<f32> {
-    // WebGPU does have a freshly specified NDC coordinate system, but
-    // wgpu-rs still uses Vulkan's. Vulkan (and therefore wgpu-rs) has
-    // different NDC and clip-space semantics than OpenGL: Vulkan is
-    // right-handed, Y grows downwards. The easiest way to keep
-    // everything working as before and use all the libraries that
-    // assume OpenGL is to apply a correction to the projection matrix
-    // which normally changes the right-handed OpenGL world-space to
-    // left-handed OpenGL clip-space.
-    // https://matthewwellings.com/blog/the-new-vulkan-coordinate-system/
-
-    // FIXME: Fix this correction matrix once wgpu-rs uses coordinate
-    // systems as specified by WebGPU.
-
+/// Returns a matrix that transforms left-handed OpenGL NDC into left-handed
+/// WebGPU NDC.
+///
+/// # Sources
+///
+/// - [OpenGL Coordinate Systems](https://learnopengl.com/Getting-started/Coordinate-Systems)
+/// - [WebGPU spec](https://gpuweb.github.io/gpuweb/#coordinate-systems)
+fn correction_matrix() -> Matrix4<f32> {
     #[rustfmt::skip]
-    let wgpu_correction_matrix = Matrix4::new(
-        1.0,  0.0,  0.0,  0.0,
-        0.0, -1.0,  0.0,  0.0,
-        0.0,  0.0,  0.5,  0.0,
-        0.0,  0.0,  0.5,  1.0,
-    );
+    let opengl_to_webgpu_matrix = Matrix4::from_column_slice(&[
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 0.5, 0.0,
+        0.0, 0.0, 0.5, 1.0,
+    ]);
 
-    wgpu_correction_matrix
+    opengl_to_webgpu_matrix
 }
 
 /// Produces an infinite iterator over bit-packed barycentric
@@ -1422,28 +1464,30 @@ fn create_color_pass_pipeline(
             stencil_read_mask: 0,
             stencil_write_mask: 0,
         }),
-        index_format: wgpu::IndexFormat::Uint32,
-        vertex_buffers: &[wgpu::VertexBufferDescriptor {
-            stride: wgpu_size_of::<GpuMeshVertex>(),
-            step_mode: wgpu::InputStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttributeDescriptor {
-                    offset: 0,
-                    format: wgpu::VertexFormat::Float4,
-                    shader_location: 0,
-                },
-                wgpu::VertexAttributeDescriptor {
-                    offset: wgpu_size_of::<[f32; 4]>(), // 4 bytes * 4 components * 1 attrib
-                    format: wgpu::VertexFormat::Float4,
-                    shader_location: 1,
-                },
-                wgpu::VertexAttributeDescriptor {
-                    offset: wgpu_size_of::<[f32; 4]>() * 2, // 4 bytes * 4 components * 2 attribs
-                    format: wgpu::VertexFormat::Uint,
-                    shader_location: 2,
-                },
-            ],
-        }],
+        vertex_state: wgpu::VertexStateDescriptor {
+            index_format: wgpu::IndexFormat::Uint32,
+            vertex_buffers: &[wgpu::VertexBufferDescriptor {
+                stride: common::wgpu_size_of::<GpuMeshVertex>(),
+                step_mode: wgpu::InputStepMode::Vertex,
+                attributes: &[
+                    wgpu::VertexAttributeDescriptor {
+                        offset: 0,
+                        format: wgpu::VertexFormat::Float4,
+                        shader_location: 0,
+                    },
+                    wgpu::VertexAttributeDescriptor {
+                        offset: common::wgpu_size_of::<[f32; 4]>(), // 4 bytes * 4 components * 1 attrib
+                        format: wgpu::VertexFormat::Float4,
+                        shader_location: 1,
+                    },
+                    wgpu::VertexAttributeDescriptor {
+                        offset: common::wgpu_size_of::<[f32; 4]>() * 2, // 4 bytes * 4 components * 2 attribs
+                        format: wgpu::VertexFormat::Uint,
+                        shader_location: 2,
+                    },
+                ],
+            }],
+        },
         sample_count: options.sample_count,
         sample_mask: !0,
         alpha_to_coverage_enabled: false,

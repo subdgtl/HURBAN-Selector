@@ -4,8 +4,6 @@ use std::io::Write;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
-use shaderc;
-
 macro_rules! warn {
     ($msg:expr) => ({
         std::println!(concat!("cargo:warning=Build script warning: ", $msg))
