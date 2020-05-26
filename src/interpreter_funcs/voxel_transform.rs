@@ -192,9 +192,9 @@ impl Func for FuncVoxelTransform {
                 optional: false,
             },
             ParamInfo {
-                name: "Detailed Mesh Analysis",
+                name: "Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                              The analysis may be slow, therefore it is by default off.",
+                The analysis may be slow, turn it on only when needed.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -223,8 +223,7 @@ impl Func for FuncVoxelTransform {
         let scale = args[6].unwrap_float3();
         let marching_cubes = args[7].unwrap_boolean();
         let error_if_large = args[8].unwrap_boolean();
-        let analyze_bbox = args[9].unwrap_boolean();
-        let analyze_mesh = args[10].unwrap_boolean();
+        let analyze_mesh = args[9].unwrap_boolean();
 
         if voxel_dimensions.iter().any(|dim| dim <= &0.0) {
             let error = FuncError::new(FuncVoxelTransformError::VoxelDimensionZeroOrLess);
@@ -297,10 +296,8 @@ impl Func for FuncVoxelTransform {
 
                 match meshing_output {
                     Some(value) => {
-                        if analyze_bbox {
-                            analytics::report_bounding_box_analysis(&value, log);
-                        }
                         if analyze_mesh {
+                            analytics::report_bounding_box_analysis(&value, log);
                             analytics::report_mesh_analysis(&value, log);
                         }
                         Ok(Value::Mesh(Arc::new(value)))
