@@ -16,36 +16,36 @@ dist = ["log/release_max_level_info"]
 
 [dependencies]
 approx = "0.3.2"
-arrayvec = "0.5.0"
-bitflags = "1.1.0"
-chrono = "0.4.9"
+arrayvec = "0.5.1"
+bitflags = "1.2.1"
+chrono = "0.4.11"
 crc32fast = "1.2.0"
-crossbeam-channel = "0.3.9"
+crossbeam-channel = "0.4.2"
 dirs = "2.0.2"
-fern = { version = "0.5.8", features = ["colored"] }
-futures = "0.3.4"
+fern = { version = "0.6.0", features = ["colored"] }
+futures = "0.3.5"
 fxhash = "0.2.1"
-image = "0.22.4"
-imgui = "0.2.1"
-log = { version = "0.4.8" }
-nalgebra = { version = "0.19.0", features = ["serde-serialize"] }
+image = "0.23.4"
+imgui = "0.3.0"
+log = "0.4.8"
+nalgebra = { version = "0.21.0", features = ["serde-serialize"] }
 noise = "0.6.0"
 num-traits = "0.2.11"
-png = "0.15.3"
+png = "0.16.3"
 raw-window-handle = "0.3.3"
-ron = "0.5.1"
-serde = { version = "1.0.102", features = ["derive"] }
-smallvec = "0.6.10"
+ron = "0.6.0"
+serde = { version = "1.0.110", features = ["derive"] }
+smallvec = "1.4.0"
 static_assertions = "1.1.0"
-tinyfiledialogs = "3.3.5"
-tobj = { version = "1.0", features = ["log"] }
+tinyfiledialogs = "3.3.9"
+tobj = { version = "2.0.0", features = ["log"] }
 wgpu = { version = "0.5.0", features = ["vulkan"] }
-winit = "0.22.0"
+winit = "0.22.2"
 zerocopy = "0.3.0"
 
 [dev-dependencies]
-insta = "0.12.0"
-mockall = "0.5.1"
+insta = "0.16.0"
+mockall = "0.7.1"
 
 [build-dependencies]
-shaderc = "0.6.0"
+shaderc = "0.6.2"

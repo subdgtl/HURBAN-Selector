@@ -41,8 +41,7 @@ impl ProjectStatus {
 
 #[derive(Debug, Clone)]
 pub enum ProjectError {
-    SerializingError(ron::ser::Error),
-    DeserializingError(ron::de::Error),
+    SerializeError(ron::error::Error),
     FileNotFound,
     PermissionDenied,
     UnexpectedError,
@@ -53,14 +52,9 @@ impl error::Error for ProjectError {}
 impl fmt::Display for ProjectError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ProjectError::SerializingError(err) => write!(
+            ProjectError::SerializeError(err) => write!(
                 f,
-                "An error occurred while serializing project file: {}",
-                err
-            ),
-            ProjectError::DeserializingError(err) => write!(
-                f,
-                "An error occurred while deserializing project file: {}",
+                "An error occurred while serializing or deserializing project file: {}",
                 err
             ),
             ProjectError::FileNotFound => write!(f, "File was not found."),
@@ -72,15 +66,9 @@ impl fmt::Display for ProjectError {
     }
 }
 
-impl From<ron::ser::Error> for ProjectError {
-    fn from(err: ron::ser::Error) -> Self {
-        ProjectError::SerializingError(err)
-    }
-}
-
-impl From<ron::de::Error> for ProjectError {
-    fn from(err: ron::de::Error) -> Self {
-        ProjectError::DeserializingError(err)
+impl From<ron::error::Error> for ProjectError {
+    fn from(err: ron::error::Error) -> Self {
+        ProjectError::SerializeError(err)
     }
 }
 
@@ -106,12 +94,7 @@ pub struct Project {
 /// Returns `PathBuf` which can be different than original path if the project
 /// extension was added.
 pub fn save<P: AsRef<Path>>(path: P, project: Project) -> Result<PathBuf, ProjectError> {
-    let pretty_config = ron::ser::PrettyConfig::default();
-    let mut serializer = ron::ser::Serializer::new(Some(pretty_config), true);
-    project.serialize(&mut serializer)?;
-
     let mut path_buf = path.as_ref().to_path_buf();
-
     match path_buf.extension() {
         Some(extension) => {
             let extension = extension.to_string_lossy().into_owned();
@@ -125,10 +108,16 @@ pub fn save<P: AsRef<Path>>(path: P, project: Project) -> Result<PathBuf, Projec
         }
     }
 
-    let contents = serializer.into_output_string();
-    let mut file = File::create(path_buf.as_path())?;
+    let mut output: Vec<u8> = Vec::new();
 
-    file.write_all(contents.as_bytes())?;
+    let pretty_config = ron::ser::PrettyConfig::default();
+    let mut serializer = ron::ser::Serializer::new(&mut output, Some(pretty_config), true)?;
+
+    project.serialize(&mut serializer)?;
+
+    let mut file = File::create(path_buf.as_path())?;
+    file.write_all(&output)?;
+    file.flush()?;
 
     Ok(path_buf)
 }
