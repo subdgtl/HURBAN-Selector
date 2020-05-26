@@ -45,10 +45,10 @@ impl Func for FuncDisjointMesh {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting group",
+                name: "Group Analysis",
                 description: "Reports detailed analytic information on the mesh group.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
-                    default_value: true,
+                    default_value: false,
                 }),
                 optional: false,
             },

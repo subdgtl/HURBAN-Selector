@@ -150,17 +150,9 @@ impl Func for FuncVoxelNoise {
                 optional: false,
             },
             ParamInfo {
-                name: "Bounding Box Analysis",
-                description: "Reports basic and quick analytic information on the created mesh.",
-                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
-                    default_value: true,
-                }),
-                optional: false,
-            },
-            ParamInfo {
-                name: "Detailed Mesh Analysis",
+                name: "Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                              The analysis may be slow, therefore it is by default off.",
+                The analysis may be slow, turn it on only when needed.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -186,8 +178,7 @@ impl Func for FuncVoxelNoise {
         let volume_range_raw = args[5].unwrap_float2();
         let marching_cubes = args[6].unwrap_boolean();
         let error_if_large = args[7].unwrap_boolean();
-        let analyze_bbox = args[8].unwrap_boolean();
-        let analyze_mesh = args[9].unwrap_boolean();
+        let analyze_mesh = args[8].unwrap_boolean();
 
         let meshing_range = volume_range_raw[0]..=volume_range_raw[1];
 
@@ -239,10 +230,8 @@ impl Func for FuncVoxelNoise {
 
         match meshing_output {
             Some(value) => {
-                if analyze_bbox {
-                    analytics::report_bounding_box_analysis(&value, log);
-                }
                 if analyze_mesh {
+                    analytics::report_bounding_box_analysis(&value, log);
                     analytics::report_mesh_analysis(&value, log);
                 }
                 Ok(Value::Mesh(Arc::new(value)))

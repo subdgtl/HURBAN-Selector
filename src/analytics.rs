@@ -94,17 +94,35 @@ pub fn report_mesh_analysis(mesh: &Mesh, log: &mut dyn FnMut(LogMessage)) {
             genus
         )));
     } else {
-        let edge_loops = analysis::border_edge_loops(&edge_sharing_map);
-        let edge_loop_count = edge_loops.len();
-        log(LogMessage::info(format!(
-            "Has {} naked border {}",
-            edge_loop_count,
-            if edge_loop_count == 1 {
-                "loop"
-            } else {
-                "loops"
+        match analysis::border_edge_loops(&edge_sharing_map) {
+            analysis::BorderEdgeLoopsResult::Found(edge_loops) => {
+                let edge_loop_count = edge_loops.len();
+                log(LogMessage::info(format!(
+                    "Has {} valid naked border {}",
+                    edge_loop_count,
+                    if edge_loop_count == 1 {
+                        "loop"
+                    } else {
+                        "loops"
+                    }
+                )));
             }
-        )));
+            analysis::BorderEdgeLoopsResult::FoundWithNondeterminism(edge_loops) => {
+                let edge_loop_count = edge_loops.len();
+                log(LogMessage::warn(format!(
+                    "Has {} non-deterministic (potentially invalid) naked border {}",
+                    edge_loop_count,
+                    if edge_loop_count == 1 {
+                        "loop"
+                    } else {
+                        "loops"
+                    }
+                )));
+            }
+            analysis::BorderEdgeLoopsResult::Watertight => {
+                panic!("Should never come here for watertight meshes")
+            }
+        }
     }
 
     if !is_manifold {

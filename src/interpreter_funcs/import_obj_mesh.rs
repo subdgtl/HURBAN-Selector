@@ -96,10 +96,10 @@ impl<C: ObjCache> Func for FuncImportObjMesh<C> {
                 optional: false,
             },
             ParamInfo {
-                name: "Analyze resulting group",
+                name: "Group Analysis",
                 description: "Reports detailed analytic information on the imported mesh group.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
-                    default_value: true,
+                    default_value: false,
                 }),
                 optional: false,
             },
