@@ -16,23 +16,119 @@ use super::{primitive, tools, Face, Mesh, NormalStrategy};
 
 /// Describes how should be empty (None) voxel be treated. Either as None or as
 /// a constant value. This is used for arithmetic functions, such as addition.
-#[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TreatEmpty {
+    #[allow(dead_code)]
     AsNone,
     AsValue(f32),
 }
 
-/// Selects falloff function for the falloff field computation. The parameter
+/// Selects falloff function for the distance field computation. The parameter
 /// specifies a distance multiplier.
-#[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FalloffFunction {
+    /// distance values: 0 to infinity \
+    /// suggested multiplier: 1 \
+    /// output values: 0 to infinity \
+    /// value on volume: 0
     Linear(f32),
+    /// distance values: 0 to infinity \
+    /// suggested multiplier: 1 \
+    /// output values: 0 to infinity \
+    /// value on volume: 0
+    #[allow(dead_code)]
     Square(f32),
+    /// distance values: 0 (excl) to infinity \
+    /// suggested multiplier: 1 \
+    /// output values: 1 to 0 (excl) \
+    /// value on volume: 1
+    #[allow(dead_code)]
     InverseLinear(f32),
+    /// distance values: 0 (excl) to infinity \
+    /// suggested multiplier: 1 \
+    /// output values: 1 to 0 (excl) \
+    /// value on volume: 1
     InverseSquare(f32),
+    /// http://www.geisswerks.com/ryan/BLOBS/blobs.html \
+    /// distance values: 0 to 1 \
+    /// suggested multiplier: 1 / growth \
+    /// output values: 0 to 1 \
+    /// value on volume: 1
+    #[allow(dead_code)]
     Perlin(f32),
+}
+
+impl FalloffFunction {
+    pub fn apply(&self, distance: f32, is_outside: bool) -> Option<f32> {
+        match self {
+            FalloffFunction::Linear(mul) => {
+                if distance == 0.0 {
+                    Some(0.0)
+                } else {
+                    let value = distance * mul;
+                    if is_outside {
+                        Some(value)
+                    } else {
+                        Some(-value)
+                    }
+                }
+            }
+            FalloffFunction::Square(mul) => {
+                if distance == 0.0 {
+                    Some(0.0)
+                } else {
+                    let value = distance * mul * distance * mul;
+                    if is_outside {
+                        Some(value)
+                    } else {
+                        Some(-value)
+                    }
+                }
+            }
+            FalloffFunction::InverseLinear(mul) => {
+                if distance == 0.0 {
+                    Some(1.0)
+                } else {
+                    let value = 1.0 / (distance * mul);
+                    if is_outside {
+                        Some(value)
+                    } else {
+                        Some(1.0 + value)
+                    }
+                }
+            }
+            FalloffFunction::InverseSquare(mul) => {
+                if distance == 0.0 {
+                    Some(1.0)
+                } else {
+                    let value = 1.0 / (distance * mul * distance * mul);
+                    if is_outside {
+                        Some(value)
+                    } else {
+                        Some(1.0 + value)
+                    }
+                }
+            }
+            FalloffFunction::Perlin(mul) => {
+                if distance == 0.0 {
+                    Some(1.0)
+                } else {
+                    let value = distance
+                        * mul
+                        * distance
+                        * mul
+                        * distance
+                        * mul
+                        * (distance * mul * (distance * mul * 6.0 - 15.0) + 10.0);
+                    if is_outside {
+                        Some(1.0 / value)
+                    } else {
+                        Some(1.0 + value)
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Discrete Scalar field is an abstract representation of points in a block of
@@ -985,6 +1081,7 @@ impl ScalarField {
     /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
     /// between the current value to the other value. For factor outside this
     /// range, the values will be extrapolated.
+    // FIXME: Join with add_values
     pub fn interpolate_to(&mut self, other: &ScalarField, interpolation_factor: f32) {
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
             let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
@@ -1022,8 +1119,13 @@ impl ScalarField {
     /// does not exist), it is treated according to the selected
     /// `empty_voxels_treatment` - it is either replaced with a constant value
     /// or considered None and then also the resulting voxel will become None.
-    #[allow(dead_code)]
-    pub fn add_values(&mut self, other: &ScalarField, empty_voxels_treatment: TreatEmpty) {
+    // FIXME: Join with interpolate_to
+    pub fn add_values(
+        &mut self,
+        other: &ScalarField,
+        empty_voxels_treatment_current: TreatEmpty,
+        empty_voxels_treatment_other: TreatEmpty,
+    ) {
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
             let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                 one_dimensional,
@@ -1037,18 +1139,41 @@ impl ScalarField {
             );
             let voxel_other = other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other);
 
-            match empty_voxels_treatment {
+            *voxel = match empty_voxels_treatment_current {
                 TreatEmpty::AsNone => {
-                    *voxel = if let (Some(value_self), Some(value_other)) = (&voxel, voxel_other) {
-                        Some(value_self + value_other)
+                    if let Some(value_self) = &voxel {
+                        match empty_voxels_treatment_other {
+                            TreatEmpty::AsNone => {
+                                if let Some(value_other) = voxel_other {
+                                    Some(value_self + value_other)
+                                } else {
+                                    None
+                                }
+                            }
+                            TreatEmpty::AsValue(substitute_value_other) => {
+                                let value_other = voxel_other.unwrap_or(substitute_value_other);
+                                Some(value_self + value_other)
+                            }
+                        }
                     } else {
                         None
-                    };
+                    }
                 }
-                TreatEmpty::AsValue(v) => {
-                    let value_self = voxel.unwrap_or(v);
-                    let value_other = voxel_other.unwrap_or(v);
-                    *voxel = Some(value_self + value_other);
+                TreatEmpty::AsValue(substitute_value_self) => {
+                    let value_self = voxel.unwrap_or(substitute_value_self);
+                    match empty_voxels_treatment_other {
+                        TreatEmpty::AsNone => {
+                            if let Some(value_other) = voxel_other {
+                                Some(value_self + value_other)
+                            } else {
+                                None
+                            }
+                        }
+                        TreatEmpty::AsValue(substitute_value_other) => {
+                            let value_other = voxel_other.unwrap_or(substitute_value_other);
+                            Some(value_self + value_other)
+                        }
+                    }
                 }
             }
         }
@@ -1266,95 +1391,7 @@ impl ScalarField {
 
             // Process the current voxel.
 
-            self.voxels[one_dimensional] = match falloff_function {
-                FalloffFunction::Linear(mul) => {
-                    // distance values: 0 to infinity
-                    // suggested multiplier: 1
-                    // output values: 0 to infinity
-                    // value on volume: 0
-                    if distance == 0.0 {
-                        Some(0.0)
-                    } else {
-                        let value = distance * mul;
-                        if is_outside {
-                            Some(value)
-                        } else {
-                            Some(-value)
-                        }
-                    }
-                }
-                FalloffFunction::Square(mul) => {
-                    // distance values: 0 to infinity
-                    // suggested multiplier: 1
-                    // output values: 0 to infinity
-                    // value on volume: 0
-                    if distance == 0.0 {
-                        Some(0.0)
-                    } else {
-                        let value = distance * mul * distance * mul;
-                        if is_outside {
-                            Some(value)
-                        } else {
-                            Some(-value)
-                        }
-                    }
-                }
-                FalloffFunction::InverseLinear(mul) => {
-                    // distance values: 0 (excl) to infinity
-                    // suggested multiplier: 1
-                    // output values: 1 to 0 (excl)
-                    // value on volume: 1
-                    if distance == 0.0 {
-                        Some(1.0)
-                    } else {
-                        let value = 1.0 / (distance * mul);
-                        if is_outside {
-                            Some(value)
-                        } else {
-                            Some(1.0 + value)
-                        }
-                    }
-                }
-                FalloffFunction::InverseSquare(mul) => {
-                    // distance values: 0 (excl) to infinity
-                    // suggested multiplier: 1
-                    // output values: 1 to 0 (excl)
-                    // value on volume: 1
-                    if distance == 0.0 {
-                        Some(1.0)
-                    } else {
-                        let value = 1.0 / (distance * mul * distance * mul);
-                        if is_outside {
-                            Some(value)
-                        } else {
-                            Some(1.0 + value)
-                        }
-                    }
-                }
-                FalloffFunction::Perlin(mul) => {
-                    // http://www.geisswerks.com/ryan/BLOBS/blobs.html
-                    // distance values: 0 to 1
-                    // suggested multiplier: 1 / growth
-                    // output values: 0 to 1
-                    // value on volume: 1
-                    if distance == 0.0 {
-                        Some(1.0)
-                    } else {
-                        let value = distance
-                            * mul
-                            * distance
-                            * mul
-                            * distance
-                            * mul
-                            * (distance * mul * (distance * mul * 6.0 - 15.0) + 10.0);
-                        if is_outside {
-                            Some(1.0 / value)
-                        } else {
-                            Some(1.0 + value)
-                        }
-                    }
-                }
-            };
+            self.voxels[one_dimensional] = falloff_function.apply(distance, is_outside);
         }
     }
 

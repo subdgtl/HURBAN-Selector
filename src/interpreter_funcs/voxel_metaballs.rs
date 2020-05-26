@@ -135,7 +135,7 @@ impl Func for FuncVoxelMetaballs {
             },
             ParamInfo {
                 name: "Volume range",
-                description: "Max value 2 = fill volumes",
+                description: "Materializes voxels with value within the given range.",
                 refinement: ParamRefinement::Float2(Float2ParamRefinement {
                     min_value: Some(0.0),
                     max_value: Some(100.0),
@@ -163,17 +163,9 @@ impl Func for FuncVoxelMetaballs {
                 optional: false,
             },
             ParamInfo {
-                name: "Bounding Box Analysis",
-                description: "Reports basic and quick analytic information on the created mesh.",
-                refinement: ParamRefinement::Boolean(BooleanParamRefinement {
-                    default_value: true,
-                }),
-                optional: false,
-            },
-            ParamInfo {
-                name: "Detailed Mesh Analysis",
+                name: "Mesh Analysis",
                 description: "Reports detailed analytic information on the created mesh.\n\
-                              The analysis may be slow, therefore it is by default off.",
+                The analysis may be slow, turn it on only when needed.",
                 refinement: ParamRefinement::Boolean(BooleanParamRefinement {
                     default_value: false,
                 }),
@@ -199,8 +191,7 @@ impl Func for FuncVoxelMetaballs {
         let volume_range_raw = args[5].unwrap_float2();
         let marching_cubes = args[6].unwrap_boolean();
         let error_if_large = args[7].unwrap_boolean();
-        let analyze_bbox = args[8].unwrap_boolean();
-        let analyze_mesh = args[9].unwrap_boolean();
+        let analyze_mesh = args[8].unwrap_boolean();
 
         if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
             let error = FuncError::new(FuncVoxelMetaballsError::VoxelDimensionsZeroOrLess);
@@ -268,7 +259,11 @@ impl Func for FuncVoxelMetaballs {
                 FalloffFunction::InverseSquare(distance_multiplier),
             );
 
-            voxel_cloud1.add_values(&voxel_cloud2, TreatEmpty::AsValue(0.0));
+            voxel_cloud1.add_values(
+                &voxel_cloud2,
+                TreatEmpty::AsValue(0.0),
+                TreatEmpty::AsValue(0.0),
+            );
         }
 
         if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {
@@ -285,10 +280,8 @@ impl Func for FuncVoxelMetaballs {
 
         match meshing_output {
             Some(value) => {
-                if analyze_bbox {
-                    analytics::report_bounding_box_analysis(&value, log);
-                }
                 if analyze_mesh {
+                    analytics::report_bounding_box_analysis(&value, log);
                     analytics::report_mesh_analysis(&value, log);
                 }
                 Ok(Value::Mesh(Arc::new(value)))
