@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io;
 use std::mem;
+use std::slice;
 use std::thread;
 
 use nalgebra::Matrix4;
@@ -18,6 +19,13 @@ mod common;
 
 mod imgui_renderer;
 mod scene_renderer;
+
+#[cfg(target_os = "windows")]
+static DEFAULT_BACKEND_LIST: &[GpuBackend] = &[GpuBackend::Vulkan, GpuBackend::D3d12];
+#[cfg(target_os = "macos")]
+static DEFAULT_BACKEND_LIST: &[GpuBackend] = &[GpuBackend::Metal];
+#[cfg(target_os = "linux")]
+static DEFAULT_BACKEND_LIST: &[GpuBackend] = &[GpuBackend::Vulkan];
 
 static SHADER_BLIT_VERT: &[u8] = include_shader!("blit.vert.spv");
 static SHADER_BLIT_FRAG: &[u8] = include_shader!("blit.frag.spv");
@@ -98,6 +106,16 @@ pub enum GpuBackend {
     Metal,
 }
 
+impl Into<wgpu::BackendBit> for GpuBackend {
+    fn into(self) -> wgpu::BackendBit {
+        match self {
+            GpuBackend::Vulkan => wgpu::BackendBit::VULKAN,
+            GpuBackend::D3d12 => wgpu::BackendBit::DX12,
+            GpuBackend::Metal => wgpu::BackendBit::METAL,
+        }
+    }
+}
+
 impl fmt::Display for GpuBackend {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -113,6 +131,15 @@ impl fmt::Display for GpuBackend {
 pub enum GpuPowerPreference {
     LowPower,
     HighPerformance,
+}
+
+impl Into<wgpu::PowerPreference> for GpuPowerPreference {
+    fn into(self) -> wgpu::PowerPreference {
+        match self {
+            GpuPowerPreference::LowPower => wgpu::PowerPreference::LowPower,
+            GpuPowerPreference::HighPerformance => wgpu::PowerPreference::HighPerformance,
+        }
+    }
 }
 
 impl fmt::Display for GpuPowerPreference {
@@ -183,41 +210,46 @@ impl Renderer {
         imgui_font_atlas: imgui::FontAtlasRefMut,
         options: Options,
     ) -> Self {
-        #[cfg(target_os = "windows")]
-        const DEFAULT_BACKEND: GpuBackend = GpuBackend::Vulkan;
-        #[cfg(target_os = "macos")]
-        const DEFAULT_BACKEND: GpuBackend = GpuBackend::Metal;
-        #[cfg(target_os = "linux")]
-        const DEFAULT_BACKEND: GpuBackend = GpuBackend::Vulkan;
-
-        let gpu_backend = options.backend.unwrap_or(DEFAULT_BACKEND);
-        log::info!("GPU will run on {} backend", gpu_backend);
-
-        let backend_bits = match gpu_backend {
-            GpuBackend::Vulkan => wgpu::BackendBit::VULKAN,
-            GpuBackend::D3d12 => wgpu::BackendBit::DX12,
-            GpuBackend::Metal => wgpu::BackendBit::METAL,
-        };
+        let gpu_backend_list = options
+            .backend
+            .as_ref()
+            .map(|backend| slice::from_ref(backend))
+            .unwrap_or(DEFAULT_BACKEND_LIST);
 
         let gpu_power_preference = options
             .power_preference
             .unwrap_or(GpuPowerPreference::LowPower);
         log::info!("GPU will use power preference: {}", gpu_power_preference);
 
-        let power_preference = match gpu_power_preference {
-            GpuPowerPreference::LowPower => wgpu::PowerPreference::LowPower,
-            GpuPowerPreference::HighPerformance => wgpu::PowerPreference::HighPerformance,
+        let surface = wgpu::Surface::create(window);
+
+        let mut gpu_backend_iter = gpu_backend_list.iter().copied();
+        let adapter = loop {
+            if let Some(gpu_backend) = gpu_backend_iter.next() {
+                log::info!("Trying to acquire GPU adapter for backend: {}", gpu_backend);
+
+                let adapter_result = futures::executor::block_on(wgpu::Adapter::request(
+                    &wgpu::RequestAdapterOptions {
+                        power_preference: gpu_power_preference.into(),
+                        compatible_surface: Some(&surface),
+                    },
+                    gpu_backend.into(),
+                ));
+
+                match adapter_result {
+                    Some(adapter) => {
+                        log::info!("Found suitable GPU adapter for backend: {}", gpu_backend);
+                        break adapter;
+                    }
+                    None => {
+                        log::warn!("Failed to acquire GPU adapter for backend: {}", gpu_backend);
+                    }
+                }
+            } else {
+                panic!("Failed to find suitable GPU backend");
+            }
         };
 
-        let surface = wgpu::Surface::create(window);
-        let adapter = futures::executor::block_on(wgpu::Adapter::request(
-            &wgpu::RequestAdapterOptions {
-                power_preference,
-                compatible_surface: Some(&surface),
-            },
-            backend_bits,
-        ))
-        .expect("Failed to acquire GPU adapter");
         log::info!("GPU adapter info: {:?}", adapter.get_info());
 
         let (device, mut queue) =
