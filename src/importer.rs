@@ -214,7 +214,7 @@ impl<C: ObjCache> Importer<C> {
 /// Converts contents of obj file into tobj representation. Materials are
 /// ignored.
 pub fn obj_buf_into_tobj(file_contents: &mut &[u8]) -> tobj::LoadResult {
-    tobj::load_obj_buf(file_contents, |_| Ok((vec![], HashMap::new())))
+    tobj::load_obj_buf(file_contents, true, |_| Ok((vec![], HashMap::new())))
 }
 
 /// Converts `tobj::Model` vector into vector of internal `Model` representations.
@@ -307,10 +307,11 @@ mod tests {
         tobj::Model {
             name: String::from("Test model"),
             mesh: tobj::Mesh {
-                indices: face_vertex_indices,
                 positions,
                 normals,
-                texcoords: vec![],
+                texcoords: Vec::new(),
+                indices: face_vertex_indices,
+                num_face_indices: Vec::new(),
                 material_id: None,
             },
         }
