@@ -1,4 +1,7 @@
 edition = "2018"
-newline_style = "Unix"
+# FIXME: We would like to use newline_style="Unix", but Windows machines on
+# Azure Pipelines check out the source as CRFL and it doesn't seem to be
+# configurable.
+newline_style = "Auto"
 use_try_shorthand = true
 use_field_init_shorthand = true
