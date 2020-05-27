@@ -12,7 +12,7 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::voxel_cloud::{self, ScalarField};
+use crate::mesh::voxel_cloud::{self, FalloffFunction, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
@@ -256,7 +256,7 @@ impl Func for FuncVoxelTransform {
 
         let mut voxel_cloud = ScalarField::from_mesh(mesh, &voxel_dimensions, 0.0, growth_u32);
 
-        voxel_cloud.compute_distance_field(&(0.0..=0.0));
+        voxel_cloud.compute_distance_field(&(0.0..=0.0), FalloffFunction::Linear(1.0));
 
         let rotate = Rotation::from_euler_angles(
             rotate[0].to_radians(),
@@ -280,7 +280,7 @@ impl Func for FuncVoxelTransform {
                 let growth_vector = Vector3::new(growth_i32, growth_i32, growth_i32);
                 let offset_bounding_box = transformed_sf_bounding_box.offset(&growth_vector);
                 transformed_sf.resize_to_bounding_box_voxel_space(&offset_bounding_box);
-                transformed_sf.compute_distance_field(&(0.0..=0.0));
+                transformed_sf.compute_distance_field(&(0.0..=0.0), FalloffFunction::Linear(1.0));
 
                 let meshing_range = if fill {
                     (Bound::Unbounded, Bound::Included(growth_f32))

@@ -11,7 +11,7 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::voxel_cloud::{self, ScalarField};
+use crate::mesh::voxel_cloud::{self, FalloffFunction, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
@@ -219,8 +219,8 @@ impl Func for FuncBooleanIntersection {
         let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, growth_u32);
         let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, growth_u32);
 
-        voxel_cloud1.compute_distance_field(&(0.0..=0.0));
-        voxel_cloud2.compute_distance_field(&(0.0..=0.0));
+        voxel_cloud1.compute_distance_field(&(0.0..=0.0), FalloffFunction::Linear(1.0));
+        voxel_cloud2.compute_distance_field(&(0.0..=0.0), FalloffFunction::Linear(1.0));
 
         let meshing_range = if fill {
             (Bound::Unbounded, Bound::Included(growth_f32))

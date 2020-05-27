@@ -9,57 +9,59 @@ use nalgebra::Vector3;
 use crate::analytics;
 use crate::bounding_box::BoundingBox;
 use crate::interpreter::{
-    BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncError,
-    FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
+    BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, FloatParamRefinement,
+    Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::voxel_cloud::{self, FalloffFunction, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
 #[derive(Debug, PartialEq)]
-pub enum FuncInterpolatedUnionError {
+pub enum FuncVoxelMetaballsError {
     WeldFailed,
     EmptyScalarField,
     VoxelDimensionsZeroOrLess,
     TooManyVoxels(u32, f32, f32, f32),
+    MultiplierTooCloseToZero,
 }
 
-impl fmt::Display for FuncInterpolatedUnionError {
+impl fmt::Display for FuncVoxelMetaballsError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FuncInterpolatedUnionError::WeldFailed => write!(
+            FuncVoxelMetaballsError::WeldFailed => write!(
                 f,
                 "Welding of separate voxels failed due to high welding proximity tolerance"
             ),
-            FuncInterpolatedUnionError::EmptyScalarField => write!(
+            FuncVoxelMetaballsError::EmptyScalarField => write!(
                 f,
                 "Scalar field from input meshes or the resulting mesh is empty"
             ),
-            FuncInterpolatedUnionError::VoxelDimensionsZeroOrLess => write!(f, "One or more voxel dimensions are zero or less"),
-            FuncInterpolatedUnionError::TooManyVoxels(max_count, x, y, z) => write!(
+            FuncVoxelMetaballsError::VoxelDimensionsZeroOrLess => write!(f, "One or more voxel dimensions are zero or less"),
+            FuncVoxelMetaballsError::TooManyVoxels(max_count, x, y, z) => write!(
                 f,
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
                 max_count, x, y, z
             ),
+            FuncVoxelMetaballsError::MultiplierTooCloseToZero => write!(f, "Distance multiplier too close to zero"),
         }
     }
 }
 
-impl error::Error for FuncInterpolatedUnionError {}
+impl error::Error for FuncVoxelMetaballsError {}
 
-pub struct FuncInterpolatedUnion;
+pub struct FuncVoxelMetaballs;
 
-impl Func for FuncInterpolatedUnion {
+impl Func for FuncVoxelMetaballs {
     fn info(&self) -> &FuncInfo {
         &FuncInfo {
-            name: "Voxel Morph",
-            description: "VOXEL INTERPOLATION MORPH FROM TWO MESH GEOMETRIES\n\
+            name: "Voxel Metaballs",
+            description: "VOXEL-BASED METABALLS FROM TWO MESH GEOMETRIES\n\
             \n\
             Converts the input mesh geometries into voxel clouds, resizes both voxel \
             clouds to be large enough to contain volumes from both of them \
-            then computes distance fields for both voxel clouds, interpolates values \
-            of the two distance fields by the given factor and eventually \
-            materializes the resulting voxel cloud into a welded mesh.\n\
+            then computes falloff fields for both voxel clouds, adds values \
+            of the two distance fields and eventually materializes \
+            the resulting voxel cloud into a welded mesh.\n\
             \n\
             Voxels are three-dimensional pixels. They exist in a regular three-dimensional \
             grid of arbitrary dimensions (voxel size). The voxel can be turned on \
@@ -70,8 +72,8 @@ impl Func for FuncInterpolatedUnion {
             The input meshes will be marked used and thus invisible in the viewport. \
             They can still be used in subsequent operations.\n\
             \n\
-            The resulting mesh geometry will be named 'Interpolated Mesh'.",
-            return_value_name: "Interpolated Mesh",
+            The resulting mesh geometry will be named 'Metaball Mesh'.",
+            return_value_name: "Metaball Mesh",
         }
     }
 
@@ -103,9 +105,9 @@ impl Func for FuncInterpolatedUnion {
                 refinement: ParamRefinement::Float3(Float3ParamRefinement {
                     min_value: Some(0.005),
                     max_value: None,
-                    default_value_x: Some(1.0),
-                    default_value_y: Some(1.0),
-                    default_value_z: Some(1.0),
+                    default_value_x: Some(0.1),
+                    default_value_y: Some(0.1),
+                    default_value_z: Some(0.1),
                 }),
                 optional: false,
             },
@@ -122,17 +124,28 @@ impl Func for FuncInterpolatedUnion {
                 optional: false,
             },
             ParamInfo {
-                name: "Factor",
-                description:
-                    "Proportional interpolation factor between the first and the second mesh.\n\
+                name: "Distance Multiplier",
+                description: "Defines the speed of volume falloff.\n\
                 \n\
-                Factor = 0.0: the result is equal to the first mesh.\n\
-                Factor = 0.5: the result is half way between the first and the second mesh.\n\
-                Factor = 1.0: the result is equal to the second mesh.",
+                Lower absolute values (closer to zero) mean better control \
+                over the resulting blob. \
+                Values between -0.01 and 0.01 are considered too close \
+                to zero and cause an error.",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
                     default_value: Some(0.5),
+                    min_value: None,
+                    max_value: None,
+                }),
+                optional: false,
+            },
+            ParamInfo {
+                name: "Volume range",
+                description: "Materializes voxels with value within the given range.",
+                refinement: ParamRefinement::Float2(Float2ParamRefinement {
                     min_value: Some(0.0),
-                    max_value: Some(1.0),
+                    max_value: Some(100.0),
+                    default_value_x: Some(0.5),
+                    default_value_y: Some(2.0),
                 }),
                 optional: false,
             },
@@ -179,13 +192,20 @@ impl Func for FuncInterpolatedUnion {
         let mesh2 = args[1].unwrap_mesh();
         let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
         let fill = args[3].unwrap_boolean();
-        let interpolation_factor = args[4].unwrap_float();
-        let marching_cubes = args[5].unwrap_boolean();
-        let error_if_large = args[6].unwrap_boolean();
-        let analyze_mesh = args[7].unwrap_boolean();
+        let distance_multiplier = args[4].unwrap_float();
+        let volume_range_raw = args[5].unwrap_float2();
+        let marching_cubes = args[6].unwrap_boolean();
+        let error_if_large = args[7].unwrap_boolean();
+        let analyze_mesh = args[8].unwrap_boolean();
 
         if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
-            let error = FuncError::new(FuncInterpolatedUnionError::VoxelDimensionsZeroOrLess);
+            let error = FuncError::new(FuncVoxelMetaballsError::VoxelDimensionsZeroOrLess);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
+
+        if distance_multiplier.abs() <= 0.01 {
+            let error = FuncError::new(FuncVoxelMetaballsError::MultiplierTooCloseToZero);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
@@ -206,7 +226,7 @@ impl Func for FuncInterpolatedUnion {
                     VOXEL_COUNT_THRESHOLD,
                 );
 
-            let error = FuncError::new(FuncInterpolatedUnionError::TooManyVoxels(
+            let error = FuncError::new(FuncVoxelMetaballsError::TooManyVoxels(
                 VOXEL_COUNT_THRESHOLD,
                 suggested_voxel_size.x,
                 suggested_voxel_size.y,
@@ -216,13 +236,20 @@ impl Func for FuncInterpolatedUnion {
             return Err(error);
         }
 
-        let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, 1);
-        let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, 1);
+        let growth = (1.0 / distance_multiplier).round().max(1.0) as u32 + 5;
 
-        let volume_value_range = if fill {
-            (Bound::Unbounded, Bound::Included(0.0))
+        let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, growth);
+        let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, growth);
+
+        let volume_value_range = (Bound::Included(0.0), Bound::Included(0.0));
+
+        let meshing_range = if fill {
+            (Bound::Included(volume_range_raw[0]), Bound::Unbounded)
         } else {
-            (Bound::Included(0.0), Bound::Included(0.0))
+            (
+                Bound::Included(volume_range_raw[0]),
+                Bound::Included(volume_range_raw[1]),
+            )
         };
 
         let bounding_box_voxel_cloud1 = voxel_cloud1.bounding_box_cartesian_space();
@@ -234,23 +261,28 @@ impl Func for FuncInterpolatedUnion {
                 .copied(),
         ) {
             voxel_cloud1.resize_to_bounding_box_cartesian_space(&bounding_box);
-            voxel_cloud1.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
-            voxel_cloud2.resize_to_bounding_box_cartesian_space(&bounding_box);
-            voxel_cloud2.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
+            voxel_cloud1.compute_distance_field(
+                &volume_value_range,
+                FalloffFunction::InverseSquare(distance_multiplier),
+            );
+            voxel_cloud2.compute_distance_field(
+                &volume_value_range,
+                FalloffFunction::InverseSquare(distance_multiplier),
+            );
 
-            voxel_cloud1.interpolate_to(&voxel_cloud2, interpolation_factor);
+            voxel_cloud1.add_values(&voxel_cloud2);
         }
 
-        if !voxel_cloud1.contains_voxels_within_range(&volume_value_range) {
-            let error = FuncError::new(FuncInterpolatedUnionError::EmptyScalarField);
+        if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {
+            let error = FuncError::new(FuncVoxelMetaballsError::EmptyScalarField);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
         let meshing_output = if marching_cubes {
-            voxel_cloud1.to_marching_cubes(&volume_value_range)
+            voxel_cloud1.to_marching_cubes(&meshing_range)
         } else {
-            voxel_cloud1.to_mesh(&volume_value_range)
+            voxel_cloud1.to_mesh(&meshing_range)
         };
 
         match meshing_output {
@@ -262,7 +294,7 @@ impl Func for FuncInterpolatedUnion {
                 Ok(Value::Mesh(Arc::new(value)))
             }
             None => {
-                let error = FuncError::new(FuncInterpolatedUnionError::WeldFailed);
+                let error = FuncError::new(FuncVoxelMetaballsError::WeldFailed);
                 log(LogMessage::error(format!("Error: {}", error)));
                 Err(error)
             }

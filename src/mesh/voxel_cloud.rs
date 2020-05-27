@@ -13,6 +13,114 @@ use crate::plane::Plane;
 
 use super::{primitive, tools, Face, Mesh, NormalStrategy};
 
+/// Selects falloff function for the distance field computation. The parameter
+/// specifies a distance multiplier.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FalloffFunction {
+    /// distance values: 0 to infinity \
+    /// suggested multiplier: 1 \
+    /// output values: 0 to infinity \
+    /// value on volume: 0
+    Linear(f32),
+    /// distance values: 0 to infinity \
+    /// suggested multiplier: 1 \
+    /// output values: 0 to infinity \
+    /// value on volume: 0
+    #[allow(dead_code)]
+    Square(f32),
+    /// distance values: 0 (excl) to infinity \
+    /// suggested multiplier: 1 \
+    /// output values: 1 to 0 (excl) \
+    /// value on volume: 1
+    #[allow(dead_code)]
+    InverseLinear(f32),
+    /// distance values: 0 (excl) to infinity \
+    /// suggested multiplier: 1 \
+    /// output values: 1 to 0 (excl) \
+    /// value on volume: 1
+    InverseSquare(f32),
+    /// http://www.geisswerks.com/ryan/BLOBS/blobs.html \
+    /// distance values: 0 to 1 \
+    /// suggested multiplier: 1 / growth \
+    /// output values: 0 to 1 \
+    /// value on volume: 1
+    #[allow(dead_code)]
+    Perlin(f32),
+}
+
+impl FalloffFunction {
+    pub fn apply(self, distance: f32, is_outside: bool) -> Option<f32> {
+        // FIXME: These will become proper math functions in the very next PR.
+        match self {
+            FalloffFunction::Linear(mul) => {
+                let d = distance * mul;
+                if d == 0.0 {
+                    Some(0.0)
+                } else {
+                    let value = d;
+                    if is_outside {
+                        Some(value)
+                    } else {
+                        Some(-value)
+                    }
+                }
+            }
+            FalloffFunction::Square(mul) => {
+                let d = distance * mul;
+                if d == 0.0 {
+                    Some(0.0)
+                } else {
+                    let value = d * d;
+                    if is_outside {
+                        Some(value)
+                    } else {
+                        Some(-value)
+                    }
+                }
+            }
+            FalloffFunction::InverseLinear(mul) => {
+                let d = distance * mul;
+                if d == 0.0 {
+                    Some(1.0)
+                } else {
+                    let value = 1.0 / (d);
+                    if is_outside {
+                        Some(value)
+                    } else {
+                        Some(1.0 + value)
+                    }
+                }
+            }
+            FalloffFunction::InverseSquare(mul) => {
+                let d = distance * mul;
+                if d == 0.0 {
+                    Some(1.0)
+                } else {
+                    let value = 1.0 / (d * d);
+                    if is_outside {
+                        Some(value)
+                    } else {
+                        Some(1.0 + value)
+                    }
+                }
+            }
+            FalloffFunction::Perlin(mul) => {
+                let d = distance * mul;
+                if d == 0.0 {
+                    Some(1.0)
+                } else {
+                    let value = d * d * d * (d * (d * 6.0 - 15.0) + 10.0);
+                    if is_outside {
+                        Some(1.0 / value)
+                    } else {
+                        Some(1.0 + 1.0 / value)
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Discrete Scalar field is an abstract representation of points in a block of
 /// space. Each point is a center of a voxel - an abstract box of given
 /// dimensions in a discrete spatial grid.
@@ -447,7 +555,6 @@ impl ScalarField {
     }
 
     /// Returns scalar field block end in absolute voxel coordinates.
-    #[allow(dead_code)]
     fn block_end(&self) -> Point3<i32> {
         Point3::new(
             self.block_start.x + cast_i32(self.block_dimensions.x) - 1,
@@ -1237,6 +1344,7 @@ impl ScalarField {
     /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
     /// between the current value to the other value. For factor outside this
     /// range, the values will be extrapolated.
+    // FIXME: Join with add_values
     pub fn interpolate_to(&mut self, other: &ScalarField, interpolation_factor: f32) {
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
             let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
@@ -1263,6 +1371,36 @@ impl ScalarField {
                 Some(value_interpolated_from_self_to_other as f32)
             } else {
                 None
+            };
+        }
+    }
+
+    /// Add values of the other scalar fields to the respective voxels of the
+    /// current scalar field. The current scalar field will not be resized, so
+    /// only the overlapping areas will be will be added. If the voxel in the
+    /// current or the other scalar field is None (does not contain any voxel or
+    /// does not exist), it is treated according to the selected
+    /// `empty_voxels_treatment` for both, the current and the other scalar
+    /// field - it is either replaced with a constant value or considered None
+    /// and then also the resulting voxel will become None.
+    // FIXME: Join with interpolate_to
+    pub fn add_values(&mut self, other: &ScalarField) {
+        for (one_dimensional, voxel_self) in self.voxels.iter_mut().enumerate() {
+            let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+                &self.voxel_dimensions,
+            );
+            let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
+                &cartesian_coordinate,
+                &other.voxel_dimensions,
+            );
+            let voxel_other = other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other);
+
+            *voxel_self = match (&voxel_self, &voxel_other) {
+                (None, None) => None,
+                _ => Some(voxel_self.unwrap_or(0.0) + voxel_other.unwrap_or(0.0)),
             };
         }
     }
@@ -1339,8 +1477,11 @@ impl ScalarField {
     /// volume. The voxels that were originally volume voxels, will be set to
     /// value 0. Voxels inside the closed volumes will have the distance value
     /// with a negative sign.
-    pub fn compute_distance_field<U>(&mut self, volume_value_range: &U)
-    where
+    pub fn compute_distance_field<U>(
+        &mut self,
+        volume_value_range: &U,
+        falloff_function: FalloffFunction,
+    ) where
         U: RangeBounds<f32>,
     {
         // Lookup table of neighbor coordinates
@@ -1472,14 +1613,11 @@ impl ScalarField {
                     }
                 }
             }
+            let is_outside = discovered_as_outer_and_empty[one_dimensional];
 
-            // Process the current voxel. If it is outside the volumes, set its
-            // value to be positive, if it's inside, set it to negative.
-            self.voxels[one_dimensional] = if discovered_as_outer_and_empty[one_dimensional] {
-                Some(distance)
-            } else {
-                Some(-distance)
-            };
+            // Process the current voxel.
+
+            self.voxels[one_dimensional] = falloff_function.apply(distance, is_outside);
         }
     }
 
