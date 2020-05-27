@@ -98,7 +98,7 @@ impl OneVoxelFunction {
             }
             OneVoxelFunction::PowF(value) => voxel.map(|value_self| value_self.powf(value)),
             OneVoxelFunction::Replace(search_value, replacement_value) => voxel.map(|value_self| {
-                if value_self == search_value {
+                if approx::relative_eq!(value_self, search_value) {
                     replacement_value
                 } else {
                     value_self
