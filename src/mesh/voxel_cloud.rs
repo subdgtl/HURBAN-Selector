@@ -1385,7 +1385,7 @@ impl ScalarField {
     /// and then also the resulting voxel will become None.
     // FIXME: Join with interpolate_to
     pub fn add_values(&mut self, other: &ScalarField) {
-        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
+        for (one_dimensional, voxel_self) in self.voxels.iter_mut().enumerate() {
             let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                 one_dimensional,
                 &self.block_start,
@@ -1398,7 +1398,7 @@ impl ScalarField {
             );
             let voxel_other = other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other);
 
-            *voxel = voxel.map(|value_self| value_self + voxel_other.unwrap_or(0.0));
+            *voxel_self = Some(voxel_self.unwrap_or(0.0) + voxel_other.unwrap_or(0.0));
         }
     }
 
