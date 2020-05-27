@@ -1398,7 +1398,10 @@ impl ScalarField {
             );
             let voxel_other = other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other);
 
-            *voxel_self = Some(voxel_self.unwrap_or(0.0) + voxel_other.unwrap_or(0.0));
+            *voxel_self = match (&voxel_self, &voxel_other) {
+                (None, None) => None,
+                _ => Some(voxel_self.unwrap_or(0.0) + voxel_other.unwrap_or(0.0)),
+            };
         }
     }
 
