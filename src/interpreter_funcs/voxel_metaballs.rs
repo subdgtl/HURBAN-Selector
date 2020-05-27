@@ -12,7 +12,9 @@ use crate::interpreter::{
     BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, FloatParamRefinement,
     Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh::voxel_cloud::{self, FalloffFunction, ScalarField};
+use crate::mesh::voxel_cloud::{
+    self, FalloffFunction, OneVoxelFunction, ScalarField, TwoVoxelFunction,
+};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
@@ -142,10 +144,10 @@ impl Func for FuncVoxelMetaballs {
                 name: "Volume range",
                 description: "Materializes voxels with value within the given range.",
                 refinement: ParamRefinement::Float2(Float2ParamRefinement {
-                    min_value: Some(0.0),
-                    max_value: Some(100.0),
-                    default_value_x: Some(0.5),
-                    default_value_y: Some(2.0),
+                    min_value: None,
+                    max_value: None,
+                    default_value_x: Some(f32::INFINITY),
+                    default_value_y: Some(f32::INFINITY),
                 }),
                 optional: false,
             },
@@ -241,16 +243,12 @@ impl Func for FuncVoxelMetaballs {
         let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, growth);
         let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, growth);
 
-        let volume_value_range = (Bound::Included(0.0), Bound::Included(0.0));
+        let volume_value_range = 0.0..=0.0;
 
-        let meshing_range = if fill {
-            (Bound::Included(volume_range_raw[0]), Bound::Unbounded)
-        } else {
-            (
-                Bound::Included(volume_range_raw[0]),
-                Bound::Included(volume_range_raw[1]),
-            )
-        };
+        let meshing_range = (
+            Bound::Included(volume_range_raw[0]),
+            Bound::Included(volume_range_raw[1]),
+        );
 
         let bounding_box_voxel_cloud1 = voxel_cloud1.bounding_box_cartesian_space();
         let bounding_box_voxel_cloud2 = voxel_cloud2.bounding_box_cartesian_space();
@@ -270,7 +268,33 @@ impl Func for FuncVoxelMetaballs {
                 FalloffFunction::InverseSquare(distance_multiplier),
             );
 
-            voxel_cloud1.add_values(&voxel_cloud2);
+            if fill {
+                let mut voxel_cloud1_inside = voxel_cloud1.extract_voxels_inside_volumes(&(
+                    Bound::Included(f32::INFINITY),
+                    Bound::Included(f32::INFINITY),
+                ));
+
+                let mut voxel_cloud2_inside = voxel_cloud2.extract_voxels_inside_volumes(&(
+                    Bound::Included(f32::INFINITY),
+                    Bound::Included(f32::INFINITY),
+                ));
+
+                voxel_cloud1_inside
+                    .apply_one_voxel_function(OneVoxelFunction::SetConstant(f32::INFINITY));
+                voxel_cloud2_inside
+                    .apply_one_voxel_function(OneVoxelFunction::SetConstant(f32::INFINITY));
+
+                voxel_cloud1.apply_two_voxel_function(
+                    &voxel_cloud1_inside,
+                    TwoVoxelFunction::ReplaceValues,
+                );
+                voxel_cloud2.apply_two_voxel_function(
+                    &voxel_cloud2_inside,
+                    TwoVoxelFunction::ReplaceValues,
+                );
+            }
+
+            voxel_cloud1.apply_two_voxel_function(&voxel_cloud2, TwoVoxelFunction::Addition);
         }
 
         if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {

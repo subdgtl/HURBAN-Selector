@@ -11,7 +11,9 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::voxel_cloud::{self, FalloffFunction, ScalarField};
+use crate::mesh::voxel_cloud::{
+    self, FalloffFunction, OneVoxelFunction, ScalarField, TwoVoxelFunction,
+};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
@@ -106,6 +108,7 @@ impl Func for FuncBooleanDifference {
                 }),
                 optional: false,
             },
+            // FIXME: Consider changing to volume range for consistency.
             ParamInfo {
                 name: "Grow",
                 description: "The voxelization algorithm puts voxels on the surface of \
@@ -220,14 +223,28 @@ impl Func for FuncBooleanDifference {
         let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, growth_u32);
         let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, growth_u32);
 
-        voxel_cloud1.compute_distance_field(&(0.0..=0.0), FalloffFunction::Linear(1.0));
-        voxel_cloud2.compute_distance_field(&(0.0..=0.0), FalloffFunction::Linear(1.0));
+        let volume_value_range = 0.0..=0.0;
 
-        let meshing_range = if fill {
-            (Bound::Unbounded, Bound::Included(growth_f32))
-        } else {
-            (Bound::Included(-growth_f32), Bound::Included(growth_f32))
-        };
+        voxel_cloud1.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
+        voxel_cloud2.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
+
+        if fill {
+            let mut voxel_cloud1_inside =
+                voxel_cloud1.extract_voxels_inside_volumes(&volume_value_range);
+
+            let mut voxel_cloud2_inside =
+                voxel_cloud2.extract_voxels_inside_volumes(&volume_value_range);
+
+            voxel_cloud1_inside.apply_one_voxel_function(OneVoxelFunction::SetConstant(0.0));
+            voxel_cloud2_inside.apply_one_voxel_function(OneVoxelFunction::SetConstant(0.0));
+
+            voxel_cloud1
+                .apply_two_voxel_function(&voxel_cloud1_inside, TwoVoxelFunction::ReplaceValues);
+            voxel_cloud2
+                .apply_two_voxel_function(&voxel_cloud2_inside, TwoVoxelFunction::ReplaceValues);
+        }
+
+        let meshing_range = (Bound::Included(-growth_f32), Bound::Included(growth_f32));
 
         voxel_cloud1.boolean_difference(&meshing_range, &voxel_cloud2, &meshing_range);
 

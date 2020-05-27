@@ -30,93 +30,158 @@ pub enum FalloffFunction {
     Square(f32),
     /// distance values: 0 (excl) to infinity \
     /// suggested multiplier: 1 \
-    /// output values: 1 to 0 (excl) \
-    /// value on volume: 1
+    /// output values: infinity to 0 \
+    /// value on volume: infinity
     #[allow(dead_code)]
     InverseLinear(f32),
     /// distance values: 0 (excl) to infinity \
     /// suggested multiplier: 1 \
-    /// output values: 1 to 0 (excl) \
-    /// value on volume: 1
+    /// output values: infinity to 0 \
+    /// value on volume: infinity
     InverseSquare(f32),
-    /// http://www.geisswerks.com/ryan/BLOBS/blobs.html \
-    /// distance values: 0 to 1 \
-    /// suggested multiplier: 1 / growth \
-    /// output values: 0 to 1 \
-    /// value on volume: 1
-    #[allow(dead_code)]
-    Perlin(f32),
 }
 
 impl FalloffFunction {
-    pub fn apply(self, distance: f32, is_outside: bool) -> Option<f32> {
-        // FIXME: These will become proper math functions in the very next PR.
+    pub fn apply(self, distance: f32) -> Option<f32> {
         match self {
             FalloffFunction::Linear(mul) => {
                 let d = distance * mul;
-                if d == 0.0 {
-                    Some(0.0)
-                } else {
-                    let value = d;
-                    if is_outside {
-                        Some(value)
-                    } else {
-                        Some(-value)
-                    }
-                }
+                Some(d)
             }
             FalloffFunction::Square(mul) => {
                 let d = distance * mul;
-                if d == 0.0 {
-                    Some(0.0)
-                } else {
-                    let value = d * d;
-                    if is_outside {
-                        Some(value)
-                    } else {
-                        Some(-value)
-                    }
-                }
+                Some(d * d)
             }
             FalloffFunction::InverseLinear(mul) => {
                 let d = distance * mul;
-                if d == 0.0 {
-                    Some(1.0)
-                } else {
-                    let value = 1.0 / (d);
-                    if is_outside {
-                        Some(value)
-                    } else {
-                        Some(1.0 + value)
-                    }
-                }
+                Some(1.0 / d)
             }
             FalloffFunction::InverseSquare(mul) => {
                 let d = distance * mul;
-                if d == 0.0 {
-                    Some(1.0)
+                Some(1.0 / (d * d))
+            }
+        }
+    }
+}
+
+/// A function with one voxel as an input to be applied with `apply_one_voxel_function`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OneVoxelFunction {
+    /// Replace any voxel value that is currently not None with the specified
+    /// constant.
+    SetConstant(f32),
+    /// Add the specified constant to any voxel value that is currently not
+    /// None.
+    #[allow(dead_code)]
+    AddConstant(f32),
+    /// Multiply any voxel value that is currently not None with the specified
+    /// constant.
+    #[allow(dead_code)]
+    MultiplyWithConstant(f32),
+    /// Raise any voxel value that is currently not None to the specified
+    /// power.
+    #[allow(dead_code)]
+    PowF(f32),
+    /// If the current voxel value equals the search value, replace it with the
+    /// specified constant value.
+    #[allow(dead_code)]
+    Replace(f32, f32),
+}
+
+impl OneVoxelFunction {
+    pub fn apply(self, voxel: Option<f32>) -> Option<f32> {
+        match self {
+            OneVoxelFunction::SetConstant(value) => voxel.map(|_| value),
+            OneVoxelFunction::AddConstant(value) => voxel.map(|value_self| value_self + value),
+            OneVoxelFunction::MultiplyWithConstant(value) => {
+                voxel.map(|value_self| value_self * value)
+            }
+            OneVoxelFunction::PowF(value) => voxel.map(|value_self| value_self.powf(value)),
+            OneVoxelFunction::Replace(search_value, replacement_value) => voxel.map(|value_self| {
+                if value_self == search_value {
+                    replacement_value
                 } else {
-                    let value = 1.0 / (d * d);
-                    if is_outside {
+                    value_self
+                }
+            }),
+        }
+    }
+}
+
+/// A function with two voxels as an input to be applied with `apply_two_voxel_function`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TwoVoxelFunction {
+    /// Used to interpolate values of two voxels. If any of the voxels is None,
+    /// the result is None.
+    ///
+    /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
+    /// between the current value to the other value. For factor outside this
+    /// range, the values will be extrapolated.
+    LinearInterpolation(f32),
+    /// Used to add values of two voxels. If any voxel's value is None, the
+    /// result is an identity of the other voxel. If both voxels are None, the
+    /// result is also None.
+    Addition,
+    /// Used to subtract values of two voxels. If any voxel's value is None, the
+    /// result is an identity of the other voxel. If both voxels are None, the
+    /// result is also None.
+    #[allow(dead_code)]
+    Subtraction,
+    /// Used to multiply values of two voxels. If any voxel's value is None, the
+    /// result is an identity of the other voxel. If both voxels are None, the
+    /// result is also None.
+    #[allow(dead_code)]
+    Multiplication,
+    /// Used to divide values of two voxels. If any voxel's value is None, the
+    /// result is an identity of the other voxel. If both voxels are None, the
+    /// result is also None.
+    #[allow(dead_code)]
+    Division,
+    /// Used to replace value of the first voxel if the other voxel is not None.
+    ReplaceValues,
+}
+
+impl TwoVoxelFunction {
+    pub fn apply(self, voxel_self: Option<f32>, voxel_other: Option<f32>) -> Option<f32> {
+        match self {
+            TwoVoxelFunction::LinearInterpolation(interpolation_factor) => {
+                match (voxel_self, voxel_other) {
+                    (Some(value_self), Some(value_other)) => {
+                        let self_to_other_range = (value_self as f64)..(value_other as f64);
+                        let value = math::remap(
+                            interpolation_factor as f64,
+                            &(0.0..1.0),
+                            &self_to_other_range,
+                        )
+                        .expect("The target interval is infinite")
+                            as f32;
                         Some(value)
-                    } else {
-                        Some(1.0 + value)
                     }
+                    _ => None,
                 }
             }
-            FalloffFunction::Perlin(mul) => {
-                let d = distance * mul;
-                if d == 0.0 {
-                    Some(1.0)
-                } else {
-                    let value = d * d * d * (d * (d * 6.0 - 15.0) + 10.0);
-                    if is_outside {
-                        Some(1.0 / value)
-                    } else {
-                        Some(1.0 + 1.0 / value)
-                    }
-                }
-            }
+            TwoVoxelFunction::Addition => match (voxel_self, voxel_other) {
+                (None, None) => None,
+                _ => Some(voxel_self.unwrap_or(0.0) + voxel_other.unwrap_or(0.0)),
+            },
+            TwoVoxelFunction::Subtraction => match (voxel_self, voxel_other) {
+                (None, None) => None,
+                (None, Some(_)) => voxel_other,
+                _ => Some(voxel_self.expect("Self voxel is None") - voxel_other.unwrap_or(0.0)),
+            },
+            TwoVoxelFunction::Multiplication => match (voxel_self, voxel_other) {
+                (None, None) => None,
+                _ => Some(voxel_self.unwrap_or(1.0) * voxel_other.unwrap_or(1.0)),
+            },
+            TwoVoxelFunction::Division => match (voxel_self, voxel_other) {
+                (None, None) => None,
+                (None, Some(_)) => voxel_other,
+                _ => Some(voxel_self.expect("Self voxel is None") / voxel_other.unwrap_or(1.0)),
+            },
+            TwoVoxelFunction::ReplaceValues => match (voxel_self, voxel_other) {
+                (_, Some(_)) => voxel_other,
+                _ => voxel_self,
+            },
         }
     }
 }
@@ -1333,58 +1398,20 @@ impl ScalarField {
         self.shrink_to_fit(volume_value_range_self)
     }
 
-    /// Interpolate values of the current scalar field to the values of the
-    /// other scalar field. The current scalar field will not be resized, so
-    /// only the overlapping areas will be will be interpolated. If the voxel in
-    /// the current or the other scalar field is None (does not contain any
-    /// voxel or does not exist), the output value will be also None. The two
-    /// scalar fields do not have to contain voxels of the same size. The
-    /// interpolation is linear.
-    ///
-    /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
-    /// between the current value to the other value. For factor outside this
-    /// range, the values will be extrapolated.
-    // FIXME: Join with add_values
-    pub fn interpolate_to(&mut self, other: &ScalarField, interpolation_factor: f32) {
-        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
-            let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                one_dimensional,
-                &self.block_start,
-                &self.block_dimensions,
-                &self.voxel_dimensions,
-            );
-            let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
-                &cartesian_coordinate,
-                &other.voxel_dimensions,
-            );
-
-            *voxel = if let (Some(value_self), Some(value_other)) = (
-                &voxel,
-                other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other),
-            ) {
-                let self_to_other_range = *value_self..value_other;
-
-                let value_interpolated_from_self_to_other =
-                    math::remap(interpolation_factor, &(0.0..1.0), &self_to_other_range)
-                        .expect("The target interval is infinite");
-
-                Some(value_interpolated_from_self_to_other as f32)
-            } else {
-                None
-            };
+    /// Use the current scalar field's voxels as parameters into the selected
+    /// one voxel function and replace the current scalar field's voxel with the
+    /// result.
+    pub fn apply_one_voxel_function(&mut self, operation: OneVoxelFunction) {
+        for voxel_self in self.voxels.iter_mut() {
+            *voxel_self = operation.apply(*voxel_self);
         }
     }
 
-    /// Add values of the other scalar fields to the respective voxels of the
-    /// current scalar field. The current scalar field will not be resized, so
-    /// only the overlapping areas will be will be added. If the voxel in the
-    /// current or the other scalar field is None (does not contain any voxel or
-    /// does not exist), it is treated according to the selected
-    /// `empty_voxels_treatment` for both, the current and the other scalar
-    /// field - it is either replaced with a constant value or considered None
-    /// and then also the resulting voxel will become None.
-    // FIXME: Join with interpolate_to
-    pub fn add_values(&mut self, other: &ScalarField) {
+    /// Use the respective current and other scalar fields' voxels as parameters
+    /// into the selected two voxel function and replace the current scalar
+    /// field's voxel with the result. The current scalar field will not be
+    /// resized, so only the area of the current scalar field will be affected.
+    pub fn apply_two_voxel_function(&mut self, other: &ScalarField, operation: TwoVoxelFunction) {
         for (one_dimensional, voxel_self) in self.voxels.iter_mut().enumerate() {
             let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                 one_dimensional,
@@ -1398,10 +1425,7 @@ impl ScalarField {
             );
             let voxel_other = other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other);
 
-            *voxel_self = match (&voxel_self, &voxel_other) {
-                (None, None) => None,
-                _ => Some(voxel_self.unwrap_or(0.0) + voxel_other.unwrap_or(0.0)),
-            };
+            *voxel_self = operation.apply(*voxel_self, voxel_other);
         }
     }
 
@@ -1473,10 +1497,10 @@ impl ScalarField {
 
     /// Compute discrete distance field.
     ///
-    /// Each voxel will be set a value equal to its distance from the original
-    /// volume. The voxels that were originally volume voxels, will be set to
-    /// value 0. Voxels inside the closed volumes will have the distance value
-    /// with a negative sign.
+    /// Each voxel will be set a value that is a result of the selected falloff
+    /// function. The voxel's distance from the original volume will be used as
+    /// the input parameter to the falloff function  regardless of whether the
+    /// voxel is inside or outside the volume.
     pub fn compute_distance_field<U>(
         &mut self,
         volume_value_range: &U,
@@ -1494,13 +1518,89 @@ impl ScalarField {
             Vector3::new(0, 0, 1),
         ];
 
-        // Contains indices into the voxel map
-        let mut queue_to_find_outer: VecDeque<usize> = VecDeque::new();
         // Contains indices to the voxel map and their distance value
         let mut queue_to_compute_distance: VecDeque<(usize, f32)> = VecDeque::new();
         // Match the voxel map length
-        let mut discovered_as_outer_and_empty = vec![false; self.voxels.len()];
         let mut discovered_for_distance_field = vec![false; self.voxels.len()];
+
+        // Scan for void voxels at the boundaries of the scalar field
+        // and at the same time for volume voxels anywhere.
+        for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
+            // If the voxel is volume
+            if voxel
+                .map(|value| volume_value_range.contains(&value))
+                .unwrap_or(false)
+            {
+                // Add the current voxel to the queue for distance field
+                // processing
+                queue_to_compute_distance.push_back((one_dimensional, 0.0));
+                // and mark it discovered.
+                discovered_for_distance_field[one_dimensional] = true;
+            }
+        }
+
+        // Process the queue to set the voxel distance from the volume
+        while let Some((one_dimensional, distance)) = queue_to_compute_distance.pop_front() {
+            // Needed to calculate neighbors' coordinates
+            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
+                one_dimensional,
+                &self.block_start,
+                &self.block_dimensions,
+            );
+
+            // Check each neighbor
+            for neighbor_offset in &neighbor_offsets {
+                let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
+                // If the neighbor does exist
+                if let Some(one_dimensional_neighbor) = absolute_voxel_to_one_dimensional_coordinate(
+                    &neighbor_absolute_coordinate,
+                    &self.block_start,
+                    &self.block_dimensions,
+                ) {
+                    // and hasn't been discovered yet and is void,
+                    if !discovered_for_distance_field[one_dimensional_neighbor]
+                        && self
+                            .value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
+                            .map(|value| !volume_value_range.contains(&value))
+                            .unwrap_or(true)
+                    {
+                        // put it into the processing queue with the distance
+                        // one higher than the current
+                        queue_to_compute_distance
+                            .push_back((one_dimensional_neighbor, distance + 1.0));
+                        // and mark it discovered.
+                        discovered_for_distance_field[one_dimensional_neighbor] = true;
+                    }
+                }
+            }
+
+            // Process the current voxel.
+            self.voxels[one_dimensional] = falloff_function.apply(distance);
+        }
+    }
+
+    /// Clone the current scalar field and remove all outer and volume voxels,
+    /// so that only the voxels inside the closed volumes remain. Their original
+    /// values remain intact.
+    pub fn extract_voxels_inside_volumes<U>(&self, volume_value_range: &U) -> ScalarField
+    where
+        U: RangeBounds<f32>,
+    {
+        // Lookup table of neighbor coordinates
+        let neighbor_offsets = [
+            Vector3::new(-1, 0, 0),
+            Vector3::new(1, 0, 0),
+            Vector3::new(0, -1, 0),
+            Vector3::new(0, 1, 0),
+            Vector3::new(0, 0, -1),
+            Vector3::new(0, 0, 1),
+        ];
+
+        // Contains indices into the voxel map
+        let mut queue_to_find_outer: VecDeque<usize> = VecDeque::new();
+        // Match the voxel map length
+        let mut discovered_as_outer_and_empty = vec![false; self.voxels.len()];
+        let mut discovered_as_volume = vec![false; self.voxels.len()];
 
         // Scan for void voxels at the boundaries of the scalar field
         // and at the same time for volume voxels anywhere.
@@ -1530,11 +1630,7 @@ impl ScalarField {
                     discovered_as_outer_and_empty[one_dimensional] = true;
                 }
             } else {
-                // Add the current voxel to the queue for distance field
-                // processing
-                queue_to_compute_distance.push_back((one_dimensional, 0.0));
-                // and mark it discovered.
-                discovered_for_distance_field[one_dimensional] = true;
+                discovered_as_volume[one_dimensional] = true;
             }
         }
 
@@ -1577,48 +1673,23 @@ impl ScalarField {
             }
         }
 
-        // Now when we know which voxels are outside, let's scan for distance.
+        // Create a new scalar field
+        let mut scalar_field_containing_inner_volumes = self.clone();
 
-        // Process the queue to set the voxel distance from the volume
-        while let Some((one_dimensional, distance)) = queue_to_compute_distance.pop_front() {
-            // Needed to calculate neighbors' coordinates
-            let absolute_coordinate = one_dimensional_to_absolute_voxel_coordinate(
-                one_dimensional,
-                &self.block_start,
-                &self.block_dimensions,
-            );
-
-            // Check each neighbor
-            for neighbor_offset in &neighbor_offsets {
-                let neighbor_absolute_coordinate = absolute_coordinate + neighbor_offset;
-                // If the neighbor does exist
-                if let Some(one_dimensional_neighbor) = absolute_voxel_to_one_dimensional_coordinate(
-                    &neighbor_absolute_coordinate,
-                    &self.block_start,
-                    &self.block_dimensions,
-                ) {
-                    // and hasn't been discovered yet and is void,
-                    if !discovered_for_distance_field[one_dimensional_neighbor]
-                        && self
-                            .value_at_absolute_voxel_coordinate(&neighbor_absolute_coordinate)
-                            .map(|value| !volume_value_range.contains(&value))
-                            .unwrap_or(true)
-                    {
-                        // put it into the processing queue with the distance
-                        // one higher than the current
-                        queue_to_compute_distance
-                            .push_back((one_dimensional_neighbor, distance + 1.0));
-                        // and mark it discovered.
-                        discovered_for_distance_field[one_dimensional_neighbor] = true;
-                    }
-                }
+        // and set all non-internal voxels to be None
+        for (one_dimensional, voxel) in scalar_field_containing_inner_volumes
+            .voxels
+            .iter_mut()
+            .enumerate()
+        {
+            if discovered_as_outer_and_empty[one_dimensional]
+                || discovered_as_volume[one_dimensional]
+            {
+                *voxel = None;
             }
-            let is_outside = discovered_as_outer_and_empty[one_dimensional];
-
-            // Process the current voxel.
-
-            self.voxels[one_dimensional] = falloff_function.apply(distance, is_outside);
         }
+
+        scalar_field_containing_inner_volumes
     }
 
     /// Resize the current scalar field to match the input bounding box in
