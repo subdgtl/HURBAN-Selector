@@ -162,7 +162,11 @@ impl Session {
         self.error = None;
 
         let Stmt::VarDecl(ref var_decl) = stmt;
-        self.next_var_ident = var_decl.ident().0 + 1;
+        // Take the max out of the current next ident and the successor of the
+        // given ident. This ensures that pushing of statements with ids not
+        // generated here does not forget our place in the sequence, if higher,
+        // but is able to jump ahead, if needed.
+        self.next_var_ident = self.next_var_ident.max(var_decl.ident().0 + 1);
 
         let request_id = self
             .interpreter_server
@@ -244,7 +248,11 @@ impl Session {
         self.error = None;
 
         let Stmt::VarDecl(ref var_decl) = stmt;
-        self.next_var_ident = var_decl.ident().0 + 1;
+        // Take the max out of the current next ident and the successor of the
+        // given ident. This ensures that modification of statements inside the
+        // program does not forget our place in the sequence, if higher, but is
+        // able to jump ahead, if needed.
+        self.next_var_ident = self.next_var_ident.max(var_decl.ident().0 + 1);
 
         let request_id = self
             .interpreter_server

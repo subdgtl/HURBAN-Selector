@@ -48,20 +48,24 @@ fn main() {
     let app_log_level = env::var("HS_APP_LOG_LEVEL")
         .ok()
         .map(|app_log_level| match app_log_level.as_str() {
+            "off" => hs::LogLevel::Off,
             "error" => hs::LogLevel::Error,
             "warning" => hs::LogLevel::Warning,
             "info" => hs::LogLevel::Info,
             "debug" => hs::LogLevel::Debug,
+            "trace" => hs::LogLevel::Trace,
             _ => panic!("Unknown application log level requested"),
         });
 
     let lib_log_level = env::var("HS_LIB_LOG_LEVEL")
         .ok()
         .map(|lib_log_level| match lib_log_level.as_str() {
+            "off" => hs::LogLevel::Off,
             "error" => hs::LogLevel::Error,
             "warning" => hs::LogLevel::Warning,
             "info" => hs::LogLevel::Info,
             "debug" => hs::LogLevel::Debug,
+            "trace" => hs::LogLevel::Trace,
             _ => panic!("Unknown library log level requested"),
         });
 
