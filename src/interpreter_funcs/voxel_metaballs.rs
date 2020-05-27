@@ -12,7 +12,7 @@ use crate::interpreter::{
     BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, FloatParamRefinement,
     Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh::voxel_cloud::{self, FalloffFunction, ScalarField, TreatEmpty};
+use crate::mesh::voxel_cloud::{self, FalloffFunction, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
@@ -259,11 +259,7 @@ impl Func for FuncVoxelMetaballs {
                 FalloffFunction::InverseSquare(distance_multiplier),
             );
 
-            voxel_cloud1.add_values(
-                &voxel_cloud2,
-                TreatEmpty::AsValue(0.0),
-                TreatEmpty::AsValue(0.0),
-            );
+            voxel_cloud1.add_values(&voxel_cloud2);
         }
 
         if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {

@@ -13,15 +13,6 @@ use crate::plane::Plane;
 
 use super::{primitive, tools, Face, Mesh, NormalStrategy};
 
-/// Describes how should be empty (None) voxel be treated. Either as None or as
-/// a constant value. This is used for arithmetic functions, such as addition.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TreatEmpty {
-    #[allow(dead_code)]
-    AsNone,
-    AsValue(f32),
-}
-
 /// Selects falloff function for the distance field computation. The parameter
 /// specifies a distance multiplier.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1393,12 +1384,7 @@ impl ScalarField {
     /// field - it is either replaced with a constant value or considered None
     /// and then also the resulting voxel will become None.
     // FIXME: Join with interpolate_to
-    pub fn add_values(
-        &mut self,
-        other: &ScalarField,
-        empty_voxels_treatment_self: TreatEmpty,
-        empty_voxels_treatment_other: TreatEmpty,
-    ) {
+    pub fn add_values(&mut self, other: &ScalarField) {
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
             let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                 one_dimensional,
@@ -1412,43 +1398,7 @@ impl ScalarField {
             );
             let voxel_other = other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other);
 
-            *voxel = match empty_voxels_treatment_self {
-                TreatEmpty::AsNone => {
-                    if let Some(value_self) = &voxel {
-                        match empty_voxels_treatment_other {
-                            TreatEmpty::AsNone => {
-                                if let Some(value_other) = voxel_other {
-                                    Some(value_self + value_other)
-                                } else {
-                                    None
-                                }
-                            }
-                            TreatEmpty::AsValue(substitute_value_other) => {
-                                let value_other = voxel_other.unwrap_or(substitute_value_other);
-                                Some(value_self + value_other)
-                            }
-                        }
-                    } else {
-                        None
-                    }
-                }
-                TreatEmpty::AsValue(substitute_value_self) => {
-                    let value_self = voxel.unwrap_or(substitute_value_self);
-                    match empty_voxels_treatment_other {
-                        TreatEmpty::AsNone => {
-                            if let Some(value_other) = voxel_other {
-                                Some(value_self + value_other)
-                            } else {
-                                None
-                            }
-                        }
-                        TreatEmpty::AsValue(substitute_value_other) => {
-                            let value_other = voxel_other.unwrap_or(substitute_value_other);
-                            Some(value_self + value_other)
-                        }
-                    }
-                }
-            }
+            *voxel = voxel.map(|value_self| value_self + voxel_other.unwrap_or(0.0));
         }
     }
 
