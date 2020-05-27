@@ -22,6 +22,7 @@ pub enum FuncVoxelMetaballsError {
     EmptyScalarField,
     VoxelDimensionsZeroOrLess,
     TooManyVoxels(u32, f32, f32, f32),
+    MultiplierTooCloseToZero,
 }
 
 impl fmt::Display for FuncVoxelMetaballsError {
@@ -41,6 +42,7 @@ impl fmt::Display for FuncVoxelMetaballsError {
                 "Too many voxels. Limit set to {}. Try setting voxel size to [{:.3}, {:.3}, {:.3}] or more.",
                 max_count, x, y, z
             ),
+            FuncVoxelMetaballsError::MultiplierTooCloseToZero => write!(f, "Distance multiplier too close to zero"),
         }
     }
 }
@@ -125,11 +127,14 @@ impl Func for FuncVoxelMetaballs {
                 name: "Distance Multiplier",
                 description: "Defines the speed of volume falloff.\n\
                 \n\
-                Lowe values mean smoother and larger results.",
+                Lower absolute values (closer to zero) mean better control \
+                over the resulting blob. \
+                Values between -0.01 and 0.01 are considered too close \
+                to zero and cause an error.",
                 refinement: ParamRefinement::Float(FloatParamRefinement {
                     default_value: Some(0.5),
-                    min_value: Some(0.0001),
-                    max_value: Some(1.0),
+                    min_value: None,
+                    max_value: None,
                 }),
                 optional: false,
             },
@@ -195,6 +200,12 @@ impl Func for FuncVoxelMetaballs {
 
         if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
             let error = FuncError::new(FuncVoxelMetaballsError::VoxelDimensionsZeroOrLess);
+            log(LogMessage::error(format!("Error: {}", error)));
+            return Err(error);
+        }
+
+        if distance_multiplier.abs() <= 0.01 {
+            let error = FuncError::new(FuncVoxelMetaballsError::MultiplierTooCloseToZero);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
