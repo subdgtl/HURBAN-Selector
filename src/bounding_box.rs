@@ -8,13 +8,13 @@ use num_traits::{Bounded, Num};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BoundingBox<T>
 where
-    T: Scalar,
+    T: Copy + Scalar,
 {
     minimum_point: Point3<T>,
     maximum_point: Point3<T>,
 }
 
-impl<T: Bounded + Scalar + Num + PartialOrd> BoundingBox<T> {
+impl<T: Copy + Scalar + Bounded + Num + PartialOrd> BoundingBox<T> {
     /// Creates a new bounding box. The two input points will be deconstructed
     /// and a new couple of points will be created: minimum point with minimum
     /// values of x, y, z and maximum point with maximum values of x, y, z. The

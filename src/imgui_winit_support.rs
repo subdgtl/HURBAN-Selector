@@ -381,6 +381,7 @@ impl WinitPlatform {
                             imgui::MouseCursor::ResizeNESW => MouseCursor::NeswResize,
                             imgui::MouseCursor::ResizeNWSE => MouseCursor::NwseResize,
                             imgui::MouseCursor::Hand => MouseCursor::Hand,
+                            imgui::MouseCursor::NotAllowed => MouseCursor::NotAllowed,
                         });
                     }
                 }
