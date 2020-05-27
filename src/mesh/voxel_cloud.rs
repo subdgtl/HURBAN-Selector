@@ -59,12 +59,14 @@ pub enum FalloffFunction {
 
 impl FalloffFunction {
     pub fn apply(self, distance: f32, is_outside: bool) -> Option<f32> {
+        // FIXME: These will become proper math functions in the very next PR.
         match self {
             FalloffFunction::Linear(mul) => {
-                if distance == 0.0 {
+                let d = distance * mul;
+                if d == 0.0 {
                     Some(0.0)
                 } else {
-                    let value = distance * mul;
+                    let value = d;
                     if is_outside {
                         Some(value)
                     } else {
@@ -73,10 +75,11 @@ impl FalloffFunction {
                 }
             }
             FalloffFunction::Square(mul) => {
-                if distance == 0.0 {
+                let d = distance * mul;
+                if d == 0.0 {
                     Some(0.0)
                 } else {
-                    let value = distance * mul * distance * mul;
+                    let value = d * d;
                     if is_outside {
                         Some(value)
                     } else {
@@ -85,10 +88,11 @@ impl FalloffFunction {
                 }
             }
             FalloffFunction::InverseLinear(mul) => {
-                if distance == 0.0 {
+                let d = distance * mul;
+                if d == 0.0 {
                     Some(1.0)
                 } else {
-                    let value = 1.0 / (distance * mul);
+                    let value = 1.0 / (d);
                     if is_outside {
                         Some(value)
                     } else {
@@ -97,10 +101,11 @@ impl FalloffFunction {
                 }
             }
             FalloffFunction::InverseSquare(mul) => {
-                if distance == 0.0 {
+                let d = distance * mul;
+                if d == 0.0 {
                     Some(1.0)
                 } else {
-                    let value = 1.0 / (distance * mul * distance * mul);
+                    let value = 1.0 / (d * d);
                     if is_outside {
                         Some(value)
                     } else {
@@ -109,20 +114,15 @@ impl FalloffFunction {
                 }
             }
             FalloffFunction::Perlin(mul) => {
-                if distance == 0.0 {
+                let d = distance * mul;
+                if d == 0.0 {
                     Some(1.0)
                 } else {
-                    let value = distance
-                        * mul
-                        * distance
-                        * mul
-                        * distance
-                        * mul
-                        * (distance * mul * (distance * mul * 6.0 - 15.0) + 10.0);
+                    let value = d * d * d * (d * (d * 6.0 - 15.0) + 10.0);
                     if is_outside {
                         Some(1.0 / value)
                     } else {
-                        Some(1.0 + value)
+                        Some(1.0 + 1.0 / value)
                     }
                 }
             }
@@ -1396,7 +1396,7 @@ impl ScalarField {
     pub fn add_values(
         &mut self,
         other: &ScalarField,
-        empty_voxels_treatment_current: TreatEmpty,
+        empty_voxels_treatment_self: TreatEmpty,
         empty_voxels_treatment_other: TreatEmpty,
     ) {
         for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
@@ -1412,7 +1412,7 @@ impl ScalarField {
             );
             let voxel_other = other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other);
 
-            *voxel = match empty_voxels_treatment_current {
+            *voxel = match empty_voxels_treatment_self {
                 TreatEmpty::AsNone => {
                     if let Some(value_self) = &voxel {
                         match empty_voxels_treatment_other {
