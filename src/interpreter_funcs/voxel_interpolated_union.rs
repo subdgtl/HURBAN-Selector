@@ -12,7 +12,7 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, FloatParamRefinement, Func, FuncError,
     FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
-use crate::mesh::voxel_cloud::{self, FalloffFunction, ScalarField, TwoVoxelFunction};
+use crate::mesh::voxel_cloud::{self, BinaryVoxelFunction, FalloffFunction, ScalarField};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
@@ -234,13 +234,13 @@ impl Func for FuncInterpolatedUnion {
                 .copied(),
         ) {
             voxel_cloud1.resize_to_bounding_box_cartesian_space(&bounding_box);
-            voxel_cloud1.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
+            voxel_cloud1.compute_distance_field(&volume_value_range, 1.0, FalloffFunction::Linear);
             voxel_cloud2.resize_to_bounding_box_cartesian_space(&bounding_box);
-            voxel_cloud2.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
+            voxel_cloud2.compute_distance_field(&volume_value_range, 1.0, FalloffFunction::Linear);
 
-            voxel_cloud1.apply_two_voxel_function(
+            voxel_cloud1.apply_binary_voxel_function(
                 &voxel_cloud2,
-                TwoVoxelFunction::LinearInterpolation(interpolation_factor),
+                BinaryVoxelFunction::InterpolateLinear(interpolation_factor),
             );
         }
 

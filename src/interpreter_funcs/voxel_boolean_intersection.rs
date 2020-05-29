@@ -12,7 +12,7 @@ use crate::interpreter::{
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::voxel_cloud::{
-    self, FalloffFunction, OneVoxelFunction, ScalarField, TwoVoxelFunction,
+    self, BinaryVoxelFunction, FalloffFunction, ScalarField, UnaryVoxelFunction,
 };
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
@@ -224,8 +224,8 @@ impl Func for FuncBooleanIntersection {
 
         let volume_value_range = 0.0..=0.0;
 
-        voxel_cloud1.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
-        voxel_cloud2.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
+        voxel_cloud1.compute_distance_field(&volume_value_range, 1.0, FalloffFunction::Linear);
+        voxel_cloud2.compute_distance_field(&volume_value_range, 1.0, FalloffFunction::Linear);
 
         if fill {
             let mut voxel_cloud1_inside =
@@ -234,18 +234,26 @@ impl Func for FuncBooleanIntersection {
             let mut voxel_cloud2_inside =
                 voxel_cloud2.extract_voxels_inside_volumes(&volume_value_range);
 
-            voxel_cloud1_inside.apply_one_voxel_function(OneVoxelFunction::SetConstant(0.0));
-            voxel_cloud2_inside.apply_one_voxel_function(OneVoxelFunction::SetConstant(0.0));
+            voxel_cloud1_inside.apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(0.0));
+            voxel_cloud2_inside.apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(0.0));
 
-            voxel_cloud1
-                .apply_two_voxel_function(&voxel_cloud1_inside, TwoVoxelFunction::ReplaceValues);
-            voxel_cloud2
-                .apply_two_voxel_function(&voxel_cloud2_inside, TwoVoxelFunction::ReplaceValues);
+            voxel_cloud1.apply_binary_voxel_function(
+                &voxel_cloud1_inside,
+                BinaryVoxelFunction::ReplaceIfValue,
+            );
+            voxel_cloud2.apply_binary_voxel_function(
+                &voxel_cloud2_inside,
+                BinaryVoxelFunction::ReplaceIfValue,
+            );
         }
 
         let meshing_range = (Bound::Included(-growth_f32), Bound::Included(growth_f32));
 
-        voxel_cloud1.boolean_intersection(&meshing_range, &voxel_cloud2, &meshing_range);
+        voxel_cloud1.apply_binary_voxel_function(
+            &voxel_cloud2,
+            BinaryVoxelFunction::BooleanAnd(meshing_range, meshing_range),
+        );
+        // voxel_cloud1.boolean_intersection(&meshing_range, &voxel_cloud2, &meshing_range);
 
         if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {
             let error = FuncError::new(FuncBooleanIntersectionError::EmptyScalarField);

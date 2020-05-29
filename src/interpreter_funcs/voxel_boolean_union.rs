@@ -13,7 +13,7 @@ use crate::interpreter::{
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::voxel_cloud::{
-    self, FalloffFunction, OneVoxelFunction, ScalarField, TwoVoxelFunction,
+    self, BinaryVoxelFunction, FalloffFunction, ScalarField, UnaryVoxelFunction,
 };
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
@@ -221,44 +221,77 @@ impl Func for FuncBooleanUnion {
             return Err(error);
         }
 
-        let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, growth_u32);
-        let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, growth_u32);
+        // FIXME: The growth + 1 here is only because it seems like some
+        // chopping happens. This is one place where the chopping may occur.
+        let mut voxel_cloud1 =
+            ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, growth_u32 + 1);
+        let mut voxel_cloud2 =
+            ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, growth_u32 + 1);
 
-        let volume_value_range = 0.0..=0.0;
+        let original_volume_value_range = 0.0..=0.0;
 
-        voxel_cloud1.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
-        voxel_cloud2.compute_distance_field(&volume_value_range, FalloffFunction::Linear(1.0));
+        voxel_cloud1.compute_distance_field(
+            &original_volume_value_range,
+            1.0,
+            FalloffFunction::Linear,
+        );
+        voxel_cloud2.compute_distance_field(
+            &original_volume_value_range,
+            1.0,
+            FalloffFunction::Linear,
+        );
 
         if fill {
             let mut voxel_cloud1_inside =
-                voxel_cloud1.extract_voxels_inside_volumes(&volume_value_range);
+                voxel_cloud1.extract_voxels_inside_volumes(&original_volume_value_range);
 
             let mut voxel_cloud2_inside =
-                voxel_cloud2.extract_voxels_inside_volumes(&volume_value_range);
+                voxel_cloud2.extract_voxels_inside_volumes(&original_volume_value_range);
 
-            voxel_cloud1_inside.apply_one_voxel_function(OneVoxelFunction::SetConstant(0.0));
-            voxel_cloud2_inside.apply_one_voxel_function(OneVoxelFunction::SetConstant(0.0));
+            voxel_cloud1_inside.apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(0.0));
+            voxel_cloud2_inside.apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(0.0));
 
-            voxel_cloud1
-                .apply_two_voxel_function(&voxel_cloud1_inside, TwoVoxelFunction::ReplaceValues);
-            voxel_cloud2
-                .apply_two_voxel_function(&voxel_cloud2_inside, TwoVoxelFunction::ReplaceValues);
+            voxel_cloud1.apply_binary_voxel_function(
+                &voxel_cloud1_inside,
+                BinaryVoxelFunction::ReplaceIfValue,
+            );
+            voxel_cloud2.apply_binary_voxel_function(
+                &voxel_cloud2_inside,
+                BinaryVoxelFunction::ReplaceIfValue,
+            );
         }
 
-        let meshing_range = (Bound::Included(-growth_f32), Bound::Included(growth_f32));
+        let bounding_box_voxel_cloud1 = voxel_cloud1.bounding_box_cartesian_space();
+        let bounding_box_voxel_cloud2 = voxel_cloud2.bounding_box_cartesian_space();
 
-        voxel_cloud1.boolean_union(&meshing_range, &voxel_cloud2, &meshing_range);
+        let volume_value_range = (Bound::Included(-growth_f32), Bound::Included(growth_f32));
 
-        if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {
+        // FIXME: Visually it seems like this is chopping off some parts of the
+        // volume. This is another place where the chopping may occur.
+        if let Some(bounding_box) = BoundingBox::union(
+            [bounding_box_voxel_cloud1, bounding_box_voxel_cloud2]
+                .iter()
+                .copied(),
+        ) {
+            voxel_cloud1.resize_to_bounding_box_cartesian_space(&bounding_box);
+            voxel_cloud2.resize_to_bounding_box_cartesian_space(&bounding_box);
+
+            voxel_cloud1.apply_binary_voxel_function(
+                &voxel_cloud2,
+                BinaryVoxelFunction::BooleanOr(volume_value_range, volume_value_range),
+            );
+        }
+
+        if !voxel_cloud1.contains_voxels_within_range(&volume_value_range) {
             let error = FuncError::new(FuncBooleanUnionError::EmptyScalarField);
             log(LogMessage::error(format!("Error: {}", error)));
             return Err(error);
         }
 
         let meshing_output = if marching_cubes {
-            voxel_cloud1.to_marching_cubes(&meshing_range)
+            voxel_cloud1.to_marching_cubes(&volume_value_range)
         } else {
-            voxel_cloud1.to_mesh(&meshing_range)
+            voxel_cloud1.to_mesh(&volume_value_range)
         };
 
         match meshing_output {

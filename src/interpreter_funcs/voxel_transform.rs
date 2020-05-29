@@ -13,7 +13,7 @@ use crate::interpreter::{
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::voxel_cloud::{
-    self, FalloffFunction, OneVoxelFunction, ScalarField, TwoVoxelFunction,
+    self, BinaryVoxelFunction, FalloffFunction, ScalarField, UnaryVoxelFunction,
 };
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
@@ -257,17 +257,20 @@ impl Func for FuncVoxelTransform {
             return Err(error);
         }
 
-        let volume_range = 0.0..=0.0;
+        let volume_value_range = 0.0..=0.0;
 
         let mut voxel_cloud = ScalarField::from_mesh(mesh, &voxel_dimensions, 0.0, growth_u32);
 
-        voxel_cloud.compute_distance_field(&volume_range, FalloffFunction::Linear(1.0));
+        voxel_cloud.compute_distance_field(&volume_value_range, 1.0, FalloffFunction::Linear);
 
         if fill {
-            let mut voxel_cloud_inside = voxel_cloud.extract_voxels_inside_volumes(&volume_range);
-            voxel_cloud_inside.apply_one_voxel_function(OneVoxelFunction::SetConstant(0.0));
-            voxel_cloud
-                .apply_two_voxel_function(&voxel_cloud_inside, TwoVoxelFunction::ReplaceValues);
+            let mut voxel_cloud_inside =
+                voxel_cloud.extract_voxels_inside_volumes(&volume_value_range);
+            voxel_cloud_inside.apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(0.0));
+            voxel_cloud.apply_binary_voxel_function(
+                &voxel_cloud_inside,
+                BinaryVoxelFunction::ReplaceIfValue,
+            );
         }
 
         let rotate = Rotation::from_euler_angles(
@@ -280,19 +283,23 @@ impl Func for FuncVoxelTransform {
 
         if let Some(mut transformed_sf) = ScalarField::from_scalar_field_transformed(
             &voxel_cloud,
-            &volume_range,
+            &volume_value_range,
             &voxel_dimensions,
             &translate,
             &rotate,
             &scale,
         ) {
             if let Some(transformed_sf_bounding_box) =
-                transformed_sf.bounding_box_volume_voxel_space(&volume_range)
+                transformed_sf.bounding_box_volume_voxel_space(&volume_value_range)
             {
                 let growth_vector = Vector3::new(growth_i32, growth_i32, growth_i32);
                 let offset_bounding_box = transformed_sf_bounding_box.offset(&growth_vector);
                 transformed_sf.resize_to_bounding_box_voxel_space(&offset_bounding_box);
-                transformed_sf.compute_distance_field(&volume_range, FalloffFunction::Linear(1.0));
+                transformed_sf.compute_distance_field(
+                    &volume_value_range,
+                    1.0,
+                    FalloffFunction::Linear,
+                );
 
                 let meshing_range = (Bound::Included(-growth_f32), Bound::Included(growth_f32));
 

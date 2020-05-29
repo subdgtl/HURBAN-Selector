@@ -13,7 +13,7 @@ use crate::interpreter::{
     Func, FuncError, FuncFlags, FuncInfo, LogMessage, ParamInfo, ParamRefinement, Ty, Value,
 };
 use crate::mesh::voxel_cloud::{
-    self, FalloffFunction, OneVoxelFunction, ScalarField, TwoVoxelFunction,
+    self, BinaryVoxelFunction, FalloffFunction, ScalarField, UnaryVoxelFunction,
 };
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
@@ -195,7 +195,7 @@ impl Func for FuncVoxelMetaballs {
         let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
         let fill = args[3].unwrap_boolean();
         let distance_multiplier = args[4].unwrap_float();
-        let volume_range_raw = args[5].unwrap_float2();
+        let volume_value_range_raw = args[5].unwrap_float2();
         let marching_cubes = args[6].unwrap_boolean();
         let error_if_large = args[7].unwrap_boolean();
         let analyze_mesh = args[8].unwrap_boolean();
@@ -246,8 +246,8 @@ impl Func for FuncVoxelMetaballs {
         let volume_value_range = 0.0..=0.0;
 
         let meshing_range = (
-            Bound::Included(volume_range_raw[0]),
-            Bound::Included(volume_range_raw[1]),
+            Bound::Included(volume_value_range_raw[0]),
+            Bound::Included(volume_value_range_raw[1]),
         );
 
         let bounding_box_voxel_cloud1 = voxel_cloud1.bounding_box_cartesian_space();
@@ -261,11 +261,13 @@ impl Func for FuncVoxelMetaballs {
             voxel_cloud1.resize_to_bounding_box_cartesian_space(&bounding_box);
             voxel_cloud1.compute_distance_field(
                 &volume_value_range,
-                FalloffFunction::InverseSquare(distance_multiplier),
+                distance_multiplier,
+                FalloffFunction::InverseSquare,
             );
             voxel_cloud2.compute_distance_field(
                 &volume_value_range,
-                FalloffFunction::InverseSquare(distance_multiplier),
+                distance_multiplier,
+                FalloffFunction::InverseSquare,
             );
 
             if fill {
@@ -280,21 +282,21 @@ impl Func for FuncVoxelMetaballs {
                 ));
 
                 voxel_cloud1_inside
-                    .apply_one_voxel_function(OneVoxelFunction::SetConstant(f32::INFINITY));
+                    .apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(f32::INFINITY));
                 voxel_cloud2_inside
-                    .apply_one_voxel_function(OneVoxelFunction::SetConstant(f32::INFINITY));
+                    .apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(f32::INFINITY));
 
-                voxel_cloud1.apply_two_voxel_function(
+                voxel_cloud1.apply_binary_voxel_function(
                     &voxel_cloud1_inside,
-                    TwoVoxelFunction::ReplaceValues,
+                    BinaryVoxelFunction::ReplaceIfValue,
                 );
-                voxel_cloud2.apply_two_voxel_function(
+                voxel_cloud2.apply_binary_voxel_function(
                     &voxel_cloud2_inside,
-                    TwoVoxelFunction::ReplaceValues,
+                    BinaryVoxelFunction::ReplaceIfValue,
                 );
             }
 
-            voxel_cloud1.apply_two_voxel_function(&voxel_cloud2, TwoVoxelFunction::Addition);
+            voxel_cloud1.apply_binary_voxel_function(&voxel_cloud2, BinaryVoxelFunction::Add);
         }
 
         if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {

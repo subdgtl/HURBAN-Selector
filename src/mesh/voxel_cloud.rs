@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::f32;
-use std::ops::RangeBounds;
+use std::ops::{Bound, RangeBounds};
 
 use arrayvec::ArrayVec;
 use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
@@ -18,55 +18,39 @@ use super::{primitive, tools, Face, Mesh, NormalStrategy};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FalloffFunction {
     /// distance values: 0 to infinity \
-    /// suggested multiplier: 1 \
     /// output values: 0 to infinity \
     /// value on volume: 0
-    Linear(f32),
+    Linear,
     /// distance values: 0 to infinity \
-    /// suggested multiplier: 1 \
     /// output values: 0 to infinity \
     /// value on volume: 0
     #[allow(dead_code)]
-    Square(f32),
+    Square,
     /// distance values: 0 (excl) to infinity \
-    /// suggested multiplier: 1 \
     /// output values: infinity to 0 \
     /// value on volume: infinity
     #[allow(dead_code)]
-    InverseLinear(f32),
+    InverseLinear,
     /// distance values: 0 (excl) to infinity \
-    /// suggested multiplier: 1 \
     /// output values: infinity to 0 \
     /// value on volume: infinity
-    InverseSquare(f32),
+    InverseSquare,
 }
 
 impl FalloffFunction {
     pub fn apply(self, distance: f32) -> Option<f32> {
         match self {
-            FalloffFunction::Linear(mul) => {
-                let d = distance * mul;
-                Some(d)
-            }
-            FalloffFunction::Square(mul) => {
-                let d = distance * mul;
-                Some(d * d)
-            }
-            FalloffFunction::InverseLinear(mul) => {
-                let d = distance * mul;
-                Some(1.0 / d)
-            }
-            FalloffFunction::InverseSquare(mul) => {
-                let d = distance * mul;
-                Some(1.0 / (d * d))
-            }
+            FalloffFunction::Linear => Some(distance),
+            FalloffFunction::Square => Some(distance * distance),
+            FalloffFunction::InverseLinear => Some(1.0 / distance),
+            FalloffFunction::InverseSquare => Some(1.0 / (distance * distance)),
         }
     }
 }
 
-/// A function with one voxel as an input to be applied with `apply_one_voxel_function`.
+/// A function with one voxel as an input to be applied with `apply_unary_voxel_function`.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum OneVoxelFunction {
+pub enum UnaryVoxelFunction {
     /// Replace any voxel value that is currently not None with the specified
     /// constant.
     SetConstant(f32),
@@ -88,63 +72,93 @@ pub enum OneVoxelFunction {
     Replace(f32, f32),
 }
 
-impl OneVoxelFunction {
+impl UnaryVoxelFunction {
     pub fn apply(self, voxel: Option<f32>) -> Option<f32> {
         match self {
-            OneVoxelFunction::SetConstant(value) => voxel.map(|_| value),
-            OneVoxelFunction::AddConstant(value) => voxel.map(|value_self| value_self + value),
-            OneVoxelFunction::MultiplyWithConstant(value) => {
+            UnaryVoxelFunction::SetConstant(value) => voxel.map(|_| value),
+            UnaryVoxelFunction::AddConstant(value) => voxel.map(|value_self| value_self + value),
+            UnaryVoxelFunction::MultiplyWithConstant(value) => {
                 voxel.map(|value_self| value_self * value)
             }
-            OneVoxelFunction::PowF(value) => voxel.map(|value_self| value_self.powf(value)),
-            OneVoxelFunction::Replace(search_value, replacement_value) => voxel.map(|value_self| {
-                if approx::relative_eq!(value_self, search_value) {
-                    replacement_value
-                } else {
-                    value_self
-                }
-            }),
+            UnaryVoxelFunction::PowF(value) => voxel.map(|value_self| value_self.powf(value)),
+            UnaryVoxelFunction::Replace(search_value, replacement_value) => {
+                voxel.map(|value_self| {
+                    if approx::relative_eq!(value_self, search_value) {
+                        replacement_value
+                    } else {
+                        value_self
+                    }
+                })
+            }
         }
     }
 }
 
-/// A function with two voxels as an input to be applied with `apply_two_voxel_function`.
+/// A function with two voxels as an input to be applied with `apply_binary_voxel_function`.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TwoVoxelFunction {
+pub enum BinaryVoxelFunction {
     /// Used to interpolate values of two voxels. If any of the voxels is None,
     /// the result is None.
     ///
     /// `interpolation_factor` is a value between 0.0 and 1.0 defining the ratio
     /// between the current value to the other value. For factor outside this
     /// range, the values will be extrapolated.
-    LinearInterpolation(f32),
+    InterpolateLinear(f32),
     /// Used to add values of two voxels. If any voxel's value is None, the
     /// result is an identity of the other voxel. If both voxels are None, the
     /// result is also None.
-    Addition,
+    Add,
     /// Used to subtract values of two voxels. If any voxel's value is None, the
     /// result is an identity of the other voxel. If both voxels are None, the
     /// result is also None.
     #[allow(dead_code)]
-    Subtraction,
+    Subtract,
     /// Used to multiply values of two voxels. If any voxel's value is None, the
     /// result is an identity of the other voxel. If both voxels are None, the
     /// result is also None.
     #[allow(dead_code)]
-    Multiplication,
+    Multiply,
     /// Used to divide values of two voxels. If any voxel's value is None, the
     /// result is an identity of the other voxel. If both voxels are None, the
     /// result is also None.
     #[allow(dead_code)]
-    Division,
+    Divide,
     /// Used to replace value of the first voxel if the other voxel is not None.
-    ReplaceValues,
+    ReplaceIfValue,
+    /// Used to compute boolean intersection (logical AND operation) of the
+    /// current and other voxel. The voxel is considered to be True when its
+    /// value falls into the scalar field's volume value range defined by the
+    /// parameters `(Bound<f32>, Bound<f32>)` first for the first voxel and
+    /// second for the second voxel. If both voxels are True, the value of the
+    /// first voxel is returned. Otherwise None is returned.
+    // FIXME: Consider making a wrapper function for symmetry
+    BooleanAnd((Bound<f32>, Bound<f32>), (Bound<f32>, Bound<f32>)),
+    /// Used to compute boolean union (logical OR operation) of the current and
+    /// other voxel. The voxel is considered to be True when its value falls
+    /// into the scalar field's volume value range defined by the parameters
+    /// `(Bound<f32>, Bound<f32>)` first for the first voxel and second for the
+    /// second voxel. If any of the voxels is True, the value of the first voxel
+    /// is returned. Otherwise None is returned.
+    // FIXME: Consider making a wrapper function that resizes the source scalar
+    // field to be able to contain the result
+    BooleanOr((Bound<f32>, Bound<f32>), (Bound<f32>, Bound<f32>)),
+    /// Used to compute boolean difference of the current and other voxel. The
+    /// second voxel is considered to be True when its value falls into the
+    /// second scalar field's volume value range defined by a single parameter
+    /// `(Bound<f32>, Bound<f32>)` for the second voxel. If the other voxel is
+    /// True, None is returned. Otherwise the first voxel (even if None) is
+    /// returned.
+    // FIXME: Consider making a wrapper function for symmetry
+    BooleanDifference((Bound<f32>, Bound<f32>)),
 }
 
-impl TwoVoxelFunction {
+impl BinaryVoxelFunction {
+    // FIXME: make tests
+    /// # Panics
+    /// Panics when interpolating infinite values
     pub fn apply(self, voxel_self: Option<f32>, voxel_other: Option<f32>) -> Option<f32> {
         match self {
-            TwoVoxelFunction::LinearInterpolation(interpolation_factor) => {
+            BinaryVoxelFunction::InterpolateLinear(interpolation_factor) => {
                 match (voxel_self, voxel_other) {
                     (Some(value_self), Some(value_other)) => {
                         let self_to_other_range = (value_self as f64)..(value_other as f64);
@@ -160,28 +174,109 @@ impl TwoVoxelFunction {
                     _ => None,
                 }
             }
-            TwoVoxelFunction::Addition => match (voxel_self, voxel_other) {
+            BinaryVoxelFunction::Add => match (voxel_self, voxel_other) {
                 (None, None) => None,
                 _ => Some(voxel_self.unwrap_or(0.0) + voxel_other.unwrap_or(0.0)),
             },
-            TwoVoxelFunction::Subtraction => match (voxel_self, voxel_other) {
+            BinaryVoxelFunction::Subtract => match (voxel_self, voxel_other) {
                 (None, None) => None,
                 (None, Some(_)) => voxel_other,
                 _ => Some(voxel_self.expect("Self voxel is None") - voxel_other.unwrap_or(0.0)),
             },
-            TwoVoxelFunction::Multiplication => match (voxel_self, voxel_other) {
+            BinaryVoxelFunction::Multiply => match (voxel_self, voxel_other) {
                 (None, None) => None,
                 _ => Some(voxel_self.unwrap_or(1.0) * voxel_other.unwrap_or(1.0)),
             },
-            TwoVoxelFunction::Division => match (voxel_self, voxel_other) {
+            BinaryVoxelFunction::Divide => match (voxel_self, voxel_other) {
                 (None, None) => None,
                 (None, Some(_)) => voxel_other,
                 _ => Some(voxel_self.expect("Self voxel is None") / voxel_other.unwrap_or(1.0)),
             },
-            TwoVoxelFunction::ReplaceValues => match (voxel_self, voxel_other) {
+            BinaryVoxelFunction::ReplaceIfValue => match (voxel_self, voxel_other) {
                 (_, Some(_)) => voxel_other,
                 _ => voxel_self,
             },
+            BinaryVoxelFunction::BooleanAnd(
+                (volume_value_range_self_start, volume_value_range_self_end),
+                (volume_value_range_other_start, volume_value_range_other_end),
+            ) => {
+                let volume_value_range_self =
+                    (volume_value_range_self_start, volume_value_range_self_end);
+                let volume_value_range_other =
+                    (volume_value_range_other_start, volume_value_range_other_end);
+                if let (Some(value_self), Some(value_other)) = (voxel_self, voxel_other) {
+                    if volume_value_range_self.contains(&value_self)
+                        && volume_value_range_other.contains(&value_other)
+                    {
+                        Some(value_self)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            BinaryVoxelFunction::BooleanOr(
+                (volume_value_range_self_start, volume_value_range_self_end),
+                (volume_value_range_other_start, volume_value_range_other_end),
+            ) => {
+                let volume_value_range_self =
+                    (volume_value_range_self_start, volume_value_range_self_end);
+                let volume_value_range_other =
+                    (volume_value_range_other_start, volume_value_range_other_end);
+                if let (_, Some(value_other)) = (voxel_self, voxel_other) {
+                    if volume_value_range_other.contains(&value_other) {
+                        use std::ops::Bound::*;
+                        let self_certain_volume_value = if let Included(self_start)
+                        | Excluded(self_start) =
+                            volume_value_range_self.start_bound()
+                        {
+                            // Prefer the start value of `volume_value_range_self`.
+                            f64::from(*self_start)
+                        } else if let Included(self_end) | Excluded(self_end) =
+                            volume_value_range_self.end_bound()
+                        {
+                            // If the start of the `volume_value_range_self` is unbounded, then use its end.
+                            f64::from(*self_end)
+                        } else {
+                            // If the `volume_value_range_self` is unbounded on both ends,
+                            // use zero because it certainly is in the range and is in its
+                            // middle.
+                            0_f64
+                        };
+                        let voxel_other_remapped_to_self = math::remap(
+                            value_other,
+                            &volume_value_range_other,
+                            &volume_value_range_self,
+                        );
+                        Some(
+                            voxel_other_remapped_to_self.unwrap_or(self_certain_volume_value)
+                                as f32,
+                        )
+                    } else {
+                        voxel_self
+                    }
+                } else {
+                    voxel_self
+                }
+            }
+            BinaryVoxelFunction::BooleanDifference((
+                volume_value_range_other_start,
+                volume_value_range_other_end,
+            )) => {
+                let volume_value_range_other =
+                    (volume_value_range_other_start, volume_value_range_other_end);
+                match voxel_other {
+                    Some(value_other) => {
+                        if volume_value_range_other.contains(&value_other) {
+                            None
+                        } else {
+                            voxel_self
+                        }
+                    }
+                    _ => voxel_self,
+                }
+            }
         }
     }
 }
@@ -303,6 +398,9 @@ impl ScalarField {
     /// # Panics
     ///
     /// Panics if any of the voxel dimensions is below or equal to zero.
+    // FIXME: Remove the growth offset from here and delegate it to a bounding
+    // box that should resize the scalar field block or to any other growth
+    // function.
     pub fn from_mesh(
         mesh: &Mesh,
         voxel_dimensions: &Vector3<f32>,
@@ -1160,248 +1258,10 @@ impl ScalarField {
         BoundingBox::new(&block_start_cartesian, &block_end_cartesian)
     }
 
-    /// Computes boolean intersection (logical AND operation) of the current and
-    /// another scalar field. The current scalar field will be mutated and
-    /// resized to the size and position of an intersection of the two scalar
-    /// fields' volumes. The two scalar fields do not have to contain voxels of
-    /// the same size.
-    pub fn boolean_intersection<U>(
-        &mut self,
-        volume_value_range_self: &U,
-        other: &ScalarField,
-        volume_value_range_other: &U,
-    ) where
-        U: RangeBounds<f32>,
-    {
-        // Find volume common to both scalar fields.
-        if let (Some(self_volume_bounding_box), Some(other_volume_bounding_box)) = (
-            self.bounding_box_volume_voxel_space(volume_value_range_self),
-            other.bounding_box_volume_voxel_space(volume_value_range_other),
-        ) {
-            if let Some(bounding_box) = BoundingBox::intersection(
-                [self_volume_bounding_box, other_volume_bounding_box]
-                    .iter()
-                    .copied(),
-            ) {
-                // Resize (keep or shrink) the existing scalar field so that
-                // that can possibly contain intersection voxels.
-                self.resize_to_bounding_box_voxel_space(&bounding_box);
-
-                let block_start = bounding_box.minimum_point();
-                let diagonal = bounding_box.diagonal();
-                let block_dimensions = Vector3::new(
-                    cast_u32(diagonal.x),
-                    cast_u32(diagonal.y),
-                    cast_u32(diagonal.z),
-                );
-                // Iterate through the block of space common to both scalar fields.
-                for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
-                    // Perform boolean AND on voxel values of both scalar fields.
-                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                        one_dimensional,
-                        &block_start,
-                        &block_dimensions,
-                        &self.voxel_dimensions,
-                    );
-                    let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
-                        &cartesian_coordinate,
-                        &other.voxel_dimensions,
-                    );
-
-                    if other
-                        .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
-                        .map(|value| !volume_value_range_other.contains(&value))
-                        .unwrap_or(true)
-                    {
-                        *voxel = None;
-                    }
-                }
-                self.shrink_to_fit(volume_value_range_self);
-                // Return here because any other option needs to wipe the
-                // current scalar field.
-                return;
-            }
-        }
-        // If the two scalar fields do not intersect or one of them is empty,
-        // then wipe the resulting scalar field.
-        self.wipe();
-    }
-
-    /// Computes boolean union (logical OR operation) of two scalar fields. The
-    /// current scalar field will be mutated and resized to contain both input
-    /// scalar fields' volumes. The values from the other scalar field which are
-    /// considered a volume, will be remapped to the volume value range of the
-    /// source scalar field. The two scalar fields do not have to contain voxels
-    /// of the same size.
-    ///
-    /// # Panics
-    ///
-    /// Panics if one of the volume value ranges is infinite.
-    ///
-    /// # Warning
-    ///
-    /// If the input scalar fields are far apart, the resulting scalar field may
-    /// be huge.
-    pub fn boolean_union<U>(
-        &mut self,
-        volume_value_range_self: &U,
-        other: &ScalarField,
-        volume_value_range_other: &U,
-    ) where
-        U: RangeBounds<f32>,
-    {
-        use std::ops::Bound::*;
-
-        // FIXME: This discards the `other` scalar field's fine-grain value
-        // information, such as distance field. This is not a rare situation,
-        // because the ranges are infinite when the volumes should be considered
-        // filled. On the other hand, if the distance field values only make
-        // sense if the volume value ranges are the same for both scalar fields,
-        // which is na edge case now resolved in the remap function - it returns
-        // the unchanged value even if the ranges are identical, even if they
-        // are unbounded.
-        //
-        // Define a value that will be used for a volume voxel coming from the
-        // `other` scalar field in case the `volume_value_range_other` is
-        // unbounded (infinite) and therefore its values can't be remapped.
-        let self_certain_volume_value = if let Included(self_start) | Excluded(self_start) =
-            volume_value_range_self.start_bound()
-        {
-            // Prefer the start value of `volume_value_range_self`.
-            f64::from(*self_start)
-        } else if let Included(self_end) | Excluded(self_end) = volume_value_range_self.end_bound()
-        {
-            // If the start of the `volume_value_range_self` is unbounded, then use its end.
-            f64::from(*self_end)
-        } else {
-            // If the `volume_value_range_self` is unbounded on both ends,
-            // use zero because it certainly is in the range and is in its
-            // middle.
-            0_f64
-        };
-
-        let bounding_box_self = self.bounding_box_volume_voxel_space(volume_value_range_self);
-        let bounding_box_other = other.bounding_box_volume_voxel_space(volume_value_range_other);
-
-        // Early return if the other scalar field doesn't contain any voxels
-        // (there are no voxels to be added to self).
-        if bounding_box_other == None {
-            return;
-        }
-
-        let bounding_boxes = [bounding_box_self, bounding_box_other];
-
-        // Unwrap the bounding box options. the other bounding box must be valid
-        // at this point and the self can be None. In that case, all the volume
-        // voxels from the other scalar field will be remapped to the current
-        // scalar field.
-        let valid_bounding_boxes_iter = bounding_boxes.iter().filter_map(|b| *b);
-
-        if let Some(bounding_box) = BoundingBox::union(valid_bounding_boxes_iter) {
-            // Resize (keep or grow) the current scalar field to a block that
-            // will contain union voxels.
-            self.resize_to_bounding_box_voxel_space(&bounding_box);
-
-            // Iterate through the block of space containing volume voxels from
-            // both scalar fields. Iterate through the units of the current
-            // scalar field.
-            for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
-                // If the current scalar field doesn't contain a volume voxel at
-                // the current position
-                if voxel
-                    .map(|value| !volume_value_range_self.contains(&value))
-                    .unwrap_or(true)
-                {
-                    let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                        one_dimensional,
-                        &self.block_start,
-                        &self.block_dimensions,
-                        &self.voxel_dimensions,
-                    );
-                    let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
-                        &cartesian_coordinate,
-                        &other.voxel_dimensions,
-                    );
-
-                    // If the other scalar field contains a voxel on the
-                    // cartesian coordinate of the current voxel, then remap the
-                    // other value to the volume value range of the current
-                    // scalar field and set the voxel to the value.
-                    if let Some(voxel_other) =
-                        other.value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
-                    {
-                        if volume_value_range_other.contains(&voxel_other) {
-                            // If the remap fails, the program should panic.
-                            *voxel = Some(
-                                math::remap(
-                                    voxel_other,
-                                    volume_value_range_other,
-                                    volume_value_range_self,
-                                )
-                                .unwrap_or(self_certain_volume_value)
-                                    as f32,
-                            );
-                        }
-                    }
-                }
-            }
-        } else {
-            // Wipe the current scalar field if none of the scalar fields
-            // contained any volume voxels.
-            self.wipe();
-        }
-    }
-
-    /// Computes boolean difference of the current scalar field minus the other
-    /// scalar field. The current scalar field will be modified so that voxels,
-    /// that are within volume value range in both scalar fields will be set to
-    /// None in the current scalar field, while the rest remains intact. The two
-    /// scalar fields do not have to contain voxels of the same size.
-    pub fn boolean_difference<U>(
-        &mut self,
-        volume_value_range_self: &U,
-        other: &ScalarField,
-        volume_value_range_other: &U,
-    ) where
-        U: RangeBounds<f32>,
-    {
-        // Iterate through the target scalar field
-        for (one_dimensional, voxel) in self.voxels.iter_mut().enumerate() {
-            // If the current scalar field contains a volume voxel at the
-            // current position
-            if voxel
-                .map(|value| volume_value_range_self.contains(&value))
-                .unwrap_or(false)
-            {
-                let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
-                    one_dimensional,
-                    &self.block_start,
-                    &self.block_dimensions,
-                    &self.voxel_dimensions,
-                );
-
-                let absolute_coordinate_other = cartesian_to_absolute_voxel_coordinate(
-                    &cartesian_coordinate,
-                    &other.voxel_dimensions,
-                );
-                // and so does the other scalar field
-                if other
-                    .value_at_absolute_voxel_coordinate(&absolute_coordinate_other)
-                    .map(|value| volume_value_range_other.contains(&value))
-                    .unwrap_or(false)
-                {
-                    // then remove the voxel from the current scalar field
-                    *voxel = None;
-                }
-            }
-        }
-        self.shrink_to_fit(volume_value_range_self)
-    }
-
     /// Use the current scalar field's voxels as parameters into the selected
     /// one voxel function and replace the current scalar field's voxel with the
     /// result.
-    pub fn apply_one_voxel_function(&mut self, operation: OneVoxelFunction) {
+    pub fn apply_unary_voxel_function(&mut self, operation: UnaryVoxelFunction) {
         for voxel_self in self.voxels.iter_mut() {
             *voxel_self = operation.apply(*voxel_self);
         }
@@ -1411,7 +1271,11 @@ impl ScalarField {
     /// into the selected two voxel function and replace the current scalar
     /// field's voxel with the result. The current scalar field will not be
     /// resized, so only the area of the current scalar field will be affected.
-    pub fn apply_two_voxel_function(&mut self, other: &ScalarField, operation: TwoVoxelFunction) {
+    pub fn apply_binary_voxel_function(
+        &mut self,
+        other: &ScalarField,
+        operation: BinaryVoxelFunction,
+    ) {
         for (one_dimensional, voxel_self) in self.voxels.iter_mut().enumerate() {
             let cartesian_coordinate = one_dimensional_to_cartesian_coordinate(
                 one_dimensional,
@@ -1504,6 +1368,7 @@ impl ScalarField {
     pub fn compute_distance_field<U>(
         &mut self,
         volume_value_range: &U,
+        distance_multiplier: f32,
         falloff_function: FalloffFunction,
     ) where
         U: RangeBounds<f32>,
@@ -1575,7 +1440,7 @@ impl ScalarField {
             }
 
             // Process the current voxel.
-            self.voxels[one_dimensional] = falloff_function.apply(distance);
+            self.voxels[one_dimensional] = falloff_function.apply(distance * distance_multiplier);
         }
     }
 
@@ -3292,108 +3157,6 @@ mod tests {
     }
 
     #[test]
-    fn test_scalar_field_boolean_intersection_all_volume() {
-        let mut sf_a = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_b = ScalarField::new(
-            &Point3::new(2, 1, 1),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_correct = ScalarField::new(
-            &Point3::new(2, 1, 1),
-            &Vector3::new(1, 2, 2),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-
-        sf_a.fill_with(Some(0.0));
-        sf_b.fill_with(Some(0.0));
-        sf_correct.fill_with(Some(0.0));
-
-        sf_a.boolean_intersection(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
-
-        assert_eq!(sf_a, sf_correct);
-    }
-
-    #[test]
-    fn test_scalar_field_boolean_intersection_one_void() {
-        let mut sf_a = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_b = ScalarField::new(
-            &Point3::new(1, 1, 1),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_correct = ScalarField::new(
-            &Point3::new(1, 1, 1),
-            &Vector3::new(2, 2, 2),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-
-        sf_a.fill_with(Some(0.0));
-        sf_b.fill_with(Some(0.0));
-        sf_b.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
-        sf_correct.fill_with(Some(0.0));
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
-
-        sf_a.boolean_intersection(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
-
-        assert_eq!(sf_a, sf_correct);
-    }
-
-    #[test]
-    fn test_scalar_field_boolean_union_shifted() {
-        let mut sf_a = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_b = ScalarField::new(
-            &Point3::new(1, 1, 1),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_correct = ScalarField::new(
-            &Point3::new(0, 0, 0),
-            &Vector3::new(4, 4, 4),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-
-        sf_a.fill_with(Some(0.0));
-        sf_b.fill_with(Some(0.0));
-        sf_b.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
-        sf_correct.fill_with(Some(0.0));
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 0), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 1, 0), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 2, 0), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 3, 0), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 1), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 2), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(3, 0, 3), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 0, 3), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 0, 3), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 0, 3), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 1, 3), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 2, 3), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 3), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 2), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 1), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(0, 3, 0), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(1, 3, 0), None);
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 3, 0), None);
-
-        sf_a.boolean_union(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
-
-        assert_eq!(sf_a, sf_correct);
-    }
-
-    #[test]
     fn test_scalar_field_resize_zero_to_nonzero_all_void() {
         let mut scalar_field: ScalarField = ScalarField::new(
             &Point3::origin(),
@@ -3609,87 +3372,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(transformed_scalar_field, scalar_field);
-    }
-
-    #[test]
-    fn test_scalar_field_boolean_difference_no_change() {
-        let mut sf_a = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_b = ScalarField::new(
-            &Point3::new(4, 4, 4),
-            &Vector3::new(1, 1, 1),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_correct = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-
-        sf_a.fill_with(Some(0.0));
-        sf_b.fill_with(Some(0.0));
-        sf_correct.fill_with(Some(0.0));
-
-        sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
-
-        assert_eq!(sf_a, sf_correct);
-    }
-
-    #[test]
-    fn test_scalar_field_boolean_difference_empty() {
-        let mut sf_a = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_b = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(4, 5, 6),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let sf_correct = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(0, 0, 0),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-
-        sf_a.fill_with(Some(0.0));
-        sf_b.fill_with(Some(0.0));
-
-        sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
-
-        assert_eq!(sf_a, sf_correct);
-    }
-
-    #[test]
-    fn test_scalar_field_boolean_difference_chop_off_corner() {
-        let mut sf_a = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_b = ScalarField::new(
-            &Point3::new(2, 2, 2),
-            &Vector3::new(2, 3, 4),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-        let mut sf_correct = ScalarField::new(
-            &Point3::origin(),
-            &Vector3::new(3, 3, 3),
-            &Vector3::new(0.5, 0.5, 0.5),
-        );
-
-        sf_a.fill_with(Some(0.0));
-        sf_b.fill_with(Some(0.0));
-        sf_correct.fill_with(Some(0.0));
-        sf_correct.set_value_at_absolute_voxel_coordinate(&Point3::new(2, 2, 2), None);
-
-        sf_a.boolean_difference(&(0.0..=0.0), &sf_b, &(0.0..=0.0));
-
-        assert_eq!(sf_a, sf_correct);
     }
 
     #[test]

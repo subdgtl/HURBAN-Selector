@@ -12,7 +12,7 @@ use crate::interpreter::{
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
 use crate::mesh::voxel_cloud::{
-    self, FalloffFunction, OneVoxelFunction, ScalarField, TwoVoxelFunction,
+    self, BinaryVoxelFunction, FalloffFunction, ScalarField, UnaryVoxelFunction,
 };
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
@@ -206,15 +206,18 @@ impl Func for FuncVoxelize {
 
         let mut scalar_field = ScalarField::from_mesh(mesh, &voxel_dimensions, 0.0, growth_u32);
 
-        let volume_range = 0.0..=0.0;
+        let volume_value_range = 0.0..=0.0;
 
-        scalar_field.compute_distance_field(&volume_range, FalloffFunction::Linear(1.0));
+        scalar_field.compute_distance_field(&volume_value_range, 1.0, FalloffFunction::Linear);
 
         if fill {
-            let mut scalar_field_inside = scalar_field.extract_voxels_inside_volumes(&volume_range);
-            scalar_field_inside.apply_one_voxel_function(OneVoxelFunction::SetConstant(0.0));
-            scalar_field
-                .apply_two_voxel_function(&scalar_field_inside, TwoVoxelFunction::ReplaceValues);
+            let mut scalar_field_inside =
+                scalar_field.extract_voxels_inside_volumes(&volume_value_range);
+            scalar_field_inside.apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(0.0));
+            scalar_field.apply_binary_voxel_function(
+                &scalar_field_inside,
+                BinaryVoxelFunction::ReplaceIfValue,
+            );
         }
 
         let meshing_range = if fill {
