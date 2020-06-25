@@ -78,6 +78,22 @@ impl Camera {
         self.screen_width as f32 / self.screen_height as f32
     }
 
+    pub fn set_radius_min(&mut self, radius_min: f32) {
+        self.options.radius_min = radius_min;
+    }
+
+    pub fn set_radius_max(&mut self, radius_max: f32) {
+        self.options.radius_max = radius_max;
+    }
+
+    pub fn set_znear(&mut self, znear: f32) {
+        self.options.znear = znear;
+    }
+
+    pub fn set_zfar(&mut self, zfar: f32) {
+        self.options.zfar = zfar;
+    }
+
     /// Pans the camera by changing the camera position against the ground plane
     /// (XY). `dx` and `dy` are in screen space.
     pub fn pan_ground(&mut self, dx: f32, dy: f32) {
