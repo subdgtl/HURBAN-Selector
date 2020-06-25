@@ -1,5 +1,5 @@
 #define AppSetupName 'H.U.R.B.A.N. selector'
-#define AppVersion '1.0'
+#define AppVersion '0.1.0'
 #define AppExeName 'hurban_selector.exe'
 
 [Setup]

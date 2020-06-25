@@ -532,11 +532,11 @@ impl<'a> UiFrame<'a> {
                 ui.text(imgui::im_str!("ABOUT"));
                 regular_font_token = ui.push_font(self.font_ids.regular);
                 ui.text_wrapped(imgui::im_str!(
-                    "The H.U.R.B.A.N. Selector is a part of the SDC's Inolab \
+                    "The H.U.R.B.A.N. selector is a part of the SDC's Inolab \
                     Department's plan to create a research platform for designers to \
                     test and verify new algorithms and create new forms.\n\
                     \n\
-                    H.U.R.B.A.N. Selector is an experimental software for \
+                    H.U.R.B.A.N. selector is an experimental software for \
                     hybridization of multiple 3D models with an aim to find new \
                     aesthetic forms. \
                     It serves as a gateway to full-fledged parametric design software. \
@@ -578,7 +578,7 @@ impl<'a> UiFrame<'a> {
                     license such as MIT.\n\
                     \n\
                     The source code of H.U.R.B.A.N. selector written in Rust can be found on \
-                    GitHub (https://github.com/subdgtl/HURBAN-Selector)."));
+                    GitHub (https://github.com/subdgtl/HURBAN-selector)."));
                 ui.new_line();
                 regular_font_token.pop(ui);
                 ui.new_line();
