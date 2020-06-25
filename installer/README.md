@@ -33,6 +33,6 @@ The only supported version is 64-bit and only English language is available.
 
 The application can parse command-line arguments (run with `-h` for more). These
 can be set in the Windows shortcut file. The installer doesn't currently set any
-options in the shurtcut, but it gives the user the option to create it. The
+options in the shortcut, but it gives the user the option to create it. The
 shortcut can be manually edited to e.g. start the application in the light
 theme.
