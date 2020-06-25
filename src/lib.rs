@@ -161,26 +161,6 @@ pub fn init_and_run(options: Options) -> ! {
 
     change_window_title(&window, &project_status);
 
-    let mut camera = Camera::new(
-        initial_window_width,
-        initial_window_height,
-        5.0,
-        270_f32.to_radians(),
-        60_f32.to_radians(),
-        CameraOptions {
-            radius_min: 1.0,
-            radius_max: 10000.0,
-            polar_angle_distance_min: 1_f32.to_radians(),
-            speed_pan: 10.0,
-            speed_rotate: 0.005,
-            speed_zoom: 0.01,
-            speed_zoom_step: 1.0,
-            fovy: 45_f32.to_radians(),
-            znear: 0.01,
-            zfar: 1000.0,
-        },
-    );
-
     let mut screenshot_modal_open = false;
     let mut screenshot_options = ScreenshotOptions {
         width: initial_window_width,
@@ -245,6 +225,27 @@ pub fn init_and_run(options: Options) -> ! {
         renderer
             .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
             .expect("Failed to add ground plane mesh"),
+    );
+
+    let initial_camera_radius_max = compute_scene_camera_radius(scene_bounding_box);
+    let mut camera = Camera::new(
+        initial_window_width,
+        initial_window_height,
+        5.0,
+        270_f32.to_radians(),
+        60_f32.to_radians(),
+        CameraOptions {
+            radius_min: 0.001 * initial_camera_radius_max,
+            radius_max: initial_camera_radius_max,
+            polar_angle_distance_min: 1_f32.to_radians(),
+            speed_pan: 10.0,
+            speed_rotate: 0.005,
+            speed_zoom: 0.01,
+            speed_zoom_step: 1.0,
+            fovy: 45_f32.to_radians(),
+            znear: 0.001 * initial_camera_radius_max,
+            zfar: 2.0 * initial_camera_radius_max,
+        },
     );
 
     let cubic_bezier = math::CubicBezierEasing::new([0.7, 0.0], [0.3, 1.0]);
@@ -407,6 +408,12 @@ pub fn init_and_run(options: Options) -> ! {
                                 .add_scene_mesh(&GpuMesh::from_mesh(&ground_plane_mesh))
                                 .expect("Failed to add ground plane mesh"),
                         );
+
+                        let camera_radius_max = compute_scene_camera_radius(scene_bounding_box);
+                        camera.set_radius_min(0.001 * camera_radius_max);
+                        camera.set_radius_max(camera_radius_max);
+                        camera.set_znear(0.001 * camera_radius_max);
+                        camera.set_zfar(camera_radius_max * 2.0);
 
                         notifications.push(
                             time,
@@ -1222,16 +1229,20 @@ fn decode_image_rgba8_unorm(data: &[u8]) -> (Vec<u8>, u32, u32) {
     (rgba, width, height)
 }
 
-fn compute_scene_light(scene_meshes_bounding_box: BoundingBox<f32>) -> DirectionalLight {
+fn compute_scene_camera_radius(scene_bounding_box: BoundingBox<f32>) -> f32 {
+    scene_bounding_box.diagonal().norm() * 10.0
+}
+
+fn compute_scene_light(scene_bounding_box: BoundingBox<f32>) -> DirectionalLight {
     // Extend the bounding box to always contain a point with Z=0 so that we can
     // cast shadows on the ground plane.
-    let scene_center = scene_meshes_bounding_box.center();
+    let scene_center = scene_bounding_box.center();
     let point_on_ground = Point3::new(scene_center.x, scene_center.y, 0.0);
 
     let bounding_box = BoundingBox::from_points(
         [
-            scene_meshes_bounding_box.minimum_point(),
-            scene_meshes_bounding_box.maximum_point(),
+            scene_bounding_box.minimum_point(),
+            scene_bounding_box.maximum_point(),
             point_on_ground,
         ]
         .iter()
