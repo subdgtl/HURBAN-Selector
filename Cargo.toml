@@ -40,7 +40,20 @@ static_assertions = "1.1.0"
 tinyfiledialogs = "3.3.9"
 tobj = { version = "2.0.0", features = ["log"] }
 wgpu = { version = "0.5.0", features = ["vulkan"] }
-winit = "0.22.2"
+
+# The current newest version of winit (v0.22.2) has a problem if something (in
+# our case the file dialog) lets the Windows VM_PAINT messages accumulate in the
+# queue. The following assert fails in
+# winit/src/platform_impl/windows/event_loop.rs:1942
+#
+# assert!(flush_paint_messages(
+#     None,
+#     &subclass_input.event_loop_runner
+# ));
+#
+# ... presumably because while the file dialog was open, more VM_PAINT messages
+# were accumulated.
+winit = "0.22.0"
 zerocopy = "0.3.0"
 
 [dev-dependencies]
