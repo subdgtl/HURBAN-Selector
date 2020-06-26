@@ -6,5 +6,9 @@
 HURBAN-Selector.iml
 .idea/
 
-# Inno Setup
-installer/bin/*
+# Installer
+*.msi
+
+# Wix Toolset build files
+*.wixobj
+*.wixpdb

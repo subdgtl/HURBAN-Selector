@@ -121,7 +121,8 @@ Redistributable for Visual Studio 2019" is installed (get it
 
 ### Creating a Windows installer
 
-Refer to [installer's readme](installer/README.md) to create Windows installer.
+Refer to [Windows installer's readme](installer_windows/README.md) to create
+Windows installer.
 
 ### Licence
 
