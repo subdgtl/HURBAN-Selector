@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::f32;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -1368,31 +1368,31 @@ impl<'a> UiFrame<'a> {
                                 None
                             };
 
-                            let collapsing_header_open = ui
-                                .collapsing_header(&imgui::im_str!(
+                            let collapsing_header_open = imgui::CollapsingHeader::new(
+                                &imgui::im_str!(
                                     "#{} {} ##{}",
                                     stmt_index + 1,
                                     func.info().name,
-                                    stmt_index
+                                    stmt_index,
                                 ))
                                 .default_open(true)
-                                .build();
+                                .build(ui);
 
                             if ui.is_item_hovered() {
                                 if let Some(error) = error {
-                                    let color_token = ui.push_style_color(imgui::StyleColor::PopupBg, self.colors.header_error_hovered);
+                                    let color_token = ui.push_style_color(
+                                        imgui::StyleColor::PopupBg,
+                                        self.colors.header_error_hovered,
+                                    );
+
                                     ui.tooltip(|| {
                                         let wrap_token = ui
                                             .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
 
                                         let mut imstring_buffer = self.global_imstring_buffer
                                             .borrow_mut();
-
-                                        // FIXME: @Optimization don't allocate intermediate
-                                        // string and use `write!` once imgui-rs implements
-                                        // `io::Write` for `ImString`.
-                                        // https://github.com/Gekkio/imgui-rs/issues/290
-                                        imstring_buffer.push_str(&error.to_string());
+                                        write!(imstring_buffer, "{}", error)
+                                            .expect("ImString buffer not large enough");
 
                                         ui.text_colored(
                                             self.colors.tooltip_text,
@@ -1408,7 +1408,11 @@ impl<'a> UiFrame<'a> {
                                     ui.tooltip(|| {
                                         let wrap_token = ui
                                             .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
-                                            ui.text_colored(self.colors.tooltip_text, func.info().description);
+                                        ui.text_colored(
+                                            self.colors.tooltip_text,
+                                            func.info().description,
+                                        );
+
                                         wrap_token.pop(ui);
                                     })
                                 }
