@@ -15,6 +15,7 @@ use self::drag_float2::{drag_float2, Options as DragFloat2Options};
 use self::drag_float3::{drag_float3, Options as DragFloat3Options};
 use self::drag_int::{drag_int, Options as DragIntOptions};
 use self::drag_uint::{drag_uint, Options as DragUintOptions};
+use self::input_file::input_file;
 use self::input_float2::input_float2;
 use self::input_uint2::input_uint2;
 
@@ -23,6 +24,7 @@ mod drag_float2;
 mod drag_float3;
 mod drag_int;
 mod drag_uint;
+mod input_file;
 mod input_float2;
 mod input_uint2;
 
@@ -1283,9 +1285,6 @@ impl<'a> UiFrame<'a> {
         save_modal_result
     }
 
-    // FIXME: @Refactoring Refactor this once we have full-featured
-    // functionality. Until then, this is exploratory code and we
-    // don't care.
     #[allow(clippy::cognitive_complexity)]
     pub fn draw_pipeline_window(&self, current_time: Instant, session: &mut Session) -> bool {
         let ui = &self.imgui_ui;
@@ -1572,7 +1571,7 @@ impl<'a> UiFrame<'a> {
                                             imstring_buffer.push_str(string_lit);
 
                                             if param_refinement_string.file_path {
-                                                if file_input(
+                                                if input_file(
                                                     ui,
                                                     &input_label,
                                                     param_refinement_string.file_ext_filter,
@@ -1697,8 +1696,6 @@ impl<'a> UiFrame<'a> {
         bold_font_token.pop(ui);
 
         let changed = change.is_some();
-
-        // FIXME: Debounce changes to parameters
 
         // Only submit the change if interpreter is not busy. Not all
         // imgui components can be made read-only, so we can not trust
@@ -2198,53 +2195,4 @@ fn push_disabled_style(ui: &imgui::Ui) -> (imgui::ColorStackToken, imgui::StyleS
     let style_token = ui.push_style_vars(&[imgui::StyleVar::Alpha(0.5)]);
 
     (color_token, style_token)
-}
-
-fn file_input(
-    ui: &imgui::Ui,
-    label: &imgui::ImStr,
-    file_ext_filter: Option<(&[&str], &str)>,
-    buffer: &mut imgui::ImString,
-) -> bool {
-    use std::env;
-    use std::path::Path;
-
-    let open_button_label = imgui::im_str!("Open##{}", label);
-    let open_button_width = ui.calc_text_size(&open_button_label, true, 50.0)[0] + 8.0;
-    let input_position = open_button_width + 2.0; // Padding
-
-    let mut changed = false;
-
-    let group_token = ui.begin_group();
-
-    if ui.button(&open_button_label, [open_button_width, 0.0]) {
-        if let Some(absolute_path_string) =
-            tinyfiledialogs::open_file_dialog("Open", "", file_ext_filter)
-        {
-            buffer.clear();
-
-            let current_dir = env::current_dir().expect("Couldn't get current dir");
-            let absolute_path = Path::new(&absolute_path_string);
-
-            match absolute_path.strip_prefix(&current_dir) {
-                Ok(stripped_path) => {
-                    buffer.push_str(&stripped_path.to_string_lossy());
-                }
-                Err(_) => {
-                    buffer.push_str(&absolute_path.to_string_lossy());
-                }
-            }
-        }
-
-        changed = true;
-    }
-
-    ui.same_line(input_position);
-    ui.set_next_item_width(ui.calc_item_width() - input_position);
-
-    ui.input_text(&label, buffer).read_only(true).build();
-
-    group_token.end(ui);
-
-    changed
 }
