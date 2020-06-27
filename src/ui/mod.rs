@@ -3,17 +3,31 @@ use std::f32;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crate::convert::{
-    cast_i32, cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32,
-};
+use crate::convert::cast_u8_color_to_f32;
 use crate::imgui_winit_support::{HiDpiMode, WinitPlatform};
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
 use crate::project;
 use crate::session::Session;
 
-const FONT_OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
-const FONT_OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Bold.ttf");
+use self::drag_float::{drag_float, Options as DragFloatOptions};
+use self::drag_float2::{drag_float2, Options as DragFloat2Options};
+use self::drag_float3::{drag_float3, Options as DragFloat3Options};
+use self::drag_int::{drag_int, Options as DragIntOptions};
+use self::drag_uint::{drag_uint, Options as DragUintOptions};
+use self::input_float2::input_float2;
+use self::input_uint2::input_uint2;
+
+mod drag_float;
+mod drag_float2;
+mod drag_float3;
+mod drag_int;
+mod drag_uint;
+mod input_float2;
+mod input_uint2;
+
+const FONT_OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../../resources/SpaceMono-Regular.ttf");
+const FONT_OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../../resources/SpaceMono-Bold.ttf");
 
 const WRAP_POS_TOOLTIP_TEXT_PIXELS: f32 = 400.0;
 const WRAP_POS_CONSOLE_TEXT_PIXELS: f32 = 380.0;
@@ -37,8 +51,6 @@ const SUBDIGITAL_LOGO_WINDOW_WIDTH: f32 = 100.0;
 
 const ABOUT_WINDOW_WIDTH: f32 = 600.0;
 
-const DRAG_SPEED: f32 = 0.01;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
     Dark,
@@ -57,8 +69,7 @@ pub enum ViewportDrawMode {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScreenshotOptions {
-    pub width: u32,
-    pub height: u32,
+    pub dimensions: [u32; 2],
     pub transparent: bool,
 }
 
@@ -401,8 +412,8 @@ impl<'a> UiFrame<'a> {
         let viewport_width_f32 = viewport_width as f32;
         let viewport_height_f32 = viewport_height as f32;
         let mut viewport_scale = [
-            screenshot_options.width as f32 / viewport_width_f32,
-            screenshot_options.height as f32 / viewport_height_f32,
+            screenshot_options.dimensions[0] as f32 / viewport_width_f32,
+            screenshot_options.dimensions[1] as f32 / viewport_height_f32,
         ];
 
         let bold_font_token = ui.push_font(self.font_ids.bold);
@@ -415,29 +426,17 @@ impl<'a> UiFrame<'a> {
             .build(|| {
                 let regular_font_token = ui.push_font(self.font_ids.regular);
 
-                let mut dimensions = [
-                    clamp_cast_u32_to_i32(screenshot_options.width),
-                    clamp_cast_u32_to_i32(screenshot_options.height),
-                ];
+                input_uint2(
+                    ui,
+                    imgui::im_str!("Dimensions (px)"),
+                    &mut screenshot_options.dimensions,
+                );
 
-                if ui
-                    .input_int2(imgui::im_str!("Dimensions (px)"), &mut dimensions)
-                    .build()
-                {
-                    screenshot_options.width = clamp_cast_i32_to_u32(dimensions[0]);
-                    screenshot_options.height = clamp_cast_i32_to_u32(dimensions[1]);
-                }
-
-                if ui
-                    .input_float2(imgui::im_str!("Scale"), &mut viewport_scale)
-                    .build()
-                {
-                    screenshot_options.width = clamp_cast_i32_to_u32(
-                        (viewport_width_f32 * viewport_scale[0]).round() as i32,
-                    );
-                    screenshot_options.height = clamp_cast_i32_to_u32(
-                        (viewport_height_f32 * viewport_scale[1]).round() as i32,
-                    );
+                if input_float2(ui, imgui::im_str!("Scale"), &mut viewport_scale) {
+                    screenshot_options.dimensions[0] =
+                        (viewport_width_f32 * viewport_scale[0]).round() as u32;
+                    screenshot_options.dimensions[1] =
+                        (viewport_height_f32 * viewport_scale[1]).round() as u32;
                 }
 
                 ui.checkbox(
@@ -1466,24 +1465,14 @@ impl<'a> UiFrame<'a> {
                                         ParamRefinement::Int(param_refinement_int) => {
                                             let mut int_lit = arg.unwrap_literal().unwrap_int();
 
-                                            let mut drag_int = ui
-                                                                .drag_int(&input_label, &mut int_lit)
-                                                                .speed(DRAG_SPEED);
-
-                                            // FIXME: Report bug: both, min and max must be set
-                                            if let Some(min_value) = param_refinement_int.min_value {
-                                                drag_int = drag_int.min(min_value);
-                                            } else {
-                                                drag_int = drag_int.min(i32::min_value());
-                                            }
-
-                                            if let Some(max_value) = param_refinement_int.max_value {
-                                                drag_int = drag_int.max(max_value);
-                                            } else {
-                                                drag_int = drag_int.max(i32::max_value());
-                                            }
-
-                                            if drag_int.build() {
+                                            if drag_int(
+                                                ui,
+                                                &input_label,
+                                                &mut int_lit,
+                                                DragIntOptions::new()
+                                                    .set_min(param_refinement_int.min_value)
+                                                    .set_max(param_refinement_int.max_value),
+                                            ) {
                                                 int_lit = param_refinement_int.clamp(int_lit);
                                                 change = Some((
                                                     stmt_index,
@@ -1493,58 +1482,36 @@ impl<'a> UiFrame<'a> {
                                             }
                                         }
                                         ParamRefinement::Uint(param_refinement_uint) => {
-                                            let uint_lit = arg.unwrap_literal().unwrap_uint();
-                                            let mut int_value = clamp_cast_u32_to_i32(uint_lit);
+                                            let mut uint_lit = arg.unwrap_literal().unwrap_uint();
 
-                                            let mut drag_int = ui
-                                                                .drag_int(&input_label, &mut int_value)
-                                                                .speed(DRAG_SPEED);
-
-                                            if let Some(min_value) = param_refinement_uint.min_value {
-                                                drag_int = drag_int.min(cast_i32(min_value));
-                                            } else {
-                                                drag_int = drag_int.min(0);
-                                            }
-
-                                            if let Some(max_value) = param_refinement_uint.max_value {
-                                                drag_int = drag_int.max(cast_i32(max_value));
-                                            } else {
-                                                drag_int = drag_int.max(i32::max_value());
-                                            }
-
-                                            if drag_int.build() {
-                                                let uint_value = clamp_cast_i32_to_u32(int_value);
-                                                let uint_value = param_refinement_uint.clamp(uint_value);
+                                            if drag_uint(
+                                                ui,
+                                                &input_label,
+                                                &mut uint_lit,
+                                                DragUintOptions::new()
+                                                    .set_min(param_refinement_uint.min_value)
+                                                    .set_max(param_refinement_uint.max_value),
+                                            ) {
+                                                uint_lit = param_refinement_uint.clamp(uint_lit);
                                                 change = Some((
                                                     stmt_index,
                                                     arg_index,
-                                                    ast::Expr::Lit(ast::LitExpr::Uint(uint_value)),
+                                                    ast::Expr::Lit(ast::LitExpr::Uint(uint_lit)),
                                                 ));
+
                                             }
                                         }
                                         ParamRefinement::Float(param_refinement_float) => {
                                             let mut float_lit = arg.unwrap_literal().unwrap_float();
 
-                                            let mut drag_float = ui
-                                                                .drag_float(&input_label, &mut float_lit)
-                                                                .speed(DRAG_SPEED)
-                                                                .power(2.0);
-
-                                            if let Some(min_value) = param_refinement_float.min_value {
-                                                drag_float = drag_float.min(min_value);
-                                            } else {
-                                                drag_float = drag_float.min(f32::MIN);
-                                            }
-
-                                            if let Some(max_value) = param_refinement_float.max_value {
-                                                drag_float = drag_float.max(max_value);
-                                            } else {
-                                                drag_float = drag_float.max(f32::MAX);
-                                            }
-
-                                            if drag_float
-                                                .build()
-                                            {
+                                            if drag_float(
+                                                ui,
+                                                &input_label,
+                                                &mut float_lit,
+                                                DragFloatOptions::new()
+                                                    .set_min(param_refinement_float.min_value)
+                                                    .set_max(param_refinement_float.max_value),
+                                            ) {
                                                 float_lit = param_refinement_float.clamp(float_lit);
                                                 change = Some((
                                                     stmt_index,
@@ -1557,28 +1524,14 @@ impl<'a> UiFrame<'a> {
                                             let mut float2_lit =
                                                 arg.unwrap_literal().unwrap_float2();
 
-                                            let mut drag_float2 = ui
-                                                                .drag_float2(&input_label, &mut float2_lit)
-                                                                .speed(DRAG_SPEED)
-                                                                .power(2.0);
-
-                                            if let Some(min_value) =
-                                                param_refinement_float2.min_value {
-                                                drag_float2 = drag_float2.min(min_value);
-                                            } else {
-                                                drag_float2 = drag_float2.min(f32::MIN);
-                                            }
-
-                                            if let Some(max_value) =
-                                                param_refinement_float2.max_value {
-                                                drag_float2 = drag_float2.max(max_value);
-                                            } else {
-                                                drag_float2 = drag_float2.max(f32::MAX);
-                                            }
-
-                                            if drag_float2
-                                                .build()
-                                            {
+                                            if drag_float2(
+                                                ui,
+                                                &input_label,
+                                                &mut float2_lit,
+                                                DragFloat2Options::new()
+                                                    .set_min(param_refinement_float2.min_value)
+                                                    .set_max(param_refinement_float2.max_value),
+                                            ) {
                                                 float2_lit = param_refinement_float2.clamp(float2_lit);
                                                 change = Some((
                                                     stmt_index,
@@ -1593,28 +1546,14 @@ impl<'a> UiFrame<'a> {
                                             let mut float3_lit =
                                                 arg.unwrap_literal().unwrap_float3();
 
-                                            let mut drag_float3 = ui
-                                                .drag_float3(&input_label, &mut float3_lit)
-                                                .speed(DRAG_SPEED)
-                                                .power(2.0);
-
-                                            if let Some(min_value)=
-                                                param_refinement_float3.min_value {
-                                                drag_float3 = drag_float3.min(min_value);
-                                            } else {
-                                                drag_float3 = drag_float3.min(f32::MIN);
-                                            }
-
-                                            if let Some(max_value) =
-                                                param_refinement_float3.max_value{
-                                                drag_float3 = drag_float3.max(max_value);
-                                            } else {
-                                                drag_float3 = drag_float3.max(f32::MAX);
-                                            }
-
-                                            if drag_float3
-                                                .build()
-                                            {
+                                            if drag_float3(
+                                                ui,
+                                                &input_label,
+                                                &mut float3_lit,
+                                                DragFloat3Options::new()
+                                                    .set_min(param_refinement_float3.min_value)
+                                                    .set_max(param_refinement_float3.max_value),
+                                            ) {
                                                 float3_lit = param_refinement_float3.clamp(float3_lit);
                                                 change = Some((
                                                     stmt_index,

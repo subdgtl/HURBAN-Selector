@@ -163,8 +163,7 @@ pub fn init_and_run(options: Options) -> ! {
 
     let mut screenshot_modal_open = false;
     let mut screenshot_options = ScreenshotOptions {
-        width: initial_window_width,
-        height: initial_window_height,
+        dimensions: [initial_window_width, initial_window_height],
         transparent: true,
     };
 
@@ -869,8 +868,8 @@ pub fn init_and_run(options: Options) -> ! {
                     // smaller currently crashes most of our GPU backend/driver
                     // combinations.
                     if width >= 16 && height >= 16 {
-                        screenshot_options.width = width;
-                        screenshot_options.height = height;
+                        screenshot_options.dimensions[0] = width;
+                        screenshot_options.dimensions[1] = height;
                         camera.set_screen_dimensions(width, height);
                         renderer.set_window_size(width, height);
                     } else {
@@ -895,19 +894,21 @@ pub fn init_and_run(options: Options) -> ! {
                 if take_screenshot {
                     log::info!(
                         "Capturing screenshot with dimensions {}x{} and transparency {}",
-                        screenshot_options.width,
-                        screenshot_options.height,
+                        screenshot_options.dimensions[0],
+                        screenshot_options.dimensions[1],
                         screenshot_options.transparent,
                     );
 
                     let screenshot_render_target = renderer.add_offscreen_render_target(
-                        screenshot_options.width,
-                        screenshot_options.height,
+                        screenshot_options.dimensions[0],
+                        screenshot_options.dimensions[1],
                     );
 
                     let mut screenshot_camera = camera.clone();
-                    screenshot_camera
-                        .set_screen_dimensions(screenshot_options.width, screenshot_options.height);
+                    screenshot_camera.set_screen_dimensions(
+                        screenshot_options.dimensions[0],
+                        screenshot_options.dimensions[1],
+                    );
 
                     let screenshot_clear_color = if screenshot_options.transparent {
                         [0.0; 4]
