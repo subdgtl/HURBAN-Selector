@@ -53,7 +53,8 @@ wgpu = { version = "0.5.0", features = ["vulkan"] }
 #
 # ... presumably because while the file dialog was open, more VM_PAINT messages
 # were accumulated.
-winit = "0.22.0"
+# winit = "0.22.0"
+winit = { git = "https://github.com/Osspial/winit", branch = "fix-reentrant-thread-target-repaint" }
 zerocopy = "0.3.0"
 
 [dev-dependencies]
