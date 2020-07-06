@@ -450,7 +450,7 @@ pub fn init_and_run(options: Options) -> ! {
                         session.interpret();
                     }
 
-                    if input_state.prog_pop_requested {
+                    if input_state.prog_pop_requested && !session.stmts().is_empty() {
                         session.pop_prog_stmt(time);
                     }
                 }
