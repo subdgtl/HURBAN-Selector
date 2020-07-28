@@ -449,7 +449,7 @@ pub fn init_and_run(options: Options) -> ! {
                         camera.set_radius_min(0.001 * camera_radius_max);
                         camera.set_radius_max(camera_radius_max);
                         camera.set_znear(0.001 * camera_radius_max);
-                        camera.set_zfar(camera_radius_max * 2.0);
+                        camera.set_zfar(2.0 * camera_radius_max);
 
                         notifications.push(
                             time,
@@ -495,13 +495,13 @@ pub fn init_and_run(options: Options) -> ! {
                     screenshot_modal_open = true;
                 }
 
-                let [pan_ground_x, pan_ground_y] = input_state.camera_pan_ground;
-                let [pan_screen_x, pan_screen_y] = input_state.camera_pan_screen;
-                let [rotate_x, rotate_y] = input_state.camera_rotate;
-
-                camera.pan_ground(pan_ground_x, pan_ground_y);
-                camera.pan_screen(pan_screen_x, pan_screen_y);
-                camera.rotate(rotate_x, rotate_y);
+                if let Some(([old_x, old_y], [new_x, new_y])) = input_state.camera_pan_ground {
+                    camera.pan_ground(old_x, old_y, new_x, new_y);
+                }
+                if let Some(([old_x, old_y], [new_x, new_y])) = input_state.camera_pan_screen {
+                    camera.pan_screen(old_x, old_y, new_x, new_y);
+                }
+                camera.rotate(input_state.camera_rotate[0], input_state.camera_rotate[1]);
                 camera.zoom(input_state.camera_zoom);
                 camera.zoom_step(input_state.camera_zoom_steps);
 

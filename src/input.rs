@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct InputState {
-    pub camera_pan_ground: [f32; 2],
-    pub camera_pan_screen: [f32; 2],
+    pub camera_pan_ground: Option<([f32; 2], [f32; 2])>,
+    pub camera_pan_screen: Option<([f32; 2], [f32; 2])>,
     pub camera_rotate: [f32; 2],
     pub camera_zoom: f32,
     pub camera_zoom_steps: i32,
@@ -23,8 +23,10 @@ pub struct InputManager {
     rmb_down: bool,
     modifiers: winit::event::ModifiersState,
     input_state: InputState,
-    window_mouse_x: f64,
-    window_mouse_y: f64,
+    mouse_x_frame_start: f64,
+    mouse_y_frame_start: f64,
+    mouse_x_frame_end: f64,
+    mouse_y_frame_end: f64,
 }
 
 impl InputManager {
@@ -34,8 +36,10 @@ impl InputManager {
             rmb_down: false,
             modifiers: winit::event::ModifiersState::empty(),
             input_state: InputState::default(),
-            window_mouse_x: 0.0,
-            window_mouse_y: 0.0,
+            mouse_x_frame_start: 0.0,
+            mouse_y_frame_start: 0.0,
+            mouse_x_frame_end: 0.0,
+            mouse_y_frame_end: 0.0,
         }
     }
 
@@ -45,6 +49,9 @@ impl InputManager {
 
     pub fn start_frame(&mut self) {
         self.input_state = InputState::default();
+
+        self.mouse_x_frame_start = self.mouse_x_frame_end;
+        self.mouse_y_frame_start = self.mouse_y_frame_end;
     }
 
     pub fn process_event<T>(
@@ -171,29 +178,35 @@ impl InputManager {
                 }
 
                 winit::event::WindowEvent::CursorMoved { position, .. } => {
+                    self.mouse_x_frame_end = position.x;
+                    self.mouse_y_frame_end = position.y;
+
+                    let dx = (self.mouse_x_frame_end - self.mouse_x_frame_start) as f32;
+                    let dy = (self.mouse_y_frame_end - self.mouse_y_frame_start) as f32;
+
                     if !ui_captured_mouse {
-                        let x = position.x;
-                        let y = position.y;
-                        let x_prev = self.window_mouse_x;
-                        let y_prev = self.window_mouse_y;
-                        self.window_mouse_x = x;
-                        self.window_mouse_y = y;
-
-                        let dx = (x - x_prev) as f32;
-                        let dy = (y - y_prev) as f32;
-
                         if self.lmb_down && self.rmb_down {
-                            self.input_state.camera_zoom -= dy;
+                            self.input_state.camera_zoom = dy;
                         } else if self.lmb_down {
-                            self.input_state.camera_rotate[0] -= dx;
-                            self.input_state.camera_rotate[1] -= dy;
+                            self.input_state.camera_rotate[0] = dx;
+                            self.input_state.camera_rotate[1] = dy;
                         } else if self.rmb_down {
                             if self.modifiers.shift() {
-                                self.input_state.camera_pan_ground[0] += dx;
-                                self.input_state.camera_pan_ground[1] -= dy;
+                                self.input_state.camera_pan_ground = Some((
+                                    [
+                                        self.mouse_x_frame_start as f32,
+                                        self.mouse_y_frame_start as f32,
+                                    ],
+                                    [self.mouse_x_frame_end as f32, self.mouse_y_frame_end as f32],
+                                ));
                             } else {
-                                self.input_state.camera_pan_screen[0] += dx;
-                                self.input_state.camera_pan_screen[1] -= dy;
+                                self.input_state.camera_pan_screen = Some((
+                                    [
+                                        self.mouse_x_frame_start as f32,
+                                        self.mouse_y_frame_start as f32,
+                                    ],
+                                    [self.mouse_x_frame_end as f32, self.mouse_y_frame_end as f32],
+                                ));
                             }
                         }
                     }
