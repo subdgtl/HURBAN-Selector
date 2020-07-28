@@ -1,6 +1,5 @@
 pub use crate::logger::LogLevel;
 pub use crate::renderer::{GpuBackend, GpuPowerPreference, Msaa};
-pub use crate::ui::Theme;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -28,7 +27,7 @@ use crate::renderer::{
     DirectionalLight, GpuMesh, GpuMeshHandle, Material, Options as RendererOptions, Renderer,
 };
 use crate::session::{PollNotification, Session};
-use crate::ui::{OverwriteModalTrigger, SaveModalResult, ScreenshotOptions, Ui, ViewportDrawMode};
+use crate::ui::{OverwriteModalTrigger, SaveModalResult, Ui};
 
 pub mod geometry;
 pub mod importer;
@@ -65,21 +64,58 @@ const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
 const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(100);
 const BASE_WINDOW_TITLE: &str = "H.U.R.B.A.N. selector";
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, clap::Clap)]
+#[clap(name = "HURBAN selector", version, author)]
 pub struct Options {
-    /// What theme to use.
+    /// Theme for the editor.
+    #[clap(long, arg_enum, env = "HS_THEME", default_value = "dark")]
     pub theme: Theme,
-    /// Which multi-sampling setting to use.
-    pub msaa: Msaa,
-    /// Whether to select an explicit gpu backend for the renderer to use.
+    /// GPU backend to use for rendering.
+    ///
+    /// If not chosen, the renderer will pick a default based on the current
+    /// platform.
+    #[clap(long, arg_enum, env = "HS_GPU_BACKEND")]
     pub gpu_backend: Option<GpuBackend>,
-    /// Whether to select an explicit power preference profile for the renderer
-    /// to use when choosing a GPU.
-    pub gpu_power_preference: Option<GpuPowerPreference>,
+    /// Power preference for selecting a GPU.
+    #[clap(
+        long,
+        arg_enum,
+        env = "HS_GPU_POWER_PREFERENCE",
+        default_value = "default"
+    )]
+    pub gpu_power_preference: GpuPowerPreference,
+    /// Level of multi-sampling based anti-aliasing to use in rendering.
+    #[clap(long, arg_enum, env = "HS_GPU_MSAA", default_value = "disabled")]
+    pub gpu_msaa: Msaa,
     /// Logging level for the editor.
-    pub app_log_level: Option<logger::LogLevel>,
+    #[clap(long, arg_enum, env = "HS_LOG_LEVEL_APP", default_value = "info")]
+    pub log_level_app: LogLevel,
     /// Logging level for external libraries.
-    pub lib_log_level: Option<logger::LogLevel>,
+    #[clap(long, arg_enum, env = "HS_LOG_LEVEL_LIB", default_value = "warn")]
+    pub log_level_lib: LogLevel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::Clap)]
+pub enum Theme {
+    Dark,
+    Light,
+}
+
+/// The draw mode applied to a group of objects in the viewport. Not always a
+/// 1:1 mapping with renderer materials.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewportDrawMode {
+    Wireframe,
+    Shaded,
+    ShadedWireframe,
+    ShadedWireframeXray,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScreenshotOptions {
+    pub width: u32,
+    pub height: u32,
+    pub transparent: bool,
 }
 
 /// A unique identifier assigned to a value or subvalue for purposes
@@ -116,7 +152,7 @@ impl RendererDebugView {
 /// Will continue running until a close request is received from the
 /// created window.
 pub fn init_and_run(options: Options) -> ! {
-    logger::init(options.app_log_level, options.lib_log_level);
+    logger::init(options.log_level_app, options.log_level_lib);
 
     let event_loop = winit::event_loop::EventLoop::new();
 
@@ -172,7 +208,7 @@ pub fn init_and_run(options: Options) -> ! {
 
     let clear_color = match options.theme {
         Theme::Dark => [0.1, 0.1, 0.1, 1.0],
-        Theme::Funky => [1.0, 1.0, 1.0, 1.0],
+        Theme::Light => [1.0, 1.0, 1.0, 1.0],
     };
 
     #[cfg(not(feature = "dist"))]
@@ -185,15 +221,15 @@ pub fn init_and_run(options: Options) -> ! {
         initial_window_height,
         ui.fonts(),
         RendererOptions {
-            msaa: options.msaa,
             backend: options.gpu_backend,
             power_preference: options.gpu_power_preference,
+            msaa: options.gpu_msaa,
             flat_material_color: [0.0, 0.0, 0.0, 0.1],
             // FIXME: These different alphas are to workaround a blending bug in
             // the renderer. Fix the blending bug.
             transparent_matcap_shaded_material_alpha: match options.theme {
                 Theme::Dark => 0.5,
-                Theme::Funky => 0.15,
+                Theme::Light => 0.15,
             },
         },
     );
@@ -657,7 +693,7 @@ pub fn init_and_run(options: Options) -> ! {
                 );
 
                 let (tex_logos, width_logos, height_logos) = match options.theme {
-                    Theme::Funky => (tex_logos_black, width_logos_black, height_logos_black),
+                    Theme::Light => (tex_logos_black, width_logos_black, height_logos_black),
                     Theme::Dark => (tex_logos_white, width_logos_white, height_logos_white),
                 };
                 ui_frame.draw_about_window(

@@ -1,80 +1,10 @@
-#![windows_subsystem = "windows"]
+// Do not display console on windows in dist builds
+#![cfg_attr(feature = "dist", windows_subsystem = "windows")]
 
-use std::env;
-
+use clap::Clap as _;
 use hurban_selector as hs;
 
 fn main() {
-    let theme = env::var("HS_THEME")
-        .ok()
-        .map(|theme| match theme.as_str() {
-            "dark" => hs::Theme::Dark,
-            "funky" => hs::Theme::Funky,
-            unsupported_theme => {
-                panic!("Unsupported theme value requested: {}", unsupported_theme,)
-            }
-        })
-        .unwrap_or(hs::Theme::Dark);
-
-    let msaa = env::var("HS_MSAA")
-        .ok()
-        .map(|msaa| match msaa.as_str() {
-            "1" => hs::Msaa::Disabled,
-            "2" => hs::Msaa::X2,
-            "4" => hs::Msaa::X4,
-            "8" => hs::Msaa::X8,
-            "16" => hs::Msaa::X16,
-            unsupported_msaa => panic!("Unsupported MSAA value requested: {}", unsupported_msaa),
-        })
-        .unwrap_or(hs::Msaa::Disabled);
-
-    let gpu_backend = env::var("HS_GPU_BACKEND")
-        .ok()
-        .map(|backend| match backend.as_str() {
-            "vulkan" => hs::GpuBackend::Vulkan,
-            "d3d12" => hs::GpuBackend::D3d12,
-            "metal" => hs::GpuBackend::Metal,
-            _ => panic!("Unknown gpu backend requested"),
-        });
-
-    let gpu_power_preference = env::var("HS_GPU_POWER_PREFERENCE")
-        .ok()
-        .map(|power_preference| match power_preference.as_str() {
-            "low-power" => hs::GpuPowerPreference::LowPower,
-            "high-performance" => hs::GpuPowerPreference::HighPerformance,
-            _ => panic!("Unknown gpu power preference requested"),
-        });
-
-    let app_log_level = env::var("HS_APP_LOG_LEVEL")
-        .ok()
-        .map(|app_log_level| match app_log_level.as_str() {
-            "off" => hs::LogLevel::Off,
-            "error" => hs::LogLevel::Error,
-            "warning" => hs::LogLevel::Warning,
-            "info" => hs::LogLevel::Info,
-            "debug" => hs::LogLevel::Debug,
-            "trace" => hs::LogLevel::Trace,
-            _ => panic!("Unknown application log level requested"),
-        });
-
-    let lib_log_level = env::var("HS_LIB_LOG_LEVEL")
-        .ok()
-        .map(|lib_log_level| match lib_log_level.as_str() {
-            "off" => hs::LogLevel::Off,
-            "error" => hs::LogLevel::Error,
-            "warning" => hs::LogLevel::Warning,
-            "info" => hs::LogLevel::Info,
-            "debug" => hs::LogLevel::Debug,
-            "trace" => hs::LogLevel::Trace,
-            _ => panic!("Unknown library log level requested"),
-        });
-
-    hs::init_and_run(hs::Options {
-        theme,
-        msaa,
-        gpu_backend,
-        gpu_power_preference,
-        app_log_level,
-        lib_log_level,
-    });
+    let options = hs::Options::parse();
+    hs::init_and_run(options);
 }

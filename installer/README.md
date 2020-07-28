@@ -28,3 +28,11 @@ that is needed to run the application. Code used to install this dependency is
 a modified version of [Inno Dependency Installer](https://github.com/domgho/innodependencyinstaller).
 
 The only supported version is 64-bit and only English language is available.
+
+## Configuring the installed application on Windows
+
+The application can parse command-line arguments (run with `-h` for more). These
+can be set in the Windows shortcut file. The installer doesn't currently set any
+options in the shortcut, but it gives the user the option to create it. The
+shortcut can be manually edited to e.g. start the application in the light
+theme.
