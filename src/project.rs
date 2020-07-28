@@ -12,7 +12,7 @@ use crate::interpreter::ast;
 pub const DEFAULT_NEW_FILENAME: &str = "new_project.hurban";
 
 pub const EXTENSION: &str = "hurban";
-pub const EXTENSION_DESCRIPTION: &str = "HURBAN selector project (.hurban)";
+pub const EXTENSION_DESCRIPTION: &str = "H.U.R.B.A.N. selector project (.hurban)";
 pub const EXTENSION_FILTER: &[&str] = &["*.hurban"];
 
 #[derive(Debug, Clone, Copy)]

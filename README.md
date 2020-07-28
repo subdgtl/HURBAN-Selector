@@ -1,6 +1,6 @@
 # H.U.R.B.A.N. selector
 
-[![Build Status](https://dev.azure.com/subdgtl/HURBAN-Selector/_apis/build/status/Master%20and%20PR?branchName=master)](https://dev.azure.com/subdgtl/HURBAN-Selector/_build/latest?definitionId=1&branchName=master)
+[![Build Status](https://dev.azure.com/subdgtl/HURBAN-selector/_apis/build/status/Master%20and%20PR?branchName=master)](https://dev.azure.com/subdgtl/HURBAN-selector/_build/latest?definitionId=1&branchName=master)
 
 H.U.R.B.A.N. selector is a software experiment sponsored by the [Slovak
 Design Center](https://www.scd.sk/). It is meant to test the

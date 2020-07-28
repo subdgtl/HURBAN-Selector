@@ -76,7 +76,7 @@ pub fn init_env_specific(
 
     #[cfg(target_os = "windows")]
     let path = match dirs::data_local_dir() {
-        Some(appdata_local) => Path::new(&appdata_local).join("HURBAN Selector/Logs"),
+        Some(appdata_local) => Path::new(&appdata_local).join("H.U.R.B.A.N. selector/Logs"),
         None => return base_logger,
     };
 
@@ -85,13 +85,13 @@ pub fn init_env_specific(
         use std::env;
 
         match env::var("HOME") {
-            Ok(home_dir) => Path::new(&home_dir).join("Library/Logs/HURBAN_Selector"),
+            Ok(home_dir) => Path::new(&home_dir).join("Library/Logs/H.U.R.B.A.N. selector"),
             Err(_) => return base_logger,
         }
     };
 
     #[cfg(target_os = "linux")]
-    let path = Path::new("/var/log/HURBAN_Selector").to_path_buf();
+    let path = Path::new("/var/log/H.U.R.B.A.N. selector").to_path_buf();
 
     if !path.exists() {
         let result = fs::create_dir_all(&path);
