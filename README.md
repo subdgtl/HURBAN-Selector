@@ -43,6 +43,15 @@ We use standard `cargo` workflows:
 - `cargo build` to build,
 - `cargo run` to run.
 
+### Configuration
+
+The application parses configuration from both command-line arguments and
+environment variables. Run with `-h` to see the list of available options.
+
+### Creating a Windows installer
+
+Refer to [installer's readme](installer/README.md) to create Windows installer.
+
 ### Testing
 
 Apart from unit and integration tests, we do have a fair amount of
@@ -51,7 +60,7 @@ operation implementations. The workflow is to always manually review
 the new snapshot, if the operation's output has changed.
 
 Snapshots are handled by the
-[insta](https://docs.rs/insta/0.12.0/insta/) crate. The `cargo insta`
+[insta](https://docs.rs/insta/) crate. The `cargo insta`
 plugin, while not strictly necessary, is also useful in the
 workflow. Get it with `cargo install cargo-insta`.
 
@@ -59,35 +68,6 @@ To make a new snapshot test, add a standard test and use
 `insta::assert_json_snapshot("name_of_snapshot", &data)`. The test
 will fail at first, as there is no snapshot to compare against. Use
 the `cargo insta review` to review snapshot diffs or new snapshots.
-
-### Environment Variables
-
-Optionally configure one of the following:
-
-**HS_THEME**: Either `dark` or `funky`. Default is `dark`.
-
-**HS_MSAA**: Choose the number of multisampling samples. Either 1, 2,
-  4, 8, or 16. Default is 1.
-
-**HS_GPU_BACKEND**: Force a GPU backend. A gpu backend is
-  automatically selected, but optionally a non-default gpu backend can
-  be specified. Can take the following values:
-
-- `vulkan` on Windows, Linux, or macOS with VulkanSDK,
-- `d3d12` on Windows,
-- `metal` on macOS.
-
-Default is primary GPU backend for the current OS.
-
-**HS_GPU_POWER_PREFERENCE**: Choose power preference used to select a GPU to run
-  on. Either `low-power` or `high-performance`. Default defers the decision to
-  the GPU backend.
-
-**HS_APP_LOG_LEVEL**: Set level of logging for the editor. Either
-  `error`, `warn`, `info` or `debug`. Default is `debug`.
-
-**HS_LIB_LOG_LEVEL**: Set level of logging for external crates. Either
-  `error`, `warn`, `info` or `debug`. Default is `warn`.
 
 ### Renderer development
 
@@ -101,28 +81,6 @@ SDK can even be installed on macOS, and enables running on the Vulkan backend
 there, but the setup is a bit more involved - see macOS guide in
 [ash](https://crates.io/crates/ash)), and possibly [disable
 SIP](http://osxdaily.com/2015/10/05/disable-rootless-system-integrity-protection-mac-os-x/)
-
-### Creating a windows distribution for workshops
-
-- `cargo build --release`,
-- create a distribution directory in a place of your heart's desire,
-- copy `./target/release/hurban_selector.exe` to the distribution directory,
-- add the following `run.cmd` file to the distribution directory:
-
-```cmd
-REM Set environment variables here
-set HS_THEME=funky
-hurban_selector.exe
-```
-
-Before running on target computer, make sure "Microsoft Visual C++
-Redistributable for Visual Studio 2019" is installed (get it
-[here](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads))
-
-### Creating a Windows installer
-
-Refer to [Windows installer's readme](installer_windows/README.md) to create
-Windows installer.
 
 ### Licence
 

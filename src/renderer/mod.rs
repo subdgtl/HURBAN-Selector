@@ -43,22 +43,23 @@ const TEXTURE_FORMAT_DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Fl
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
-    /// Which multi-sampling setting to use.
-    pub msaa: Msaa,
-    /// Whether to use explicit gpu backend or allow the renderer choose a default.
+    /// GPU backend to use for rendering.
+    ///
+    /// If not chosen, the renderer will pick a default based on the current
+    /// platform.
     pub backend: Option<GpuBackend>,
-    /// Whether to select an explicit power preference profile for the renderer
-    /// to use when choosing a GPU.
-    pub power_preference: Option<GpuPowerPreference>,
+    /// Power preference for selecting a GPU.
+    pub power_preference: GpuPowerPreference,
+    /// Level of multi-sampling based anti-aliasing to use in rendering.
+    pub msaa: Msaa,
     /// The color with which to render surfaces in `Material::FlatWithShadows`.
     pub flat_material_color: [f64; 4],
     /// The transparency value of transparent matcap materials.
     pub transparent_matcap_shaded_material_alpha: f64,
 }
 
-/// Multi-sampling setting. Can be either disabled (1 sample per
-/// pixel), or 4/8/16 samples per pixel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Level of multi-sampling based anti-aliasing to use in rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::Clap)]
 pub enum Msaa {
     Disabled,
     X2,
@@ -98,8 +99,11 @@ impl fmt::Display for Msaa {
     }
 }
 
-/// The rendering backend used by `wgpu-rs`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// GPU backend to use for rendering.
+///
+/// If not chosen, the renderer will pick a default based on the current
+/// platform.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::Clap)]
 pub enum GpuBackend {
     Vulkan,
     D3d12,
@@ -126,16 +130,22 @@ impl fmt::Display for GpuBackend {
     }
 }
 
-/// The power preference for selecting a GPU.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Power preference for selecting a GPU.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::Clap)]
 pub enum GpuPowerPreference {
+    /// Let the implementation choose a GPU device based on battery state and
+    /// power availability.
+    Default,
+    /// Try to use a GPU device with least power consumption.
     LowPower,
+    /// Try to use a GPU device with most performance.
     HighPerformance,
 }
 
 impl Into<wgpu::PowerPreference> for GpuPowerPreference {
     fn into(self) -> wgpu::PowerPreference {
         match self {
+            GpuPowerPreference::Default => wgpu::PowerPreference::Default,
             GpuPowerPreference::LowPower => wgpu::PowerPreference::LowPower,
             GpuPowerPreference::HighPerformance => wgpu::PowerPreference::HighPerformance,
         }
@@ -145,6 +155,7 @@ impl Into<wgpu::PowerPreference> for GpuPowerPreference {
 impl fmt::Display for GpuPowerPreference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            GpuPowerPreference::Default => write!(f, "Default"),
             GpuPowerPreference::LowPower => write!(f, "Low Power"),
             GpuPowerPreference::HighPerformance => write!(f, "High Performance"),
         }
@@ -216,9 +227,7 @@ impl Renderer {
             .map(|backend| slice::from_ref(backend))
             .unwrap_or(DEFAULT_BACKEND_LIST);
 
-        let gpu_power_preference = options
-            .power_preference
-            .unwrap_or(GpuPowerPreference::LowPower);
+        let gpu_power_preference = options.power_preference;
         log::info!("GPU will use power preference: {}", gpu_power_preference);
 
         let surface = wgpu::Surface::create(window);

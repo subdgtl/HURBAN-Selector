@@ -11,6 +11,7 @@ use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
 use crate::project;
 use crate::session::Session;
+use crate::{ScreenshotOptions, Theme, ViewportDrawMode};
 
 const FONT_OPENSANS_REGULAR_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Regular.ttf");
 const FONT_OPENSANS_BOLD_BYTES: &[u8] = include_bytes!("../resources/SpaceMono-Bold.ttf");
@@ -38,29 +39,6 @@ const SUBDIGITAL_LOGO_WINDOW_WIDTH: f32 = 100.0;
 const ABOUT_WINDOW_WIDTH: f32 = 600.0;
 
 const DRAG_SPEED: f32 = 0.01;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Theme {
-    Dark,
-    Funky,
-}
-
-/// The draw mode applied to a group of objects in the viewport. Not always a
-/// 1:1 mapping with renderer materials.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ViewportDrawMode {
-    Wireframe,
-    Shaded,
-    ShadedWireframe,
-    ShadedWireframeXray,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ScreenshotOptions {
-    pub width: u32,
-    pub height: u32,
-    pub transparent: bool,
-}
 
 struct FontIds {
     regular: imgui::FontId,
@@ -180,7 +158,7 @@ impl Ui {
         style.scrollbar_rounding = 3.0;
         style.grab_rounding = 3.0;
 
-        if theme == Theme::Funky {
+        if theme == Theme::Light {
             style.window_rounding = 0.0;
             style.frame_rounding = 0.0;
             style.scrollbar_rounding = 0.0;
