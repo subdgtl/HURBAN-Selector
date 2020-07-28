@@ -195,6 +195,11 @@ impl Session {
             "Can't submit a request while the interpreter is already interpreting",
         );
 
+        assert!(
+            !self.prog.stmts().is_empty(),
+            "Program must not be empty when popping",
+        );
+
         self.last_uninterpreted_edit = Some(current_time);
         self.prog.pop_stmt();
         self.log_messages.pop();
