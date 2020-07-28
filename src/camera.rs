@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::f32;
 
-use nalgebra::{Matrix4, Point3, Rotation3, Vector3};
+use nalgebra::{Matrix4, Point3, Vector3};
 
 use crate::math::{clamp, TAU};
 
@@ -94,40 +94,152 @@ impl Camera {
         self.options.zfar = zfar;
     }
 
-    /// Pans the camera by changing the camera position against the ground plane
-    /// (XY). `dx` and `dy` are in screen space.
-    pub fn pan_ground(&mut self, dx: f32, dy: f32) {
-        // FIXME: Raycast against ground plane for nicer movement.
-        let pan_factor = self.options.speed_pan * self.radius / self.options.radius_max;
-        let ground_translation = Vector3::new(dx, dy, 0.0) * pan_factor;
-        let camera_rotation =
-            Rotation3::new(Vector3::z() * (self.azimuthal_angle - f32::consts::FRAC_PI_2));
-        self.origin += camera_rotation * ground_translation;
-    }
+    /// Pans the camera by changing the camera position against the ground
+    /// plane.
+    ///
+    /// Interescts rays from screenspace points `(old_x,old_y)` and
+    /// `(new_x,new_y)` with the ground plane and moves camera by the opposite
+    /// of the difference of their intersections.
+    pub fn pan_ground(&mut self, old_x: f32, old_y: f32, new_x: f32, new_y: f32) {
+        let projection_matrix_inverse = self.projection_matrix().try_inverse();
+        let view_matrix_inverse = self.view_matrix().try_inverse();
 
-    /// Pans the camera by changing the camera position against the screen
-    /// plane. `dx` and `dy` are in screen space.
-    pub fn pan_screen(&mut self, dx: f32, dy: f32) {
-        let pan_factor = self.options.speed_pan * self.radius / self.options.radius_max;
-        let ground_translation = Vector3::new(dx, dy, 0.0) * pan_factor;
-        let camera_rotation =
-            Rotation3::new(Vector3::z() * (self.azimuthal_angle - f32::consts::FRAC_PI_2));
+        if let (Some(proj_inv), Some(view_inv)) = (projection_matrix_inverse, view_matrix_inverse) {
+            let screen_width = self.screen_width as f32;
+            let screen_height = self.screen_height as f32;
 
-        // Compute normal vector of the screen plane
-        let eye = self.position();
-        let normal = eye - self.origin;
+            let old_x_ndc = old_x / screen_width * 2.0 - 1.0;
+            let old_y_ndc = (screen_height - old_y) / screen_height * 2.0 - 1.0;
+            let new_x_ndc = new_x / screen_width * 2.0 - 1.0;
+            let new_y_ndc = (screen_height - new_y) / screen_height * 2.0 - 1.0;
 
-        // Create rotation from XY plane to screen plane
-        // Note that the vectors can theoretically be zero... just don't do anything in that case.
-        if let Some(xy_to_screen_rotation) = Rotation3::rotation_between(&Vector3::z(), &normal) {
-            self.origin += xy_to_screen_rotation * camera_rotation * ground_translation;
+            let (old_near_ndc, old_far_ndc, new_near_ndc, new_far_ndc) = (
+                Point3::new(old_x_ndc, old_y_ndc, 1.0),
+                Point3::new(old_x_ndc, old_y_ndc, -1.0),
+                Point3::new(new_x_ndc, new_y_ndc, 1.0),
+                Point3::new(new_x_ndc, new_y_ndc, -1.0),
+            );
+
+            let (old_near_eye, old_far_eye, new_near_eye, new_far_eye) = (
+                proj_inv.transform_point(&old_near_ndc),
+                proj_inv.transform_point(&old_far_ndc),
+                proj_inv.transform_point(&new_near_ndc),
+                proj_inv.transform_point(&new_far_ndc),
+            );
+
+            let (old_near_world, old_far_world, new_near_world, new_far_world) = (
+                view_inv.transform_point(&old_near_eye),
+                view_inv.transform_point(&old_far_eye),
+                view_inv.transform_point(&new_near_eye),
+                view_inv.transform_point(&new_far_eye),
+            );
+
+            let cos_75_deg: f32 = 75_f32.to_radians().cos();
+            let ray_origin = self.position();
+            let plane_origin = Point3::new(0.0, 0.0, 0.0);
+            let plane_normal = Vector3::new(0.0, 0.0, 1.0);
+
+            let old_ray_world = old_far_world - old_near_world;
+            let new_ray_world = new_far_world - new_near_world;
+
+            let old_plane_point = ray_plane_intersection(
+                &ray_origin,
+                &old_ray_world,
+                &plane_origin,
+                &plane_normal,
+                cos_75_deg,
+            );
+            let new_plane_point = ray_plane_intersection(
+                &ray_origin,
+                &new_ray_world,
+                &plane_origin,
+                &plane_normal,
+                cos_75_deg,
+            );
+
+            if let (Some(old), Some(new)) = (old_plane_point, new_plane_point) {
+                let old_to_new = new - old;
+                self.origin -= old_to_new;
+            }
         }
     }
 
-    /// Rotates the camera by changing azimuthal (theta) and polar (phi) angles.
-    pub fn rotate(&mut self, dtheta: f32, dphi: f32) {
-        let dtheta = dtheta * self.options.speed_rotate;
-        let dphi = dphi * self.options.speed_rotate;
+    /// Pans the camera by changing the camera position against the plane
+    /// originating in the point the camera is looking at and is parallel to the
+    /// screen plane.
+    ///
+    /// Interescts rays from screenspace points `(old_x,old_y)` and
+    /// `(new_x,new_y)` with the constructed plane and moves camera by the
+    /// opposite of the difference of their intersections.
+    pub fn pan_screen(&mut self, old_x: f32, old_y: f32, new_x: f32, new_y: f32) {
+        let projection_matrix_inverse = self.projection_matrix().try_inverse();
+        let view_matrix_inverse = self.view_matrix().try_inverse();
+
+        if let (Some(proj_inv), Some(view_inv)) = (projection_matrix_inverse, view_matrix_inverse) {
+            let screen_width = self.screen_width as f32;
+            let screen_height = self.screen_height as f32;
+
+            let old_x_ndc = old_x / screen_width * 2.0 - 1.0;
+            let old_y_ndc = (screen_height - old_y) / screen_height * 2.0 - 1.0;
+            let new_x_ndc = new_x / screen_width * 2.0 - 1.0;
+            let new_y_ndc = (screen_height - new_y) / screen_height * 2.0 - 1.0;
+
+            let (old_near_ndc, old_far_ndc, new_near_ndc, new_far_ndc) = (
+                Point3::new(old_x_ndc, old_y_ndc, 1.0),
+                Point3::new(old_x_ndc, old_y_ndc, -1.0),
+                Point3::new(new_x_ndc, new_y_ndc, 1.0),
+                Point3::new(new_x_ndc, new_y_ndc, -1.0),
+            );
+
+            let (old_near_eye, old_far_eye, new_near_eye, new_far_eye) = (
+                proj_inv.transform_point(&old_near_ndc),
+                proj_inv.transform_point(&old_far_ndc),
+                proj_inv.transform_point(&new_near_ndc),
+                proj_inv.transform_point(&new_far_ndc),
+            );
+
+            let (old_near_world, old_far_world, new_near_world, new_far_world) = (
+                view_inv.transform_point(&old_near_eye),
+                view_inv.transform_point(&old_far_eye),
+                view_inv.transform_point(&new_near_eye),
+                view_inv.transform_point(&new_far_eye),
+            );
+
+            let cos_75_deg: f32 = 75_f32.to_radians().cos();
+            let ray_origin = self.position();
+            let plane_origin = self.origin;
+            let plane_normal = ray_origin - plane_origin;
+
+            let old_ray_world = old_far_world - old_near_world;
+            let new_ray_world = new_far_world - new_near_world;
+
+            let old_plane_point = ray_plane_intersection(
+                &ray_origin,
+                &old_ray_world,
+                &plane_origin,
+                &plane_normal,
+                cos_75_deg,
+            );
+            let new_plane_point = ray_plane_intersection(
+                &ray_origin,
+                &new_ray_world,
+                &plane_origin,
+                &plane_normal,
+                cos_75_deg,
+            );
+
+            if let (Some(old), Some(new)) = (old_plane_point, new_plane_point) {
+                let old_to_new = new - old;
+                self.origin -= old_to_new;
+            }
+        }
+    }
+
+    /// Rotates the camera by changing azimuthal (theta) and polar (phi)
+    /// angles. `dx` and `dy` are in screen space.
+    pub fn rotate(&mut self, dx: f32, dy: f32) {
+        let dtheta = -dx * self.options.speed_rotate;
+        let dphi = -dy * self.options.speed_rotate;
 
         self.azimuthal_angle = (self.azimuthal_angle + dtheta) % TAU;
         self.polar_angle = clamp(
@@ -172,9 +284,9 @@ impl Camera {
     /// A sphere completely visible by this camera, no matter the rotation.
     pub fn visible_sphere(&self) -> (Point3<f32>, f32) {
         const MARGIN_MULTIPLIER: f32 = 1.005;
-        let alpha = self.compute_visible_sphere_alpha();
+        let angle = self.compute_visible_sphere_angle();
 
-        let sphere_radius = self.radius / MARGIN_MULTIPLIER * alpha.tan();
+        let sphere_radius = self.radius / MARGIN_MULTIPLIER * angle.tan();
 
         (self.origin, sphere_radius)
     }
@@ -186,11 +298,11 @@ impl Camera {
     /// to be not zoomed out enough, or not zoomed in enough.
     pub fn zoom_to_fit_visible_sphere(&mut self, sphere_origin: Point3<f32>, sphere_radius: f32) {
         const MARGIN_MULTIPLIER: f32 = 1.005;
-        let alpha = self.compute_visible_sphere_alpha();
+        let angle = self.compute_visible_sphere_angle();
 
         // Compute the distance needed from the sphere for it to fit
         // inside the camera frustum
-        let new_radius = MARGIN_MULTIPLIER * sphere_radius / alpha.tan();
+        let new_radius = MARGIN_MULTIPLIER * sphere_radius / angle.tan();
 
         self.origin = sphere_origin;
         self.radius = clamp(new_radius, self.options.radius_min, self.options.radius_max);
@@ -209,11 +321,38 @@ impl Camera {
         )
     }
 
-    fn compute_visible_sphere_alpha(&self) -> f32 {
+    fn compute_visible_sphere_angle(&self) -> f32 {
         let fovy = self.options.fovy;
         let fovx = fovy * self.screen_aspect_ratio();
         let fov = fovy.min(fovx);
 
         fov / 2.0
+    }
+}
+
+fn ray_plane_intersection(
+    ray_origin: &Point3<f32>,
+    ray_direction: &Vector3<f32>,
+    plane_origin: &Point3<f32>,
+    plane_normal: &Vector3<f32>,
+    min_angle_cos_abs: f32,
+) -> Option<Point3<f32>> {
+    assert!(ray_direction.norm_squared() > 0.0, "Ray vector zero");
+
+    let direction = ray_direction.normalize();
+    let normal = plane_normal.normalize();
+
+    let denominator = direction.dot(&normal);
+
+    if denominator.abs() > min_angle_cos_abs {
+        let plane_distance_from_origin = plane_origin.coords.norm();
+        let numerator = ray_origin.coords.dot(&normal) + plane_distance_from_origin;
+        let t = -numerator / denominator;
+
+        Some(ray_origin + t * direction)
+    } else {
+        // The ray direction and the plane normal are too close to being
+        // parallel - the cosine of their angle is too close to 0.
+        None
     }
 }
