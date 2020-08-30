@@ -393,6 +393,7 @@ impl Renderer {
             });
 
         let blit_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: None,
             layout: &blit_render_pipeline_layout,
             vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &blit_vs_module,

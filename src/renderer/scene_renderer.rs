@@ -757,11 +757,14 @@ impl SceneRenderer {
 
         let shadow_pass_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
                 bind_group_layouts: &[&shadow_pass_bind_group_layout],
+                push_constant_ranges: &[],
             });
 
         let shadow_pass_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            layout: &shadow_pass_pipeline_layout,
+            label: None,
+            layout: Some(&shadow_pass_pipeline_layout),
             vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &shadow_pass_vs_module,
                 entry_point: "main",
@@ -776,6 +779,7 @@ impl SceneRenderer {
                 // - Slope depth bias factor, applied depending on polygon's slope
                 //
                 // https://docs.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias
+                clamp_depth: false,
                 depth_bias: 5,
                 depth_bias_slope_scale: 5.0,
                 depth_bias_clamp: 0.0,
@@ -786,10 +790,7 @@ impl SceneRenderer {
                 format: options.output_depth_attachment_format,
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::Less,
-                stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-                stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-                stencil_read_mask: 0,
-                stencil_write_mask: 0,
+                stencil: wgpu::StencilStateDescriptor::default(),
             }),
             vertex_state: wgpu::VertexStateDescriptor {
                 index_format: wgpu::IndexFormat::Uint32,
@@ -1071,10 +1072,18 @@ impl SceneRenderer {
                 .expect("Failed to compare floats")
         });
 
-        let load_op = if color_and_depth_need_clearing {
-            wgpu::LoadOp::Clear
+        let (color_load_op, depth_load_op) = if color_and_depth_need_clearing {
+            (
+                wgpu::LoadOp::Clear(wgpu::Color {
+                    r: clear_color[0],
+                    g: clear_color[1],
+                    b: clear_color[2],
+                    a: clear_color[3],
+                }),
+                wgpu::LoadOp::Clear(1.0),
+            )
         } else {
-            wgpu::LoadOp::Load
+            (wgpu::LoadOp::Load, wgpu::LoadOp::Load)
         };
 
         {
@@ -1085,12 +1094,11 @@ impl SceneRenderer {
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
                     attachment: &self.shadow_map_texture_view,
-                    depth_load_op: load_op,
-                    depth_store_op: wgpu::StoreOp::Store,
-                    stencil_load_op: wgpu::LoadOp::Clear,
-                    stencil_store_op: wgpu::StoreOp::Store,
-                    clear_depth: 1.0,
-                    clear_stencil: 0,
+                    depth_ops: Some(wgpu::Operations {
+                        load: depth_load_op,
+                        store: true,
+                    }),
+                    stencil_ops: None,
                 }),
             });
 
@@ -1109,26 +1117,18 @@ impl SceneRenderer {
             wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: msaa_attachment,
                 resolve_target: Some(color_attachment),
-                load_op,
-                store_op: wgpu::StoreOp::Store,
-                clear_color: wgpu::Color {
-                    r: clear_color[0],
-                    g: clear_color[1],
-                    b: clear_color[2],
-                    a: clear_color[3],
+                ops: wgpu::Operations {
+                    load: color_load_op,
+                    store: true,
                 },
             }
         } else {
             wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: color_attachment,
                 resolve_target: None,
-                load_op,
-                store_op: wgpu::StoreOp::Store,
-                clear_color: wgpu::Color {
-                    r: clear_color[0],
-                    g: clear_color[1],
-                    b: clear_color[2],
-                    a: clear_color[3],
+                ops: wgpu::Operations {
+                    load: color_load_op,
+                    store: true,
                 },
             }
         };
@@ -1137,12 +1137,11 @@ impl SceneRenderer {
             color_attachments: &[color_pass_color_attachment_descriptor],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
                 attachment: depth_attachment,
-                depth_load_op: load_op,
-                depth_store_op: wgpu::StoreOp::Store,
-                stencil_load_op: wgpu::LoadOp::Clear,
-                stencil_store_op: wgpu::StoreOp::Store,
-                clear_depth: 1.0,
-                clear_stencil: 0,
+                depth_ops: Some(wgpu::Operations {
+                    load: depth_load_op,
+                    store: true,
+                }),
+                stencil_ops: None,
             }),
         });
 
@@ -1280,10 +1279,10 @@ fn record<'a, 'b>(
     let mesh_resource = &mesh_resources[&raw_handle];
 
     let (vertex_buffer, vertex_count) = &mesh_resource.vertices;
-    rpass.set_vertex_buffer(0, vertex_buffer, 0, 0);
+    rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
 
     if let Some((index_buffer, index_count)) = &mesh_resource.indices {
-        rpass.set_index_buffer(&index_buffer, 0, 0);
+        rpass.set_index_buffer(index_buffer.slice(..));
         rpass.draw_indexed(0..*index_count, 0, 0..1);
     } else {
         rpass.draw(0..*vertex_count, 0..1);
@@ -1401,6 +1400,7 @@ fn create_color_pass_pipeline(
     options: Options,
 ) -> wgpu::RenderPipeline {
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: None,
         bind_group_layouts: &[
             &matrix_bind_group_layout,
             &sampler_bind_group_layout,
@@ -1409,10 +1409,12 @@ fn create_color_pass_pipeline(
             &color_pass_bind_group_layout,
             &shadow_pass_bind_group_layout,
         ],
+        push_constant_ranges: &[],
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        layout: &pipeline_layout,
+        label: None,
+        layout: Some(&pipeline_layout),
         vertex_stage: wgpu::ProgrammableStageDescriptor {
             module: vs_module,
             entry_point: "main",
@@ -1459,10 +1461,7 @@ fn create_color_pass_pipeline(
             } else {
                 wgpu::CompareFunction::Always
             },
-            stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-            stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-            stencil_read_mask: 0,
-            stencil_write_mask: 0,
+            stencil: wgpu::StencilStateDescriptor::default(),
         }),
         vertex_state: wgpu::VertexStateDescriptor {
             index_format: wgpu::IndexFormat::Uint32,

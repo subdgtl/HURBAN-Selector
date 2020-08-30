@@ -59,7 +59,7 @@ static IMAGE_DATA_LOGOS_BLACK: &[u8] = include_bytes!("../resources/logos.png");
 static IMAGE_DATA_LOGOS_WHITE: &[u8] = include_bytes!("../resources/logos_white.png");
 static IMAGE_DATA_SUBDIGITAL_LOGO: &[u8] = include_bytes!("../resources/subdigital_grey.png");
 
-const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
+const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(300);
 const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
 const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(100);
 const BASE_WINDOW_TITLE: &str = "H.U.R.B.A.N. selector";

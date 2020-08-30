@@ -106,6 +106,7 @@ impl ImguiRenderer {
         // culling, no depth testing
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: None,
             layout: &pipeline_layout,
             vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &vs_module,
@@ -389,8 +390,8 @@ impl ImguiRenderer {
         }
 
         for (draw_list_index, draw_list) in draw_data.draw_lists().enumerate() {
-            rpass.set_vertex_buffer(0, &self.vertex_buffers[draw_list_index], 0, 0);
-            rpass.set_index_buffer(&self.index_buffers[draw_list_index], 0, 0);
+            rpass.set_vertex_buffer(0, &self.vertex_buffers[draw_list_index].slice(..));
+            rpass.set_index_buffer(self.index_buffers[draw_list_index].slice(..));
 
             let mut idx_start = 0;
             for cmd in draw_list.commands() {

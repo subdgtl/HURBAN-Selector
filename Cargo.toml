@@ -40,7 +40,7 @@ smallvec = "1.4.0"
 static_assertions = "1.1.0"
 tinyfiledialogs = "3.3.9"
 tobj = { version = "2.0.0", features = ["log"] }
-wgpu = { version = "0.5.0", features = ["vulkan"] }
+wgpu = "0.6.0"
 
 # The current newest version of winit (v0.22.2) has a problem if something (in
 # our case the file dialog) lets the Windows VM_PAINT messages accumulate in the
