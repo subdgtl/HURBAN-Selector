@@ -67,10 +67,7 @@ impl ImguiRenderer {
             layout: &transform_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &transform_buffer,
-                    range: 0..transform_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(transform_buffer.slice(..)),
             }],
         });
 
@@ -352,17 +349,18 @@ impl ImguiRenderer {
             color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: color_attachment,
                 resolve_target: None,
-                load_op: if color_needs_clearing {
-                    wgpu::LoadOp::Clear
-                } else {
-                    wgpu::LoadOp::Load
-                },
-                store_op: wgpu::StoreOp::Store,
-                clear_color: wgpu::Color {
-                    r: clear_color[0],
-                    g: clear_color[1],
-                    b: clear_color[2],
-                    a: clear_color[3],
+                ops: wgpu::Operations {
+                    load: if color_needs_clearing {
+                        wgpu::LoadOp::Clear(wgpu::Color {
+                            r: clear_color[0],
+                            g: clear_color[1],
+                            b: clear_color[2],
+                            a: clear_color[3],
+                        })
+                    } else {
+                        wgpu::LoadOp::Load
+                    },
+                    store: true,
                 },
             }],
             depth_stencil_attachment: None,
@@ -390,7 +388,7 @@ impl ImguiRenderer {
         }
 
         for (draw_list_index, draw_list) in draw_data.draw_lists().enumerate() {
-            rpass.set_vertex_buffer(0, &self.vertex_buffers[draw_list_index].slice(..));
+            rpass.set_vertex_buffer(0, self.vertex_buffers[draw_list_index].slice(..));
             rpass.set_index_buffer(self.index_buffers[draw_list_index].slice(..));
 
             let mut idx_start = 0;

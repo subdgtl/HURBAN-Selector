@@ -364,10 +364,7 @@ impl SceneRenderer {
             layout: &matrix_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &matrix_buffer,
-                    range: 0..matrix_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(matrix_buffer.slice(..)),
             }],
         });
 
@@ -458,10 +455,7 @@ impl SceneRenderer {
             layout: &color_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &color_pass_buffer_edges,
-                    range: 0..color_pass_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(color_pass_buffer_edges.slice(..)),
             }],
         });
 
@@ -471,10 +465,9 @@ impl SceneRenderer {
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_matcap_shaded,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_matcap_shaded.slice(..),
+                    ),
                 }],
             });
 
@@ -484,10 +477,9 @@ impl SceneRenderer {
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_matcap_shaded_transparent,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_matcap_shaded_transparent.slice(..),
+                    ),
                 }],
             });
 
@@ -497,10 +489,9 @@ impl SceneRenderer {
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_matcap_shaded_edges,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_matcap_shaded_edges.slice(..),
+                    ),
                 }],
             });
 
@@ -510,10 +501,9 @@ impl SceneRenderer {
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_matcap_shaded_edges_transparent,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_matcap_shaded_edges_transparent.slice(..),
+                    ),
                 }],
             });
 
@@ -523,10 +513,9 @@ impl SceneRenderer {
                 layout: &color_pass_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_flat_with_shadows,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_flat_with_shadows.slice(..),
+                    ),
                 }],
             });
 
@@ -705,10 +694,7 @@ impl SceneRenderer {
             layout: &shadow_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &shadow_pass_buffer,
-                    range: 0..shadow_pass_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(shadow_pass_buffer.slice(..)),
             }],
         });
 

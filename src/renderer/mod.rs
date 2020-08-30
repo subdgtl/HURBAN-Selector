@@ -347,10 +347,7 @@ impl Renderer {
             layout: &blit_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &blit_pass_buffer_color,
-                    range: 0..blit_pass_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(blit_pass_buffer_color.slice(..)),
             }],
         });
 
@@ -360,10 +357,7 @@ impl Renderer {
             layout: &blit_pass_bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &blit_pass_buffer_depth,
-                    range: 0..blit_pass_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(blit_pass_buffer_depth.slice(..)),
             }],
         });
 
@@ -842,14 +836,14 @@ impl CommandBuffer<'_> {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                     attachment: &frame.view,
                     resolve_target: None,
-                    load_op: if self.swap_chain_needs_clearing {
-                        wgpu::LoadOp::Clear
-                    } else {
-                        wgpu::LoadOp::Load
+                    ops: wgpu::Operations {
+                        load: if self.swap_chain_needs_clearing {
+                            wgpu::LoadOp::Clear(COLOR_DEBUG_PURPLE)
+                        } else {
+                            wgpu::LoadOp::Load
+                        },
+                        store: true,
                     },
-                    store_op: wgpu::StoreOp::Store,
-                    // If we see this color, something has gone wrong :)
-                    clear_color: COLOR_DEBUG_PURPLE,
                 }],
                 depth_stencil_attachment: None,
             });
@@ -880,14 +874,14 @@ impl CommandBuffer<'_> {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                     attachment: &frame.view,
                     resolve_target: None,
-                    load_op: if self.swap_chain_needs_clearing {
-                        wgpu::LoadOp::Clear
-                    } else {
-                        wgpu::LoadOp::Load
+                    ops: wgpu::Operations {
+                        load: if self.swap_chain_needs_clearing {
+                            wgpu::LoadOp::Clear(COLOR_DEBUG_PURPLE)
+                        } else {
+                            wgpu::LoadOp::Load
+                        },
+                        store: true,
                     },
-                    store_op: wgpu::StoreOp::Store,
-                    // If we see this color, something has gone wrong :)
-                    clear_color: COLOR_DEBUG_PURPLE,
                 }],
                 depth_stencil_attachment: None,
             });
