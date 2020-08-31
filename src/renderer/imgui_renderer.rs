@@ -1,8 +1,4 @@
-use std::io;
-
 use imgui::internal::RawWrapper as _;
-
-use crate::include_shader;
 
 use super::common;
 
@@ -37,12 +33,10 @@ impl ImguiRenderer {
         queue: &mut wgpu::Queue,
         options: Options,
     ) -> Result<ImguiRenderer, Error> {
-        let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_IMGUI_VERT))
-            .expect("Couldn't read pre-built SPIR-V");
-        let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_IMGUI_FRAG))
-            .expect("Couldn't read pre-built SPIR-V");
-        let vs_module = device.create_shader_module(&vs_words);
-        let fs_module = device.create_shader_module(&fs_words);
+        let vs_source = wgpu::util::make_spirv(SHADER_IMGUI_VERT);
+        let fs_source = wgpu::util::make_spirv(SHADER_IMGUI_FRAG);
+        let vs_module = device.create_shader_module(vs_source);
+        let fs_module = device.create_shader_module(fs_source);
 
         // Create transform uniform buffer bind group
         let transform_buffer_size = common::wgpu_size_of::<TransformUniforms>();
@@ -55,17 +49,21 @@ impl ImguiRenderer {
         let transform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // TODO(yanchith): Provide this to optimize
+                        min_binding_size: None,
+                    },
                 }],
             });
 
         let transform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &transform_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer(transform_buffer.slice(..)),
             }],
@@ -75,7 +73,7 @@ impl ImguiRenderer {
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[
+                entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
@@ -466,12 +464,12 @@ impl Texture {
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout,
-            bindings: &[
-                wgpu::Binding {
+            entries: &[
+                wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(&view),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(sampler),
                 },

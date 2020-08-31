@@ -2,7 +2,6 @@ pub use self::scene_renderer::{AddMeshError, DirectionalLight, GpuMesh, GpuMeshH
 
 use std::collections::HashMap;
 use std::fmt;
-use std::io;
 use std::mem;
 use std::slice;
 use std::thread;
@@ -335,17 +334,21 @@ impl Renderer {
         let blit_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // TODO(yanchith): Provide this to optimize
+                        min_binding_size: None,
+                    },
                 }],
             });
 
         let blit_pass_bind_group_color = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &blit_pass_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer(blit_pass_buffer_color.slice(..)),
             }],
@@ -355,7 +358,7 @@ impl Renderer {
         let blit_pass_bind_group_depth = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &blit_pass_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer(blit_pass_buffer_depth.slice(..)),
             }],
@@ -364,18 +367,16 @@ impl Renderer {
         let color_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: scene_renderer.sampled_texture_bind_group_layout(),
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::TextureView(&color_texture_view),
             }],
         });
 
-        let blit_vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_BLIT_VERT))
-            .expect("Couldn't read pre-built SPIR-V");
-        let blit_fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_BLIT_FRAG))
-            .expect("Couldn't read pre-built SPIR-V");
-        let blit_vs_module = device.create_shader_module(&blit_vs_words);
-        let blit_fs_module = device.create_shader_module(&blit_fs_words);
+        let blit_vs_source = wgpu::util::make_spirv(SHADER_BLIT_VERT);
+        let blit_fs_source = wgpu::util::make_spirv(SHADER_BLIT_FRAG);
+        let blit_vs_module = device.create_shader_module(blit_vs_source);
+        let blit_fs_module = device.create_shader_module(blit_fs_source);
 
         let blit_render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -388,7 +389,7 @@ impl Renderer {
 
         let blit_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
-            layout: &blit_render_pipeline_layout,
+            layout: Some(&blit_render_pipeline_layout),
             vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &blit_vs_module,
                 entry_point: "main",
@@ -488,7 +489,7 @@ impl Renderer {
                 self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: None,
                     layout: self.scene_renderer.sampled_texture_bind_group_layout(),
-                    bindings: &[wgpu::Binding {
+                    entries: &[wgpu::BindGroupEntry {
                         binding: 0,
                         resource: wgpu::BindingResource::TextureView(
                             &self.screen_render_target.color_texture_view,
@@ -539,7 +540,7 @@ impl Renderer {
         let color_texture_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: self.scene_renderer.sampled_texture_bind_group_layout(),
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::TextureView(&color_texture_view),
             }],

@@ -332,16 +332,13 @@ impl SceneRenderer {
     /// Initializes GPU resources and the rendering pipeline to draw
     /// to a texture of `output_color_attachment_format`.
     pub fn new(device: &wgpu::Device, queue: &mut wgpu::Queue, options: Options) -> Self {
-        let color_pass_vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_COLOR_PASS_VERT))
-            .expect("Couldn't read pre-built SPIR-V");
-        let color_pass_fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_COLOR_PASS_FRAG))
-            .expect("Couldn't read pre-built SPIR-V");
-        let color_pass_vs_module = device.create_shader_module(&color_pass_vs_words);
-        let color_pass_fs_module = device.create_shader_module(&color_pass_fs_words);
+        let color_pass_vs_source = wgpu::util::make_spirv(SHADER_COLOR_PASS_VERT);
+        let color_pass_fs_source = wgpu::util::make_spirv(SHADER_COLOR_PASS_FRAG);
+        let color_pass_vs_module = device.create_shader_module(color_pass_vs_source);
+        let color_pass_fs_module = device.create_shader_module(color_pass_fs_source);
 
-        let shadow_pass_vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_SHADOW_PASS_VERT))
-            .expect("Couldn't read pre-build SPIR-V");
-        let shadow_pass_vs_module = device.create_shader_module(&shadow_pass_vs_words);
+        let shadow_pass_vs_source = wgpu::util::make_spirv(SHADER_SHADOW_PASS_VERT);
+        let shadow_pass_vs_module = device.create_shader_module(shadow_pass_vs_source);
 
         let matrix_buffer_size = common::wgpu_size_of::<MatrixUniforms>();
         let matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -353,16 +350,20 @@ impl SceneRenderer {
         let matrix_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // TODO(yanchith): Provide this to optimize
+                        min_binding_size: None,
+                    },
                 }],
             });
         let matrix_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &matrix_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer(matrix_buffer.slice(..)),
             }],
@@ -443,17 +444,21 @@ impl SceneRenderer {
         let color_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // TODO(yanchith): Provide this to optimize
+                        min_binding_size: None,
+                    },
                 }],
             });
 
         let color_pass_bind_group_edges = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &color_pass_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer(color_pass_buffer_edges.slice(..)),
             }],
@@ -463,7 +468,7 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer(
                         color_pass_buffer_matcap_shaded.slice(..),
@@ -475,7 +480,7 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer(
                         color_pass_buffer_matcap_shaded_transparent.slice(..),
@@ -487,7 +492,7 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer(
                         color_pass_buffer_matcap_shaded_edges.slice(..),
@@ -499,7 +504,7 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer(
                         color_pass_buffer_matcap_shaded_edges_transparent.slice(..),
@@ -511,7 +516,7 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entires: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer(
                         color_pass_buffer_flat_with_shadows.slice(..),
@@ -582,7 +587,7 @@ impl SceneRenderer {
         let sampler_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[
+                entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
@@ -601,7 +606,7 @@ impl SceneRenderer {
         let sampled_texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::SampledTexture {
@@ -615,12 +620,12 @@ impl SceneRenderer {
         let sampler_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &sampler_bind_group_layout,
-            bindings: &[
-                wgpu::Binding {
+            entries: &[
+                wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::Sampler(&sampler),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&shadow_sampler),
                 },
@@ -631,7 +636,7 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &sampled_texture_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(
                         &color_pass_matcap_texture.create_default_view(),
@@ -674,7 +679,7 @@ impl SceneRenderer {
         let shadow_map_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &sampled_texture_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::TextureView(&shadow_map_texture_view),
             }],
@@ -683,16 +688,20 @@ impl SceneRenderer {
         let shadow_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // TODO(yanchith): Provide this to optimize
+                        min_binding_size: None,
+                    },
                 }],
             });
         let shadow_pass_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &shadow_pass_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer(shadow_pass_buffer.slice(..)),
             }],
