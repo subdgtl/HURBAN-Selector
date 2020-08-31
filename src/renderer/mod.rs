@@ -629,6 +629,8 @@ impl Renderer {
                 buffer: &read_buffer,
                 layout: wgpu::TextureDataLayout {
                     offset: 0,
+                    // TODO(yanchith): Verify that this satisfies
+                    // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
                     bytes_per_row: cast_u32(mem::size_of::<[u8; 4]>()) * width,
                     rows_per_image: height,
                 },
@@ -652,6 +654,9 @@ impl Renderer {
         self.device.poll(wgpu::Maintain::Wait);
         futures::executor::block_on(future).expect("Failed to map buffer");
 
+        // TODO(yanchith): We need to unmap the buffer! Not sure if we can do it
+        // without combining ref counting with Drop impl on
+        // OffscreenRenderTargetReadMapping.
         OffscreenRenderTargetReadMapping {
             width,
             height,

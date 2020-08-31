@@ -911,6 +911,7 @@ impl SceneRenderer {
             }],
         );
 
+        // TODO(yanchith): Use Queue::write_buffer OR Buffer::map_async
         encoder.copy_buffer_to_buffer(
             &transfer_buffer,
             0,
@@ -937,6 +938,7 @@ impl SceneRenderer {
             }],
         );
 
+        // TODO(yanchith): Use Queue::write_buffer OR Buffer::map_async
         encoder.copy_buffer_to_buffer(
             &transfer_buffer,
             0,

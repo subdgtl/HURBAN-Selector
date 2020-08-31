@@ -37,6 +37,8 @@ pub fn create_buffer<T: zerocopy::AsBytes>(
         .get_mapped_range_mut()
         .copy_from_slice(bytes);
 
+    buffer.unmap();
+
     buffer
 }
 
@@ -71,6 +73,8 @@ pub fn upload_texture_rgba8_unorm(
             buffer: &buffer,
             layout: wgpu::TextureDataLayout {
                 offset: 0,
+                // TODO(yanchith): Verify that this satisfies
+                // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT OR use Queue::write_texture
                 bytes_per_row: pixel_size * width,
                 rows_per_image: height,
             },
@@ -86,6 +90,8 @@ pub fn upload_texture_rgba8_unorm(
             depth: 1,
         },
     );
+
+    buffer.unmap();
 
     queue.submit(iter::once(encoder.finish()));
 }
