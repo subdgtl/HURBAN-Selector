@@ -1,4 +1,5 @@
 use imgui::internal::RawWrapper as _;
+use zerocopy::AsBytes as _;
 
 use super::common;
 
@@ -276,6 +277,7 @@ impl ImguiRenderer {
         color_needs_clearing: bool,
         clear_color: [f64; 4],
         device: &wgpu::Device,
+        queue: &mut wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
         draw_data: &imgui::DrawData,
@@ -312,21 +314,13 @@ impl ImguiRenderer {
             matrix
         };
 
-        let transform_transfer_buffer = common::create_buffer(
-            device,
-            wgpu::BufferUsage::COPY_SRC,
-            &[TransformUniforms {
-                matrix: transform_matrix,
-            }],
-        );
-
-        // TODO(yanchith): Use Queue::write_buffer OR Buffer::map_async
-        encoder.copy_buffer_to_buffer(
-            &transform_transfer_buffer,
-            0,
+        queue.write_buffer(
             &self.transform_buffer,
             0,
-            common::wgpu_size_of::<TransformUniforms>(),
+            [TransformUniforms {
+                matrix: transform_matrix,
+            }]
+            .as_bytes(),
         );
 
         // Will project scissor/clipping rectangles into framebuffer space

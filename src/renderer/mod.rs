@@ -793,11 +793,7 @@ pub struct CommandBuffer<'a> {
 impl CommandBuffer<'_> {
     /// Update properties of the shadow casting light.
     pub fn set_light(&mut self, light: &DirectionalLight) {
-        self.scene_renderer.set_light(
-            &self.device,
-            self.encoder.as_mut().expect("Need encoder to update data"),
-            light,
-        );
+        self.scene_renderer.set_light(self.queue, light);
     }
 
     /// Update camera matrices (projection and view).
@@ -806,12 +802,8 @@ impl CommandBuffer<'_> {
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
     ) {
-        self.scene_renderer.set_camera_matrices(
-            &self.device,
-            self.encoder.as_mut().expect("Need encoder to upload data"),
-            projection_matrix,
-            view_matrix,
-        );
+        self.scene_renderer
+            .set_camera_matrices(self.queue, projection_matrix, view_matrix);
     }
 
     /// Record a mesh drawing operation targeting the render target to the
@@ -858,6 +850,7 @@ impl CommandBuffer<'_> {
                     self.swap_chain_needs_clearing,
                     self.clear_color,
                     self.device,
+                    self.queue,
                     self.encoder
                         .as_mut()
                         .expect("Need encoder to record drawing"),

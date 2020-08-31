@@ -7,6 +7,7 @@ use std::iter;
 
 use bitflags::bitflags;
 use nalgebra::{Matrix4, Point3, Vector3};
+use zerocopy::AsBytes as _;
 
 use crate::convert::cast_usize;
 use crate::mesh::{Face, Mesh};
@@ -866,12 +867,7 @@ impl SceneRenderer {
     }
 
     /// Update properties of the shadow casting light.
-    pub fn set_light(
-        &self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        light: &DirectionalLight,
-    ) {
+    pub fn set_light(&self, queue: &mut wgpu::Queue, light: &DirectionalLight) {
         let light_projection_matrix = Matrix4::new_orthographic(
             -light.width / 2.0,
             light.width / 2.0,
@@ -899,54 +895,37 @@ impl SceneRenderer {
             &light_up,
         );
 
-        let transfer_buffer = common::create_buffer(
-            device,
-            wgpu::BufferUsage::COPY_SRC,
-            &[ShadowPassUniforms {
+        queue.write_buffer(
+            &self.shadow_pass_buffer,
+            0,
+            [ShadowPassUniforms {
                 light_space_matrix: (correction_matrix()
                     * light_projection_matrix
                     * light_view_matrix)
                     .into(),
-            }],
-        );
-
-        // TODO(yanchith): Use Queue::write_buffer OR Buffer::map_async
-        encoder.copy_buffer_to_buffer(
-            &transfer_buffer,
-            0,
-            &self.shadow_pass_buffer,
-            0,
-            common::wgpu_size_of::<ShadowPassUniforms>(),
+            }]
+            .as_bytes(),
         );
     }
 
     /// Update camera matrices (projection and view).
     pub fn set_camera_matrices(
         &mut self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
+        queue: &mut wgpu::Queue,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
     ) {
-        let transfer_buffer = common::create_buffer(
-            device,
-            wgpu::BufferUsage::COPY_SRC,
-            &[MatrixUniforms {
-                projection_matrix: (correction_matrix() * projection_matrix).into(),
-                view_matrix: view_matrix.clone().into(),
-            }],
-        );
+        self.render_list_sort_matrix = *view_matrix;
 
-        // TODO(yanchith): Use Queue::write_buffer OR Buffer::map_async
-        encoder.copy_buffer_to_buffer(
-            &transfer_buffer,
-            0,
+        queue.write_buffer(
             &self.matrix_buffer,
             0,
-            common::wgpu_size_of::<MatrixUniforms>(),
+            [MatrixUniforms {
+                projection_matrix: (correction_matrix() * projection_matrix).into(),
+                view_matrix: view_matrix.clone().into(),
+            }]
+            .as_bytes(),
         );
-
-        self.render_list_sort_matrix = *view_matrix;
     }
 
     /// Uploads mesh on the GPU.
