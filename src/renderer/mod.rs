@@ -306,7 +306,6 @@ impl Renderer {
         )
         .expect("Failed to create imgui renderer");
 
-        let blit_pass_buffer_size = common::wgpu_size_of::<BlitPassUniforms>();
         let blit_pass_buffer_color = common::create_buffer(
             &device,
             wgpu::BufferUsage::UNIFORM,

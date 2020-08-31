@@ -371,7 +371,6 @@ impl SceneRenderer {
             }],
         });
 
-        let color_pass_buffer_size = common::wgpu_size_of::<ColorPassUniforms>();
         let color_pass_buffer_edges = common::create_buffer(
             device,
             wgpu::BufferUsage::UNIFORM,
@@ -519,7 +518,7 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                entires: &[wgpu::BindGroupEntry {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer(
                         color_pass_buffer_flat_with_shadows.slice(..),
@@ -563,6 +562,7 @@ impl SceneRenderer {
         });
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -571,10 +571,12 @@ impl SceneRenderer {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare: wgpu::CompareFunction::Always,
+            compare: None,
+            anisotropy_clamp: None,
         });
 
         let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -583,7 +585,8 @@ impl SceneRenderer {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare: wgpu::CompareFunction::Greater,
+            compare: Some(wgpu::CompareFunction::Greater),
+            anisotropy_clamp: None,
         });
 
         let sampler_bind_group_layout =
@@ -644,7 +647,8 @@ impl SceneRenderer {
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(
-                        &color_pass_matcap_texture.create_view(TextureViewDescriptor::default()),
+                        &color_pass_matcap_texture
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
                 }],
             });
@@ -680,7 +684,7 @@ impl SceneRenderer {
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
         });
         let shadow_map_texture_view =
-            shadow_map_texture.create_view(TextureViewDescriptor::default());
+            shadow_map_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let shadow_map_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,

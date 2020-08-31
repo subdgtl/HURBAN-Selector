@@ -44,6 +44,7 @@ impl ImguiRenderer {
             label: None,
             size: transform_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
         });
 
         let transform_bind_group_layout =
@@ -97,7 +98,9 @@ impl ImguiRenderer {
         // Create render pipeline
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
             bind_group_layouts: &[&transform_bind_group_layout, &texture_bind_group_layout],
+            push_constant_ranges: &[],
         });
 
         // Setup render state: alpha-blending enabled, no face
@@ -105,7 +108,7 @@ impl ImguiRenderer {
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
-            layout: &pipeline_layout,
+            layout: Some(&pipeline_layout),
             vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &vs_module,
                 entry_point: "main",
@@ -189,6 +192,7 @@ impl ImguiRenderer {
         );
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -197,7 +201,8 @@ impl ImguiRenderer {
             mipmap_filter: wgpu::FilterMode::Linear,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare: wgpu::CompareFunction::Always,
+            compare: None,
+            anisotropy_clamp: None,
         });
 
         let font_atlas_texture_resource = Texture::new(
