@@ -1032,51 +1032,56 @@ pub fn init_and_run(options: Options) -> ! {
 
                     screenshot_command_buffer.submit();
 
-                    let mapping = renderer.offscreen_render_target_data(&screenshot_render_target);
+                    {
+                        let mapping =
+                            renderer.offscreen_render_target_data(&screenshot_render_target);
+                        let (width, height) = mapping.dimensions();
+                        let data = mapping.data();
 
-                    let actual_data_len = mapping.data.len();
-                    let expected_data_len = cast_usize(mapping.width)
-                        * cast_usize(mapping.height)
-                        * cast_usize(mem::size_of::<[u8; 4]>());
-                    if expected_data_len != actual_data_len {
-                        log::error!(
-                            "Screenshot data is {} bytes, but was expected to be {} bytes",
-                            actual_data_len,
-                            expected_data_len,
-                        );
-                    }
+                        let actual_data_len = data.len();
+                        let expected_data_len = cast_usize(width)
+                            * cast_usize(height)
+                            * cast_usize(mem::size_of::<[u8; 4]>());
+                        if expected_data_len != actual_data_len {
+                            log::error!(
+                                "Screenshot data is {} bytes, but was expected to be {} bytes",
+                                actual_data_len,
+                                expected_data_len,
+                            );
+                        }
 
-                    if let Some(mut path) = dirs::picture_dir() {
-                        path.push(format!(
-                            "hurban_selector-{}.png",
-                            chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
-                        ));
+                        if let Some(mut path) = dirs::picture_dir() {
+                            path.push(format!(
+                                "hurban_selector-{}.png",
+                                chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
+                            ));
 
-                        let file = File::create(&path).expect("Failed to create PNG file");
-                        let mut png_encoder = png::Encoder::new(file, mapping.width, mapping.height);
-                        png_encoder.set_color(png::ColorType::RGBA);
-                        png_encoder.set_depth(png::BitDepth::Eight);
+                            let file = File::create(&path).expect("Failed to create PNG file");
+                            let mut png_encoder = png::Encoder::new(file, width, height);
+                            png_encoder.set_color(png::ColorType::RGBA);
+                            png_encoder.set_depth(png::BitDepth::Eight);
 
-                        png_encoder
-                            .write_header()
-                            .expect("Failed to write png header")
-                            .write_image_data(mapping.data)
-                            .expect("Failed to write png data");
+                            png_encoder
+                                .write_header()
+                                .expect("Failed to write png header")
+                                .write_image_data(&data)
+                                .expect("Failed to write png data");
 
-                        let path_str = path.to_string_lossy();
-                        log::info!("Screenshot saved in {}", path_str);
-                        notifications.push(
-                            time,
-                            NotificationLevel::Info,
-                            format!("Screenshot saved in {}", path_str),
-                        );
-                    } else {
-                        log::error!("Failed to find picture directory");
-                        notifications.push(
-                            time,
-                            NotificationLevel::Warn,
-                            "Failed to find picture directory",
-                        );
+                            let path_str = path.to_string_lossy();
+                            log::info!("Screenshot saved in {}", path_str);
+                            notifications.push(
+                                time,
+                                NotificationLevel::Info,
+                                format!("Screenshot saved in {}", path_str),
+                            );
+                        } else {
+                            log::error!("Failed to find picture directory");
+                            notifications.push(
+                                time,
+                                NotificationLevel::Warn,
+                                "Failed to find picture directory",
+                            );
+                        }
                     }
 
                     renderer.remove_offscreen_render_target(screenshot_render_target);

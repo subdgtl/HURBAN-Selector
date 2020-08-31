@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::iter;
 use std::mem;
+use std::ops::Deref;
 use std::slice;
 use std::thread;
 
@@ -170,9 +171,19 @@ impl fmt::Display for GpuPowerPreference {
 pub struct OffscreenRenderTargetHandle(u64);
 
 pub struct OffscreenRenderTargetReadMapping<'a> {
-    pub width: u32,
-    pub height: u32,
-    pub data: &'a [u8],
+    width: u32,
+    height: u32,
+    read_buffer_slice: wgpu::BufferSlice<'a>,
+}
+
+impl<'a> OffscreenRenderTargetReadMapping<'a> {
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    pub fn data(&self) -> impl Deref<Target = [u8]> + 'a {
+        self.read_buffer_slice.get_mapped_range()
+    }
 }
 
 /// High level renderer abstraction over wgpu-rs.
@@ -192,6 +203,7 @@ pub struct Renderer {
     surface: wgpu::Surface,
     swap_chain: wgpu::SwapChain,
     screen_render_target: RenderTarget,
+    offscreen_read_buffer: Option<(u64, wgpu::Buffer)>,
     offscreen_render_targets: HashMap<u64, RenderTarget>,
     offscreen_render_targets_next_handle: u64,
     blit_pass_bind_group_color: wgpu::BindGroup,
@@ -427,6 +439,7 @@ impl Renderer {
                 depth_texture_view: depth_texture
                     .create_view(&wgpu::TextureViewDescriptor::default()),
             },
+            offscreen_read_buffer: None,
             offscreen_render_targets: HashMap::new(),
             offscreen_render_targets_next_handle: 0,
             blit_pass_bind_group_color,
@@ -576,16 +589,30 @@ impl Renderer {
         let width = offscreen_render_target.width;
         let height = offscreen_render_target.height;
 
-        // FIXME: @Optimization Reuse a single buffer and only recreate if larger needed
-        let read_buffer_size = 4 * cast_u64(width) * cast_u64(height);
-        let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: read_buffer_size,
-            usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
-            // TODO(yanchith): Verify if this would work with blitting into the
-            // buffer before reading.
-            mapped_at_creation: false,
-        });
+        let read_buffer_required_size = 4 * cast_u64(width) * cast_u64(height);
+        if let Some((read_buffer_current_size, _)) = &self.offscreen_read_buffer {
+            if read_buffer_required_size > *read_buffer_current_size {
+                let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: None,
+                    size: read_buffer_required_size,
+                    usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
+                    mapped_at_creation: false,
+                });
+
+                self.offscreen_read_buffer = Some((read_buffer_required_size, read_buffer));
+            }
+        } else {
+            let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: read_buffer_required_size,
+                usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
+                mapped_at_creation: false,
+            });
+
+            self.offscreen_read_buffer = Some((read_buffer_required_size, read_buffer));
+        }
+
+        let read_buffer = &self.offscreen_read_buffer.as_ref().unwrap().1;
 
         let mut encoder = self
             .device
@@ -628,7 +655,7 @@ impl Renderer {
         OffscreenRenderTargetReadMapping {
             width,
             height,
-            data: &read_buffer_slice.get_mapped_range(),
+            read_buffer_slice,
         }
     }
 
