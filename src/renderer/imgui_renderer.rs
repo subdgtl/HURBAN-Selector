@@ -183,7 +183,6 @@ impl ImguiRenderer {
         });
 
         common::upload_texture_rgba8_unorm(
-            device,
             queue,
             &font_atlas_texture,
             font_atlas_image.width,
@@ -257,7 +256,7 @@ impl ImguiRenderer {
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
-        common::upload_texture_rgba8_unorm(device, queue, &texture, width, height, data);
+        common::upload_texture_rgba8_unorm(queue, &texture, width, height, data);
 
         let texture_resource = Texture::new(
             device,

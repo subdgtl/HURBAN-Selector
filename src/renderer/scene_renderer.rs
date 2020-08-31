@@ -654,7 +654,6 @@ impl SceneRenderer {
             });
 
         common::upload_texture_rgba8_unorm(
-            device,
             queue,
             &color_pass_matcap_texture,
             matcap_texture_width,

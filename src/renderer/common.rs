@@ -1,5 +1,4 @@
 use std::convert::TryFrom;
-use std::iter;
 use std::mem;
 
 use crate::convert::{cast_u32, cast_u64};
@@ -25,15 +24,19 @@ pub fn create_buffer<T: zerocopy::AsBytes>(
     use zerocopy::AsBytes as _;
 
     let bytes = data.as_bytes();
+    let size_unpadded = cast_u64(bytes.len());
+    let size_padding = wgpu::COPY_BUFFER_ALIGNMENT - size_unpadded % wgpu::COPY_BUFFER_ALIGNMENT;
+    let size = size_unpadded + size_padding;
+
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
-        size: cast_u64(bytes.len()),
+        size,
         usage,
         mapped_at_creation: true,
     });
 
     buffer
-        .slice(..)
+        .slice(..size_unpadded)
         .get_mapped_range_mut()
         .copy_from_slice(bytes);
 
@@ -42,47 +45,27 @@ pub fn create_buffer<T: zerocopy::AsBytes>(
     buffer
 }
 
-// FIXME: @Refactoring Take encoder instead of queue
 pub fn upload_texture_rgba8_unorm(
-    device: &wgpu::Device,
     queue: &mut wgpu::Queue,
     texture: &wgpu::Texture,
     width: u32,
     height: u32,
     data: &[u8],
 ) {
-    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: None,
-        size: cast_u64(data.len()),
-        usage: wgpu::BufferUsage::COPY_SRC,
-        mapped_at_creation: true,
-    });
-
-    buffer
-        .slice(..)
-        .get_mapped_range_mut()
-        .copy_from_slice(data);
-
     let byte_count = cast_u32(data.len());
     let pixel_size = byte_count / width / height;
 
-    let mut encoder =
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    encoder.copy_buffer_to_texture(
-        wgpu::BufferCopyView {
-            buffer: &buffer,
-            layout: wgpu::TextureDataLayout {
-                offset: 0,
-                // TODO(yanchith): Verify that this satisfies
-                // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT OR use Queue::write_texture
-                bytes_per_row: pixel_size * width,
-                rows_per_image: height,
-            },
-        },
+    queue.write_texture(
         wgpu::TextureCopyView {
             texture,
             mip_level: 0,
             origin: wgpu::Origin3d { x: 0, y: 0, z: 0 },
+        },
+        data,
+        wgpu::TextureDataLayout {
+            offset: 0,
+            bytes_per_row: pixel_size * width,
+            rows_per_image: height,
         },
         wgpu::Extent3d {
             width,
@@ -90,8 +73,4 @@ pub fn upload_texture_rgba8_unorm(
             depth: 1,
         },
     );
-
-    buffer.unmap();
-
-    queue.submit(iter::once(encoder.finish()));
 }
