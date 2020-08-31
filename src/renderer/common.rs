@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::iter;
 use std::mem;
 
 use crate::convert::{cast_u32, cast_u64};
@@ -24,14 +25,19 @@ pub fn create_buffer<T: zerocopy::AsBytes>(
     use zerocopy::AsBytes as _;
 
     let bytes = data.as_bytes();
-    let mapped_buffer = device.create_buffer_mapped(&wgpu::BufferDescriptor {
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: cast_u64(bytes.len()),
         usage,
+        mapped_at_creation: true,
     });
 
-    mapped_buffer.data.copy_from_slice(bytes);
-    mapped_buffer.finish()
+    buffer
+        .slice(..)
+        .get_mapped_range_mut()
+        .copy_from_slice(bytes);
+
+    buffer
 }
 
 // FIXME: @Refactoring Take encoder instead of queue
@@ -43,14 +49,17 @@ pub fn upload_texture_rgba8_unorm(
     height: u32,
     data: &[u8],
 ) {
-    let mapped_buffer = device.create_buffer_mapped(&wgpu::BufferDescriptor {
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: cast_u64(data.len()),
         usage: wgpu::BufferUsage::COPY_SRC,
+        mapped_at_creation: true,
     });
 
-    mapped_buffer.data.copy_from_slice(data);
-    let buffer = mapped_buffer.finish();
+    buffer
+        .slice(..)
+        .get_mapped_range_mut()
+        .copy_from_slice(data);
 
     let byte_count = cast_u32(data.len());
     let pixel_size = byte_count / width / height;
@@ -60,14 +69,15 @@ pub fn upload_texture_rgba8_unorm(
     encoder.copy_buffer_to_texture(
         wgpu::BufferCopyView {
             buffer: &buffer,
-            offset: 0,
-            bytes_per_row: pixel_size * width,
-            rows_per_image: height,
+            layout: wgpu::TextureDataLayout {
+                offset: 0,
+                bytes_per_row: pixel_size * width,
+                rows_per_image: height,
+            },
         },
         wgpu::TextureCopyView {
             texture,
             mip_level: 0,
-            array_layer: 0,
             origin: wgpu::Origin3d { x: 0, y: 0, z: 0 },
         },
         wgpu::Extent3d {
@@ -77,5 +87,5 @@ pub fn upload_texture_rgba8_unorm(
         },
     );
 
-    queue.submit(&[encoder.finish()]);
+    queue.submit(iter::once(encoder.finish()));
 }

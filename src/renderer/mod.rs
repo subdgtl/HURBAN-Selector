@@ -2,6 +2,7 @@ pub use self::scene_renderer::{AddMeshError, DirectionalLight, GpuMesh, GpuMeshH
 
 use std::collections::HashMap;
 use std::fmt;
+use std::iter;
 use std::mem;
 use std::slice;
 use std::thread;
@@ -168,20 +169,10 @@ impl fmt::Display for GpuPowerPreference {
 #[derive(Debug, PartialEq, Eq)]
 pub struct OffscreenRenderTargetHandle(u64);
 
-pub struct OffscreenRenderTargetReadMapping {
-    width: u32,
-    height: u32,
-    mapping: wgpu::BufferReadMapping,
-}
-
-impl OffscreenRenderTargetReadMapping {
-    pub fn dimensions(&self) -> (u32, u32) {
-        (self.width, self.height)
-    }
-
-    pub fn data(&self) -> &[u8] {
-        self.mapping.as_slice()
-    }
+pub struct OffscreenRenderTargetReadMapping<'a> {
+    pub width: u32,
+    pub height: u32,
+    pub data: &'a [u8],
 }
 
 /// High level renderer abstraction over wgpu-rs.
@@ -229,25 +220,24 @@ impl Renderer {
         let gpu_power_preference = options.power_preference;
         log::info!("GPU will use power preference: {}", gpu_power_preference);
 
-        let surface = wgpu::Surface::create(window);
-
         let mut gpu_backend_iter = gpu_backend_list.iter().copied();
-        let adapter = loop {
+        let (surface, adapter) = loop {
             if let Some(gpu_backend) = gpu_backend_iter.next() {
                 log::info!("Trying to acquire GPU adapter for backend: {}", gpu_backend);
 
-                let adapter_result = futures::executor::block_on(wgpu::Adapter::request(
+                let instance = wgpu::Instance::new(gpu_backend.into());
+                let surface = unsafe { instance.create_surface(window) };
+                let adapter_result = futures::executor::block_on(instance.request_adapter(
                     &wgpu::RequestAdapterOptions {
                         power_preference: gpu_power_preference.into(),
                         compatible_surface: Some(&surface),
                     },
-                    gpu_backend.into(),
                 ));
 
                 match adapter_result {
                     Some(adapter) => {
                         log::info!("Found suitable GPU adapter for backend: {}", gpu_backend);
-                        break adapter;
+                        break (surface, adapter);
                     }
                     None => {
                         log::warn!("Failed to acquire GPU adapter for backend: {}", gpu_backend);
@@ -260,16 +250,19 @@ impl Renderer {
 
         log::info!("GPU adapter info: {:?}", adapter.get_info());
 
-        let (device, mut queue) =
-            futures::executor::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-                extensions: wgpu::Extensions {
-                    anisotropic_filtering: false,
-                },
+        let (device, mut queue) = futures::executor::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                features: wgpu::Features::empty(),
                 limits: wgpu::Limits {
                     // FIXME: @Optimization Use less bind groups if possible.
                     max_bind_groups: 6,
+                    ..wgpu::Limits::default()
                 },
-            }));
+                shader_validation: true,
+            },
+            None,
+        ))
+        .expect("Failed to request GPU device");
 
         let swap_chain = create_swap_chain(&device, &surface, width, height);
 
@@ -286,7 +279,7 @@ impl Renderer {
         };
 
         let color_texture = create_color_texture(&device, width, height);
-        let color_texture_view = color_texture.create_default_view();
+        let color_texture_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let depth_texture =
             create_depth_texture(&device, width, height, options.msaa.sample_count());
 
@@ -342,6 +335,7 @@ impl Renderer {
                         // TODO(yanchith): Provide this to optimize
                         min_binding_size: None,
                     },
+                    count: None,
                 }],
             });
 
@@ -380,11 +374,13 @@ impl Renderer {
 
         let blit_render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
                 bind_group_layouts: &[
                     &blit_pass_bind_group_layout,
                     scene_renderer.sampler_bind_group_layout(),
                     scene_renderer.sampled_texture_bind_group_layout(),
                 ],
+                push_constant_ranges: &[],
             });
 
         let blit_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -424,11 +420,13 @@ impl Renderer {
             screen_render_target: RenderTarget {
                 width,
                 height,
-                msaa_texture_view: msaa_texture.map(|texture| texture.create_default_view()),
+                msaa_texture_view: msaa_texture
+                    .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default())),
                 color_texture,
                 color_texture_view,
                 color_texture_bind_group,
-                depth_texture_view: depth_texture.create_default_view(),
+                depth_texture_view: depth_texture
+                    .create_view(&wgpu::TextureViewDescriptor::default()),
             },
             offscreen_render_targets: HashMap::new(),
             offscreen_render_targets_next_handle: 0,
@@ -470,18 +468,20 @@ impl Renderer {
                     self.options.msaa.sample_count(),
                 );
                 self.screen_render_target.msaa_texture_view =
-                    Some(msaa_texture.create_default_view());
+                    Some(msaa_texture.create_view(&wgpu::TextureViewDescriptor::default()));
             }
 
             let color_texture = create_color_texture(&self.device, width, height);
-            self.screen_render_target.color_texture_view = color_texture.create_default_view();
+            self.screen_render_target.color_texture_view =
+                color_texture.create_view(&wgpu::TextureViewDescriptor::default());
             let depth_texture = create_depth_texture(
                 &self.device,
                 width,
                 height,
                 self.options.msaa.sample_count(),
             );
-            self.screen_render_target.depth_texture_view = depth_texture.create_default_view();
+            self.screen_render_target.depth_texture_view =
+                depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
             // Also need to re-create the bind group for reading the
             // newly created color texture.
@@ -534,7 +534,7 @@ impl Renderer {
         };
 
         let color_texture = create_color_texture(&self.device, width, height);
-        let color_texture_view = color_texture.create_default_view();
+        let color_texture_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let depth_texture = create_depth_texture(&self.device, width, height, msaa.sample_count());
 
         let color_texture_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -549,11 +549,12 @@ impl Renderer {
         let offscreen_render_target = RenderTarget {
             width,
             height,
-            msaa_texture_view: msaa_texture.map(|texture| texture.create_default_view()),
+            msaa_texture_view: msaa_texture
+                .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default())),
             color_texture,
             color_texture_view,
             color_texture_bind_group,
-            depth_texture_view: depth_texture.create_default_view(),
+            depth_texture_view: depth_texture.create_view(&wgpu::TextureViewDescriptor::default()),
         };
 
         self.offscreen_render_targets
@@ -568,10 +569,10 @@ impl Renderer {
         self.offscreen_render_targets.remove(&handle.0);
     }
 
-    pub fn offscreen_render_target_data(
-        &mut self,
+    pub fn offscreen_render_target_data<'a>(
+        &'a mut self,
         handle: &OffscreenRenderTargetHandle,
-    ) -> OffscreenRenderTargetReadMapping {
+    ) -> OffscreenRenderTargetReadMapping<'a> {
         let offscreen_render_target = &self.offscreen_render_targets[&handle.0];
         let width = offscreen_render_target.width;
         let height = offscreen_render_target.height;
@@ -582,6 +583,9 @@ impl Renderer {
             label: None,
             size: read_buffer_size,
             usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
+            // TODO(yanchith): Verify if this would work with blitting into the
+            // buffer before reading.
+            mapped_at_creation: false,
         });
 
         let mut encoder = self
@@ -591,15 +595,17 @@ impl Renderer {
         encoder.copy_texture_to_buffer(
             wgpu::TextureCopyView {
                 texture: &offscreen_render_target.color_texture,
+
                 mip_level: 0,
-                array_layer: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             wgpu::BufferCopyView {
                 buffer: &read_buffer,
-                offset: 0,
-                bytes_per_row: cast_u32(mem::size_of::<[u8; 4]>()) * width,
-                rows_per_image: height,
+                layout: wgpu::TextureDataLayout {
+                    offset: 0,
+                    bytes_per_row: cast_u32(mem::size_of::<[u8; 4]>()) * width,
+                    rows_per_image: height,
+                },
             },
             wgpu::Extent3d {
                 width,
@@ -608,21 +614,22 @@ impl Renderer {
             },
         );
 
-        self.queue.submit(&[encoder.finish()]);
+        self.queue.submit(iter::once(encoder.finish()));
 
         // Read from the buffer we just copied to. Immediately after we request
         // the mapping we wait on the device to provide it and block.
 
-        // FIXME: Make this async - let's not wait, let's poll
-        let future = read_buffer.map_read(0, read_buffer_size);
+        // FIXME: @Optimization Make this async - let's not wait, let's poll
+        let read_buffer_slice = read_buffer.slice(..);
+        let future = read_buffer_slice.map_async(wgpu::MapMode::Read);
 
         self.device.poll(wgpu::Maintain::Wait);
-        let mapping = futures::executor::block_on(future).expect("Failed to map buffer");
+        futures::executor::block_on(future).expect("Failed to map buffer");
 
         OffscreenRenderTargetReadMapping {
             width,
             height,
-            mapping,
+            data: &read_buffer_slice.get_mapped_range(),
         }
     }
 
@@ -691,11 +698,20 @@ impl Renderer {
         };
 
         let frame = if request_swap_chain_texture {
-            if let Ok(frame) = self.swap_chain.get_next_texture() {
-                Some(frame)
-            } else {
-                log::warn!("Requesting swap chain texture timed out");
-                None
+            match self.swap_chain.get_current_frame() {
+                Ok(frame) => Some(frame),
+                Err(err) => match err {
+                    wgpu::SwapChainError::Timeout | wgpu::SwapChainError::Outdated => {
+                        log::warn!("GPU swapchain error: {}", err);
+                        None
+                    }
+                    wgpu::SwapChainError::Lost | wgpu::SwapChainError::OutOfMemory => {
+                        // FIXME: @Correctness Try recovering at least for
+                        // wgpu::SwapChainError::Lost
+                        log::error!("Serious GPU swapchain error: {}", err);
+                        panic!("Encountered GPU swapchain error: {}", err);
+                    }
+                },
             }
         } else {
             None
@@ -733,7 +749,7 @@ pub struct CommandBuffer<'a> {
     device: &'a wgpu::Device,
     queue: &'a mut wgpu::Queue,
     encoder: Option<wgpu::CommandEncoder>,
-    frame: Option<wgpu::SwapChainOutput>,
+    frame: Option<wgpu::SwapChainFrame>,
     render_target: &'a RenderTarget,
     blit_pass_bind_group_color: &'a wgpu::BindGroup,
     #[cfg(not(feature = "dist"))]
@@ -814,7 +830,7 @@ impl CommandBuffer<'_> {
                     self.encoder
                         .as_mut()
                         .expect("Need encoder to record drawing"),
-                    &frame.view,
+                    &frame.output.view,
                     draw_data,
                 )
                 .expect("Imgui drawing failed");
@@ -835,7 +851,7 @@ impl CommandBuffer<'_> {
 
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                    attachment: &frame.view,
+                    attachment: &frame.output.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: if self.swap_chain_needs_clearing {
@@ -873,7 +889,7 @@ impl CommandBuffer<'_> {
 
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                    attachment: &frame.view,
+                    attachment: &frame.output.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: if self.swap_chain_needs_clearing {
@@ -902,7 +918,7 @@ impl CommandBuffer<'_> {
     /// Submit the built command buffer for drawing.
     pub fn submit(mut self) {
         let encoder = self.encoder.take().expect("Can't finish rendering twice");
-        self.queue.submit(&[encoder.finish()]);
+        self.queue.submit(iter::once(encoder.finish()));
     }
 }
 
@@ -975,7 +991,6 @@ fn create_color_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu:
             height,
             depth: 1,
         },
-        array_layer_count: 1,
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -1012,7 +1027,6 @@ fn create_msaa_texture(
             height,
             depth: 1,
         },
-        array_layer_count: 1,
         mip_level_count: 1,
         sample_count,
         dimension: wgpu::TextureDimension::D2,
@@ -1042,7 +1056,6 @@ fn create_depth_texture(
             height,
             depth: 1,
         },
-        array_layer_count: 1,
         mip_level_count: 1,
         sample_count,
         dimension: wgpu::TextureDimension::D2,

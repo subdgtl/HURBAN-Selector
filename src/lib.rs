@@ -1033,12 +1033,10 @@ pub fn init_and_run(options: Options) -> ! {
                     screenshot_command_buffer.submit();
 
                     let mapping = renderer.offscreen_render_target_data(&screenshot_render_target);
-                    let (width, height) = mapping.dimensions();
-                    let data = mapping.data();
 
-                    let actual_data_len = data.len();
-                    let expected_data_len = cast_usize(width)
-                        * cast_usize(height)
+                    let actual_data_len = mapping.data.len();
+                    let expected_data_len = cast_usize(mapping.width)
+                        * cast_usize(mapping.height)
                         * cast_usize(mem::size_of::<[u8; 4]>());
                     if expected_data_len != actual_data_len {
                         log::error!(
@@ -1055,14 +1053,14 @@ pub fn init_and_run(options: Options) -> ! {
                         ));
 
                         let file = File::create(&path).expect("Failed to create PNG file");
-                        let mut png_encoder = png::Encoder::new(file, width, height);
+                        let mut png_encoder = png::Encoder::new(file, mapping.width, mapping.height);
                         png_encoder.set_color(png::ColorType::RGBA);
                         png_encoder.set_depth(png::BitDepth::Eight);
 
                         png_encoder
                             .write_header()
                             .expect("Failed to write png header")
-                            .write_image_data(data)
+                            .write_image_data(mapping.data)
                             .expect("Failed to write png data");
 
                         let path_str = path.to_string_lossy();

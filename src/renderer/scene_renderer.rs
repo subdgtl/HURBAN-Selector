@@ -345,6 +345,7 @@ impl SceneRenderer {
             label: None,
             size: matrix_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
         });
 
         let matrix_bind_group_layout =
@@ -358,6 +359,7 @@ impl SceneRenderer {
                         // TODO(yanchith): Provide this to optimize
                         min_binding_size: None,
                     },
+                    count: None,
                 }],
             });
         let matrix_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -452,6 +454,7 @@ impl SceneRenderer {
                         // TODO(yanchith): Provide this to optimize
                         min_binding_size: None,
                     },
+                    count: None,
                 }],
             });
 
@@ -552,7 +555,6 @@ impl SceneRenderer {
                 height: matcap_texture_height,
                 depth: 1,
             },
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -592,6 +594,7 @@ impl SceneRenderer {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
                         ty: wgpu::BindingType::Sampler { comparison: false },
+                        count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
@@ -599,6 +602,7 @@ impl SceneRenderer {
                         // This is a comparison sampler sampling the depth
                         // texture for shadow mapping.
                         ty: wgpu::BindingType::Sampler { comparison: true },
+                        count: None,
                     },
                 ],
             });
@@ -614,6 +618,7 @@ impl SceneRenderer {
                         component_type: wgpu::TextureComponentType::Float,
                         multisampled: false,
                     },
+                    count: None,
                 }],
             });
 
@@ -639,7 +644,7 @@ impl SceneRenderer {
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(
-                        &color_pass_matcap_texture.create_default_view(),
+                        &color_pass_matcap_texture.create_view(TextureViewDescriptor::default()),
                     ),
                 }],
             });
@@ -658,6 +663,7 @@ impl SceneRenderer {
             label: None,
             size: shadow_pass_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
         });
 
         let shadow_map_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -667,14 +673,14 @@ impl SceneRenderer {
                 height: 2048,
                 depth: 1,
             },
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
         });
-        let shadow_map_texture_view = shadow_map_texture.create_default_view();
+        let shadow_map_texture_view =
+            shadow_map_texture.create_view(TextureViewDescriptor::default());
 
         let shadow_map_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -696,6 +702,7 @@ impl SceneRenderer {
                         // TODO(yanchith): Provide this to optimize
                         min_binding_size: None,
                     },
+                    count: None,
                 }],
             });
         let shadow_pass_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

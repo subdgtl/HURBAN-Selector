@@ -57,6 +57,7 @@ impl ImguiRenderer {
                         // TODO(yanchith): Provide this to optimize
                         min_binding_size: None,
                     },
+                    count: None,
                 }],
             });
 
@@ -82,11 +83,13 @@ impl ImguiRenderer {
                             component_type: wgpu::TextureComponentType::Float,
                             multisampled: false,
                         },
+                        count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStage::FRAGMENT,
                         ty: wgpu::BindingType::Sampler { comparison: false },
+                        count: None,
                     },
                 ],
             });
@@ -169,7 +172,6 @@ impl ImguiRenderer {
                 height: font_atlas_image.height,
                 depth: 1,
             },
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -243,7 +245,6 @@ impl ImguiRenderer {
                 height,
                 depth: 1,
             },
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -459,7 +460,7 @@ impl Texture {
         texture: &wgpu::Texture,
         sampler: &wgpu::Sampler,
     ) -> Self {
-        let view = texture.create_default_view();
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
