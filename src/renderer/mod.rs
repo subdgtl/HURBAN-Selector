@@ -2,10 +2,13 @@ pub use self::scene_renderer::{AddMeshError, DirectionalLight, GpuMesh, GpuMeshH
 
 use std::collections::HashMap;
 use std::fmt;
+use std::future::Future;
 use std::iter;
 use std::mem;
 use std::ops::Deref;
+use std::pin::Pin;
 use std::slice;
+use std::task;
 use std::thread;
 
 use nalgebra::Matrix4;
@@ -170,15 +173,23 @@ impl fmt::Display for GpuPowerPreference {
 #[derive(Debug, PartialEq, Eq)]
 pub struct OffscreenRenderTargetHandle(u64);
 
-pub struct OffscreenRenderTargetReadMapping<'a> {
+/// A notification from the renderer to the surrounding environment about what
+/// asynchronous tasks have finished and are ready to be published since the
+/// last poll.
+pub enum PollNotification<'a> {
+    OffscreenRenderTargetReadReady(OffscreenRenderTargetRead<'a>),
+}
+
+/// A ready read from an ofscreen render target image.
+pub struct OffscreenRenderTargetRead<'a> {
     width: u32,
     height: u32,
     bytes_per_row_unpadded: u32,
     bytes_per_row_padded: u32,
-    read_buffer_slice: wgpu::BufferSlice<'a>,
+    buffer_slice: wgpu::BufferSlice<'a>,
 }
 
-impl<'a> OffscreenRenderTargetReadMapping<'a> {
+impl<'a> OffscreenRenderTargetRead<'a> {
     pub fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
     }
@@ -192,7 +203,7 @@ impl<'a> OffscreenRenderTargetReadMapping<'a> {
     }
 
     pub fn data(&self) -> impl Deref<Target = [u8]> + 'a {
-        self.read_buffer_slice.get_mapped_range()
+        self.buffer_slice.get_mapped_range()
     }
 }
 
@@ -213,15 +224,16 @@ pub struct Renderer {
     surface: wgpu::Surface,
     swap_chain: wgpu::SwapChain,
     screen_render_target: RenderTarget,
-    offscreen_read_buffer: Option<(u64, wgpu::Buffer)>,
+    offscreen_buffer_reads: HashMap<u64, BufferRead>,
     offscreen_render_targets: HashMap<u64, RenderTarget>,
-    offscreen_render_targets_next_handle: u64,
+    offscreen_next_handle: u64,
     blit_pass_bind_group_color: wgpu::BindGroup,
     #[cfg(not(feature = "dist"))]
     blit_pass_bind_group_depth: wgpu::BindGroup,
     blit_render_pipeline: wgpu::RenderPipeline,
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
+    task_context: task::Context<'static>,
     options: Options,
 }
 
@@ -449,15 +461,16 @@ impl Renderer {
                 depth_texture_view: depth_texture
                     .create_view(&wgpu::TextureViewDescriptor::default()),
             },
-            offscreen_read_buffer: None,
+            offscreen_buffer_reads: HashMap::new(),
             offscreen_render_targets: HashMap::new(),
-            offscreen_render_targets_next_handle: 0,
+            offscreen_next_handle: 0,
             blit_pass_bind_group_color,
             #[cfg(not(feature = "dist"))]
             blit_pass_bind_group_depth,
             blit_render_pipeline,
             scene_renderer,
             imgui_renderer,
+            task_context: task::Context::from_waker(&futures::task::noop_waker()),
             options,
         }
     }
@@ -529,7 +542,7 @@ impl Renderer {
         width: u32,
         height: u32,
     ) -> OffscreenRenderTargetHandle {
-        let handle = OffscreenRenderTargetHandle(self.offscreen_render_targets_next_handle);
+        let handle = OffscreenRenderTargetHandle(self.offscreen_next_handle);
 
         // FIXME: Add option to configure different MSAA for offscreen
         // render targets. This will require us to create multiple
@@ -581,7 +594,7 @@ impl Renderer {
 
         self.offscreen_render_targets
             .insert(handle.0, offscreen_render_target);
-        self.offscreen_render_targets_next_handle += 1;
+        self.offscreen_next_handle += 1;
 
         handle
     }
@@ -591,19 +604,27 @@ impl Renderer {
         self.offscreen_render_targets.remove(&handle.0);
     }
 
-    /// Downloads data from the offscreen render target from the GPU and makes
-    /// it accessible for reading.
+    /// Requests data download from the offscreen render target on the GPU.
+    ///
+    /// Because we don't want to stall the renderer with the data download, the
+    /// data will not be available immediately. Instead, it will eventually
+    /// become available via `PollNotification::OffscreenRenderTargetReadReady`
+    /// variant when `Renderer::poll` is called.
+    ///
+    /// TODO(yanchith): Notify of error as well.
     ///
     /// The image data may be padded. Be sure to skip over the padding using
-    /// `OffscreenRenderTargetReadMapping::bytes_per_row_unpadded` and
-    /// `OffscreenRenderTargetReadMapping::bytes_per_row_padded`.
-    pub fn offscreen_render_target_data<'a>(
-        &'a mut self,
-        handle: &OffscreenRenderTargetHandle,
-    ) -> OffscreenRenderTargetReadMapping<'a> {
+    /// `OffscreenRenderTargetRead::bytes_per_row_unpadded` and
+    /// `OffscreenRenderTargetRead::bytes_per_row_padded`.
+    pub fn request_offscreen_render_target_read(&mut self, handle: &OffscreenRenderTargetHandle) {
         let offscreen_render_target = &self.offscreen_render_targets[&handle.0];
         let width = offscreen_render_target.width;
         let height = offscreen_render_target.height;
+
+        assert!(
+            !self.offscreen_buffer_reads.contains_key(&handle.0),
+            "A read is already requested for this render target",
+        );
 
         // It is a WebGPU requirement that:
         //
@@ -618,30 +639,13 @@ impl Renderer {
         let bytes_per_row_padded = bytes_per_row_unpadded + bytes_per_row_padding;
         let rows_per_image = height;
 
-        let read_buffer_required_size = u64::from(bytes_per_row_padded) * u64::from(rows_per_image);
-        if let Some((read_buffer_current_size, _)) = &self.offscreen_read_buffer {
-            if read_buffer_required_size > *read_buffer_current_size {
-                let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: None,
-                    size: read_buffer_required_size,
-                    usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
-                    mapped_at_creation: false,
-                });
-
-                self.offscreen_read_buffer = Some((read_buffer_required_size, read_buffer));
-            }
-        } else {
-            let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: None,
-                size: read_buffer_required_size,
-                usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
-                mapped_at_creation: false,
-            });
-
-            self.offscreen_read_buffer = Some((read_buffer_required_size, read_buffer));
-        }
-
-        let read_buffer = &self.offscreen_read_buffer.as_ref().unwrap().1;
+        let buffer_required_size = u64::from(bytes_per_row_padded) * u64::from(rows_per_image);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: buffer_required_size,
+            usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
+            mapped_at_creation: false,
+        });
 
         let mut encoder = self
             .device
@@ -655,7 +659,7 @@ impl Renderer {
                 origin: wgpu::Origin3d::ZERO,
             },
             wgpu::BufferCopyView {
-                buffer: &read_buffer,
+                buffer: &buffer,
                 layout: wgpu::TextureDataLayout {
                     offset: 0,
                     bytes_per_row: bytes_per_row_padded,
@@ -671,26 +675,22 @@ impl Renderer {
 
         self.queue.submit(iter::once(encoder.finish()));
 
-        // Read from the buffer we just copied to. Immediately after we request
-        // the mapping we wait on the device to provide it and block.
+        // This slice will get dropped and will have to be re-created once the
+        // future is ready. Let's hope it is just a shallow descriptor and no
+        // important state is lost by us doing so.
+        let buffer_slice = buffer.slice(..);
+        let future = buffer_slice.map_async(wgpu::MapMode::Read);
 
-        // FIXME: @Optimization Make this async - let's not wait, let's poll
-        let read_buffer_slice = read_buffer.slice(..);
-        let future = read_buffer_slice.map_async(wgpu::MapMode::Read);
-
-        self.device.poll(wgpu::Maintain::Wait);
-        futures::executor::block_on(future).expect("Failed to map buffer");
-
-        // TODO(yanchith): We need to unmap the buffer! Not sure if we can do it
-        // without combining ref counting with Drop impl on
-        // OffscreenRenderTargetReadMapping.
-        OffscreenRenderTargetReadMapping {
+        let buffer_read = BufferRead {
             width,
             height,
             bytes_per_row_unpadded,
             bytes_per_row_padded,
-            read_buffer_slice,
-        }
+            buffer,
+            future: Box::pin(future),
+        };
+
+        self.offscreen_buffer_reads.insert(handle.0, buffer_read);
     }
 
     /// Uploads mesh to the GPU to be used in scene rendering.
@@ -797,6 +797,28 @@ impl Renderer {
             scene_renderer: &mut self.scene_renderer,
             imgui_renderer: &mut self.imgui_renderer,
         }
+    }
+
+    /// Polls the renderer for any pending buffer mappings and resource
+    /// cleanups. Should be called periodically.
+    pub fn poll<C>(&mut self, mut callback: C)
+    where
+        C: FnMut(PollNotification),
+    {
+        // Poll device and go over our pending futures to see if anything is
+        // ready.
+        self.device.poll(wgpu::Maintain::Poll);
+        self.offscreen_buffer_reads
+            .retain(|raw_handle, buffer_read| {
+                let poll = buffer_read
+                    .future
+                    .poll(&self.task_context);
+
+                // TODO(yanchith): Unmap
+                // TODO(yanchith): Retain
+                // TODO(yanchith): Error
+                todo!()
+            });
     }
 }
 
@@ -1008,6 +1030,19 @@ struct RenderTarget {
     color_texture_view: wgpu::TextureView,
     color_texture_bind_group: wgpu::BindGroup,
     depth_texture_view: wgpu::TextureView,
+}
+
+/// A pending or ready buffer mapping operation.
+///
+/// Once the future is resolved, the whole range of the buffer can be
+/// immediately mapped for reading.
+struct BufferRead {
+    width: u32,
+    height: u32,
+    bytes_per_row_unpadded: u32,
+    bytes_per_row_padded: u32,
+    buffer: wgpu::Buffer,
+    future: Pin<Box<dyn Future<Output = Result<(), wgpu::BufferAsyncError>>>>,
 }
 
 fn create_swap_chain(

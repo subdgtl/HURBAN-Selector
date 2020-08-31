@@ -309,7 +309,7 @@ pub fn init_and_run(options: Options) -> ! {
             winit::event::Event::MainEventsCleared => {
                 // Poll at the beginning of event processing, so that the
                 // pipeline UI is not lagging one frame behind.
-                session.poll(time, |callback_value| match callback_value {
+                session.poll(time, |poll_notification| match poll_notification {
                     PollNotification::UsedValueAdded(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
@@ -468,6 +468,8 @@ pub fn init_and_run(options: Options) -> ! {
                         );
                     }
                 });
+
+                renderer.poll(|poll_notification| {});
 
                 let input_state = input_manager.input_state();
                 let ui_frame = ui.prepare_frame(&window);
@@ -1032,51 +1034,51 @@ pub fn init_and_run(options: Options) -> ! {
                     screenshot_command_buffer.submit();
 
                     {
-                        let mapping =
-                            renderer.offscreen_render_target_data(&screenshot_render_target);
-                        let (width, height) = mapping.dimensions();
-                        let data = mapping.data();
+                        renderer.request_offscreen_render_target_read(&screenshot_render_target);
 
-                        if let Some(mut path) = dirs::picture_dir() {
-                            path.push(format!(
-                                "hurban_selector-{}.png",
-                                chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
-                            ));
+                    //     let (width, height) = read.dimensions();
+                    //     let data = read.data();
 
-                            match encode_and_write_png(
-                                &path,
-                                &data,
-                                width,
-                                height,
-                                mapping.bytes_per_row_unpadded(),
-                                mapping.bytes_per_row_padded(),
-                            ) {
-                                Ok(()) => {
-                                    let path_str = path.to_string_lossy();
-                                    log::info!("Screenshot saved in {}", path_str);
-                                    notifications.push(
-                                        time,
-                                        NotificationLevel::Info,
-                                        format!("Screenshot saved in {}", path_str),
-                                    );
-                                }
-                                Err(err) => {
-                                    log::error!("Failed writing screenshot: {}", err);
-                                    notifications.push(
-                                        time,
-                                        NotificationLevel::Error,
-                                        format!("Failed writing screenshot: {}", err),
-                                    );
-                                }
-                            }
-                        } else {
-                            log::error!("Failed to find picture directory");
-                            notifications.push(
-                                time,
-                                NotificationLevel::Warn,
-                                "Failed to find picture directory",
-                            );
-                        }
+                    //     if let Some(mut path) = dirs::picture_dir() {
+                    //         path.push(format!(
+                    //             "hurban_selector-{}.png",
+                    //             chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
+                    //         ));
+
+                    //         match encode_and_write_png(
+                    //             &path,
+                    //             &data,
+                    //             width,
+                    //             height,
+                    //             read.bytes_per_row_unpadded(),
+                    //             read.bytes_per_row_padded(),
+                    //         ) {
+                    //             Ok(()) => {
+                    //                 let path_str = path.to_string_lossy();
+                    //                 log::info!("Screenshot saved in {}", path_str);
+                    //                 notifications.push(
+                    //                     time,
+                    //                     NotificationLevel::Info,
+                    //                     format!("Screenshot saved in {}", path_str),
+                    //                 );
+                    //             }
+                    //             Err(err) => {
+                    //                 log::error!("Failed writing screenshot: {}", err);
+                    //                 notifications.push(
+                    //                     time,
+                    //                     NotificationLevel::Error,
+                    //                     format!("Failed writing screenshot: {}", err),
+                    //                 );
+                    //             }
+                    //         }
+                    //     } else {
+                    //         log::error!("Failed to find picture directory");
+                    //         notifications.push(
+                    //             time,
+                    //             NotificationLevel::Warn,
+                    //             "Failed to find picture directory",
+                    //         );
+                    //     }
                     }
 
                     renderer.remove_offscreen_render_target(screenshot_render_target);
