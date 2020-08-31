@@ -343,7 +343,7 @@ impl Renderer {
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::UniformBuffer {
                         dynamic: false,
-                        // TODO(yanchith): Provide this to optimize
+                        // FIXME: @Optimization Provide this for runtime speedup
                         min_binding_size: None,
                     },
                     count: None,
