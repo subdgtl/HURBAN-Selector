@@ -10,7 +10,7 @@ use std::thread;
 
 use nalgebra::Matrix4;
 
-use crate::convert::{cast_u32, cast_u64};
+use crate::convert::cast_u32;
 
 use self::imgui_renderer::{ImguiRenderer, Options as ImguiRendererOptions};
 use self::scene_renderer::{Options as SceneRendererOptions, SceneRenderer};
@@ -173,12 +173,22 @@ pub struct OffscreenRenderTargetHandle(u64);
 pub struct OffscreenRenderTargetReadMapping<'a> {
     width: u32,
     height: u32,
+    bytes_per_row_unpadded: u32,
+    bytes_per_row_padded: u32,
     read_buffer_slice: wgpu::BufferSlice<'a>,
 }
 
 impl<'a> OffscreenRenderTargetReadMapping<'a> {
     pub fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+
+    pub fn bytes_per_row_unpadded(&self) -> u32 {
+        self.bytes_per_row_unpadded
+    }
+
+    pub fn bytes_per_row_padded(&self) -> u32 {
+        self.bytes_per_row_padded
     }
 
     pub fn data(&self) -> impl Deref<Target = [u8]> + 'a {
@@ -581,6 +591,12 @@ impl Renderer {
         self.offscreen_render_targets.remove(&handle.0);
     }
 
+    /// Downloads data from the offscreen render target from the GPU and makes
+    /// it accessible for reading.
+    ///
+    /// The image data may be padded. Be sure to skip over the padding using
+    /// `OffscreenRenderTargetReadMapping::bytes_per_row_unpadded` and
+    /// `OffscreenRenderTargetReadMapping::bytes_per_row_padded`.
     pub fn offscreen_render_target_data<'a>(
         &'a mut self,
         handle: &OffscreenRenderTargetHandle,
@@ -589,7 +605,20 @@ impl Renderer {
         let width = offscreen_render_target.width;
         let height = offscreen_render_target.height;
 
-        let read_buffer_required_size = 4 * cast_u64(width) * cast_u64(height);
+        // It is a WebGPU requirement that:
+        //
+        // - BufferCopyView.layout.bytes_per_row % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT == 0
+        //
+        // We calculate padded `bytes_per_row` by rounding unpadded `bytes_per_row`
+        // up to the next multiple of `wgpu::COPY_BYTES_PER_ROW_ALIGNMENT`.
+        // https://en.wikipedia.org/wiki/Data_structure_alignment#Computing_padding
+        let bytes_per_row_unpadded = cast_u32(mem::size_of::<[u8; 4]>()) * width;
+        let bytes_per_row_padding = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
+            - bytes_per_row_unpadded % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let bytes_per_row_padded = bytes_per_row_unpadded + bytes_per_row_padding;
+        let rows_per_image = height;
+
+        let read_buffer_required_size = u64::from(bytes_per_row_padded) * u64::from(rows_per_image);
         if let Some((read_buffer_current_size, _)) = &self.offscreen_read_buffer {
             if read_buffer_required_size > *read_buffer_current_size {
                 let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -629,10 +658,8 @@ impl Renderer {
                 buffer: &read_buffer,
                 layout: wgpu::TextureDataLayout {
                     offset: 0,
-                    // TODO(yanchith): Verify that this satisfies
-                    // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
-                    bytes_per_row: cast_u32(mem::size_of::<[u8; 4]>()) * width,
-                    rows_per_image: height,
+                    bytes_per_row: bytes_per_row_padded,
+                    rows_per_image,
                 },
             },
             wgpu::Extent3d {
@@ -660,6 +687,8 @@ impl Renderer {
         OffscreenRenderTargetReadMapping {
             width,
             height,
+            bytes_per_row_unpadded,
+            bytes_per_row_padded,
             read_buffer_slice,
         }
     }

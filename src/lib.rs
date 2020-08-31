@@ -3,11 +3,10 @@ pub use crate::renderer::{GpuBackend, GpuPowerPreference, Msaa};
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::f32;
+use std::error::Error;
 use std::fs::File;
-use std::io::BufWriter;
-use std::mem;
-use std::path::PathBuf;
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -1038,42 +1037,38 @@ pub fn init_and_run(options: Options) -> ! {
                         let (width, height) = mapping.dimensions();
                         let data = mapping.data();
 
-                        let actual_data_len = data.len();
-                        let expected_data_len = cast_usize(width)
-                            * cast_usize(height)
-                            * cast_usize(mem::size_of::<[u8; 4]>());
-                        if expected_data_len != actual_data_len {
-                            log::error!(
-                                "Screenshot data is {} bytes, but was expected to be {} bytes",
-                                actual_data_len,
-                                expected_data_len,
-                            );
-                        }
-
                         if let Some(mut path) = dirs::picture_dir() {
                             path.push(format!(
                                 "hurban_selector-{}.png",
                                 chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
                             ));
 
-                            let file = File::create(&path).expect("Failed to create PNG file");
-                            let mut png_encoder = png::Encoder::new(file, width, height);
-                            png_encoder.set_color(png::ColorType::RGBA);
-                            png_encoder.set_depth(png::BitDepth::Eight);
-
-                            png_encoder
-                                .write_header()
-                                .expect("Failed to write png header")
-                                .write_image_data(&data)
-                                .expect("Failed to write png data");
-
-                            let path_str = path.to_string_lossy();
-                            log::info!("Screenshot saved in {}", path_str);
-                            notifications.push(
-                                time,
-                                NotificationLevel::Info,
-                                format!("Screenshot saved in {}", path_str),
-                            );
+                            match encode_and_write_png(
+                                &path,
+                                &data,
+                                width,
+                                height,
+                                mapping.bytes_per_row_unpadded(),
+                                mapping.bytes_per_row_padded(),
+                            ) {
+                                Ok(()) => {
+                                    let path_str = path.to_string_lossy();
+                                    log::info!("Screenshot saved in {}", path_str);
+                                    notifications.push(
+                                        time,
+                                        NotificationLevel::Info,
+                                        format!("Screenshot saved in {}", path_str),
+                                    );
+                                }
+                                Err(err) => {
+                                    log::error!("Failed writing screenshot: {}", err);
+                                    notifications.push(
+                                        time,
+                                        NotificationLevel::Error,
+                                        format!("Failed writing screenshot: {}", err),
+                                    );
+                                }
+                            }
                         } else {
                             log::error!("Failed to find picture directory");
                             notifications.push(
@@ -1268,6 +1263,39 @@ fn decode_image_rgba8_unorm(data: &[u8]) -> (Vec<u8>, u32, u32) {
     (rgba, width, height)
 }
 
+fn encode_and_write_png(
+    path: &Path,
+    data: &[u8],
+    width: u32,
+    height: u32,
+    bytes_per_row_unpadded: u32,
+    bytes_per_row_padded: u32,
+) -> Result<(), Box<dyn Error>> {
+    let file = File::create(path)?;
+
+    let mut png_encoder = png::Encoder::new(file, width, height);
+    png_encoder.set_color(png::ColorType::RGBA);
+    png_encoder.set_depth(png::BitDepth::Eight);
+
+    // The data we got back from the renderer can
+    // contain padding between rows. We iteratate over
+    // rows and make sure not to copy the padding bytes.
+    let bpr_unpadded = cast_usize(bytes_per_row_unpadded);
+    let bpr_padded = cast_usize(bytes_per_row_padded);
+
+    let mut png_writer = png_encoder
+        .write_header()?
+        .into_stream_writer_with_size(bpr_unpadded);
+
+    for chunk in data.chunks(bpr_padded) {
+        png_writer.write(&chunk[..bpr_unpadded])?;
+    }
+
+    png_writer.finish()?;
+
+    Ok(())
+}
+
 fn compute_scene_camera_radius(scene_bounding_box: BoundingBox<f32>) -> f32 {
     scene_bounding_box.diagonal().norm() * 10.0
 }
@@ -1315,8 +1343,6 @@ fn compute_ground_plane_mesh(scene_bounding_box: &BoundingBox<f32>) -> Mesh {
 }
 
 fn change_window_title(window: &winit::window::Window, project_status: &ProjectStatus) {
-    use std::path::Path;
-
     let filename = match &project_status.path {
         Some(project_path) => Path::new(project_path)
             .file_name()
