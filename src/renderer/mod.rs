@@ -8,7 +8,7 @@ use std::mem;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::slice;
-use std::task;
+use std::task::Poll;
 use std::thread;
 
 use nalgebra::Matrix4;
@@ -177,7 +177,8 @@ pub struct OffscreenRenderTargetHandle(u64);
 /// asynchronous tasks have finished and are ready to be published since the
 /// last poll.
 pub enum PollNotification<'a> {
-    OffscreenRenderTargetReadReady(OffscreenRenderTargetRead<'a>),
+    OffscreenRenderTargetReadReady(OffscreenRenderTargetHandle, OffscreenRenderTargetRead<'a>),
+    OffscreenRenderTargetReadFailed(OffscreenRenderTargetHandle),
 }
 
 /// A ready read from an ofscreen render target image.
@@ -224,7 +225,7 @@ pub struct Renderer {
     surface: wgpu::Surface,
     swap_chain: wgpu::SwapChain,
     screen_render_target: RenderTarget,
-    offscreen_buffer_reads: HashMap<u64, BufferRead>,
+    offscreen_render_target_pending_reads: HashMap<u64, OffscreenRenderTargetPendingRead>,
     offscreen_render_targets: HashMap<u64, RenderTarget>,
     offscreen_next_handle: u64,
     blit_pass_bind_group_color: wgpu::BindGroup,
@@ -233,7 +234,6 @@ pub struct Renderer {
     blit_render_pipeline: wgpu::RenderPipeline,
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
-    task_context: task::Context<'static>,
     options: Options,
 }
 
@@ -461,7 +461,7 @@ impl Renderer {
                 depth_texture_view: depth_texture
                     .create_view(&wgpu::TextureViewDescriptor::default()),
             },
-            offscreen_buffer_reads: HashMap::new(),
+            offscreen_render_target_pending_reads: HashMap::new(),
             offscreen_render_targets: HashMap::new(),
             offscreen_next_handle: 0,
             blit_pass_bind_group_color,
@@ -470,7 +470,6 @@ impl Renderer {
             blit_render_pipeline,
             scene_renderer,
             imgui_renderer,
-            task_context: task::Context::from_waker(&futures::task::noop_waker()),
             options,
         }
     }
@@ -611,18 +610,16 @@ impl Renderer {
     /// become available via `PollNotification::OffscreenRenderTargetReadReady`
     /// variant when `Renderer::poll` is called.
     ///
-    /// TODO(yanchith): Notify of error as well.
-    ///
     /// The image data may be padded. Be sure to skip over the padding using
     /// `OffscreenRenderTargetRead::bytes_per_row_unpadded` and
     /// `OffscreenRenderTargetRead::bytes_per_row_padded`.
-    pub fn request_offscreen_render_target_read(&mut self, handle: &OffscreenRenderTargetHandle) {
+    pub fn request_offscreen_render_target_read(&mut self, handle: OffscreenRenderTargetHandle) {
         let offscreen_render_target = &self.offscreen_render_targets[&handle.0];
         let width = offscreen_render_target.width;
         let height = offscreen_render_target.height;
 
         assert!(
-            !self.offscreen_buffer_reads.contains_key(&handle.0),
+            !self.offscreen_render_target_pending_reads.contains_key(&handle.0),
             "A read is already requested for this render target",
         );
 
@@ -681,7 +678,7 @@ impl Renderer {
         let buffer_slice = buffer.slice(..);
         let future = buffer_slice.map_async(wgpu::MapMode::Read);
 
-        let buffer_read = BufferRead {
+        let pending_read = OffscreenRenderTargetPendingRead {
             width,
             height,
             bytes_per_row_unpadded,
@@ -690,7 +687,8 @@ impl Renderer {
             future: Box::pin(future),
         };
 
-        self.offscreen_buffer_reads.insert(handle.0, buffer_read);
+        self.offscreen_render_target_pending_reads
+            .insert(handle.0, pending_read);
     }
 
     /// Uploads mesh to the GPU to be used in scene rendering.
@@ -806,18 +804,48 @@ impl Renderer {
         C: FnMut(PollNotification),
     {
         // Poll device and go over our pending futures to see if anything is
-        // ready.
-        self.device.poll(wgpu::Maintain::Poll);
-        self.offscreen_buffer_reads
-            .retain(|raw_handle, buffer_read| {
-                let poll = buffer_read
-                    .future
-                    .poll(&self.task_context);
+        // ready. Emit poll notifications for both successes and errors in
+        // offscreen render target reads.
 
-                // TODO(yanchith): Unmap
-                // TODO(yanchith): Retain
-                // TODO(yanchith): Error
-                todo!()
+        self.device.poll(wgpu::Maintain::Poll);
+
+        let mut task_context_guard = task_context::acquire();
+
+        self.offscreen_render_target_pending_reads
+            .retain(|raw_handle, pending_read| {
+                let poll = pending_read
+                    .future
+                    .as_mut()
+                    .poll(task_context_guard.as_mut());
+
+                match poll {
+                    Poll::Ready(result) => {
+                        let handle = OffscreenRenderTargetHandle(*raw_handle);
+
+                        let notification = match result {
+                            Ok(()) => {
+                                let read = OffscreenRenderTargetRead {
+                                    width: pending_read.width,
+                                    height: pending_read.height,
+                                    bytes_per_row_unpadded: pending_read.bytes_per_row_unpadded,
+                                    bytes_per_row_padded: pending_read.bytes_per_row_padded,
+                                    buffer_slice: pending_read.buffer.slice(..),
+                                };
+
+                                PollNotification::OffscreenRenderTargetReadReady(handle, read)
+                            }
+                            Err(wgpu::BufferAsyncError) => {
+                                PollNotification::OffscreenRenderTargetReadFailed(handle)
+                            }
+                        };
+
+                        callback(notification);
+                        pending_read.buffer.unmap();
+
+                        false
+                    }
+                    Poll::Pending => true,
+                }
             });
     }
 }
@@ -1036,7 +1064,7 @@ struct RenderTarget {
 ///
 /// Once the future is resolved, the whole range of the buffer can be
 /// immediately mapped for reading.
-struct BufferRead {
+struct OffscreenRenderTargetPendingRead {
     width: u32,
     height: u32,
     bytes_per_row_unpadded: u32,
@@ -1150,4 +1178,45 @@ fn create_depth_texture(
         format: TEXTURE_FORMAT_DEPTH,
         usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
     })
+}
+
+mod task_context {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::task;
+
+    static LOCKED: AtomicBool = AtomicBool::new(false);
+
+    pub struct Guard {
+        context: &'static mut task::Context<'static>,
+    }
+
+    impl Guard {
+        pub fn as_mut(&mut self) -> &mut task::Context<'static> {
+            self.context
+        }
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            LOCKED.store(false, Ordering::Release);
+        }
+    }
+
+    pub fn acquire() -> Guard {
+        static mut WAKER: Option<task::Waker> = None;
+        static mut CONTEXT: Option<task::Context> = None;
+
+        while !LOCKED.compare_and_swap(false, true, Ordering::Acquire) {}
+
+        unsafe {
+            if WAKER.is_none() {
+                WAKER = Some(futures::task::noop_waker());
+                CONTEXT = Some(task::Context::from_waker(WAKER.as_ref().unwrap()));
+            }
+
+            Guard {
+                context: CONTEXT.as_mut().unwrap(),
+            }
+        }
+    }
 }

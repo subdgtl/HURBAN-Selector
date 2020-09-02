@@ -23,9 +23,10 @@ use crate::notifications::{NotificationLevel, Notifications};
 use crate::plane::Plane;
 use crate::project::ProjectStatus;
 use crate::renderer::{
-    DirectionalLight, GpuMesh, GpuMeshHandle, Material, Options as RendererOptions, Renderer,
+    DirectionalLight, GpuMesh, GpuMeshHandle, Material, OffscreenRenderTargetHandle,
+    Options as RendererOptions, PollNotification as RendererPollNotification, Renderer,
 };
-use crate::session::{PollNotification, Session};
+use crate::session::{PollNotification as SessionPollNotification, Session};
 use crate::ui::{OverwriteModalTrigger, SaveModalResult, Ui};
 
 pub mod geometry;
@@ -262,6 +263,9 @@ pub fn init_and_run(options: Options) -> ! {
             .expect("Failed to add ground plane mesh"),
     );
 
+    let mut offscreen_render_target_handles_to_remove: Vec<OffscreenRenderTargetHandle> =
+        Vec::with_capacity(4);
+
     let initial_camera_radius_max = compute_scene_camera_radius(scene_bounding_box);
     let mut camera = Camera::new(
         initial_window_width,
@@ -289,9 +293,6 @@ pub fn init_and_run(options: Options) -> ! {
     let time_start = Instant::now();
     let mut time = time_start;
 
-    let mut ui_want_capture_mouse = false;
-    let mut ui_want_capture_keyboard = false;
-
     #[allow(clippy::cognitive_complexity)]
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -310,7 +311,7 @@ pub fn init_and_run(options: Options) -> ! {
                 // Poll at the beginning of event processing, so that the
                 // pipeline UI is not lagging one frame behind.
                 session.poll(time, |poll_notification| match poll_notification {
-                    PollNotification::UsedValueAdded(var_ident, value) => match value {
+                    SessionPollNotification::UsedValueAdded(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
@@ -338,7 +339,7 @@ pub fn init_and_run(options: Options) -> ! {
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
 
-                    PollNotification::UsedValueRemoved(var_ident, value) => match value {
+                    SessionPollNotification::UsedValueRemoved(var_ident, value) => match value {
                         Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
@@ -366,7 +367,7 @@ pub fn init_and_run(options: Options) -> ! {
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
 
-                    PollNotification::UnusedValueAdded(var_ident, value) => match value {
+                    SessionPollNotification::UnusedValueAdded(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
@@ -394,7 +395,7 @@ pub fn init_and_run(options: Options) -> ! {
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
 
-                    PollNotification::UnusedValueRemoved(var_ident, value) => match value {
+                    SessionPollNotification::UnusedValueRemoved(var_ident, value) => match value {
                         Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
@@ -422,7 +423,7 @@ pub fn init_and_run(options: Options) -> ! {
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
 
-                    PollNotification::FinishedSuccessfully => {
+                    SessionPollNotification::FinishedSuccessfully => {
                         scene_bounding_box = BoundingBox::union(
                             scene_meshes
                                 .values()
@@ -457,7 +458,7 @@ pub fn init_and_run(options: Options) -> ! {
                         );
                     }
 
-                    PollNotification::FinishedWithError(error_message) => {
+                    SessionPollNotification::FinishedWithError(error_message) => {
                         notifications.push(
                             time,
                             NotificationLevel::Error,
@@ -469,7 +470,63 @@ pub fn init_and_run(options: Options) -> ! {
                     }
                 });
 
-                renderer.poll(|poll_notification| {});
+                renderer.poll(|poll_notification| match poll_notification {
+                    RendererPollNotification::OffscreenRenderTargetReadReady(handle, read) => {
+                        let (width, height) = read.dimensions();
+                        let data = read.data();
+
+                        if let Some(mut path) = dirs::picture_dir() {
+                            path.push(format!(
+                                "hurban_selector-{}.png",
+                                chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
+                            ));
+
+                            match encode_and_write_png(
+                                &path,
+                                &data,
+                                width,
+                                height,
+                                read.bytes_per_row_unpadded(),
+                                read.bytes_per_row_padded(),
+                            ) {
+                                Ok(()) => {
+                                    let path_str = path.to_string_lossy();
+                                    log::info!("Screenshot saved in {}", path_str);
+                                    notifications.push(
+                                        time,
+                                        NotificationLevel::Info,
+                                        format!("Screenshot saved in {}", path_str),
+                                    );
+                                }
+                                Err(err) => {
+                                    log::error!("Failed writing screenshot: {}", err);
+                                    notifications.push(
+                                        time,
+                                        NotificationLevel::Error,
+                                        format!("Failed writing screenshot: {}", err),
+                                    );
+                                }
+                            }
+                        } else {
+                            log::error!("Failed to find picture directory");
+                            notifications.push(
+                                time,
+                                NotificationLevel::Warn,
+                                "Failed to find picture directory",
+                            );
+                        }
+
+                        offscreen_render_target_handles_to_remove.push(handle);
+                    }
+
+                    RendererPollNotification::OffscreenRenderTargetReadFailed(handle) => {
+                        offscreen_render_target_handles_to_remove.push(handle);
+                    }
+                });
+
+                for handle in offscreen_render_target_handles_to_remove.drain(..) {
+                    renderer.remove_offscreen_render_target(handle);
+                }
 
                 let input_state = input_manager.input_state();
                 let ui_frame = ui.prepare_frame(&window);
@@ -1032,56 +1089,7 @@ pub fn init_and_run(options: Options) -> ! {
                     }
 
                     screenshot_command_buffer.submit();
-
-                    {
-                        renderer.request_offscreen_render_target_read(&screenshot_render_target);
-
-                    //     let (width, height) = read.dimensions();
-                    //     let data = read.data();
-
-                    //     if let Some(mut path) = dirs::picture_dir() {
-                    //         path.push(format!(
-                    //             "hurban_selector-{}.png",
-                    //             chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
-                    //         ));
-
-                    //         match encode_and_write_png(
-                    //             &path,
-                    //             &data,
-                    //             width,
-                    //             height,
-                    //             read.bytes_per_row_unpadded(),
-                    //             read.bytes_per_row_padded(),
-                    //         ) {
-                    //             Ok(()) => {
-                    //                 let path_str = path.to_string_lossy();
-                    //                 log::info!("Screenshot saved in {}", path_str);
-                    //                 notifications.push(
-                    //                     time,
-                    //                     NotificationLevel::Info,
-                    //                     format!("Screenshot saved in {}", path_str),
-                    //                 );
-                    //             }
-                    //             Err(err) => {
-                    //                 log::error!("Failed writing screenshot: {}", err);
-                    //                 notifications.push(
-                    //                     time,
-                    //                     NotificationLevel::Error,
-                    //                     format!("Failed writing screenshot: {}", err),
-                    //                 );
-                    //             }
-                    //         }
-                    //     } else {
-                    //         log::error!("Failed to find picture directory");
-                    //         notifications.push(
-                    //             time,
-                    //             NotificationLevel::Warn,
-                    //             "Failed to find picture directory",
-                    //         );
-                    //     }
-                    }
-
-                    renderer.remove_offscreen_render_target(screenshot_render_target);
+                    renderer.request_offscreen_render_target_read(screenshot_render_target);
                 }
 
                 // -- Draw to viewport --
@@ -1203,10 +1211,8 @@ pub fn init_and_run(options: Options) -> ! {
         // `Clone` for events though, so buffering would be more complicated. In
         // practice, latent ui capture state shouldn't be an issue.
         ui.process_event(&event, &window);
-        ui_want_capture_keyboard = ui.want_capture_keyboard();
-        ui_want_capture_mouse = ui.want_capture_mouse();
 
-        input_manager.process_event(&event, ui_want_capture_keyboard, ui_want_capture_mouse);
+        input_manager.process_event(&event, ui.want_capture_keyboard(), ui.want_capture_mouse());
     });
 }
 
