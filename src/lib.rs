@@ -1296,7 +1296,11 @@ fn encode_and_write_png(
         .into_stream_writer_with_size(bpr_unpadded);
 
     for chunk in data.chunks(bpr_padded) {
-        png_writer.write(&chunk[..bpr_unpadded])?;
+        let mut bytes_written = 0;
+        while bytes_written < bpr_unpadded {
+            let written = png_writer.write(&chunk[bytes_written..bpr_unpadded])?;
+            bytes_written += written;
+        }
     }
 
     png_writer.finish()?;

@@ -272,6 +272,7 @@ impl ImguiRenderer {
         self.texture_resources.remove(id);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_ui(
         &mut self,
         color_needs_clearing: bool,
