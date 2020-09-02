@@ -177,7 +177,10 @@ pub struct OffscreenRenderTargetHandle(u64);
 /// asynchronous tasks have finished and are ready to be published since the
 /// last poll.
 pub enum PollNotification<'a> {
+    /// An offscreen rendering job finished and the related data is downloaded
+    /// and ready for reading.
     OffscreenRenderTargetReadReady(OffscreenRenderTargetHandle, OffscreenRenderTargetRead<'a>),
+    /// An offscreen rendering job failed.
     OffscreenRenderTargetReadFailed(OffscreenRenderTargetHandle),
 }
 
@@ -610,7 +613,15 @@ impl Renderer {
     /// become available via `PollNotification::OffscreenRenderTargetReadReady`
     /// variant when `Renderer::poll` is called.
     ///
-    /// The image data may be padded. Be sure to skip over the padding using
+    /// This function temporarily consumes the provided handle. It will become
+    /// available again in `PollNotification::OffscreenRenderTargetReadReady` or
+    /// `PollNotification::OffscreenRenderTargetReadFailed`. The handle can then
+    /// be used for more offscreen rendering, or to destroy the resources
+    /// associated with the offscreen render target via
+    /// `Renderer::remove_offscreen_render_target`.
+    ///
+    /// Note that the row data in the image given in `OffscreenRenderTargetRead`
+    /// may be padded. Be sure to skip over the padding using
     /// `OffscreenRenderTargetRead::bytes_per_row_unpadded` and
     /// `OffscreenRenderTargetRead::bytes_per_row_padded`.
     pub fn request_offscreen_render_target_read(&mut self, handle: OffscreenRenderTargetHandle) {
@@ -619,7 +630,9 @@ impl Renderer {
         let height = offscreen_render_target.height;
 
         assert!(
-            !self.offscreen_render_target_pending_reads.contains_key(&handle.0),
+            !self
+                .offscreen_render_target_pending_reads
+                .contains_key(&handle.0),
             "A read is already requested for this render target",
         );
 
