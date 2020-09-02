@@ -1219,7 +1219,9 @@ mod task_context {
         static mut WAKER: Option<task::Waker> = None;
         static mut CONTEXT: Option<task::Context> = None;
 
-        while !LOCKED.compare_and_swap(false, true, Ordering::Acquire) {}
+        while LOCKED.compare_and_swap(false, true, Ordering::Acquire) {
+            // spin
+        }
 
         unsafe {
             if WAKER.is_none() {
