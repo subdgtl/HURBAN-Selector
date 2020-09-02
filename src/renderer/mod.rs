@@ -230,7 +230,7 @@ pub struct Renderer {
     screen_render_target: RenderTarget,
     offscreen_render_target_pending_reads: HashMap<u64, OffscreenRenderTargetPendingRead>,
     offscreen_render_targets: HashMap<u64, RenderTarget>,
-    offscreen_next_handle: u64,
+    offscreen_render_target_next_handle: u64,
     blit_pass_bind_group_color: wgpu::BindGroup,
     #[cfg(not(feature = "dist"))]
     blit_pass_bind_group_depth: wgpu::BindGroup,
@@ -466,7 +466,7 @@ impl Renderer {
             },
             offscreen_render_target_pending_reads: HashMap::new(),
             offscreen_render_targets: HashMap::new(),
-            offscreen_next_handle: 0,
+            offscreen_render_target_next_handle: 0,
             blit_pass_bind_group_color,
             #[cfg(not(feature = "dist"))]
             blit_pass_bind_group_depth,
@@ -544,7 +544,7 @@ impl Renderer {
         width: u32,
         height: u32,
     ) -> OffscreenRenderTargetHandle {
-        let handle = OffscreenRenderTargetHandle(self.offscreen_next_handle);
+        let handle = OffscreenRenderTargetHandle(self.offscreen_render_target_next_handle);
 
         // FIXME: Add option to configure different MSAA for offscreen
         // render targets. This will require us to create multiple
@@ -596,7 +596,7 @@ impl Renderer {
 
         self.offscreen_render_targets
             .insert(handle.0, offscreen_render_target);
-        self.offscreen_next_handle += 1;
+        self.offscreen_render_target_next_handle += 1;
 
         handle
     }
