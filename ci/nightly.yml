@@ -15,7 +15,7 @@ jobs:
     steps:
       - template: test-all-release.yml
     variables:
-      TOOLCHAIN: 1.43.1
+      TOOLCHAIN: 1.46.0
 
   - job: macOS
     pool:
@@ -23,7 +23,7 @@ jobs:
     steps:
       - template: test-all-release.yml
     variables:
-      TOOLCHAIN: 1.43.1
+      TOOLCHAIN: 1.46.0
 
   - job: Windows
     pool:
@@ -37,4 +37,4 @@ jobs:
           architecture: "x64"
       - template: test-all-release.yml
     variables:
-      TOOLCHAIN: 1.43.1
+      TOOLCHAIN: 1.46.0
