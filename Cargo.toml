@@ -18,28 +18,28 @@ dist = ["log/release_max_level_info"]
 approx = "0.3.2"
 arrayvec = "0.5.1"
 bitflags = "1.2.1"
-chrono = "0.4.11"
-clap = "3.0.0-beta"
+chrono = "0.4.15"
+clap = "3.0.0-beta.1"
 crc32fast = "1.2.0"
-crossbeam-channel = "0.4.2"
-dirs = "2.0.2"
+crossbeam-channel = "0.4.3"
+dirs = "3.0.1"
 fern = { version = "0.6.0", features = ["colored"] }
 futures = "0.3.5"
 fxhash = "0.2.1"
-image = "0.23.4"
-imgui = "0.3.0"
-log = "0.4.8"
-nalgebra = { version = "0.21.0", features = ["serde-serialize"] }
+image = "0.23.9"
+imgui = "0.4.0"
+log = "0.4.11"
+nalgebra = { version = "0.22.0", features = ["serde-serialize"] }
 noise = "0.6.0"
-num-traits = "0.2.11"
-png = "0.16.3"
+num-traits = "0.2.12"
+png = "0.16.7"
 raw-window-handle = "0.3.3"
-ron = "0.6.0"
-serde = { version = "1.0.110", features = ["derive"] }
-smallvec = "1.4.0"
+ron = "0.6.1"
+serde = { version = "1.0.115", features = ["derive"] }
+smallvec = "1.4.2"
 static_assertions = "1.1.0"
-tinyfiledialogs = "3.3.9"
-tobj = { version = "2.0.0", features = ["log"] }
+tinyfiledialogs = "3.3.10"
+tobj = { version = "2.0.2", features = ["log"] }
 wgpu = "0.6.0"
 
 # The current newest version of winit (v0.22.2) has a problem if something (in
@@ -58,8 +58,8 @@ winit = "0.22.0"
 zerocopy = "0.3.0"
 
 [dev-dependencies]
-insta = "0.16.0"
-mockall = "0.7.1"
+insta = "0.16.1"
+mockall = "0.8.0"
 
 [build-dependencies]
 shaderc = "0.6.2"

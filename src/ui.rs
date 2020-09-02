@@ -1348,19 +1348,22 @@ impl<'a> UiFrame<'a> {
                                 None
                             };
 
-                            let collapsing_header_open = ui
-                                .collapsing_header(&imgui::im_str!(
+                            let collapsing_header_open = imgui::CollapsingHeader::new(&imgui::im_str!(
                                     "#{} {} ##{}",
                                     stmt_index + 1,
                                     func.info().name,
                                     stmt_index
                                 ))
                                 .default_open(true)
-                                .build();
+                                .build(ui);
 
                             if ui.is_item_hovered() {
                                 if let Some(error) = error {
-                                    let color_token = ui.push_style_color(imgui::StyleColor::PopupBg, self.colors.header_error_hovered);
+                                    let color_token = ui.push_style_color(
+                                        imgui::StyleColor::PopupBg,
+                                        self.colors.header_error_hovered,
+                                    );
+
                                     ui.tooltip(|| {
                                         let wrap_token = ui
                                             .push_text_wrap_pos(WRAP_POS_TOOLTIP_TEXT_PIXELS);
