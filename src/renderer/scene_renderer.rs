@@ -1136,12 +1136,16 @@ impl SceneRenderer {
         // pipelines (for culling settings). There are also more advanced
         // techniques, such as:
         //
-        // * Weighted Blended Order-Independent Transparency
-        //   http://jcgt.org/published/0002/02/09/
-        // * Stochastic Transparency
-        //   http://www.cse.chalmers.se/~d00sint/StochasticTransparency_I3D2010.pdf
-        // * Adaptive Transparency
-        //   https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
+        // - Weighted Blended Order-Independent Transparency
+        //   - https://www.gdcvault.com/play/1026177/Instancing-and-Order-Independent-Transparency
+        //   - https://m.habr.com/en/post/457292/
+        //   - http://jcgt.org/published/0002/02/09/
+        //
+        // - Stochastic Transparency
+        //   - http://www.cse.chalmers.se/~d00sint/StochasticTransparency_I3D2010.pdf
+        //
+        // - Adaptive Transparency
+        //   - https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
 
         for (raw_handle, material, _) in &self.render_list_opaque {
             match material {
