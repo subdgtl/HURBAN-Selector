@@ -12,6 +12,11 @@ license = "GPL-3.0-only"
 
 [features]
 default = []
+# FIXME: @Cleanup Negate the "dist" feature and call it "debug", making the
+# build without extra debugging facilities the default. With the sole exception
+# of logging (where a impl is picked based on the "dist" feature being present),
+# everywhere else the code has more functionality with the "dist" feature
+# absent. Flipping the feature will make it more additive.
 dist = ["log/release_max_level_info"]
 
 [dependencies]
