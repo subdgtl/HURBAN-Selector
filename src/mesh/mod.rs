@@ -364,7 +364,7 @@ impl Mesh {
     }
 
     /// Extracts oriented edges from all mesh faces.
-    pub fn oriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = OrientedEdge> + 'a {
+    pub fn oriented_edges_iter(&self) -> impl Iterator<Item = OrientedEdge> + '_ {
         self.faces.iter().flat_map(|face| match face {
             Face::Triangle(triangle_face) => {
                 ArrayVec::from(triangle_face.to_oriented_edges()).into_iter()
@@ -373,7 +373,7 @@ impl Mesh {
     }
 
     /// Extracts unoriented edges from all mesh faces.
-    pub fn unoriented_edges_iter<'a>(&'a self) -> impl Iterator<Item = UnorientedEdge> + 'a {
+    pub fn unoriented_edges_iter(&self) -> impl Iterator<Item = UnorientedEdge> + '_ {
         self.faces.iter().flat_map(|face| match face {
             Face::Triangle(triangle_face) => {
                 ArrayVec::from(triangle_face.to_unoriented_edges()).into_iter()

@@ -74,10 +74,7 @@ pub enum Msaa {
 
 impl Msaa {
     pub fn enabled(self) -> bool {
-        match self {
-            Msaa::Disabled => false,
-            _ => true,
-        }
+        !matches!(self, Msaa::Disabled)
     }
 
     pub fn sample_count(self) -> u32 {

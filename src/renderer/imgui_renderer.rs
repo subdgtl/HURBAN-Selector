@@ -419,7 +419,7 @@ impl ImguiRenderer {
                             let texture = self
                                 .texture_resources
                                 .get(texture_id)
-                                .ok_or_else(|| Error::BadTexture(texture_id))?;
+                                .ok_or(Error::BadTexture(texture_id))?;
 
                             rpass.set_bind_group(1, texture.bind_group(), &[]);
                             rpass.set_scissor_rect(

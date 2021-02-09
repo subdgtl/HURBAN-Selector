@@ -131,10 +131,10 @@ pub fn edge_sharing<'a, I: IntoIterator<Item = &'a OrientedEdge>>(
 /// Finds edges with a certain valency in a mesh edge collection.
 ///
 /// An edge valency indicates how many faces share the edge.
-fn find_edges_with_valency<'a>(
-    edge_sharing: &'a EdgeSharingMap,
+fn find_edges_with_valency(
+    edge_sharing: &EdgeSharingMap,
     valency: usize,
-) -> impl Iterator<Item = OrientedEdge> + 'a {
+) -> impl Iterator<Item = OrientedEdge> + '_ {
     edge_sharing
         .values()
         .filter(move |shared_edges| {
@@ -146,9 +146,7 @@ fn find_edges_with_valency<'a>(
 /// Finds border edges in a mesh edge collection.
 ///
 /// An edge is border when its valency is 1.
-pub fn border_edges<'a>(
-    edge_sharing: &'a EdgeSharingMap,
-) -> impl Iterator<Item = OrientedEdge> + 'a {
+pub fn border_edges(edge_sharing: &EdgeSharingMap) -> impl Iterator<Item = OrientedEdge> + '_ {
     find_edges_with_valency(edge_sharing, 1)
 }
 
@@ -156,16 +154,14 @@ pub fn border_edges<'a>(
 ///
 /// An edge is manifold when its valency is 2.
 #[allow(dead_code)]
-pub fn manifold_edges<'a>(
-    edge_sharing: &'a EdgeSharingMap,
-) -> impl Iterator<Item = OrientedEdge> + 'a {
+pub fn manifold_edges(edge_sharing: &EdgeSharingMap) -> impl Iterator<Item = OrientedEdge> + '_ {
     find_edges_with_valency(edge_sharing, 2)
 }
 
 /// Finds non-manifold (erroneous) edges in a mesh edge collection.
-pub fn non_manifold_edges<'a>(
-    edge_sharing: &'a EdgeSharingMap,
-) -> impl Iterator<Item = OrientedEdge> + 'a {
+pub fn non_manifold_edges(
+    edge_sharing: &EdgeSharingMap,
+) -> impl Iterator<Item = OrientedEdge> + '_ {
     edge_sharing
         .values()
         .filter(|shared_edges| {

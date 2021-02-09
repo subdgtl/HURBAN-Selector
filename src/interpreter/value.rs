@@ -205,11 +205,11 @@ impl MeshArrayValue {
         self.0.is_empty()
     }
 
-    pub fn iter_refcounted<'a>(&'a self) -> impl Iterator<Item = Arc<Mesh>> + 'a {
+    pub fn iter_refcounted(&self) -> impl Iterator<Item = Arc<Mesh>> + '_ {
         self.0.iter().cloned()
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Mesh> + 'a {
+    pub fn iter(&self) -> impl Iterator<Item = &Mesh> + '_ {
         self.0
             .iter()
             .map(|refcounted_mesh| Arc::deref(refcounted_mesh))

@@ -341,11 +341,11 @@ impl Session {
 
     /// Returns all visible variable identifiers from a position
     /// (index) in the program.
-    pub fn visible_vars_at_stmt<'a>(
-        &'a self,
+    pub fn visible_vars_at_stmt(
+        &self,
         stmt_index: usize,
         ty: Ty,
-    ) -> impl Iterator<Item = VarIdent> + Clone + 'a {
+    ) -> impl Iterator<Item = VarIdent> + Clone + '_ {
         static EMPTY: Vec<Option<VarIdent>> = Vec::new();
         let var_visibility = match ty {
             Ty::Mesh => &self.var_visibility_mesh,
