@@ -7,6 +7,7 @@ use std::iter;
 
 use bitflags::bitflags;
 use nalgebra::{Matrix4, Point3, Vector3};
+use zerocopy::AsBytes as _;
 
 use crate::convert::cast_usize;
 use crate::mesh::{Face, Mesh};
@@ -332,46 +333,45 @@ impl SceneRenderer {
     /// Initializes GPU resources and the rendering pipeline to draw
     /// to a texture of `output_color_attachment_format`.
     pub fn new(device: &wgpu::Device, queue: &mut wgpu::Queue, options: Options) -> Self {
-        let color_pass_vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_COLOR_PASS_VERT))
-            .expect("Couldn't read pre-built SPIR-V");
-        let color_pass_fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_COLOR_PASS_FRAG))
-            .expect("Couldn't read pre-built SPIR-V");
-        let color_pass_vs_module = device.create_shader_module(&color_pass_vs_words);
-        let color_pass_fs_module = device.create_shader_module(&color_pass_fs_words);
+        let color_pass_vs_source = wgpu::util::make_spirv(SHADER_COLOR_PASS_VERT);
+        let color_pass_fs_source = wgpu::util::make_spirv(SHADER_COLOR_PASS_FRAG);
+        let color_pass_vs_module = device.create_shader_module(color_pass_vs_source);
+        let color_pass_fs_module = device.create_shader_module(color_pass_fs_source);
 
-        let shadow_pass_vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_SHADOW_PASS_VERT))
-            .expect("Couldn't read pre-build SPIR-V");
-        let shadow_pass_vs_module = device.create_shader_module(&shadow_pass_vs_words);
+        let shadow_pass_vs_source = wgpu::util::make_spirv(SHADER_SHADOW_PASS_VERT);
+        let shadow_pass_vs_module = device.create_shader_module(shadow_pass_vs_source);
 
         let matrix_buffer_size = common::wgpu_size_of::<MatrixUniforms>();
         let matrix_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: matrix_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
         });
 
         let matrix_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // FIXME: @Optimization Provide this for runtime speedup
+                        min_binding_size: None,
+                    },
+                    count: None,
                 }],
             });
         let matrix_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &matrix_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &matrix_buffer,
-                    range: 0..matrix_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(matrix_buffer.slice(..)),
             }],
         });
 
-        let color_pass_buffer_size = common::wgpu_size_of::<ColorPassUniforms>();
         let color_pass_buffer_edges = common::create_buffer(
             device,
             wgpu::BufferUsage::UNIFORM,
@@ -446,22 +446,24 @@ impl SceneRenderer {
         let color_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // FIXME: @Optimization Provide this for runtime speedup
+                        min_binding_size: None,
+                    },
+                    count: None,
                 }],
             });
 
         let color_pass_bind_group_edges = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &color_pass_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &color_pass_buffer_edges,
-                    range: 0..color_pass_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(color_pass_buffer_edges.slice(..)),
             }],
         });
 
@@ -469,12 +471,11 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_matcap_shaded,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_matcap_shaded.slice(..),
+                    ),
                 }],
             });
 
@@ -482,12 +483,11 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_matcap_shaded_transparent,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_matcap_shaded_transparent.slice(..),
+                    ),
                 }],
             });
 
@@ -495,12 +495,11 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_matcap_shaded_edges,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_matcap_shaded_edges.slice(..),
+                    ),
                 }],
             });
 
@@ -508,12 +507,11 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_matcap_shaded_edges_transparent,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_matcap_shaded_edges_transparent.slice(..),
+                    ),
                 }],
             });
 
@@ -521,12 +519,11 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &color_pass_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &color_pass_buffer_flat_with_shadows,
-                        range: 0..color_pass_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(
+                        color_pass_buffer_flat_with_shadows.slice(..),
+                    ),
                 }],
             });
 
@@ -558,7 +555,6 @@ impl SceneRenderer {
                 height: matcap_texture_height,
                 depth: 1,
             },
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -567,6 +563,7 @@ impl SceneRenderer {
         });
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -575,10 +572,12 @@ impl SceneRenderer {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare: wgpu::CompareFunction::Always,
+            compare: None,
+            anisotropy_clamp: None,
         });
 
         let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -587,17 +586,19 @@ impl SceneRenderer {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare: wgpu::CompareFunction::Greater,
+            compare: Some(wgpu::CompareFunction::Greater),
+            anisotropy_clamp: None,
         });
 
         let sampler_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[
+                entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
                         ty: wgpu::BindingType::Sampler { comparison: false },
+                        count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
@@ -605,6 +606,7 @@ impl SceneRenderer {
                         // This is a comparison sampler sampling the depth
                         // texture for shadow mapping.
                         ty: wgpu::BindingType::Sampler { comparison: true },
+                        count: None,
                     },
                 ],
             });
@@ -612,7 +614,7 @@ impl SceneRenderer {
         let sampled_texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::SampledTexture {
@@ -620,18 +622,19 @@ impl SceneRenderer {
                         component_type: wgpu::TextureComponentType::Float,
                         multisampled: false,
                     },
+                    count: None,
                 }],
             });
 
         let sampler_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &sampler_bind_group_layout,
-            bindings: &[
-                wgpu::Binding {
+            entries: &[
+                wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::Sampler(&sampler),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&shadow_sampler),
                 },
@@ -642,16 +645,16 @@ impl SceneRenderer {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &sampled_texture_bind_group_layout,
-                bindings: &[wgpu::Binding {
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(
-                        &color_pass_matcap_texture.create_default_view(),
+                        &color_pass_matcap_texture
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
                 }],
             });
 
         common::upload_texture_rgba8_unorm(
-            device,
             queue,
             &color_pass_matcap_texture,
             matcap_texture_width,
@@ -664,6 +667,7 @@ impl SceneRenderer {
             label: None,
             size: shadow_pass_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
         });
 
         let shadow_map_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -673,19 +677,19 @@ impl SceneRenderer {
                 height: 2048,
                 depth: 1,
             },
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
         });
-        let shadow_map_texture_view = shadow_map_texture.create_default_view();
+        let shadow_map_texture_view =
+            shadow_map_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let shadow_map_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &sampled_texture_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::TextureView(&shadow_map_texture_view),
             }],
@@ -694,21 +698,23 @@ impl SceneRenderer {
         let shadow_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // FIXME: @Optimization Provide this for runtime speedup
+                        min_binding_size: None,
+                    },
+                    count: None,
                 }],
             });
         let shadow_pass_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &shadow_pass_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &shadow_pass_buffer,
-                    range: 0..shadow_pass_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(shadow_pass_buffer.slice(..)),
             }],
         });
 
@@ -757,11 +763,14 @@ impl SceneRenderer {
 
         let shadow_pass_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
                 bind_group_layouts: &[&shadow_pass_bind_group_layout],
+                push_constant_ranges: &[],
             });
 
         let shadow_pass_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            layout: &shadow_pass_pipeline_layout,
+            label: None,
+            layout: Some(&shadow_pass_pipeline_layout),
             vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &shadow_pass_vs_module,
                 entry_point: "main",
@@ -776,6 +785,7 @@ impl SceneRenderer {
                 // - Slope depth bias factor, applied depending on polygon's slope
                 //
                 // https://docs.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias
+                clamp_depth: false,
                 depth_bias: 5,
                 depth_bias_slope_scale: 5.0,
                 depth_bias_clamp: 0.0,
@@ -786,10 +796,7 @@ impl SceneRenderer {
                 format: options.output_depth_attachment_format,
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::Less,
-                stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-                stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-                stencil_read_mask: 0,
-                stencil_write_mask: 0,
+                stencil: wgpu::StencilStateDescriptor::default(),
             }),
             vertex_state: wgpu::VertexStateDescriptor {
                 index_format: wgpu::IndexFormat::Uint32,
@@ -860,12 +867,7 @@ impl SceneRenderer {
     }
 
     /// Update properties of the shadow casting light.
-    pub fn set_light(
-        &self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        light: &DirectionalLight,
-    ) {
+    pub fn set_light(&self, queue: &mut wgpu::Queue, light: &DirectionalLight) {
         let light_projection_matrix = Matrix4::new_orthographic(
             -light.width / 2.0,
             light.width / 2.0,
@@ -893,52 +895,37 @@ impl SceneRenderer {
             &light_up,
         );
 
-        let transfer_buffer = common::create_buffer(
-            device,
-            wgpu::BufferUsage::COPY_SRC,
-            &[ShadowPassUniforms {
+        queue.write_buffer(
+            &self.shadow_pass_buffer,
+            0,
+            [ShadowPassUniforms {
                 light_space_matrix: (correction_matrix()
                     * light_projection_matrix
                     * light_view_matrix)
                     .into(),
-            }],
-        );
-
-        encoder.copy_buffer_to_buffer(
-            &transfer_buffer,
-            0,
-            &self.shadow_pass_buffer,
-            0,
-            common::wgpu_size_of::<ShadowPassUniforms>(),
+            }]
+            .as_bytes(),
         );
     }
 
     /// Update camera matrices (projection and view).
     pub fn set_camera_matrices(
         &mut self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
+        queue: &mut wgpu::Queue,
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
     ) {
-        let transfer_buffer = common::create_buffer(
-            device,
-            wgpu::BufferUsage::COPY_SRC,
-            &[MatrixUniforms {
-                projection_matrix: (correction_matrix() * projection_matrix).into(),
-                view_matrix: view_matrix.clone().into(),
-            }],
-        );
+        self.render_list_sort_matrix = *view_matrix;
 
-        encoder.copy_buffer_to_buffer(
-            &transfer_buffer,
-            0,
+        queue.write_buffer(
             &self.matrix_buffer,
             0,
-            common::wgpu_size_of::<MatrixUniforms>(),
+            [MatrixUniforms {
+                projection_matrix: (correction_matrix() * projection_matrix).into(),
+                view_matrix: view_matrix.clone().into(),
+            }]
+            .as_bytes(),
         );
-
-        self.render_list_sort_matrix = *view_matrix;
     }
 
     /// Uploads mesh on the GPU.
@@ -1071,10 +1058,18 @@ impl SceneRenderer {
                 .expect("Failed to compare floats")
         });
 
-        let load_op = if color_and_depth_need_clearing {
-            wgpu::LoadOp::Clear
+        let (color_load_op, depth_load_op) = if color_and_depth_need_clearing {
+            (
+                wgpu::LoadOp::Clear(wgpu::Color {
+                    r: clear_color[0],
+                    g: clear_color[1],
+                    b: clear_color[2],
+                    a: clear_color[3],
+                }),
+                wgpu::LoadOp::Clear(1.0),
+            )
         } else {
-            wgpu::LoadOp::Load
+            (wgpu::LoadOp::Load, wgpu::LoadOp::Load)
         };
 
         {
@@ -1085,12 +1080,11 @@ impl SceneRenderer {
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
                     attachment: &self.shadow_map_texture_view,
-                    depth_load_op: load_op,
-                    depth_store_op: wgpu::StoreOp::Store,
-                    stencil_load_op: wgpu::LoadOp::Clear,
-                    stencil_store_op: wgpu::StoreOp::Store,
-                    clear_depth: 1.0,
-                    clear_stencil: 0,
+                    depth_ops: Some(wgpu::Operations {
+                        load: depth_load_op,
+                        store: true,
+                    }),
+                    stencil_ops: None,
                 }),
             });
 
@@ -1109,26 +1103,18 @@ impl SceneRenderer {
             wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: msaa_attachment,
                 resolve_target: Some(color_attachment),
-                load_op,
-                store_op: wgpu::StoreOp::Store,
-                clear_color: wgpu::Color {
-                    r: clear_color[0],
-                    g: clear_color[1],
-                    b: clear_color[2],
-                    a: clear_color[3],
+                ops: wgpu::Operations {
+                    load: color_load_op,
+                    store: true,
                 },
             }
         } else {
             wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: color_attachment,
                 resolve_target: None,
-                load_op,
-                store_op: wgpu::StoreOp::Store,
-                clear_color: wgpu::Color {
-                    r: clear_color[0],
-                    g: clear_color[1],
-                    b: clear_color[2],
-                    a: clear_color[3],
+                ops: wgpu::Operations {
+                    load: color_load_op,
+                    store: true,
                 },
             }
         };
@@ -1137,12 +1123,11 @@ impl SceneRenderer {
             color_attachments: &[color_pass_color_attachment_descriptor],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
                 attachment: depth_attachment,
-                depth_load_op: load_op,
-                depth_store_op: wgpu::StoreOp::Store,
-                stencil_load_op: wgpu::LoadOp::Clear,
-                stencil_store_op: wgpu::StoreOp::Store,
-                clear_depth: 1.0,
-                clear_stencil: 0,
+                depth_ops: Some(wgpu::Operations {
+                    load: depth_load_op,
+                    store: true,
+                }),
+                stencil_ops: None,
             }),
         });
 
@@ -1151,12 +1136,16 @@ impl SceneRenderer {
         // pipelines (for culling settings). There are also more advanced
         // techniques, such as:
         //
-        // * Weighted Blended Order-Independent Transparency
-        //   http://jcgt.org/published/0002/02/09/
-        // * Stochastic Transparency
-        //   http://www.cse.chalmers.se/~d00sint/StochasticTransparency_I3D2010.pdf
-        // * Adaptive Transparency
-        //   https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
+        // - Weighted Blended Order-Independent Transparency
+        //   - https://www.gdcvault.com/play/1026177/Instancing-and-Order-Independent-Transparency
+        //   - https://m.habr.com/en/post/457292/
+        //   - http://jcgt.org/published/0002/02/09/
+        //
+        // - Stochastic Transparency
+        //   - http://www.cse.chalmers.se/~d00sint/StochasticTransparency_I3D2010.pdf
+        //
+        // - Adaptive Transparency
+        //   - https://software.intel.com/en-us/articles/adaptive-transparency-hpg-2011
 
         for (raw_handle, material, _) in &self.render_list_opaque {
             match material {
@@ -1280,10 +1269,10 @@ fn record<'a, 'b>(
     let mesh_resource = &mesh_resources[&raw_handle];
 
     let (vertex_buffer, vertex_count) = &mesh_resource.vertices;
-    rpass.set_vertex_buffer(0, vertex_buffer, 0, 0);
+    rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
 
     if let Some((index_buffer, index_count)) = &mesh_resource.indices {
-        rpass.set_index_buffer(&index_buffer, 0, 0);
+        rpass.set_index_buffer(index_buffer.slice(..));
         rpass.draw_indexed(0..*index_count, 0, 0..1);
     } else {
         rpass.draw(0..*vertex_count, 0..1);
@@ -1401,6 +1390,7 @@ fn create_color_pass_pipeline(
     options: Options,
 ) -> wgpu::RenderPipeline {
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: None,
         bind_group_layouts: &[
             &matrix_bind_group_layout,
             &sampler_bind_group_layout,
@@ -1409,10 +1399,12 @@ fn create_color_pass_pipeline(
             &color_pass_bind_group_layout,
             &shadow_pass_bind_group_layout,
         ],
+        push_constant_ranges: &[],
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        layout: &pipeline_layout,
+        label: None,
+        layout: Some(&pipeline_layout),
         vertex_stage: wgpu::ProgrammableStageDescriptor {
             module: vs_module,
             entry_point: "main",
@@ -1459,10 +1451,7 @@ fn create_color_pass_pipeline(
             } else {
                 wgpu::CompareFunction::Always
             },
-            stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-            stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-            stencil_read_mask: 0,
-            stencil_write_mask: 0,
+            stencil: wgpu::StencilStateDescriptor::default(),
         }),
         vertex_state: wgpu::VertexStateDescriptor {
             index_format: wgpu::IndexFormat::Uint32,

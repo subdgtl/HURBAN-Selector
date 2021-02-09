@@ -2,14 +2,18 @@ pub use self::scene_renderer::{AddMeshError, DirectionalLight, GpuMesh, GpuMeshH
 
 use std::collections::HashMap;
 use std::fmt;
-use std::io;
+use std::future::Future;
+use std::iter;
 use std::mem;
+use std::ops::Deref;
+use std::pin::Pin;
 use std::slice;
+use std::task::Poll;
 use std::thread;
 
 use nalgebra::Matrix4;
 
-use crate::convert::{cast_u32, cast_u64};
+use crate::convert::cast_u32;
 
 use self::imgui_renderer::{ImguiRenderer, Options as ImguiRendererOptions};
 use self::scene_renderer::{Options as SceneRendererOptions, SceneRenderer};
@@ -70,10 +74,7 @@ pub enum Msaa {
 
 impl Msaa {
     pub fn enabled(self) -> bool {
-        match self {
-            Msaa::Disabled => false,
-            _ => true,
-        }
+        !matches!(self, Msaa::Disabled)
     }
 
     pub fn sample_count(self) -> u32 {
@@ -169,19 +170,41 @@ impl fmt::Display for GpuPowerPreference {
 #[derive(Debug, PartialEq, Eq)]
 pub struct OffscreenRenderTargetHandle(u64);
 
-pub struct OffscreenRenderTargetReadMapping {
-    width: u32,
-    height: u32,
-    mapping: wgpu::BufferReadMapping,
+/// A notification from the renderer to the surrounding environment about what
+/// asynchronous tasks have finished and are ready to be published since the
+/// last poll.
+pub enum PollNotification<'a> {
+    /// An offscreen rendering job finished and the related data is downloaded
+    /// and ready for reading.
+    OffscreenRenderTargetReadReady(OffscreenRenderTargetHandle, OffscreenRenderTargetRead<'a>),
+    /// An offscreen rendering job failed.
+    OffscreenRenderTargetReadFailed(OffscreenRenderTargetHandle),
 }
 
-impl OffscreenRenderTargetReadMapping {
+/// A ready read from an ofscreen render target image.
+pub struct OffscreenRenderTargetRead<'a> {
+    width: u32,
+    height: u32,
+    bytes_per_row_unpadded: u32,
+    bytes_per_row_padded: u32,
+    buffer_slice: wgpu::BufferSlice<'a>,
+}
+
+impl<'a> OffscreenRenderTargetRead<'a> {
     pub fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
     }
 
-    pub fn data(&self) -> &[u8] {
-        self.mapping.as_slice()
+    pub fn bytes_per_row_unpadded(&self) -> u32 {
+        self.bytes_per_row_unpadded
+    }
+
+    pub fn bytes_per_row_padded(&self) -> u32 {
+        self.bytes_per_row_padded
+    }
+
+    pub fn data(&self) -> impl Deref<Target = [u8]> + 'a {
+        self.buffer_slice.get_mapped_range()
     }
 }
 
@@ -202,8 +225,9 @@ pub struct Renderer {
     surface: wgpu::Surface,
     swap_chain: wgpu::SwapChain,
     screen_render_target: RenderTarget,
+    offscreen_render_target_pending_reads: HashMap<u64, OffscreenRenderTargetPendingRead>,
     offscreen_render_targets: HashMap<u64, RenderTarget>,
-    offscreen_render_targets_next_handle: u64,
+    offscreen_render_target_next_handle: u64,
     blit_pass_bind_group_color: wgpu::BindGroup,
     #[cfg(not(feature = "dist"))]
     blit_pass_bind_group_depth: wgpu::BindGroup,
@@ -230,25 +254,24 @@ impl Renderer {
         let gpu_power_preference = options.power_preference;
         log::info!("GPU will use power preference: {}", gpu_power_preference);
 
-        let surface = wgpu::Surface::create(window);
-
         let mut gpu_backend_iter = gpu_backend_list.iter().copied();
-        let adapter = loop {
+        let (surface, adapter) = loop {
             if let Some(gpu_backend) = gpu_backend_iter.next() {
                 log::info!("Trying to acquire GPU adapter for backend: {}", gpu_backend);
 
-                let adapter_result = futures::executor::block_on(wgpu::Adapter::request(
+                let instance = wgpu::Instance::new(gpu_backend.into());
+                let surface = unsafe { instance.create_surface(window) };
+                let adapter_result = futures::executor::block_on(instance.request_adapter(
                     &wgpu::RequestAdapterOptions {
                         power_preference: gpu_power_preference.into(),
                         compatible_surface: Some(&surface),
                     },
-                    gpu_backend.into(),
                 ));
 
                 match adapter_result {
                     Some(adapter) => {
                         log::info!("Found suitable GPU adapter for backend: {}", gpu_backend);
-                        break adapter;
+                        break (surface, adapter);
                     }
                     None => {
                         log::warn!("Failed to acquire GPU adapter for backend: {}", gpu_backend);
@@ -261,16 +284,19 @@ impl Renderer {
 
         log::info!("GPU adapter info: {:?}", adapter.get_info());
 
-        let (device, mut queue) =
-            futures::executor::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-                extensions: wgpu::Extensions {
-                    anisotropic_filtering: false,
-                },
+        let (device, mut queue) = futures::executor::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                features: wgpu::Features::empty(),
                 limits: wgpu::Limits {
                     // FIXME: @Optimization Use less bind groups if possible.
                     max_bind_groups: 6,
+                    ..wgpu::Limits::default()
                 },
-            }));
+                shader_validation: true,
+            },
+            None,
+        ))
+        .expect("Failed to request GPU device");
 
         let swap_chain = create_swap_chain(&device, &surface, width, height);
 
@@ -287,7 +313,7 @@ impl Renderer {
         };
 
         let color_texture = create_color_texture(&device, width, height);
-        let color_texture_view = color_texture.create_default_view();
+        let color_texture_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let depth_texture =
             create_depth_texture(&device, width, height, options.msaa.sample_count());
 
@@ -314,7 +340,6 @@ impl Renderer {
         )
         .expect("Failed to create imgui renderer");
 
-        let blit_pass_buffer_size = common::wgpu_size_of::<BlitPassUniforms>();
         let blit_pass_buffer_color = common::create_buffer(
             &device,
             wgpu::BufferUsage::UNIFORM,
@@ -335,22 +360,24 @@ impl Renderer {
         let blit_pass_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // FIXME: @Optimization Provide this for runtime speedup
+                        min_binding_size: None,
+                    },
+                    count: None,
                 }],
             });
 
         let blit_pass_bind_group_color = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &blit_pass_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &blit_pass_buffer_color,
-                    range: 0..blit_pass_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(blit_pass_buffer_color.slice(..)),
             }],
         });
 
@@ -358,42 +385,40 @@ impl Renderer {
         let blit_pass_bind_group_depth = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &blit_pass_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &blit_pass_buffer_depth,
-                    range: 0..blit_pass_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(blit_pass_buffer_depth.slice(..)),
             }],
         });
 
         let color_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: scene_renderer.sampled_texture_bind_group_layout(),
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::TextureView(&color_texture_view),
             }],
         });
 
-        let blit_vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_BLIT_VERT))
-            .expect("Couldn't read pre-built SPIR-V");
-        let blit_fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_BLIT_FRAG))
-            .expect("Couldn't read pre-built SPIR-V");
-        let blit_vs_module = device.create_shader_module(&blit_vs_words);
-        let blit_fs_module = device.create_shader_module(&blit_fs_words);
+        let blit_vs_source = wgpu::util::make_spirv(SHADER_BLIT_VERT);
+        let blit_fs_source = wgpu::util::make_spirv(SHADER_BLIT_FRAG);
+        let blit_vs_module = device.create_shader_module(blit_vs_source);
+        let blit_fs_module = device.create_shader_module(blit_fs_source);
 
         let blit_render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
                 bind_group_layouts: &[
                     &blit_pass_bind_group_layout,
                     scene_renderer.sampler_bind_group_layout(),
                     scene_renderer.sampled_texture_bind_group_layout(),
                 ],
+                push_constant_ranges: &[],
             });
 
         let blit_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            layout: &blit_render_pipeline_layout,
+            label: None,
+            layout: Some(&blit_render_pipeline_layout),
             vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &blit_vs_module,
                 entry_point: "main",
@@ -428,14 +453,17 @@ impl Renderer {
             screen_render_target: RenderTarget {
                 width,
                 height,
-                msaa_texture_view: msaa_texture.map(|texture| texture.create_default_view()),
+                msaa_texture_view: msaa_texture
+                    .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default())),
                 color_texture,
                 color_texture_view,
                 color_texture_bind_group,
-                depth_texture_view: depth_texture.create_default_view(),
+                depth_texture_view: depth_texture
+                    .create_view(&wgpu::TextureViewDescriptor::default()),
             },
+            offscreen_render_target_pending_reads: HashMap::new(),
             offscreen_render_targets: HashMap::new(),
-            offscreen_render_targets_next_handle: 0,
+            offscreen_render_target_next_handle: 0,
             blit_pass_bind_group_color,
             #[cfg(not(feature = "dist"))]
             blit_pass_bind_group_depth,
@@ -474,18 +502,20 @@ impl Renderer {
                     self.options.msaa.sample_count(),
                 );
                 self.screen_render_target.msaa_texture_view =
-                    Some(msaa_texture.create_default_view());
+                    Some(msaa_texture.create_view(&wgpu::TextureViewDescriptor::default()));
             }
 
             let color_texture = create_color_texture(&self.device, width, height);
-            self.screen_render_target.color_texture_view = color_texture.create_default_view();
+            self.screen_render_target.color_texture_view =
+                color_texture.create_view(&wgpu::TextureViewDescriptor::default());
             let depth_texture = create_depth_texture(
                 &self.device,
                 width,
                 height,
                 self.options.msaa.sample_count(),
             );
-            self.screen_render_target.depth_texture_view = depth_texture.create_default_view();
+            self.screen_render_target.depth_texture_view =
+                depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
             // Also need to re-create the bind group for reading the
             // newly created color texture.
@@ -493,7 +523,7 @@ impl Renderer {
                 self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: None,
                     layout: self.scene_renderer.sampled_texture_bind_group_layout(),
-                    bindings: &[wgpu::Binding {
+                    entries: &[wgpu::BindGroupEntry {
                         binding: 0,
                         resource: wgpu::BindingResource::TextureView(
                             &self.screen_render_target.color_texture_view,
@@ -511,7 +541,7 @@ impl Renderer {
         width: u32,
         height: u32,
     ) -> OffscreenRenderTargetHandle {
-        let handle = OffscreenRenderTargetHandle(self.offscreen_render_targets_next_handle);
+        let handle = OffscreenRenderTargetHandle(self.offscreen_render_target_next_handle);
 
         // FIXME: Add option to configure different MSAA for offscreen
         // render targets. This will require us to create multiple
@@ -538,13 +568,13 @@ impl Renderer {
         };
 
         let color_texture = create_color_texture(&self.device, width, height);
-        let color_texture_view = color_texture.create_default_view();
+        let color_texture_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let depth_texture = create_depth_texture(&self.device, width, height, msaa.sample_count());
 
         let color_texture_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: self.scene_renderer.sampled_texture_bind_group_layout(),
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::TextureView(&color_texture_view),
             }],
@@ -553,16 +583,17 @@ impl Renderer {
         let offscreen_render_target = RenderTarget {
             width,
             height,
-            msaa_texture_view: msaa_texture.map(|texture| texture.create_default_view()),
+            msaa_texture_view: msaa_texture
+                .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default())),
             color_texture,
             color_texture_view,
             color_texture_bind_group,
-            depth_texture_view: depth_texture.create_default_view(),
+            depth_texture_view: depth_texture.create_view(&wgpu::TextureViewDescriptor::default()),
         };
 
         self.offscreen_render_targets
             .insert(handle.0, offscreen_render_target);
-        self.offscreen_render_targets_next_handle += 1;
+        self.offscreen_render_target_next_handle += 1;
 
         handle
     }
@@ -572,20 +603,55 @@ impl Renderer {
         self.offscreen_render_targets.remove(&handle.0);
     }
 
-    pub fn offscreen_render_target_data(
-        &mut self,
-        handle: &OffscreenRenderTargetHandle,
-    ) -> OffscreenRenderTargetReadMapping {
+    /// Requests data download from the offscreen render target on the GPU.
+    ///
+    /// Because we don't want to stall the renderer with the data download, the
+    /// data will not be available immediately. Instead, it will eventually
+    /// become available via `PollNotification::OffscreenRenderTargetReadReady`
+    /// variant when `Renderer::poll` is called.
+    ///
+    /// This function temporarily consumes the provided handle. It will become
+    /// available again in `PollNotification::OffscreenRenderTargetReadReady` or
+    /// `PollNotification::OffscreenRenderTargetReadFailed`. The handle can then
+    /// be used for more offscreen rendering, or to destroy the resources
+    /// associated with the offscreen render target via
+    /// `Renderer::remove_offscreen_render_target`.
+    ///
+    /// Note that the row data in the image given in `OffscreenRenderTargetRead`
+    /// may be padded. Be sure to skip over the padding using
+    /// `OffscreenRenderTargetRead::bytes_per_row_unpadded` and
+    /// `OffscreenRenderTargetRead::bytes_per_row_padded`.
+    pub fn request_offscreen_render_target_read(&mut self, handle: OffscreenRenderTargetHandle) {
         let offscreen_render_target = &self.offscreen_render_targets[&handle.0];
         let width = offscreen_render_target.width;
         let height = offscreen_render_target.height;
 
-        // FIXME: @Optimization Reuse a single buffer and only recreate if larger needed
-        let read_buffer_size = 4 * cast_u64(width) * cast_u64(height);
-        let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        assert!(
+            !self
+                .offscreen_render_target_pending_reads
+                .contains_key(&handle.0),
+            "A read is already requested for this render target",
+        );
+
+        // It is a WebGPU requirement that:
+        //
+        // - BufferCopyView.layout.bytes_per_row % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT == 0
+        //
+        // We calculate padded `bytes_per_row` by rounding unpadded `bytes_per_row`
+        // up to the next multiple of `wgpu::COPY_BYTES_PER_ROW_ALIGNMENT`.
+        // https://en.wikipedia.org/wiki/Data_structure_alignment#Computing_padding
+        let bytes_per_row_unpadded = cast_u32(mem::size_of::<[u8; 4]>()) * width;
+        let bytes_per_row_padding = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
+            - bytes_per_row_unpadded % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let bytes_per_row_padded = bytes_per_row_unpadded + bytes_per_row_padding;
+        let rows_per_image = height;
+
+        let buffer_required_size = u64::from(bytes_per_row_padded) * u64::from(rows_per_image);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: read_buffer_size,
+            size: buffer_required_size,
             usage: wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::MAP_READ,
+            mapped_at_creation: false,
         });
 
         let mut encoder = self
@@ -595,15 +661,17 @@ impl Renderer {
         encoder.copy_texture_to_buffer(
             wgpu::TextureCopyView {
                 texture: &offscreen_render_target.color_texture,
+
                 mip_level: 0,
-                array_layer: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             wgpu::BufferCopyView {
-                buffer: &read_buffer,
-                offset: 0,
-                bytes_per_row: cast_u32(mem::size_of::<[u8; 4]>()) * width,
-                rows_per_image: height,
+                buffer: &buffer,
+                layout: wgpu::TextureDataLayout {
+                    offset: 0,
+                    bytes_per_row: bytes_per_row_padded,
+                    rows_per_image,
+                },
             },
             wgpu::Extent3d {
                 width,
@@ -612,22 +680,25 @@ impl Renderer {
             },
         );
 
-        self.queue.submit(&[encoder.finish()]);
+        self.queue.submit(iter::once(encoder.finish()));
 
-        // Read from the buffer we just copied to. Immediately after we request
-        // the mapping we wait on the device to provide it and block.
+        // This slice will get dropped and will have to be re-created once the
+        // future is ready. Let's hope it is just a shallow descriptor and no
+        // important state is lost by us doing so.
+        let buffer_slice = buffer.slice(..);
+        let future = buffer_slice.map_async(wgpu::MapMode::Read);
 
-        // FIXME: Make this async - let's not wait, let's poll
-        let future = read_buffer.map_read(0, read_buffer_size);
-
-        self.device.poll(wgpu::Maintain::Wait);
-        let mapping = futures::executor::block_on(future).expect("Failed to map buffer");
-
-        OffscreenRenderTargetReadMapping {
+        let pending_read = OffscreenRenderTargetPendingRead {
             width,
             height,
-            mapping,
-        }
+            bytes_per_row_unpadded,
+            bytes_per_row_padded,
+            buffer,
+            future: Box::pin(future),
+        };
+
+        self.offscreen_render_target_pending_reads
+            .insert(handle.0, pending_read);
     }
 
     /// Uploads mesh to the GPU to be used in scene rendering.
@@ -695,11 +766,20 @@ impl Renderer {
         };
 
         let frame = if request_swap_chain_texture {
-            if let Ok(frame) = self.swap_chain.get_next_texture() {
-                Some(frame)
-            } else {
-                log::warn!("Requesting swap chain texture timed out");
-                None
+            match self.swap_chain.get_current_frame() {
+                Ok(frame) => Some(frame),
+                Err(err) => match err {
+                    wgpu::SwapChainError::Timeout | wgpu::SwapChainError::Outdated => {
+                        log::warn!("GPU swapchain error: {}", err);
+                        None
+                    }
+                    wgpu::SwapChainError::Lost | wgpu::SwapChainError::OutOfMemory => {
+                        // FIXME: @Correctness Try recovering at least for
+                        // wgpu::SwapChainError::Lost
+                        log::error!("Serious GPU swapchain error: {}", err);
+                        panic!("Encountered GPU swapchain error: {}", err);
+                    }
+                },
             }
         } else {
             None
@@ -726,6 +806,58 @@ impl Renderer {
             imgui_renderer: &mut self.imgui_renderer,
         }
     }
+
+    /// Polls the renderer for any pending buffer mappings and resource
+    /// cleanups. Should be called periodically.
+    pub fn poll<C>(&mut self, mut callback: C)
+    where
+        C: FnMut(PollNotification),
+    {
+        // Poll device and go over our pending futures to see if anything is
+        // ready. Emit poll notifications for both successes and errors in
+        // offscreen render target reads.
+
+        self.device.poll(wgpu::Maintain::Poll);
+
+        let mut task_context_guard = task_context::acquire();
+
+        self.offscreen_render_target_pending_reads
+            .retain(|raw_handle, pending_read| {
+                let poll = pending_read
+                    .future
+                    .as_mut()
+                    .poll(task_context_guard.as_mut());
+
+                match poll {
+                    Poll::Ready(result) => {
+                        let handle = OffscreenRenderTargetHandle(*raw_handle);
+
+                        let notification = match result {
+                            Ok(()) => {
+                                let read = OffscreenRenderTargetRead {
+                                    width: pending_read.width,
+                                    height: pending_read.height,
+                                    bytes_per_row_unpadded: pending_read.bytes_per_row_unpadded,
+                                    bytes_per_row_padded: pending_read.bytes_per_row_padded,
+                                    buffer_slice: pending_read.buffer.slice(..),
+                                };
+
+                                PollNotification::OffscreenRenderTargetReadReady(handle, read)
+                            }
+                            Err(wgpu::BufferAsyncError) => {
+                                PollNotification::OffscreenRenderTargetReadFailed(handle)
+                            }
+                        };
+
+                        callback(notification);
+                        pending_read.buffer.unmap();
+
+                        false
+                    }
+                    Poll::Pending => true,
+                }
+            });
+    }
 }
 
 /// An ongoing recording of draw commands. Submit with
@@ -737,7 +869,7 @@ pub struct CommandBuffer<'a> {
     device: &'a wgpu::Device,
     queue: &'a mut wgpu::Queue,
     encoder: Option<wgpu::CommandEncoder>,
-    frame: Option<wgpu::SwapChainOutput>,
+    frame: Option<wgpu::SwapChainFrame>,
     render_target: &'a RenderTarget,
     blit_pass_bind_group_color: &'a wgpu::BindGroup,
     #[cfg(not(feature = "dist"))]
@@ -750,11 +882,7 @@ pub struct CommandBuffer<'a> {
 impl CommandBuffer<'_> {
     /// Update properties of the shadow casting light.
     pub fn set_light(&mut self, light: &DirectionalLight) {
-        self.scene_renderer.set_light(
-            &self.device,
-            self.encoder.as_mut().expect("Need encoder to update data"),
-            light,
-        );
+        self.scene_renderer.set_light(self.queue, light);
     }
 
     /// Update camera matrices (projection and view).
@@ -763,12 +891,8 @@ impl CommandBuffer<'_> {
         projection_matrix: &Matrix4<f32>,
         view_matrix: &Matrix4<f32>,
     ) {
-        self.scene_renderer.set_camera_matrices(
-            &self.device,
-            self.encoder.as_mut().expect("Need encoder to upload data"),
-            projection_matrix,
-            view_matrix,
-        );
+        self.scene_renderer
+            .set_camera_matrices(self.queue, projection_matrix, view_matrix);
     }
 
     /// Record a mesh drawing operation targeting the render target to the
@@ -815,10 +939,11 @@ impl CommandBuffer<'_> {
                     self.swap_chain_needs_clearing,
                     self.clear_color,
                     self.device,
+                    self.queue,
                     self.encoder
                         .as_mut()
                         .expect("Need encoder to record drawing"),
-                    &frame.view,
+                    &frame.output.view,
                     draw_data,
                 )
                 .expect("Imgui drawing failed");
@@ -839,16 +964,16 @@ impl CommandBuffer<'_> {
 
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                    attachment: &frame.view,
+                    attachment: &frame.output.view,
                     resolve_target: None,
-                    load_op: if self.swap_chain_needs_clearing {
-                        wgpu::LoadOp::Clear
-                    } else {
-                        wgpu::LoadOp::Load
+                    ops: wgpu::Operations {
+                        load: if self.swap_chain_needs_clearing {
+                            wgpu::LoadOp::Clear(COLOR_DEBUG_PURPLE)
+                        } else {
+                            wgpu::LoadOp::Load
+                        },
+                        store: true,
                     },
-                    store_op: wgpu::StoreOp::Store,
-                    // If we see this color, something has gone wrong :)
-                    clear_color: COLOR_DEBUG_PURPLE,
                 }],
                 depth_stencil_attachment: None,
             });
@@ -877,16 +1002,16 @@ impl CommandBuffer<'_> {
 
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                    attachment: &frame.view,
+                    attachment: &frame.output.view,
                     resolve_target: None,
-                    load_op: if self.swap_chain_needs_clearing {
-                        wgpu::LoadOp::Clear
-                    } else {
-                        wgpu::LoadOp::Load
+                    ops: wgpu::Operations {
+                        load: if self.swap_chain_needs_clearing {
+                            wgpu::LoadOp::Clear(COLOR_DEBUG_PURPLE)
+                        } else {
+                            wgpu::LoadOp::Load
+                        },
+                        store: true,
                     },
-                    store_op: wgpu::StoreOp::Store,
-                    // If we see this color, something has gone wrong :)
-                    clear_color: COLOR_DEBUG_PURPLE,
                 }],
                 depth_stencil_attachment: None,
             });
@@ -906,7 +1031,7 @@ impl CommandBuffer<'_> {
     /// Submit the built command buffer for drawing.
     pub fn submit(mut self) {
         let encoder = self.encoder.take().expect("Can't finish rendering twice");
-        self.queue.submit(&[encoder.finish()]);
+        self.queue.submit(iter::once(encoder.finish()));
     }
 }
 
@@ -945,6 +1070,19 @@ struct RenderTarget {
     depth_texture_view: wgpu::TextureView,
 }
 
+/// A pending or ready buffer mapping operation.
+///
+/// Once the future is resolved, the whole range of the buffer can be
+/// immediately mapped for reading.
+struct OffscreenRenderTargetPendingRead {
+    width: u32,
+    height: u32,
+    bytes_per_row_unpadded: u32,
+    bytes_per_row_padded: u32,
+    buffer: wgpu::Buffer,
+    future: Pin<Box<dyn Future<Output = Result<(), wgpu::BufferAsyncError>>>>,
+}
+
 fn create_swap_chain(
     device: &wgpu::Device,
     surface: &wgpu::Surface,
@@ -979,7 +1117,6 @@ fn create_color_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu:
             height,
             depth: 1,
         },
-        array_layer_count: 1,
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -1016,7 +1153,6 @@ fn create_msaa_texture(
             height,
             depth: 1,
         },
-        array_layer_count: 1,
         mip_level_count: 1,
         sample_count,
         dimension: wgpu::TextureDimension::D2,
@@ -1046,11 +1182,53 @@ fn create_depth_texture(
             height,
             depth: 1,
         },
-        array_layer_count: 1,
         mip_level_count: 1,
         sample_count,
         dimension: wgpu::TextureDimension::D2,
         format: TEXTURE_FORMAT_DEPTH,
         usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
     })
+}
+
+mod task_context {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::task;
+
+    static LOCKED: AtomicBool = AtomicBool::new(false);
+
+    pub struct Guard {
+        context: &'static mut task::Context<'static>,
+    }
+
+    impl Guard {
+        pub fn as_mut(&mut self) -> &mut task::Context<'static> {
+            self.context
+        }
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            LOCKED.store(false, Ordering::Release);
+        }
+    }
+
+    pub fn acquire() -> Guard {
+        static mut WAKER: Option<task::Waker> = None;
+        static mut CONTEXT: Option<task::Context> = None;
+
+        while LOCKED.compare_and_swap(false, true, Ordering::Acquire) {
+            // spin
+        }
+
+        unsafe {
+            if WAKER.is_none() {
+                WAKER = Some(futures::task::noop_waker());
+                CONTEXT = Some(task::Context::from_waker(WAKER.as_ref().unwrap()));
+            }
+
+            Guard {
+                context: CONTEXT.as_mut().unwrap(),
+            }
+        }
+    }
 }

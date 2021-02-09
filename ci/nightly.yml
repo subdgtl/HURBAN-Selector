@@ -15,7 +15,7 @@ jobs:
     steps:
       - template: test-all-release.yml
     variables:
-      TOOLCHAIN: 1.43.1
+      TOOLCHAIN: 1.46.0
 
   - job: macOS
     pool:
@@ -23,7 +23,7 @@ jobs:
     steps:
       - template: test-all-release.yml
     variables:
-      TOOLCHAIN: 1.43.1
+      TOOLCHAIN: 1.46.0
 
   - job: Windows
     pool:
@@ -32,9 +32,9 @@ jobs:
       - script: choco install -y ninja
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: "3.8.4"
+          versionSpec: "3.8.x"
           addToPath: true
           architecture: "x64"
       - template: test-all-release.yml
     variables:
-      TOOLCHAIN: 1.43.1
+      TOOLCHAIN: 1.46.0

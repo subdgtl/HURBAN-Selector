@@ -3,11 +3,10 @@ pub use crate::renderer::{GpuBackend, GpuPowerPreference, Msaa};
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::f32;
+use std::error::Error;
 use std::fs::File;
-use std::io::BufWriter;
-use std::mem;
-use std::path::PathBuf;
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -24,9 +23,10 @@ use crate::notifications::{NotificationLevel, Notifications};
 use crate::plane::Plane;
 use crate::project::ProjectStatus;
 use crate::renderer::{
-    DirectionalLight, GpuMesh, GpuMeshHandle, Material, Options as RendererOptions, Renderer,
+    DirectionalLight, GpuMesh, GpuMeshHandle, Material, OffscreenRenderTargetHandle,
+    Options as RendererOptions, PollNotification as RendererPollNotification, Renderer,
 };
-use crate::session::{PollNotification, Session};
+use crate::session::{PollNotification as SessionPollNotification, Session};
 use crate::ui::{OverwriteModalTrigger, SaveModalResult, Ui};
 
 pub mod geometry;
@@ -59,7 +59,7 @@ static IMAGE_DATA_LOGOS_BLACK: &[u8] = include_bytes!("../resources/logos.png");
 static IMAGE_DATA_LOGOS_WHITE: &[u8] = include_bytes!("../resources/logos_white.png");
 static IMAGE_DATA_SUBDIGITAL_LOGO: &[u8] = include_bytes!("../resources/subdigital_grey.png");
 
-const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(1000);
+const DURATION_CAMERA_INTERPOLATION: Duration = Duration::from_millis(300);
 const DURATION_NOTIFICATION: Duration = Duration::from_millis(5000);
 const DURATION_AUTORUN_DELAY: Duration = Duration::from_millis(100);
 const BASE_WINDOW_TITLE: &str = "H.U.R.B.A.N. selector";
@@ -263,6 +263,9 @@ pub fn init_and_run(options: Options) -> ! {
             .expect("Failed to add ground plane mesh"),
     );
 
+    let mut offscreen_render_target_handles_to_remove: Vec<OffscreenRenderTargetHandle> =
+        Vec::with_capacity(4);
+
     let initial_camera_radius_max = compute_scene_camera_radius(scene_bounding_box);
     let mut camera = Camera::new(
         initial_window_width,
@@ -290,9 +293,6 @@ pub fn init_and_run(options: Options) -> ! {
     let time_start = Instant::now();
     let mut time = time_start;
 
-    let mut ui_want_capture_mouse = false;
-    let mut ui_want_capture_keyboard = false;
-
     #[allow(clippy::cognitive_complexity)]
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -310,8 +310,8 @@ pub fn init_and_run(options: Options) -> ! {
             winit::event::Event::MainEventsCleared => {
                 // Poll at the beginning of event processing, so that the
                 // pipeline UI is not lagging one frame behind.
-                session.poll(time, |callback_value| match callback_value {
-                    PollNotification::UsedValueAdded(var_ident, value) => match value {
+                session.poll(time, |poll_notification| match poll_notification {
+                    SessionPollNotification::UsedValueAdded(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
@@ -339,7 +339,7 @@ pub fn init_and_run(options: Options) -> ! {
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
 
-                    PollNotification::UsedValueRemoved(var_ident, value) => match value {
+                    SessionPollNotification::UsedValueRemoved(var_ident, value) => match value {
                         Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
@@ -367,7 +367,7 @@ pub fn init_and_run(options: Options) -> ! {
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
 
-                    PollNotification::UnusedValueAdded(var_ident, value) => match value {
+                    SessionPollNotification::UnusedValueAdded(var_ident, value) => match value {
                         Value::Mesh(mesh) => {
                             let gpu_mesh = GpuMesh::from_mesh(&mesh);
                             let gpu_mesh_id = renderer
@@ -395,7 +395,7 @@ pub fn init_and_run(options: Options) -> ! {
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
 
-                    PollNotification::UnusedValueRemoved(var_ident, value) => match value {
+                    SessionPollNotification::UnusedValueRemoved(var_ident, value) => match value {
                         Value::Mesh(_) => {
                             let path = ValuePath(var_ident, 0);
 
@@ -423,7 +423,7 @@ pub fn init_and_run(options: Options) -> ! {
                         _ => (/* Ignore other values, we don't display them in the viewport */),
                     },
 
-                    PollNotification::FinishedSuccessfully => {
+                    SessionPollNotification::FinishedSuccessfully => {
                         scene_bounding_box = BoundingBox::union(
                             scene_meshes
                                 .values()
@@ -458,7 +458,7 @@ pub fn init_and_run(options: Options) -> ! {
                         );
                     }
 
-                    PollNotification::FinishedWithError(error_message) => {
+                    SessionPollNotification::FinishedWithError(error_message) => {
                         notifications.push(
                             time,
                             NotificationLevel::Error,
@@ -469,6 +469,64 @@ pub fn init_and_run(options: Options) -> ! {
                         );
                     }
                 });
+
+                renderer.poll(|poll_notification| match poll_notification {
+                    RendererPollNotification::OffscreenRenderTargetReadReady(handle, read) => {
+                        let (width, height) = read.dimensions();
+                        let data = read.data();
+
+                        if let Some(mut path) = dirs::picture_dir() {
+                            path.push(format!(
+                                "hurban_selector-{}.png",
+                                chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
+                            ));
+
+                            match encode_and_write_png(
+                                &path,
+                                &data,
+                                width,
+                                height,
+                                read.bytes_per_row_unpadded(),
+                                read.bytes_per_row_padded(),
+                            ) {
+                                Ok(()) => {
+                                    let path_str = path.to_string_lossy();
+                                    log::info!("Screenshot saved in {}", path_str);
+                                    notifications.push(
+                                        time,
+                                        NotificationLevel::Info,
+                                        format!("Screenshot saved in {}", path_str),
+                                    );
+                                }
+                                Err(err) => {
+                                    log::error!("Failed writing screenshot: {}", err);
+                                    notifications.push(
+                                        time,
+                                        NotificationLevel::Error,
+                                        format!("Failed writing screenshot: {}", err),
+                                    );
+                                }
+                            }
+                        } else {
+                            log::error!("Failed to find picture directory");
+                            notifications.push(
+                                time,
+                                NotificationLevel::Warn,
+                                "Failed to find picture directory",
+                            );
+                        }
+
+                        offscreen_render_target_handles_to_remove.push(handle);
+                    }
+
+                    RendererPollNotification::OffscreenRenderTargetReadFailed(handle) => {
+                        offscreen_render_target_handles_to_remove.push(handle);
+                    }
+                });
+
+                for handle in offscreen_render_target_handles_to_remove.drain(..) {
+                    renderer.remove_offscreen_render_target(handle);
+                }
 
                 let input_state = input_manager.input_state();
                 let ui_frame = ui.prepare_frame(&window);
@@ -1031,57 +1089,7 @@ pub fn init_and_run(options: Options) -> ! {
                     }
 
                     screenshot_command_buffer.submit();
-
-                    let mapping = renderer.offscreen_render_target_data(&screenshot_render_target);
-                    let (width, height) = mapping.dimensions();
-                    let data = mapping.data();
-
-                    let actual_data_len = data.len();
-                    let expected_data_len = cast_usize(width)
-                        * cast_usize(height)
-                        * cast_usize(mem::size_of::<[u8; 4]>());
-                    if expected_data_len != actual_data_len {
-                        log::error!(
-                            "Screenshot data is {} bytes, but was expected to be {} bytes",
-                            actual_data_len,
-                            expected_data_len,
-                        );
-                    }
-
-                    if let Some(mut path) = dirs::picture_dir() {
-                        path.push(format!(
-                            "hurban_selector-{}.png",
-                            chrono::Local::now().format("%Y-%m-%d-%H-%M-%S"),
-                        ));
-
-                        let file = File::create(&path).expect("Failed to create PNG file");
-                        let mut png_encoder = png::Encoder::new(file, width, height);
-                        png_encoder.set_color(png::ColorType::RGBA);
-                        png_encoder.set_depth(png::BitDepth::Eight);
-
-                        png_encoder
-                            .write_header()
-                            .expect("Failed to write png header")
-                            .write_image_data(data)
-                            .expect("Failed to write png data");
-
-                        let path_str = path.to_string_lossy();
-                        log::info!("Screenshot saved in {}", path_str);
-                        notifications.push(
-                            time,
-                            NotificationLevel::Info,
-                            format!("Screenshot saved in {}", path_str),
-                        );
-                    } else {
-                        log::error!("Failed to find picture directory");
-                        notifications.push(
-                            time,
-                            NotificationLevel::Warn,
-                            "Failed to find picture directory",
-                        );
-                    }
-
-                    renderer.remove_offscreen_render_target(screenshot_render_target);
+                    renderer.request_offscreen_render_target_read(screenshot_render_target);
                 }
 
                 // -- Draw to viewport --
@@ -1203,10 +1211,8 @@ pub fn init_and_run(options: Options) -> ! {
         // `Clone` for events though, so buffering would be more complicated. In
         // practice, latent ui capture state shouldn't be an issue.
         ui.process_event(&event, &window);
-        ui_want_capture_keyboard = ui.want_capture_keyboard();
-        ui_want_capture_mouse = ui.want_capture_mouse();
 
-        input_manager.process_event(&event, ui_want_capture_keyboard, ui_want_capture_mouse);
+        input_manager.process_event(&event, ui.want_capture_keyboard(), ui.want_capture_mouse());
     });
 }
 
@@ -1265,6 +1271,43 @@ fn decode_image_rgba8_unorm(data: &[u8]) -> (Vec<u8>, u32, u32) {
     (rgba, width, height)
 }
 
+fn encode_and_write_png(
+    path: &Path,
+    data: &[u8],
+    width: u32,
+    height: u32,
+    bytes_per_row_unpadded: u32,
+    bytes_per_row_padded: u32,
+) -> Result<(), Box<dyn Error>> {
+    let file = File::create(path)?;
+
+    let mut png_encoder = png::Encoder::new(file, width, height);
+    png_encoder.set_color(png::ColorType::RGBA);
+    png_encoder.set_depth(png::BitDepth::Eight);
+
+    // The data we got back from the renderer can
+    // contain padding between rows. We iteratate over
+    // rows and make sure not to copy the padding bytes.
+    let bpr_unpadded = cast_usize(bytes_per_row_unpadded);
+    let bpr_padded = cast_usize(bytes_per_row_padded);
+
+    let mut png_writer = png_encoder
+        .write_header()?
+        .into_stream_writer_with_size(bpr_unpadded);
+
+    for chunk in data.chunks(bpr_padded) {
+        let mut bytes_written = 0;
+        while bytes_written < bpr_unpadded {
+            let written = png_writer.write(&chunk[bytes_written..bpr_unpadded])?;
+            bytes_written += written;
+        }
+    }
+
+    png_writer.finish()?;
+
+    Ok(())
+}
+
 fn compute_scene_camera_radius(scene_bounding_box: BoundingBox<f32>) -> f32 {
     scene_bounding_box.diagonal().norm() * 10.0
 }
@@ -1312,8 +1355,6 @@ fn compute_ground_plane_mesh(scene_bounding_box: &BoundingBox<f32>) -> Mesh {
 }
 
 fn change_window_title(window: &winit::window::Window, project_status: &ProjectStatus) {
-    use std::path::Path;
-
     let filename = match &project_status.path {
         Some(project_path) => Path::new(project_path)
             .file_name()

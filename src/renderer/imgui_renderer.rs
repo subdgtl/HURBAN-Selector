@@ -1,8 +1,5 @@
-use std::io;
-
 use imgui::internal::RawWrapper as _;
-
-use crate::include_shader;
+use zerocopy::AsBytes as _;
 
 use super::common;
 
@@ -37,12 +34,10 @@ impl ImguiRenderer {
         queue: &mut wgpu::Queue,
         options: Options,
     ) -> Result<ImguiRenderer, Error> {
-        let vs_words = wgpu::read_spirv(io::Cursor::new(SHADER_IMGUI_VERT))
-            .expect("Couldn't read pre-built SPIR-V");
-        let fs_words = wgpu::read_spirv(io::Cursor::new(SHADER_IMGUI_FRAG))
-            .expect("Couldn't read pre-built SPIR-V");
-        let vs_module = device.create_shader_module(&vs_words);
-        let fs_module = device.create_shader_module(&fs_words);
+        let vs_source = wgpu::util::make_spirv(SHADER_IMGUI_VERT);
+        let fs_source = wgpu::util::make_spirv(SHADER_IMGUI_FRAG);
+        let vs_module = device.create_shader_module(vs_source);
+        let fs_module = device.create_shader_module(fs_source);
 
         // Create transform uniform buffer bind group
         let transform_buffer_size = common::wgpu_size_of::<TransformUniforms>();
@@ -50,27 +45,30 @@ impl ImguiRenderer {
             label: None,
             size: transform_buffer_size,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
         });
 
         let transform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[wgpu::BindGroupLayoutEntry {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        // FIXME: @Optimization Provide this for runtime speedup
+                        min_binding_size: None,
+                    },
+                    count: None,
                 }],
             });
 
         let transform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &transform_bind_group_layout,
-            bindings: &[wgpu::Binding {
+            entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &transform_buffer,
-                    range: 0..transform_buffer_size,
-                },
+                resource: wgpu::BindingResource::Buffer(transform_buffer.slice(..)),
             }],
         });
 
@@ -78,7 +76,7 @@ impl ImguiRenderer {
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                bindings: &[
+                entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::FRAGMENT,
@@ -87,11 +85,13 @@ impl ImguiRenderer {
                             component_type: wgpu::TextureComponentType::Float,
                             multisampled: false,
                         },
+                        count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStage::FRAGMENT,
                         ty: wgpu::BindingType::Sampler { comparison: false },
+                        count: None,
                     },
                 ],
             });
@@ -99,14 +99,17 @@ impl ImguiRenderer {
         // Create render pipeline
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
             bind_group_layouts: &[&transform_bind_group_layout, &texture_bind_group_layout],
+            push_constant_ranges: &[],
         });
 
         // Setup render state: alpha-blending enabled, no face
         // culling, no depth testing
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            layout: &pipeline_layout,
+            label: None,
+            layout: Some(&pipeline_layout),
             vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &vs_module,
                 entry_point: "main",
@@ -173,7 +176,6 @@ impl ImguiRenderer {
                 height: font_atlas_image.height,
                 depth: 1,
             },
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -182,7 +184,6 @@ impl ImguiRenderer {
         });
 
         common::upload_texture_rgba8_unorm(
-            device,
             queue,
             &font_atlas_texture,
             font_atlas_image.width,
@@ -191,6 +192,7 @@ impl ImguiRenderer {
         );
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -199,7 +201,8 @@ impl ImguiRenderer {
             mipmap_filter: wgpu::FilterMode::Linear,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare: wgpu::CompareFunction::Always,
+            compare: None,
+            anisotropy_clamp: None,
         });
 
         let font_atlas_texture_resource = Texture::new(
@@ -247,7 +250,6 @@ impl ImguiRenderer {
                 height,
                 depth: 1,
             },
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -255,7 +257,7 @@ impl ImguiRenderer {
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
-        common::upload_texture_rgba8_unorm(device, queue, &texture, width, height, data);
+        common::upload_texture_rgba8_unorm(queue, &texture, width, height, data);
 
         let texture_resource = Texture::new(
             device,
@@ -270,11 +272,13 @@ impl ImguiRenderer {
         self.texture_resources.remove(id);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_ui(
         &mut self,
         color_needs_clearing: bool,
         clear_color: [f64; 4],
         device: &wgpu::Device,
+        queue: &mut wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
         draw_data: &imgui::DrawData,
@@ -311,20 +315,13 @@ impl ImguiRenderer {
             matrix
         };
 
-        let transform_transfer_buffer = common::create_buffer(
-            device,
-            wgpu::BufferUsage::COPY_SRC,
-            &[TransformUniforms {
-                matrix: transform_matrix,
-            }],
-        );
-
-        encoder.copy_buffer_to_buffer(
-            &transform_transfer_buffer,
-            0,
+        queue.write_buffer(
             &self.transform_buffer,
             0,
-            common::wgpu_size_of::<TransformUniforms>(),
+            [TransformUniforms {
+                matrix: transform_matrix,
+            }]
+            .as_bytes(),
         );
 
         // Will project scissor/clipping rectangles into framebuffer space
@@ -351,17 +348,18 @@ impl ImguiRenderer {
             color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: color_attachment,
                 resolve_target: None,
-                load_op: if color_needs_clearing {
-                    wgpu::LoadOp::Clear
-                } else {
-                    wgpu::LoadOp::Load
-                },
-                store_op: wgpu::StoreOp::Store,
-                clear_color: wgpu::Color {
-                    r: clear_color[0],
-                    g: clear_color[1],
-                    b: clear_color[2],
-                    a: clear_color[3],
+                ops: wgpu::Operations {
+                    load: if color_needs_clearing {
+                        wgpu::LoadOp::Clear(wgpu::Color {
+                            r: clear_color[0],
+                            g: clear_color[1],
+                            b: clear_color[2],
+                            a: clear_color[3],
+                        })
+                    } else {
+                        wgpu::LoadOp::Load
+                    },
+                    store: true,
                 },
             }],
             depth_stencil_attachment: None,
@@ -389,8 +387,8 @@ impl ImguiRenderer {
         }
 
         for (draw_list_index, draw_list) in draw_data.draw_lists().enumerate() {
-            rpass.set_vertex_buffer(0, &self.vertex_buffers[draw_list_index], 0, 0);
-            rpass.set_index_buffer(&self.index_buffers[draw_list_index], 0, 0);
+            rpass.set_vertex_buffer(0, self.vertex_buffers[draw_list_index].slice(..));
+            rpass.set_index_buffer(self.index_buffers[draw_list_index].slice(..));
 
             let mut idx_start = 0;
             for cmd in draw_list.commands() {
@@ -421,7 +419,7 @@ impl ImguiRenderer {
                             let texture = self
                                 .texture_resources
                                 .get(texture_id)
-                                .ok_or_else(|| Error::BadTexture(texture_id))?;
+                                .ok_or(Error::BadTexture(texture_id))?;
 
                             rpass.set_bind_group(1, texture.bind_group(), &[]);
                             rpass.set_scissor_rect(
@@ -462,17 +460,17 @@ impl Texture {
         texture: &wgpu::Texture,
         sampler: &wgpu::Sampler,
     ) -> Self {
-        let view = texture.create_default_view();
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout,
-            bindings: &[
-                wgpu::Binding {
+            entries: &[
+                wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(&view),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(sampler),
                 },

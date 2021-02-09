@@ -293,7 +293,7 @@ fn ray_intersects_triangle(
     let u_parameter = inverse_determinant * tangent_vector.dot(&perpendicular_vector);
     // The ray intersects the triangle plane outside of the triangle -> the ray
     // doesn't intersect the triangle
-    if u_parameter < 0.0 || u_parameter > 1.0 {
+    if !(0.0..=1.0).contains(&u_parameter) {
         return None;
     }
     let q_vector = tangent_vector.cross(&edge_1_vector);
