@@ -3,9 +3,7 @@ use std::f32;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crate::convert::{
-    cast_i32, cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32,
-};
+use crate::convert::{cast_u8_color_to_f32, clamp_cast_i32_to_u32, clamp_cast_u32_to_i32};
 use crate::imgui_winit_support::{HiDpiMode, WinitPlatform};
 use crate::interpreter::{ast, LogMessageLevel, ParamRefinement, Ty};
 use crate::notifications::{NotificationLevel, Notifications};
@@ -1447,24 +1445,26 @@ impl<'a> UiFrame<'a> {
                                         ParamRefinement::Int(param_refinement_int) => {
                                             let mut int_lit = arg.unwrap_literal().unwrap_int();
 
-                                            let mut drag_int = ui
-                                                                .drag_int(&input_label, &mut int_lit)
-                                                                .speed(DRAG_SPEED);
+                                            let mut drag_int = imgui::Drag::<i32>::new(&input_label)
+                                                .speed(DRAG_SPEED);
 
-                                            // FIXME: Report bug: both, min and max must be set
-                                            if let Some(min_value) = param_refinement_int.min_value {
-                                                drag_int = drag_int.min(min_value);
-                                            } else {
-                                                drag_int = drag_int.min(i32::min_value());
+                                            match (
+                                                param_refinement_int.min_value,
+                                                param_refinement_int.max_value,
+                                            ) {
+                                                (Some(min_value), Some(max_value)) => {
+                                                    drag_int = drag_int.range(min_value..=max_value);
+                                                }
+                                                (Some(min_value), None) => {
+                                                    drag_int = drag_int.range(min_value..);
+                                                }
+                                                (None, Some(max_value)) => {
+                                                    drag_int = drag_int.range(..=max_value);
+                                                }
+                                                (None, None) => (),
                                             }
 
-                                            if let Some(max_value) = param_refinement_int.max_value {
-                                                drag_int = drag_int.max(max_value);
-                                            } else {
-                                                drag_int = drag_int.max(i32::max_value());
-                                            }
-
-                                            if drag_int.build() {
+                                            if drag_int.build(ui, &mut int_lit) {
                                                 int_lit = param_refinement_int.clamp(int_lit);
                                                 change = Some((
                                                     stmt_index,
@@ -1474,28 +1474,29 @@ impl<'a> UiFrame<'a> {
                                             }
                                         }
                                         ParamRefinement::Uint(param_refinement_uint) => {
-                                            let uint_lit = arg.unwrap_literal().unwrap_uint();
-                                            let mut int_value = clamp_cast_u32_to_i32(uint_lit);
+                                            let mut uint_lit = arg.unwrap_literal().unwrap_uint();
 
-                                            let mut drag_int = ui
-                                                                .drag_int(&input_label, &mut int_value)
-                                                                .speed(DRAG_SPEED);
+                                            let mut drag_uint = imgui::Drag::<u32>::new(&input_label)
+                                                .speed(DRAG_SPEED);
 
-                                            if let Some(min_value) = param_refinement_uint.min_value {
-                                                drag_int = drag_int.min(cast_i32(min_value));
-                                            } else {
-                                                drag_int = drag_int.min(0);
+                                            match (
+                                                param_refinement_uint.min_value,
+                                                param_refinement_uint.max_value,
+                                            ) {
+                                                (Some(min_value), Some(max_value)) => {
+                                                    drag_uint = drag_uint.range(min_value..=max_value);
+                                                }
+                                                (Some(min_value), None) => {
+                                                    drag_uint = drag_uint.range(min_value..);
+                                                }
+                                                (None, Some(max_value)) => {
+                                                    drag_uint = drag_uint.range(..=max_value);
+                                                }
+                                                (None, None) => (),
                                             }
 
-                                            if let Some(max_value) = param_refinement_uint.max_value {
-                                                drag_int = drag_int.max(cast_i32(max_value));
-                                            } else {
-                                                drag_int = drag_int.max(i32::max_value());
-                                            }
-
-                                            if drag_int.build() {
-                                                let uint_value = clamp_cast_i32_to_u32(int_value);
-                                                let uint_value = param_refinement_uint.clamp(uint_value);
+                                            if drag_uint.build(ui, &mut uint_lit) {
+                                                let uint_value = param_refinement_uint.clamp(uint_lit);
                                                 change = Some((
                                                     stmt_index,
                                                     arg_index,
@@ -1506,31 +1507,32 @@ impl<'a> UiFrame<'a> {
                                         ParamRefinement::Float(param_refinement_float) => {
                                             let mut float_lit = arg.unwrap_literal().unwrap_float();
 
-                                            let mut drag_float = ui
-                                                                .drag_float(&input_label, &mut float_lit)
-                                                                .speed(DRAG_SPEED)
-                                                                .power(2.0);
+                                            let mut drag_float = imgui::Drag::<f32>::new(&input_label)
+                                                .speed(DRAG_SPEED);
 
-                                            if let Some(min_value) = param_refinement_float.min_value {
-                                                drag_float = drag_float.min(min_value);
-                                            } else {
-                                                drag_float = drag_float.min(f32::MIN);
+                                            match (
+                                                param_refinement_float.min_value,
+                                                param_refinement_float.max_value,
+                                            ) {
+                                                (Some(min_value), Some(max_value)) => {
+                                                    drag_float = drag_float.range(min_value..=max_value);
+                                                }
+                                                (Some(min_value), None) => {
+                                                    drag_float = drag_float.range(min_value..);
+                                                }
+                                                (None, Some(max_value)) => {
+                                                    drag_float = drag_float.range(..=max_value);
+                                                }
+                                                (None, None) => (),
                                             }
 
-                                            if let Some(max_value) = param_refinement_float.max_value {
-                                                drag_float = drag_float.max(max_value);
-                                            } else {
-                                                drag_float = drag_float.max(f32::MAX);
-                                            }
-
-                                            if drag_float
-                                                .build()
+                                            if drag_float.build(ui, &mut float_lit)
                                             {
-                                                float_lit = param_refinement_float.clamp(float_lit);
+                                                let float_value = param_refinement_float.clamp(float_lit);
                                                 change = Some((
                                                     stmt_index,
                                                     arg_index,
-                                                    ast::Expr::Lit(ast::LitExpr::Float(float_lit)),
+                                                    ast::Expr::Lit(ast::LitExpr::Float(float_value)),
                                                 ));
                                             }
                                         }
@@ -1538,34 +1540,33 @@ impl<'a> UiFrame<'a> {
                                             let mut float2_lit =
                                                 arg.unwrap_literal().unwrap_float2();
 
-                                            let mut drag_float2 = ui
-                                                                .drag_float2(&input_label, &mut float2_lit)
-                                                                .speed(DRAG_SPEED)
-                                                                .power(2.0);
+                                            let mut drag_float2 = imgui::Drag::<f32>::new(&input_label)
+                                                .speed(DRAG_SPEED);
 
-                                            if let Some(min_value) =
-                                                param_refinement_float2.min_value {
-                                                drag_float2 = drag_float2.min(min_value);
-                                            } else {
-                                                drag_float2 = drag_float2.min(f32::MIN);
+                                            match (
+                                                param_refinement_float2.min_value,
+                                                param_refinement_float2.max_value,
+                                            ) {
+                                                (Some(min_value), Some(max_value)) => {
+                                                    drag_float2 = drag_float2.range(min_value..=max_value);
+                                                }
+                                                (Some(min_value), None) => {
+                                                    drag_float2 = drag_float2.range(min_value..);
+                                                }
+                                                (None, Some(max_value)) => {
+                                                    drag_float2 = drag_float2.range(..=max_value);
+                                                }
+                                                (None, None) => (),
                                             }
 
-                                            if let Some(max_value) =
-                                                param_refinement_float2.max_value {
-                                                drag_float2 = drag_float2.max(max_value);
-                                            } else {
-                                                drag_float2 = drag_float2.max(f32::MAX);
-                                            }
-
-                                            if drag_float2
-                                                .build()
+                                            if drag_float2.build_array(ui, &mut float2_lit)
                                             {
-                                                float2_lit = param_refinement_float2.clamp(float2_lit);
+                                                let float2_value = param_refinement_float2.clamp(float2_lit);
                                                 change = Some((
                                                     stmt_index,
                                                     arg_index,
                                                     ast::Expr::Lit(ast::LitExpr::Float2(
-                                                        float2_lit,
+                                                        float2_value,
                                                     )),
                                                 ));
                                             }
@@ -1574,34 +1575,33 @@ impl<'a> UiFrame<'a> {
                                             let mut float3_lit =
                                                 arg.unwrap_literal().unwrap_float3();
 
-                                            let mut drag_float3 = ui
-                                                .drag_float3(&input_label, &mut float3_lit)
-                                                .speed(DRAG_SPEED)
-                                                .power(2.0);
+                                            let mut drag_float3 = imgui::Drag::<f32>::new(&input_label)
+                                                .speed(DRAG_SPEED);
 
-                                            if let Some(min_value)=
-                                                param_refinement_float3.min_value {
-                                                drag_float3 = drag_float3.min(min_value);
-                                            } else {
-                                                drag_float3 = drag_float3.min(f32::MIN);
+                                            match (
+                                                param_refinement_float3.min_value,
+                                                param_refinement_float3.max_value,
+                                            ) {
+                                                (Some(min_value), Some(max_value)) => {
+                                                    drag_float3 = drag_float3.range(min_value..=max_value);
+                                                }
+                                                (Some(min_value), None) => {
+                                                    drag_float3 = drag_float3.range(min_value..);
+                                                }
+                                                (None, Some(max_value)) => {
+                                                    drag_float3 = drag_float3.range(..=max_value);
+                                                }
+                                                (None, None) => (),
                                             }
 
-                                            if let Some(max_value) =
-                                                param_refinement_float3.max_value{
-                                                drag_float3 = drag_float3.max(max_value);
-                                            } else {
-                                                drag_float3 = drag_float3.max(f32::MAX);
-                                            }
-
-                                            if drag_float3
-                                                .build()
+                                            if drag_float3.build_array(ui, &mut float3_lit)
                                             {
-                                                float3_lit = param_refinement_float3.clamp(float3_lit);
+                                                let float3_value = param_refinement_float3.clamp(float3_lit);
                                                 change = Some((
                                                     stmt_index,
                                                     arg_index,
                                                     ast::Expr::Lit(ast::LitExpr::Float3(
-                                                        float3_lit,
+                                                        float3_value,
                                                     )),
                                                 ));
                                             }

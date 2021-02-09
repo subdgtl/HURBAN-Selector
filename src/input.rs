@@ -213,7 +213,7 @@ impl InputManager {
                 }
 
                 winit::event::WindowEvent::MouseWheel { delta, .. } => match delta {
-                    winit::event::MouseScrollDelta::PixelDelta(winit::dpi::LogicalPosition {
+                    winit::event::MouseScrollDelta::PixelDelta(winit::dpi::PhysicalPosition {
                         y,
                         ..
                     }) => {
