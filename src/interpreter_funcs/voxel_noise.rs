@@ -175,12 +175,12 @@ impl Func for FuncVoxelNoise {
         let voxel_dimensions = Vector3::from(args[2].unwrap_float3());
         let noise_scale = args[3].unwrap_float();
         let time_offset = args[4].unwrap_float();
-        let volume_range_raw = args[5].unwrap_float2();
+        let volume_value_range_raw = args[5].unwrap_float2();
         let marching_cubes = args[6].unwrap_boolean();
         let error_if_large = args[7].unwrap_boolean();
         let analyze_mesh = args[8].unwrap_boolean();
 
-        let meshing_range = volume_range_raw[0]..=volume_range_raw[1];
+        let meshing_range = volume_value_range_raw[0]..=volume_value_range_raw[1];
 
         if voxel_dimensions.iter().any(|dimension| *dimension <= 0.0) {
             let error = FuncError::new(FuncVoxelNoiseError::VoxelDimensionsZeroOrLess);
