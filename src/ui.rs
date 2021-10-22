@@ -2273,6 +2273,8 @@ fn file_input(
                     buffer.push_str(&stripped_path.to_string_lossy());
                 }
                 Err(_) => {
+                    // FIXME: @Correctness Path stripping never works unless the
+                    // models are located in the current directory.
                     buffer.push_str(&absolute_path.to_string_lossy());
                 }
             }
