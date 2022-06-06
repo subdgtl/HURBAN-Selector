@@ -34,7 +34,7 @@ fxhash = "0.2.1"
 image = "0.23.12"
 imgui = "0.6.1"
 log = "0.4.13"
-nalgebra = { version = "0.24.0", features = ["serde-serialize"] }
+nalgebra = { version = "0.27.1", features = ["serde-serialize"] }
 noise = "0.7.0"
 num-traits = "0.2.14"
 png = "0.16.8"
