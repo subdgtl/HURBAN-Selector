@@ -11,7 +11,9 @@ use crate::interpreter::{
     BooleanParamRefinement, Float3ParamRefinement, Func, FuncError, FuncFlags, FuncInfo,
     LogMessage, ParamInfo, ParamRefinement, Ty, UintParamRefinement, Value,
 };
-use crate::mesh::voxel_cloud::{self, FalloffFunction, ScalarField};
+use crate::mesh::voxel_cloud::{
+    self, BinaryVoxelFunction, FalloffFunction, ScalarField, UnaryVoxelFunction,
+};
 
 const VOXEL_COUNT_THRESHOLD: u32 = 100_000;
 
@@ -105,6 +107,7 @@ impl Func for FuncBooleanIntersection {
                 }),
                 optional: false,
             },
+            // FIXME: Consider changing to volume range for consistency.
             ParamInfo {
                 name: "Grow",
                 description: "The voxelization algorithm puts voxels on the surface of \
@@ -219,16 +222,38 @@ impl Func for FuncBooleanIntersection {
         let mut voxel_cloud1 = ScalarField::from_mesh(mesh1, &voxel_dimensions, 0.0, growth_u32);
         let mut voxel_cloud2 = ScalarField::from_mesh(mesh2, &voxel_dimensions, 0.0, growth_u32);
 
-        voxel_cloud1.compute_distance_field(&(0.0..=0.0), FalloffFunction::Linear(1.0));
-        voxel_cloud2.compute_distance_field(&(0.0..=0.0), FalloffFunction::Linear(1.0));
+        let volume_value_range = 0.0..=0.0;
 
-        let meshing_range = if fill {
-            (Bound::Unbounded, Bound::Included(growth_f32))
-        } else {
-            (Bound::Included(-growth_f32), Bound::Included(growth_f32))
-        };
+        voxel_cloud1.compute_distance_field(&volume_value_range, 1.0, FalloffFunction::Linear);
+        voxel_cloud2.compute_distance_field(&volume_value_range, 1.0, FalloffFunction::Linear);
 
-        voxel_cloud1.boolean_intersection(&meshing_range, &voxel_cloud2, &meshing_range);
+        if fill {
+            let mut voxel_cloud1_inside =
+                voxel_cloud1.extract_voxels_inside_volumes(&volume_value_range);
+
+            let mut voxel_cloud2_inside =
+                voxel_cloud2.extract_voxels_inside_volumes(&volume_value_range);
+
+            voxel_cloud1_inside.apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(0.0));
+            voxel_cloud2_inside.apply_unary_voxel_function(UnaryVoxelFunction::SetConstant(0.0));
+
+            voxel_cloud1.apply_binary_voxel_function(
+                &voxel_cloud1_inside,
+                BinaryVoxelFunction::ReplaceIfValue,
+            );
+            voxel_cloud2.apply_binary_voxel_function(
+                &voxel_cloud2_inside,
+                BinaryVoxelFunction::ReplaceIfValue,
+            );
+        }
+
+        let meshing_range = (Bound::Included(-growth_f32), Bound::Included(growth_f32));
+
+        voxel_cloud1.apply_binary_voxel_function(
+            &voxel_cloud2,
+            BinaryVoxelFunction::BooleanAnd(meshing_range, meshing_range),
+        );
+        // voxel_cloud1.boolean_intersection(&meshing_range, &voxel_cloud2, &meshing_range);
 
         if !voxel_cloud1.contains_voxels_within_range(&meshing_range) {
             let error = FuncError::new(FuncBooleanIntersectionError::EmptyScalarField);
