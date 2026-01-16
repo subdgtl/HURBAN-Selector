@@ -923,69 +923,88 @@ impl ScalarField {
                         ),
                     ];
 
+                    // Helper function to compute interpolation factor based on scalar field values
+                    let compute_lerp_factor = |corner_a_idx: usize, corner_b_idx: usize| -> f32 {
+                        let value_a = self.value_at_absolute_voxel_coordinate(
+                            &corners_absolute_coordinates[corner_a_idx],
+                        );
+                        let value_b = self.value_at_absolute_voxel_coordinate(
+                            &corners_absolute_coordinates[corner_b_idx],
+                        );
+
+                        match (value_a, value_b) {
+                            (Some(a), Some(b)) => {
+                                // Find where the isosurface (value = 0) crosses the edge
+                                // Only interpolate if the values have opposite signs (actual crossing)
+                                // Otherwise default to 0.5 (edge midpoint)
+                                if (a > 0.0 && b < 0.0) || (a < 0.0 && b > 0.0) {
+                                    // Values have opposite signs - compute where crossing occurs
+                                    let denominator = a - b;
+                                    if denominator.abs() < 1e-6 {
+                                        0.5
+                                    } else {
+                                        (a / denominator).clamp(0.0, 1.0)
+                                    }
+                                } else {
+                                    // No sign change - use midpoint
+                                    0.5
+                                }
+                            }
+                            _ => 0.5,
+                        }
+                    };
+
                     // These points will become vertices of mesh patches forming
                     // the outer envelope of the scalar field.
                     let edge_midpoints: [Point3<f32>; 12] = [
-                        Point3::from(
-                            corners_cartesian_coordinates[0]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[1].coords, 0.5),
-                        ), //e0
-                        Point3::from(
-                            corners_cartesian_coordinates[1]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[2].coords, 0.5),
-                        ), //e1
-                        Point3::from(
-                            corners_cartesian_coordinates[2]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[3].coords, 0.5),
-                        ), //e2
-                        Point3::from(
-                            corners_cartesian_coordinates[3]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[0].coords, 0.5),
-                        ), //e3
-                        Point3::from(
-                            corners_cartesian_coordinates[4]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[5].coords, 0.5),
-                        ), //e4
-                        Point3::from(
-                            corners_cartesian_coordinates[5]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[6].coords, 0.5),
-                        ), //e5
-                        Point3::from(
-                            corners_cartesian_coordinates[6]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[7].coords, 0.5),
-                        ), //e6
-                        Point3::from(
-                            corners_cartesian_coordinates[7]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[4].coords, 0.5),
-                        ), //e7
-                        Point3::from(
-                            corners_cartesian_coordinates[0]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[4].coords, 0.5),
-                        ), //e8
-                        Point3::from(
-                            corners_cartesian_coordinates[1]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[5].coords, 0.5),
-                        ), //e9
-                        Point3::from(
-                            corners_cartesian_coordinates[2]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[6].coords, 0.5),
-                        ), //e10
-                        Point3::from(
-                            corners_cartesian_coordinates[3]
-                                .coords
-                                .lerp(&corners_cartesian_coordinates[7].coords, 0.5),
-                        ), //e11
+                        Point3::from(corners_cartesian_coordinates[0].coords.lerp(
+                            &corners_cartesian_coordinates[1].coords,
+                            compute_lerp_factor(0, 1),
+                        )), //e0
+                        Point3::from(corners_cartesian_coordinates[1].coords.lerp(
+                            &corners_cartesian_coordinates[2].coords,
+                            compute_lerp_factor(1, 2),
+                        )), //e1
+                        Point3::from(corners_cartesian_coordinates[2].coords.lerp(
+                            &corners_cartesian_coordinates[3].coords,
+                            compute_lerp_factor(2, 3),
+                        )), //e2
+                        Point3::from(corners_cartesian_coordinates[3].coords.lerp(
+                            &corners_cartesian_coordinates[0].coords,
+                            compute_lerp_factor(3, 0),
+                        )), //e3
+                        Point3::from(corners_cartesian_coordinates[4].coords.lerp(
+                            &corners_cartesian_coordinates[5].coords,
+                            compute_lerp_factor(4, 5),
+                        )), //e4
+                        Point3::from(corners_cartesian_coordinates[5].coords.lerp(
+                            &corners_cartesian_coordinates[6].coords,
+                            compute_lerp_factor(5, 6),
+                        )), //e5
+                        Point3::from(corners_cartesian_coordinates[6].coords.lerp(
+                            &corners_cartesian_coordinates[7].coords,
+                            compute_lerp_factor(6, 7),
+                        )), //e6
+                        Point3::from(corners_cartesian_coordinates[7].coords.lerp(
+                            &corners_cartesian_coordinates[4].coords,
+                            compute_lerp_factor(7, 4),
+                        )), //e7
+                        Point3::from(corners_cartesian_coordinates[0].coords.lerp(
+                            &corners_cartesian_coordinates[4].coords,
+                            compute_lerp_factor(0, 4),
+                        )), //e8
+                        Point3::from(corners_cartesian_coordinates[1].coords.lerp(
+                            &corners_cartesian_coordinates[5].coords,
+                            compute_lerp_factor(1, 5),
+                        )), //e9
+                        Point3::from(corners_cartesian_coordinates[2].coords.lerp(
+                            &corners_cartesian_coordinates[6].coords,
+                            compute_lerp_factor(2, 6),
+                        )), //e10
+                        Point3::from(corners_cartesian_coordinates[3].coords.lerp(
+                            &corners_cartesian_coordinates[7].coords,
+                            compute_lerp_factor(3, 7),
+                        )), //e11
                     ];
 
                     // Boolean vector marking each of the voxels either volume
@@ -1046,15 +1065,14 @@ impl ScalarField {
                         // FIXME: @Optimization remove unused vertices already
                         // here and generate the mesh without the need of
                         // removing orphans.
-                        Mesh::from_triangle_faces_with_vertices_and_computed_normals_remove_orphans(
-                            marching_cubes_faces
-                                .iter()
-                                .map(|(a, b, c)| (u32::from(*a), u32::from(*b), u32::from(*c))),
-                            edge_midpoints.iter().copied(),
-                            // Sharp is more efficient and gets lost by welding anyway
-                            NormalStrategy::Sharp,
-                        ),
-                    );
+                            Mesh::from_triangle_faces_with_vertices_and_computed_normals(
+                                marching_cubes_faces
+                                    .iter()
+                                    .map(|(a, b, c)| (u32::from(*a), u32::from(*b), u32::from(*c))),
+                                edge_midpoints.iter().copied(),
+                                NormalStrategy::Sharp,
+                            ),
+                        );
                     }
                 }
             }
