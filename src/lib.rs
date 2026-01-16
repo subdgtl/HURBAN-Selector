@@ -666,7 +666,7 @@ pub fn init_and_run(options: Options) -> ! {
                                 .to_str()
                                 .expect("Failed to convert save path to str.");
 
-                            project_status.save(&save_path);
+                            project_status.save(save_path);
                             change_window_title(&window, &project_status);
                             notifications.push(
                                 time,
@@ -829,7 +829,7 @@ pub fn init_and_run(options: Options) -> ! {
                                                 .to_str()
                                                 .expect("Failed to convert save path to str.");
 
-                                            project_status.save(&save_path);
+                                            project_status.save(save_path);
                                             project_status.new_requested = true;
                                         }
                                         project::NextAction::OpenProject => {
@@ -838,7 +838,7 @@ pub fn init_and_run(options: Options) -> ! {
                                                 .to_str()
                                                 .expect("Failed to convert save path to str.");
 
-                                            project_status.save(&save_path);
+                                            project_status.save(save_path);
                                             project_status.open_requested = true
                                         }
                                     },

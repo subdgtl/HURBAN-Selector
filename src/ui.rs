@@ -122,7 +122,7 @@ impl Ui {
     /// Initializes imgui with default settings for our application.
     pub fn new(window: &winit::window::Window, theme: Theme) -> Self {
         let mut imgui_context = imgui::Context::create();
-        let mut style = imgui_context.style_mut();
+        let style = imgui_context.style_mut();
         let mut colors = Colors {
             special_button_text: style[imgui::StyleColor::Text],
             special_button: [0.2, 0.7, 0.3, 1.0],
@@ -290,7 +290,7 @@ impl Ui {
         }
     }
 
-    pub fn fonts(&mut self) -> imgui::FontAtlasRefMut {
+    pub fn fonts(&mut self) -> imgui::FontAtlasRefMut<'_> {
         self.imgui_context.fonts()
     }
 
@@ -300,10 +300,10 @@ impl Ui {
         window: &winit::window::Window,
     ) {
         self.imgui_winit_platform
-            .handle_event(self.imgui_context.io_mut(), window, &event);
+            .handle_event(self.imgui_context.io_mut(), window, event);
     }
 
-    pub fn prepare_frame(&mut self, window: &winit::window::Window) -> UiFrame {
+    pub fn prepare_frame(&mut self, window: &winit::window::Window) -> UiFrame<'_> {
         self.imgui_winit_platform
             .prepare_frame(self.imgui_context.io_mut(), window)
             .expect("Failed to start imgui frame");
@@ -1997,7 +1997,7 @@ impl<'a> UiFrame<'a> {
         let function_added = function_clicked.is_some();
 
         if let Some(func_ident) = function_clicked {
-            let func = &function_table[&func_ident];
+            let func = &function_table[func_ident];
             let mut args = Vec::with_capacity(func.param_info().len());
 
             for param_info in func.param_info() {
@@ -2286,7 +2286,7 @@ fn file_input(
     ui.same_line(input_position);
     ui.set_next_item_width(ui.calc_item_width() - input_position);
 
-    ui.input_text(&label, buffer).read_only(true).build();
+    ui.input_text(label, buffer).read_only(true).build();
 
     group_token.end(ui);
 

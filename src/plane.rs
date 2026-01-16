@@ -28,7 +28,7 @@ impl Plane {
     ) -> Plane {
         // Compute plane normal, then use it to compute certainly
         // perpendicular Y vector.
-        let plane_normal = x_vector.cross(&y_vector_hint);
+        let plane_normal = x_vector.cross(y_vector_hint);
 
         assert!(
             plane_normal != Vector3::zeros(),
@@ -36,7 +36,7 @@ impl Plane {
         );
 
         // Make sure the Y vector is perpendicular to the leading X vector.
-        let y_vector = plane_normal.cross(&x_vector);
+        let y_vector = plane_normal.cross(x_vector);
 
         Plane {
             origin: *origin,
@@ -56,7 +56,7 @@ impl Plane {
             "Can't create a plane defined by a zero normal vector"
         );
         let lead_vector =
-            if approx::relative_eq!(Vector3::new(1.0, 0.0, 0.0).dot(&normal).abs(), 1.0) {
+            if approx::relative_eq!(Vector3::new(1.0, 0.0, 0.0).dot(normal).abs(), 1.0) {
                 Vector3::new(0.0, 1.0, 0.0)
             } else {
                 Vector3::new(1.0, 0.0, 0.0)

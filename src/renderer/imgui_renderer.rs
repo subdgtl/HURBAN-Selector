@@ -8,7 +8,7 @@ static SHADER_IMGUI_FRAG: &[u8] = include_shader!("imgui.frag.spv");
 
 #[derive(Debug, Clone)]
 pub enum Error {
-    BadTexture(imgui::TextureId),
+    BadTexture,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -268,9 +268,7 @@ impl ImguiRenderer {
         self.texture_resources.insert(texture_resource)
     }
 
-    pub fn remove_texture(&mut self, id: imgui::TextureId) {
-        self.texture_resources.remove(id);
-    }
+    // removed unused `remove_texture`; texture resources are managed internally
 
     #[allow(clippy::too_many_arguments)]
     pub fn draw_ui(
@@ -419,7 +417,7 @@ impl ImguiRenderer {
                             let texture = self
                                 .texture_resources
                                 .get(texture_id)
-                                .ok_or(Error::BadTexture(texture_id))?;
+                                .ok_or(Error::BadTexture)?;
 
                             rpass.set_bind_group(1, texture.bind_group(), &[]);
                             rpass.set_scissor_rect(

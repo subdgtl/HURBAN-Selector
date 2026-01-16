@@ -634,7 +634,7 @@ mod tests {
         let path = "tests/fixtures/valid.obj";
 
         importer
-            .import_obj(&path)
+            .import_obj(path)
             .expect("Valid obj should be loaded");
     }
 
@@ -652,7 +652,7 @@ mod tests {
         let path = "tests/fixtures/valid.obj";
 
         importer
-            .import_obj(&path)
+            .import_obj(path)
             .expect("Valid obj should be loaded");
     }
 
@@ -677,7 +677,7 @@ mod tests {
             }];
         }
         let path = "tests/fixtures/valid.obj";
-        let file_metadata = file_metadata(&path);
+        let file_metadata = file_metadata(path);
         let mut cache = MockObjCache::new();
         cache
             .expect_get_if_not_modified()
@@ -700,7 +700,7 @@ mod tests {
         let mut importer = Importer::new(cache);
 
         importer
-            .import_obj(&path)
+            .import_obj(path)
             .expect("Valid obj should be loaded");
     }
 }

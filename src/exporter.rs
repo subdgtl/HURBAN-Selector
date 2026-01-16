@@ -24,7 +24,7 @@ where
 {
     // usize to u32 conversion can fail on 16-bit systems, in which case we'll
     // use the max value of usize. This probably won't ever happen.
-    let decimal_precision = usize::try_from(decimal_precision).unwrap_or(usize::max_value());
+    let decimal_precision = usize::try_from(decimal_precision).unwrap_or(usize::MAX);
 
     // OBJ indices are global, meaning a face from object "o2" can reference a
     // vertex from "o1". We maintain proper namespacing between the exported

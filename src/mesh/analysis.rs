@@ -18,7 +18,7 @@ pub fn find_closest_point(position: &Point3<f32>, mesh: &Mesh) -> Option<Point3<
     let mut closest = vertices[0];
     let mut closest_distance_squared = na::distance_squared(position, &closest);
     for point in &vertices[1..] {
-        let distance_squared = na::distance_squared(position, &point);
+        let distance_squared = na::distance_squared(position, point);
         if distance_squared < closest_distance_squared {
             closest = *point;
             closest_distance_squared = distance_squared;
@@ -483,7 +483,9 @@ mod tests {
 
     use super::*;
 
-    fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    type FacesVertices = (Vec<(u32, u32, u32)>, Vec<Point3<f32>>);
+
+    fn quad() -> FacesVertices {
         #[rustfmt::skip]
         let vertices = vec![
             Point3::new(-1.0, -1.0,  0.0),
@@ -593,7 +595,7 @@ mod tests {
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, vertex_normals)
     }
 
-    fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn torus() -> FacesVertices {
         let vertices = vec![
             Point3::new(0.566987, -1.129e-11, 0.25),
             Point3::new(-0.716506, 1.241025, 0.25),
@@ -630,7 +632,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn double_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn double_torus() -> FacesVertices {
         let vertices = vec![
             Point3::new(5.566988, -1.129e-11, 0.25),
             Point3::new(4.283494, 1.241025, 0.25),
@@ -686,7 +688,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn triple_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn triple_torus() -> FacesVertices {
         let vertices = vec![
             Point3::new(15.566987, -1.129e-11, 0.25),
             Point3::new(14.283494, 1.241025, 0.25),
@@ -761,7 +763,7 @@ mod tests {
         (faces, vertices)
     }
 
-    pub fn non_manifold_shape() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    pub fn non_manifold_shape() -> FacesVertices {
         let vertices = vec![
             Point3::new(-1.0, -1.0, 0.0),
             Point3::new(1.0, -1.0, 0.0),
@@ -846,7 +848,7 @@ mod tests {
         Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertex_positions, vertex_normals)
     }
 
-    fn tessellated_triangle() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn tessellated_triangle() -> FacesVertices {
         let vertices = vec![
             Point3::new(-2.0, -2.0, 0.0),
             Point3::new(0.0, -2.0, 0.0),
@@ -861,7 +863,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn tessellated_triangle_with_island() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn tessellated_triangle_with_island() -> FacesVertices {
         let vertices = vec![
             Point3::new(-2.0, -2.0, 0.0),
             Point3::new(0.0, -2.0, 0.0),
@@ -949,11 +951,11 @@ mod tests {
         assert_eq!(oriented_edges_with_valency_2.len(), 2);
 
         for o_e in oriented_edges_with_valency_1_correct {
-            assert!(oriented_edges_with_valency_1.iter().any(|e| *e == o_e));
+            assert!(oriented_edges_with_valency_1.contains(&o_e));
         }
 
         for o_e in oriented_edges_with_valency_2_correct {
-            assert!(oriented_edges_with_valency_2.iter().any(|e| *e == o_e));
+            assert!(oriented_edges_with_valency_2.contains(&o_e));
         }
     }
 
@@ -999,7 +1001,7 @@ mod tests {
         let oriented_edges_manifold_check: Vec<_> = manifold_edges(&edge_sharing_map).collect();
 
         for o_e in oriented_edges_manifold_correct {
-            assert!(oriented_edges_manifold_check.iter().any(|e| *e == o_e));
+            assert!(oriented_edges_manifold_check.contains(&o_e));
         }
     }
 
@@ -1233,7 +1235,7 @@ mod tests {
             assert_eq!(computed_loops.len(), 1);
             assert_eq!(computed_loops[0].len(), correct_loop.len());
             for edge in correct_loop {
-                assert!(computed_loops[0].iter().any(|e| *e == edge));
+                assert!(computed_loops[0].contains(&edge));
             }
         } else {
             panic!();

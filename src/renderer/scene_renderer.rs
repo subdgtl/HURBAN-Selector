@@ -139,7 +139,7 @@ impl GpuMesh {
         let vertex_data = vertex_positions
             .iter()
             .copied()
-            .zip(vertex_normals.into_iter())
+            .zip(vertex_normals)
             .zip(barycentric_sequence_iter())
             .map(|((position, normal), barycentric)| Self::vertex(position, normal, barycentric))
             .collect();
@@ -177,7 +177,7 @@ impl GpuMesh {
         let vertex_data = vertex_positions
             .iter()
             .copied()
-            .zip(vertex_normals.into_iter())
+            .zip(vertex_normals)
             .zip(barycentric_sequence_iter())
             .map(|((position, normal), barycentric)| Self::vertex(position, normal, barycentric))
             .collect();
@@ -223,13 +223,13 @@ impl fmt::Display for AddMeshError {
                 f,
                 "Mesh contains too many vertices {}. (max allowed is {})",
                 given,
-                u32::max_value(),
+                u32::MAX,
             ),
             AddMeshError::TooManyIndices(given) => write!(
                 f,
                 "Mesh contains too many indices: {}. (max allowed is {})",
                 given,
-                u32::max_value(),
+                u32::MAX,
             ),
         }
     }
@@ -922,7 +922,7 @@ impl SceneRenderer {
             0,
             [MatrixUniforms {
                 projection_matrix: (correction_matrix() * projection_matrix).into(),
-                view_matrix: view_matrix.clone().into(),
+                view_matrix: (*view_matrix).into(),
             }]
             .as_bytes(),
         );
@@ -1261,10 +1261,10 @@ impl SceneRenderer {
     }
 }
 
-fn record<'a, 'b>(
+fn record<'a>(
     mesh_resources: &'a HashMap<u64, MeshResource>,
     raw_handle: u64,
-    rpass: &'b mut wgpu::RenderPass<'a>,
+    rpass: &mut wgpu::RenderPass<'a>,
 ) {
     let mesh_resource = &mesh_resources[&raw_handle];
 
@@ -1392,12 +1392,12 @@ fn create_color_pass_pipeline(
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
         bind_group_layouts: &[
-            &matrix_bind_group_layout,
-            &sampler_bind_group_layout,
-            &sampled_texture_bind_group_layout, // matcap
-            &sampled_texture_bind_group_layout, // shadow map
-            &color_pass_bind_group_layout,
-            &shadow_pass_bind_group_layout,
+            matrix_bind_group_layout,
+            sampler_bind_group_layout,
+            sampled_texture_bind_group_layout, // matcap
+            sampled_texture_bind_group_layout, // shadow map
+            color_pass_bind_group_layout,
+            shadow_pass_bind_group_layout,
         ],
         push_constant_ranges: &[],
     });

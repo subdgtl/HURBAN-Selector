@@ -51,8 +51,8 @@ where
 
 /// Convert u32 to i32 clamping to max value of i32 if necessary.
 pub fn clamp_cast_u32_to_i32(n: u32) -> i32 {
-    if n > i32::max_value() as u32 {
-        i32::max_value()
+    if n > i32::MAX as u32 {
+        i32::MAX
     } else {
         n as i32
     }
@@ -75,17 +75,5 @@ pub fn cast_u8_color_to_f32(color: [u8; 4]) -> [f32; 4] {
         color[1] as f32 / 255.0,
         color[2] as f32 / 255.0,
         color[3] as f32 / 255.0,
-    ]
-}
-
-/// Convert u8 based color array to f64 based color array with
-/// floating point domain `[0..1]`.
-#[allow(dead_code)]
-pub fn cast_u8_color_to_f64(color: [u8; 4]) -> [f64; 4] {
-    [
-        color[0] as f64 / 255.0,
-        color[1] as f64 / 255.0,
-        color[2] as f64 / 255.0,
-        color[3] as f64 / 255.0,
     ]
 }

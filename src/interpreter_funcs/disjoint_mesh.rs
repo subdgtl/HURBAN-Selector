@@ -66,7 +66,7 @@ impl Func for FuncDisjointMesh {
         let mesh = args[0].unwrap_mesh();
         let analyze = args[1].unwrap_boolean();
 
-        let meshes = tools::disjoint_mesh(&mesh);
+        let meshes = tools::disjoint_mesh(mesh);
         let value = MeshArrayValue::new(meshes.into_iter().map(Arc::new).collect());
 
         if analyze {

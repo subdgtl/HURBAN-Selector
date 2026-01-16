@@ -101,7 +101,7 @@ impl Func for FuncWeld {
         let tolerance = args[1].unwrap_float();
         let analyze_mesh = args[2].unwrap_boolean();
 
-        if let Some(value) = tools::weld(&mesh, tolerance) {
+        if let Some(value) = tools::weld(mesh, tolerance) {
             if analyze_mesh {
                 analytics::report_bounding_box_analysis(&value, log);
                 analytics::report_mesh_analysis(&value, log);

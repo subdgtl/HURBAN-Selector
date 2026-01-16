@@ -72,7 +72,7 @@ impl Func for FuncAlign {
         let align_to_mesh = args[1].unwrap_mesh();
         let analyze_mesh = args[2].unwrap_boolean();
 
-        let value = tools::align_two_meshes(&mesh_to_align, &align_to_mesh);
+        let value = tools::align_two_meshes(mesh_to_align, align_to_mesh);
 
         if analyze_mesh {
             analytics::report_bounding_box_analysis(&value, log);

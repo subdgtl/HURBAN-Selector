@@ -91,17 +91,15 @@ impl InputManager {
                             };
 
                             if !ui_captured_keyboard {
-                                match (virtual_keycode, state) {
-                                    // Cmd+Back is the same as Delete on some
-                                    // macOS keyboards (at least the laptop
-                                    // ones)
-                                    (
-                                        Some(winit::event::VirtualKeyCode::Back),
-                                        winit::event::ElementState::Pressed,
-                                    ) => {
-                                        self.input_state.prog_pop_requested = true;
-                                    }
-                                    (_, _) => (),
+                                // Cmd+Back is the same as Delete on some
+                                // macOS keyboards (at least the laptop
+                                // ones)
+                                if let (
+                                    Some(winit::event::VirtualKeyCode::Back),
+                                    winit::event::ElementState::Pressed,
+                                ) = (virtual_keycode, state)
+                                {
+                                    self.input_state.prog_pop_requested = true;
                                 }
                             }
                         }

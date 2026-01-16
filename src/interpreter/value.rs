@@ -210,9 +210,7 @@ impl MeshArrayValue {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Mesh> + '_ {
-        self.0
-            .iter()
-            .map(|refcounted_mesh| Arc::deref(refcounted_mesh))
+        self.0.iter().map(Arc::deref)
     }
 }
 

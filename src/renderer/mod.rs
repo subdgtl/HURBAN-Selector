@@ -111,9 +111,9 @@ pub enum GpuBackend {
     Metal,
 }
 
-impl Into<wgpu::BackendBit> for GpuBackend {
-    fn into(self) -> wgpu::BackendBit {
-        match self {
+impl From<GpuBackend> for wgpu::BackendBit {
+    fn from(val: GpuBackend) -> Self {
+        match val {
             GpuBackend::Vulkan => wgpu::BackendBit::VULKAN,
             GpuBackend::D3d12 => wgpu::BackendBit::DX12,
             GpuBackend::Metal => wgpu::BackendBit::METAL,
@@ -143,9 +143,9 @@ pub enum GpuPowerPreference {
     HighPerformance,
 }
 
-impl Into<wgpu::PowerPreference> for GpuPowerPreference {
-    fn into(self) -> wgpu::PowerPreference {
-        match self {
+impl From<GpuPowerPreference> for wgpu::PowerPreference {
+    fn from(val: GpuPowerPreference) -> Self {
+        match val {
             GpuPowerPreference::Default => wgpu::PowerPreference::Default,
             GpuPowerPreference::LowPower => wgpu::PowerPreference::LowPower,
             GpuPowerPreference::HighPerformance => wgpu::PowerPreference::HighPerformance,
@@ -248,7 +248,7 @@ impl Renderer {
         let gpu_backend_list = options
             .backend
             .as_ref()
-            .map(|backend| slice::from_ref(backend))
+            .map(slice::from_ref)
             .unwrap_or(DEFAULT_BACKEND_LIST);
 
         let gpu_power_preference = options.power_preference;
@@ -734,12 +734,6 @@ impl Renderer {
         )
     }
 
-    /// Removes texture from the GPU.
-    #[allow(dead_code)]
-    pub fn remove_ui_texture(&mut self, id: imgui::TextureId) {
-        self.imgui_renderer.remove_texture(id);
-    }
-
     /// Starts recording draw commands in an append only log.
     ///
     /// Underlying render passes will use given `clear_color`. If
@@ -758,7 +752,7 @@ impl Renderer {
         clear_color: [f64; 4],
         offscreen_render_target_handle: Option<&OffscreenRenderTargetHandle>,
         request_swap_chain_texture: bool,
-    ) -> CommandBuffer {
+    ) -> CommandBuffer<'_> {
         let render_target = if let Some(handle) = offscreen_render_target_handle {
             &self.offscreen_render_targets[&handle.0]
         } else {
@@ -979,7 +973,7 @@ impl CommandBuffer<'_> {
             });
 
             rpass.set_pipeline(self.blit_render_pipeline);
-            rpass.set_bind_group(0, &self.blit_pass_bind_group_color, &[]);
+            rpass.set_bind_group(0, self.blit_pass_bind_group_color, &[]);
             rpass.set_bind_group(1, self.scene_renderer.sampler_bind_group(), &[]);
             rpass.set_bind_group(2, &self.render_target.color_texture_bind_group, &[]);
             rpass.draw(0..3, 0..1);
@@ -1017,7 +1011,7 @@ impl CommandBuffer<'_> {
             });
 
             rpass.set_pipeline(self.blit_render_pipeline);
-            rpass.set_bind_group(0, &self.blit_pass_bind_group_depth, &[]);
+            rpass.set_bind_group(0, self.blit_pass_bind_group_depth, &[]);
             rpass.set_bind_group(1, self.scene_renderer.sampler_bind_group(), &[]);
             rpass.set_bind_group(2, self.scene_renderer.shadow_map_texture_bind_group(), &[]);
             rpass.draw(0..3, 0..1);
@@ -1091,7 +1085,7 @@ fn create_swap_chain(
 ) -> wgpu::SwapChain {
     log::debug!("Creating swapchain with dimensions {}x{}", width, height);
     device.create_swap_chain(
-        &surface,
+        surface,
         &wgpu::SwapChainDescriptor {
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
             format: TEXTURE_FORMAT_SWAP_CHAIN,
@@ -1190,6 +1184,7 @@ fn create_depth_texture(
     })
 }
 
+#[allow(static_mut_refs)]
 mod task_context {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::task;
@@ -1216,8 +1211,11 @@ mod task_context {
         static mut WAKER: Option<task::Waker> = None;
         static mut CONTEXT: Option<task::Context> = None;
 
-        while LOCKED.compare_and_swap(false, true, Ordering::Acquire) {
-            // spin
+        while LOCKED
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            std::thread::yield_now();
         }
 
         unsafe {

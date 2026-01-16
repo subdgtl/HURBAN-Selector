@@ -126,7 +126,7 @@ pub fn loop_subdivision(
         return None;
     }
 
-    let mut vertices: Vec<Point3<f32>> = mesh.vertices().iter().copied().collect();
+    let mut vertices: Vec<Point3<f32>> = mesh.vertices().to_vec();
 
     // Relocate existing vertices first
     for (i, vertex) in vertices.iter_mut().enumerate() {
@@ -274,15 +274,11 @@ pub fn loop_subdivision(
                                             let f1v = [f1vi1, f1vi2, f1vi3];
                                             let f2v = [f2vi1, f2vi2, f2vi3];
 
-                                            let f1_opposite_vertex = f1v
-                                                .iter()
-                                                .copied()
-                                                .find(|vi| !f2v.contains(&vi))?;
+                                            let f1_opposite_vertex =
+                                                f1v.iter().copied().find(|vi| !f2v.contains(vi))?;
 
-                                            let f2_opposite_vertex = f2v
-                                                .iter()
-                                                .copied()
-                                                .find(|vi| !f1v.contains(&vi))?;
+                                            let f2_opposite_vertex =
+                                                f2v.iter().copied().find(|vi| !f1v.contains(vi))?;
 
                                             (f1_opposite_vertex, f2_opposite_vertex)
                                         }
@@ -359,7 +355,9 @@ mod tests {
 
     use super::*;
 
-    fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    type FacesVertices = (Vec<(u32, u32, u32)>, Vec<Point3<f32>>);
+
+    fn torus() -> FacesVertices {
         let vertices = vec![
             Point3::new(0.566987, -1.129e-11, 0.25),
             Point3::new(-0.716506, 1.241025, 0.25),
@@ -396,7 +394,7 @@ mod tests {
         (faces, vertices)
     }
 
-    fn triple_torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn triple_torus() -> FacesVertices {
         let vertices = vec![
             Point3::new(15.566987, -1.129e-11, 0.25),
             Point3::new(14.283494, 1.241025, 0.25),
@@ -471,17 +469,17 @@ mod tests {
         (faces, vertices)
     }
 
-    fn shape_for_smoothing_with_anchors() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    fn shape_for_smoothing_with_anchors() -> FacesVertices {
         let vertices = vec![
             Point3::new(30.21796, -6.119943, 0.0),
             Point3::new(32.031532, 1.328689, 0.0),
-            Point3::new(33.875141, -3.522298, 3.718605),
-            Point3::new(34.571838, -2.071111, 2.77835),
-            Point3::new(34.778172, -5.285372, 3.718605),
-            Point3::new(36.243252, -3.80194, 3.718605),
+            Point3::new(33.875_14, -3.522298, 3.718605),
+            Point3::new(34.571_84, -2.071111, 2.77835),
+            Point3::new(34.778_17, -5.285372, 3.718605),
+            Point3::new(36.243_25, -3.80194, 3.718605),
             Point3::new(36.741604, -10.146505, 0.0),
             Point3::new(39.676025, 1.905633, 0.0),
-            Point3::new(42.587009, -5.186427, 0.0),
+            Point3::new(42.587_01, -5.186427, 0.0),
         ];
 
         let faces = vec![
@@ -501,18 +499,17 @@ mod tests {
         (faces, vertices)
     }
 
-    fn shape_for_smoothing_with_anchors_50_iterations() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>)
-    {
+    fn shape_for_smoothing_with_anchors_50_iterations() -> FacesVertices {
         let vertices = vec![
             Point3::new(30.21796, -6.119943, 0.0),
             Point3::new(32.031532, 1.328689, 0.0),
             Point3::new(34.491065, -2.551039, 0.0),
             Point3::new(36.00632, -0.404003, 0.0),
-            Point3::new(36.372859, -5.260642, 0.0),
+            Point3::new(36.372_86, -5.260642, 0.0),
             Point3::new(37.826656, -2.299296, 0.0),
             Point3::new(36.741604, -10.146505, 0.0),
             Point3::new(39.676025, 1.905633, 0.0),
-            Point3::new(42.587009, -5.186427, 0.0),
+            Point3::new(42.587_01, -5.186427, 0.0),
         ];
 
         let faces = vec![
@@ -710,7 +707,7 @@ mod tests {
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = analysis::edge_sharing(&oriented_edges);
         let fixed_vertex_indices =
-            Vec::from_iter(analysis::border_vertex_indices(&edge_sharing_map).into_iter());
+            Vec::from_iter(analysis::border_vertex_indices(&edge_sharing_map));
 
         let (faces_correct, vertices_correct) = shape_for_smoothing_with_anchors_50_iterations();
         let test_mesh_correct = Mesh::from_triangle_faces_with_vertices_and_computed_normals(
@@ -772,7 +769,7 @@ mod tests {
         let oriented_edges: Vec<OrientedEdge> = mesh.oriented_edges_iter().collect();
         let edge_sharing_map = analysis::edge_sharing(&oriented_edges);
         let fixed_vertex_indices =
-            Vec::from_iter(analysis::border_vertex_indices(&edge_sharing_map).into_iter());
+            Vec::from_iter(analysis::border_vertex_indices(&edge_sharing_map));
 
         let (faces_correct, vertices_correct) = shape_for_smoothing_with_anchors_50_iterations();
         let test_mesh_correct = Mesh::from_triangle_faces_with_vertices_and_computed_normals(

@@ -201,7 +201,7 @@ fn is_point_in_triangle(
     let plane = Plane::from_three_points(triangle_vertex0, triangle_vertex1, triangle_vertex2);
 
     // If the point is not on the triangle plane, it's also not on the triangle.
-    if !plane.contains_point(&point) {
+    if !plane.contains_point(point) {
         return false;
     }
 
@@ -558,7 +558,7 @@ mod tests {
         let unoriented_edges: Vec<_> = mesh.unoriented_edges_iter().collect();
 
         // any of the following points on mesh would be correct
-        let points_on_mesh_correct = vec![
+        let points_on_mesh_correct = [
             Point3::new(1.0, 0.25, 0.25),
             Point3::new(0.25, 1.0, 0.25),
             Point3::new(0.25, 0.25, 1.0),
@@ -566,9 +566,7 @@ mod tests {
         let pulled_point_on_mesh_computed =
             pull_point_to_mesh(&test_point, &mesh, &unoriented_edges);
 
-        assert!(points_on_mesh_correct
-            .iter()
-            .any(|p| *p == pulled_point_on_mesh_computed.point));
+        assert!(points_on_mesh_correct.contains(&pulled_point_on_mesh_computed.point));
 
         assert_eq!(0.75, pulled_point_on_mesh_computed.distance);
     }

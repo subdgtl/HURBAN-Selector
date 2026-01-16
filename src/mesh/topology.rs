@@ -76,8 +76,8 @@ pub fn compute_face_to_face_topology(
                 let faces_containing_3rd_vertex = &v2f[cast_usize(vertices.2)];
                 for face_containing_1st_vertex in faces_containing_1st_vertex {
                     if *face_containing_1st_vertex != cast_u32(face_index)
-                        && (faces_containing_2nd_vertex.contains(&face_containing_1st_vertex)
-                            || faces_containing_3rd_vertex.contains(&face_containing_1st_vertex))
+                        && (faces_containing_2nd_vertex.contains(face_containing_1st_vertex)
+                            || faces_containing_3rd_vertex.contains(face_containing_1st_vertex))
                         && !f2f[face_index].contains(face_containing_1st_vertex)
                     {
                         f2f[face_index].push(*face_containing_1st_vertex);
@@ -85,7 +85,7 @@ pub fn compute_face_to_face_topology(
                 }
                 for face_containing_second_vertex in faces_containing_2nd_vertex {
                     if *face_containing_second_vertex != cast_u32(face_index)
-                        && (faces_containing_3rd_vertex.contains(&face_containing_second_vertex))
+                        && (faces_containing_3rd_vertex.contains(face_containing_second_vertex))
                         && !f2f[face_index].contains(face_containing_second_vertex)
                     {
                         f2f[face_index].push(*face_containing_second_vertex);
@@ -140,7 +140,9 @@ mod tests {
 
     use super::*;
 
-    fn tessellated_triangle() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    type FacesVertices = (Vec<(u32, u32, u32)>, Vec<Point3<f32>>);
+
+    fn tessellated_triangle() -> FacesVertices {
         let vertices = vec![
             Point3::new(-2.0, -2.0, 0.0),
             Point3::new(0.0, -2.0, 0.0),

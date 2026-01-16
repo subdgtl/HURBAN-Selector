@@ -297,9 +297,9 @@ impl ScalarField {
                                 // Compute point position in model space
                                 let cartesian = geometry::barycentric_to_cartesian(
                                     &barycentric,
-                                    &point_a,
-                                    &point_b,
-                                    &point_c,
+                                    point_a,
+                                    point_b,
+                                    point_c,
                                 );
                                 // and set a voxel containing the point to the
                                 // volume value `value_on_mesh_surface`
@@ -358,7 +358,7 @@ impl ScalarField {
                 // scalar field's mesh.
                 let mut target_scalar_field = ScalarField::from_bounding_box_cartesian_space(
                     &source_sf_bounding_box,
-                    &voxel_dimensions,
+                    voxel_dimensions,
                 );
 
                 for (one_dimensional, voxel) in target_scalar_field.voxels.iter_mut().enumerate() {
@@ -479,8 +479,7 @@ impl ScalarField {
                 //    (`transformation_user_translation`).
                 let transformation_translate_to_origin_reverted =
                     Matrix4::new_translation(&(-vector_to_origin));
-                let transformation_user_translation =
-                    Matrix4::new_translation(&cartesian_translate);
+                let transformation_user_translation = Matrix4::new_translation(cartesian_translate);
                 let transformation_user_translation_reverted =
                     Matrix4::new_translation(&(-cartesian_translate));
 
@@ -503,7 +502,7 @@ impl ScalarField {
                 //    `transformed_bounding_box`.
                 let mut target_scalar_field = ScalarField::from_bounding_box_cartesian_space(
                     &transformed_bounding_box,
-                    &voxel_dimensions,
+                    voxel_dimensions,
                 );
 
                 if let Ok(transformation_rotate_scale_reverted) =
@@ -792,7 +791,7 @@ impl ScalarField {
             .x
             .min(self.voxel_dimensions.y.min(self.voxel_dimensions.z));
         // and weld naked edges.
-        tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
+        tools::weld(&joined_voxel_mesh, min_voxel_dimension / 4.0)
     }
 
     /// Returns the bounding box of the mesh produced by `ScalarField::to_mesh`
@@ -995,7 +994,7 @@ impl ScalarField {
                         corners_absolute_coordinates
                             .iter()
                             .map(|a| {
-                                self.value_at_absolute_voxel_coordinate(&a)
+                                self.value_at_absolute_voxel_coordinate(a)
                                     .map(|value| volume_value_range.contains(&value))
                                     .unwrap_or(false)
                             })
@@ -1072,7 +1071,7 @@ impl ScalarField {
         // FIXME: @Optimization Collect all the vertices already here, make sure
         // they are deduplicated, reindex the faces for each marching cube and
         // generate a valid watertight mesh without the need to weld it.
-        tools::weld(&joined_voxel_mesh, (min_voxel_dimension as f32) / 4.0)
+        tools::weld(&joined_voxel_mesh, min_voxel_dimension / 4.0)
     }
 
     /// Compute bounding box from scalar field. The bounding box will contain
@@ -1220,7 +1219,7 @@ impl ScalarField {
 
         // Early return if the other scalar field doesn't contain any voxels
         // (there are no voxels to be added to self).
-        if bounding_box_other == None {
+        if bounding_box_other.is_none() {
             return;
         }
 
@@ -1710,10 +1709,8 @@ impl ScalarField {
     where
         U: RangeBounds<f32>,
     {
-        let mut absolute_min: Point3<i32> =
-            Point3::new(i32::max_value(), i32::max_value(), i32::max_value());
-        let mut absolute_max: Point3<i32> =
-            Point3::new(i32::min_value(), i32::min_value(), i32::min_value());
+        let mut absolute_min: Point3<i32> = Point3::new(i32::MAX, i32::MAX, i32::MAX);
+        let mut absolute_max: Point3<i32> = Point3::new(i32::MIN, i32::MIN, i32::MIN);
         for (one_dimensional, voxel) in self.voxels.iter().enumerate() {
             if voxel
                 .map(|value| volume_value_range.contains(&value))
@@ -1748,30 +1745,30 @@ impl ScalarField {
         // If the scalar field doesn't contain any voxels, all of the min/max
         // values should remain unchanged. It's enough to check one of the
         // values because if anything is found, all the values would change.
-        if absolute_min.x == i32::max_value() {
+        if absolute_min.x == i32::MAX {
             assert_eq!(
                 absolute_min.y,
-                i32::max_value(),
+                i32::MAX,
                 "scalar field emptiness check failed"
             );
             assert_eq!(
                 absolute_min.z,
-                i32::max_value(),
+                i32::MAX,
                 "scalar field emptiness check failed"
             );
             assert_eq!(
                 absolute_max.x,
-                i32::min_value(),
+                i32::MIN,
                 "scalar field emptiness check failed"
             );
             assert_eq!(
                 absolute_max.y,
-                i32::min_value(),
+                i32::MIN,
                 "scalar field emptiness check failed"
             );
             assert_eq!(
                 absolute_max.z,
-                i32::min_value(),
+                i32::MIN,
                 "scalar field emptiness check failed"
             );
             None
@@ -3095,7 +3092,9 @@ mod tests {
 
     use super::*;
 
-    fn torus() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    type FacesVertices = (Vec<(u32, u32, u32)>, Vec<Point3<f32>>);
+
+    fn torus() -> FacesVertices {
         let vertices = vec![
             Point3::new(0.566987, -1.129e-11, 0.25),
             Point3::new(-0.716506, 1.241025, 0.25),
@@ -3381,7 +3380,7 @@ mod tests {
 
         assert_eq!(scalar_field.block_start, new_origin);
         assert_eq!(scalar_field.block_dimensions, new_block_dimensions);
-        assert_eq!(scalar_field.voxels.len(), 1 * 2 * 3);
+        assert_eq!(scalar_field.voxels.len(), 6);
     }
 
     #[test]

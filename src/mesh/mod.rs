@@ -129,12 +129,11 @@ impl Mesh {
                             );
 
                             normals_collection_sharp.push(face_normal);
-                        }
-                        // FIXME: once we add other kinds of faces, they must
-                        // panic here
-                        //
-                        // _ => panic!("Face must be a triangle, we just created
-                        // it"),
+                        } // FIXME: once we add other kinds of faces, they must
+                          // panic here
+                          //
+                          // _ => panic!("Face must be a triangle, we just created
+                          // it"),
                     }
                 }
                 assert_eq!(normals_collection_sharp.len(), faces_collection_sharp.len());
@@ -527,7 +526,7 @@ impl TriangleFace {
     }
 
     /// Generates 3 oriented edges from the respective triangular face.
-    pub fn to_oriented_edges(&self) -> [OrientedEdge; 3] {
+    pub fn to_oriented_edges(self) -> [OrientedEdge; 3] {
         [
             OrientedEdge::new(self.vertices.0, self.vertices.1),
             OrientedEdge::new(self.vertices.1, self.vertices.2),
@@ -536,7 +535,7 @@ impl TriangleFace {
     }
 
     /// Generates 3 unoriented edges from the respective triangular face.
-    pub fn to_unoriented_edges(&self) -> [UnorientedEdge; 3] {
+    pub fn to_unoriented_edges(self) -> [UnorientedEdge; 3] {
         [
             UnorientedEdge(OrientedEdge::new(self.vertices.0, self.vertices.1)),
             UnorientedEdge(OrientedEdge::new(self.vertices.1, self.vertices.2)),
@@ -564,7 +563,7 @@ impl TriangleFace {
     }
 
     /// Returns the same face with reverted vertex and normal winding.
-    pub fn to_reverted(&self) -> TriangleFace {
+    pub fn to_reverted(self) -> TriangleFace {
         TriangleFace::new(
             self.vertices.2,
             self.vertices.1,
@@ -867,7 +866,9 @@ mod tests {
 
     use super::*;
 
-    fn quad() -> (Vec<(u32, u32, u32)>, Vec<Point3<f32>>) {
+    type FacesVertices = (Vec<(u32, u32, u32)>, Vec<Point3<f32>>);
+
+    fn quad() -> FacesVertices {
         let vertices = vec![
             Point3::new(-1.0, -1.0, 0.0),
             Point3::new(1.0, -1.0, 0.0),
@@ -967,8 +968,8 @@ mod tests {
         let mesh_faces: Vec<_> = mesh
             .faces()
             .iter()
-            .filter_map(|face| match face {
-                Face::Triangle(triangle_face) => Some(triangle_face),
+            .map(|face| match face {
+                Face::Triangle(triangle_face) => triangle_face,
             })
             .collect();
 
@@ -1012,8 +1013,8 @@ mod tests {
         let mesh_faces: Vec<_> = mesh
             .faces()
             .iter()
-            .filter_map(|face| match face {
-                Face::Triangle(triangle_face) => Some(triangle_face),
+            .map(|face| match face {
+                Face::Triangle(triangle_face) => triangle_face,
             })
             .copied()
             .collect();
@@ -1218,7 +1219,7 @@ mod tests {
     #[test]
     fn test_has_no_orphan_vertices_returns_false_if_there_are_none() {
         let (faces, vertices, normals) = quad_with_normals();
-        let extra_vertex = vec![Point3::new(0.0, 0.0, 0.0)];
+        let extra_vertex = [Point3::new(0.0, 0.0, 0.0)];
         let vertices_extended = [&vertices[..], &extra_vertex[..]].concat();
 
         let mesh_with_orphans =
@@ -1241,7 +1242,7 @@ mod tests {
     fn test_mesh_unoriented_edges_iter() {
         let (faces, vertices, normals) = quad_with_normals();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
-        let unoriented_edges_correct = vec![
+        let unoriented_edges_correct = [
             UnorientedEdge(OrientedEdge::new(0, 1)),
             UnorientedEdge(OrientedEdge::new(1, 2)),
             UnorientedEdge(OrientedEdge::new(2, 0)),
@@ -1265,7 +1266,7 @@ mod tests {
         let (faces, vertices, normals) = quad_with_normals();
         let mesh = Mesh::from_triangle_faces_with_vertices_and_normals(faces, vertices, normals);
 
-        let oriented_edges_correct = vec![
+        let oriented_edges_correct = [
             OrientedEdge::new(0, 1),
             OrientedEdge::new(1, 2),
             OrientedEdge::new(2, 0),
@@ -1288,7 +1289,7 @@ mod tests {
     #[test]
     fn test_has_no_orphan_normals_returns_false_if_there_are_none() {
         let (faces, vertices, normals) = quad_with_normals();
-        let extra_normal = vec![Vector3::new(0.0, 0.0, 0.0)];
+        let extra_normal = [Vector3::new(0.0, 0.0, 0.0)];
         let normals_extended = [&normals[..], &extra_normal[..]].concat();
 
         let mesh_with_orphans =
@@ -1300,7 +1301,7 @@ mod tests {
     #[test]
     fn test_remove_orphan_vertices() {
         let (faces, vertices) = quad();
-        let extra_vertex = vec![Point3::new(0.0, 0.0, 0.0)];
+        let extra_vertex = [Point3::new(0.0, 0.0, 0.0)];
         let vertices_extended = [&extra_vertex[..], &vertices[..]].concat();
         let faces_renumbered_to_match_extend_vertices: Vec<_> =
             faces.iter().map(|f| (f.0 + 1, f.1 + 1, f.2 + 1)).collect();
@@ -1320,10 +1321,10 @@ mod tests {
     fn test_remove_orphan_vertices_and_normals() {
         let (faces, vertices, normals) = quad_with_normals();
 
-        let extra_vertex = vec![Point3::new(0.0, 0.0, 0.0)];
+        let extra_vertex = [Point3::new(0.0, 0.0, 0.0)];
         let vertices_extended = [&extra_vertex[..], &vertices[..]].concat();
 
-        let extra_normal = vec![Vector3::new(0.0, 0.0, 0.0)];
+        let extra_normal = [Vector3::new(0.0, 0.0, 0.0)];
         let normals_extended = [&extra_normal[..], &normals[..]].concat();
 
         let faces_renumbered_to_match_extend_data: Vec<_> = faces
@@ -1359,7 +1360,7 @@ mod tests {
     #[test]
     fn test_mesh_from_triangle_faces_with_vertices_and_computed_normals_remove_orphans() {
         let (faces, vertices) = quad();
-        let extra_vertex = vec![Point3::new(0.0, 0.0, 0.0)];
+        let extra_vertex = [Point3::new(0.0, 0.0, 0.0)];
         let vertices_extended = [&extra_vertex[..], &vertices[..]].concat();
         let faces_renumbered_to_match_extend_vertices: Vec<_> =
             faces.iter().map(|f| (f.0 + 1, f.1 + 1, f.2 + 1)).collect();
@@ -1376,9 +1377,9 @@ mod tests {
     #[test]
     fn test_mesh_from_triangle_faces_with_vertices_and_normals_remove_orphans() {
         let (faces, vertices, normals) = quad_with_normals();
-        let extra_vertex = vec![Point3::new(0.0, 0.0, 0.0)];
+        let extra_vertex = [Point3::new(0.0, 0.0, 0.0)];
         let vertices_extended = [&extra_vertex[..], &vertices[..]].concat();
-        let extra_normal = vec![Vector3::new(0.0, 0.0, 0.0)];
+        let extra_normal = [Vector3::new(0.0, 0.0, 0.0)];
         let normals_extended = [&extra_normal[..], &normals[..]].concat();
 
         let faces_renumbered_to_match_extend_vertices_and_normals: Vec<_> = faces

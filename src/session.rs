@@ -303,7 +303,7 @@ impl Session {
     /// programs loaded from a save file) can be further modified in this
     /// session without re-declaring variable identifiers.
     pub fn next_free_var_ident(&mut self) -> Option<VarIdent> {
-        if self.next_var_ident == u64::max_value() {
+        if self.next_var_ident == u64::MAX {
             None
         } else {
             let ident = VarIdent(self.next_var_ident);

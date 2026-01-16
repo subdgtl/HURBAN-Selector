@@ -5,7 +5,7 @@ use hurban_selector::importer::{
 };
 
 fn import_obj(path: &str) -> Vec<importer::Model> {
-    let file_contents = fs::read(&path).expect("File should be read to bytes");
+    let file_contents = fs::read(path).expect("File should be read to bytes");
     let (tobj_models, _) =
         importer::obj_buf_into_tobj(&mut file_contents.as_slice()).expect("Obj should be parsed");
 
@@ -20,9 +20,9 @@ fn test_importer_import_obj_returns_valid_obj_file() {
     let path = "tests/fixtures/valid.obj";
 
     let models = importer
-        .import_obj(&path)
+        .import_obj(path)
         .expect("Valid obj should be loaded");
-    let expected_models = import_obj(&path);
+    let expected_models = import_obj(path);
 
     assert_eq!(expected_models, models);
 }
@@ -35,13 +35,13 @@ fn test_importer_import_obj_returns_two_different_valid_obj_files() {
     let path_2 = "tests/fixtures/valid_2.obj";
 
     let models_1 = importer
-        .import_obj(&path_1)
+        .import_obj(path_1)
         .expect("Valid obj should be loaded");
     let models_2 = importer
-        .import_obj(&path_2)
+        .import_obj(path_2)
         .expect("Valid obj should be loaded");
-    let expected_models_1 = import_obj(&path_1);
-    let expected_models_2 = import_obj(&path_2);
+    let expected_models_1 = import_obj(path_1);
+    let expected_models_2 = import_obj(path_2);
 
     assert_eq!(expected_models_1, models_1);
     assert_eq!(expected_models_2, models_2);
@@ -54,7 +54,7 @@ fn test_importer_import_obj_returns_error_when_importing_invalid_obj_file() {
     let path = "tests/fixtures/invalid.obj";
 
     let error = importer
-        .import_obj(&path)
+        .import_obj(path)
         .expect_err("Error should be thrown");
 
     assert_eq!(
@@ -72,7 +72,7 @@ fn test_importer_import_obj_returns_error_when_importing_nonexistent_file() {
     let path = "tests/fixtures/wrong_path.obj";
 
     let error = importer
-        .import_obj(&path)
+        .import_obj(path)
         .expect_err("Error should be thrown");
 
     assert_eq!(error, ImporterError::FileNotFound);
@@ -85,10 +85,10 @@ fn test_importer_import_obj_returns_correct_models_when_importing_the_same_uncha
     let path = "tests/fixtures/valid.obj";
 
     let models_1 = importer
-        .import_obj(&path)
+        .import_obj(path)
         .expect("Valid obj should be loaded");
     let models_2 = importer
-        .import_obj(&path)
+        .import_obj(path)
         .expect("Valid obj should be loaded");
 
     assert_eq!(models_1, models_2);
@@ -103,10 +103,10 @@ fn test_importer_import_obj_returns_correct_models_when_importing_two_different_
     let path_2 = "tests/fixtures/valid_copy.obj";
 
     let models_1 = importer
-        .import_obj(&path_1)
+        .import_obj(path_1)
         .expect("Valid obj should be loaded");
     let models_2 = importer
-        .import_obj(&path_2)
+        .import_obj(path_2)
         .expect("Valid obj should be loaded");
 
     assert_eq!(models_1, models_2);
@@ -119,7 +119,7 @@ fn test_importer_import_obj_returns_error_when_invalid_unicode_character_is_enco
     let mut importer = Importer::new(cache);
 
     let error = importer
-        .import_obj(&"tests/fixtures/invalid_unicode.obj")
+        .import_obj("tests/fixtures/invalid_unicode.obj")
         .expect_err("Error should be thrown");
 
     assert_eq!(
@@ -136,7 +136,7 @@ fn test_importer_import_obj_returns_error_when_empty_model_is_encountered() {
     let mut importer = Importer::new(cache);
 
     let error = importer
-        .import_obj(&"tests/fixtures/empty_model.obj")
+        .import_obj("tests/fixtures/empty_model.obj")
         .expect_err("Error should be thrown");
 
     assert_eq!(
@@ -151,7 +151,7 @@ fn test_importer_import_obj_returns_error_when_duplicate_indices_are_encountered
     let mut importer = Importer::new(cache);
 
     let error = importer
-        .import_obj(&"tests/fixtures/invalid_geometry_duplicate_indices.obj")
+        .import_obj("tests/fixtures/invalid_geometry_duplicate_indices.obj")
         .expect_err("Error should be thrown");
 
     assert_eq!(

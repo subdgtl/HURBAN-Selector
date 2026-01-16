@@ -180,7 +180,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
     // value = new (averaged) vertex index It is expected that more keys will
     // share the same value; more original vertices will be replaced by a single
     // averaged vertex
-    let mut old_new_vertex_map: Vec<u32> = vec![u32::max_value(); mesh.vertices().len()];
+    let mut old_new_vertex_map: Vec<u32> = vec![u32::MAX; mesh.vertices().len()];
     for (new_vertex_index, old_vertex_indices) in close_vertex_clusters.clone().enumerate() {
         for old_vertex_index in old_vertex_indices {
             old_new_vertex_map[cast_usize(*old_vertex_index)] = cast_u32(new_vertex_index);
@@ -259,7 +259,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
     for (old_vertex_index, old_normals_indices) in old_vertex_normals_index_map.iter().enumerate() {
         let new_vertex_index = old_new_vertex_map[cast_usize(old_vertex_index)];
         new_vertex_old_normals_index_map[cast_usize(new_vertex_index)]
-            .extend_from_slice(&old_normals_indices);
+            .extend_from_slice(old_normals_indices);
     }
 
     // Compute an average normal for each new (averaged) vertex
@@ -288,7 +288,7 @@ pub fn weld(mesh: &Mesh, tolerance: f32) -> Option<Mesh> {
 /// Crawls the mesh geometry to find continuous patches. Returns a
 /// vector mesh patches.
 pub fn disjoint_mesh(mesh: &Mesh) -> Vec<Mesh> {
-    let vertex_to_face_topology = topology::compute_vertex_to_face_topology(&mesh);
+    let vertex_to_face_topology = topology::compute_vertex_to_face_topology(mesh);
     let face_to_face = topology::compute_face_to_face_topology(mesh, &vertex_to_face_topology);
     let mut available_face_indices: HashSet<u32> = (0..cast_u32(mesh.faces().len())).collect();
     let mut patches: Vec<Mesh> = Vec::new();

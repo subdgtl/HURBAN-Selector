@@ -11,8 +11,8 @@ use std::time::Instant;
 pub use self::ast::{FuncIdent, VarIdent};
 pub use self::func::{
     BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, FloatParamRefinement,
-    Func, FuncFlags, FuncInfo, IntParamRefinement, ParamInfo, ParamRefinement,
-    StringParamRefinement, UintParamRefinement,
+    Func, FuncFlags, FuncInfo, ParamInfo, ParamRefinement, StringParamRefinement,
+    UintParamRefinement,
 };
 pub use self::value::{MeshArrayValue, Ty, Value};
 
@@ -440,7 +440,7 @@ impl Interpreter {
                     }
 
                     let func = var_decl.init_expr().ident();
-                    if self.funcs.get(&func).is_none() {
+                    if !self.funcs.contains_key(&func) {
                         return Err(ResolveError::UndeclaredFuncUse { stmt_index, func });
                     }
 
@@ -924,6 +924,10 @@ mod tests {
     use std::rc::Rc;
 
     use super::*;
+    use crate::interpreter::func::{
+        BooleanParamRefinement, Float2ParamRefinement, Float3ParamRefinement, FloatParamRefinement,
+        IntParamRefinement, StringParamRefinement, UintParamRefinement,
+    };
 
     fn param_info(ty: Ty, optional: bool) -> ParamInfo {
         ParamInfo {
