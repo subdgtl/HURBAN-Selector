@@ -1,0 +1,6 @@
+[build]
+rustflags = []
+
+[env]
+SHADERC_LIB_DIR = { relative = true, value = "/usr/local/opt/shaderc/lib" }
+SHADERC_INCLUDE_DIR = { relative = true, value = "/usr/local/opt/shaderc/include" }

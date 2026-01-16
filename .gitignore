@@ -12,3 +12,5 @@ HURBAN-Selector.iml
 # Wix Toolset build files
 *.wixobj
 *.wixpdb
+.DS_Store
+dist
